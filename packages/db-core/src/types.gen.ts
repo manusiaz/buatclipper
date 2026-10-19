@@ -618,6 +618,9 @@ export type Database = {
               "amount": number,"id": string,"recipient": Json,"recipient_ref": string,"user_id": string
             }[]
                            },
+"bridge_fulfillment_export_accepted":
+{ Args: { "p_file_ref": string,"p_reward_type": string }; Returns: boolean
+                           },
 "bridge_get_batch":
 { Args: { "p_batch": string }; Returns: Json
                            },

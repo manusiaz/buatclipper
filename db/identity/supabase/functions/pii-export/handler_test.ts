@@ -212,8 +212,13 @@ Deno.test("recipients_csv: only users with share_with_brand consent; owner/rewar
     svc_recipients: (a) => recips.filter((r) => (a.p_ids as string[]).includes(r.id)),
     svc_audit: () => null,
   });
+  let acceptedRef = "";
   const core = new FakeCore({
-    attach_fulfillment_export: () => ({ ok: true }),
+    attach_fulfillment_export: (a) => {
+      acceptedRef = a.file_ref as string;
+      return { ok: true };
+    },
+    fulfillment_export_accepted: (a) => a.file_ref === acceptedRef,
     fulfillment_export: () => [
       { id: p(61), user_id: u(61), amount: 1, recipient: { game_id: "123", zone_id: "45" }, recipient_ref: m(61) },
       { id: p(62), user_id: u(62), amount: 1, recipient: { game_id: "9" }, recipient_ref: null },
@@ -253,7 +258,15 @@ Deno.test("recipients_csv: only users with share_with_brand consent; owner/rewar
   );
   assertEquals([again.status, again.body.data.url], [200, `https://storage.test/${fileRef}?ttl=900`]);
   assertEquals(rpc.named("svc_audit").at(-1)!.args.p_after, { resign: true, file_ref: fileRef });
-  for (const bad of [`pii-exports/recipients/${m(1)}/x.csv`, `pii-exports/recipients/${RT}/../../payouts/x.csv`]) {
+  // berkas di folder yang benar tapi tidak pernah diterima core (serah-terima gagal) tidak dilepas
+  await storage.upload("pii-exports", `recipients/${RT}/orphan.csv`, new Uint8Array(), "text/csv", true);
+  for (
+    const bad of [
+      `pii-exports/recipients/${m(1)}/x.csv`,
+      `pii-exports/recipients/${RT}/../../payouts/x.csv`,
+      `pii-exports/recipients/${RT}/orphan.csv`,
+    ]
+  ) {
     const r = await json(await handler(post({ action: "recipients_resign", reward_type_id: RT, file_ref: bad })));
     assertEquals(r.body.error.code, "file_missing");
   }

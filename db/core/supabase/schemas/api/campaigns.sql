@@ -191,6 +191,7 @@ declare
   a_path text;
   a_url text;
   paid_sub numeric;
+  pools_before jsonb;
   send_to_brand boolean;
   inv finance.invoices;
 begin
@@ -302,6 +303,8 @@ begin
     delete from market.rate_rules where campaign_id = c.id;
   end if;
   if p ? 'pools' then
+    select jsonb_agg(jsonb_build_array(x.id, x.reward_type_id, x.total) order by x.id) into pools_before
+      from finance.reward_pools x where x.campaign_id = c.id;
     if jsonb_typeof(p -> 'pools') <> 'array' then
       perform market.fail('invalid:pools', 'pools harus array');
     end if;
@@ -401,10 +404,13 @@ begin
      where id = c.id;
   end if;
 
-  -- Invoice campaign yang sudah lunas mengunci budget (pool bisa ditambah lewat top-up saja).
+  -- Invoice campaign yang sudah lunas mengunci pool (id, reward type, total = akun ledger campaign_pool yang sudah terisi);
+  -- pool bisa ditambah lewat top-up saja.
   select sum(i.subtotal) into paid_sub from finance.invoices i
    where i.campaign_id = c.id and i.kind in ('campaign', 'topup') and i.status = 'paid';
-  if paid_sub is not null and p ? 'pools' and round(finance.campaign_budget_idr(c.id), 2) <> paid_sub then
+  if paid_sub is not null and p ? 'pools'
+     and pools_before is distinct from (select jsonb_agg(jsonb_build_array(x.id, x.reward_type_id, x.total) order by x.id)
+                                          from finance.reward_pools x where x.campaign_id = c.id) then
     perform market.fail('pools_locked_after_payment', 'budget sudah dibayar; ubah lewat top-up');
   end if;
 
@@ -538,8 +544,8 @@ begin
     end if;
     -- Rule lama ditutup, rule baru berlaku untuk views sesudahnya (§10.5).
     update market.rate_rules set effective_to = t where id = r.id;
-    insert into market.rate_rules (campaign_id, kind, reward_type_id, pool_id, platform, params, effective_from)
-    values (c.id, r.kind, r.reward_type_id, r.pool_id, r.platform, newp, t);
+    insert into market.rate_rules (campaign_id, kind, reward_type_id, pool_id, platform, params, effective_from, lineage_id)
+    values (c.id, r.kind, r.reward_type_id, r.pool_id, r.platform, newp, t, coalesce(r.lineage_id, r.id));
   elsif p_action = 'topup' then
     if c.status not in ('scheduled', 'live', 'paused') then
       perform market.fail('invalid_state:' || c.status, 'top-up hanya untuk campaign terjadwal/berjalan');

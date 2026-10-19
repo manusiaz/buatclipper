@@ -332,7 +332,13 @@ export async function exportRecipients(deps: PiiExportDeps, actor: Actor, reward
 export async function resignRecipients(deps: PiiExportDeps, actor: Actor, rewardTypeId: string, fileRef: string) {
   const prefix = `${EXPORT_BUCKET}/recipients/${rewardTypeId}/`;
   const path = fileRef.startsWith(prefix) && !fileRef.includes("..") ? fileRef.slice(EXPORT_BUCKET.length + 1) : "";
-  if (!path || !(await deps.storage.exists(EXPORT_BUCKET, path))) {
+  // Hanya berkas yang diterima core (klaimnya ber-export_ref ini); berkas dari serah-terima yang gagal tidak dilepas.
+  const accepted = path &&
+    await deps.core().invoke<boolean>("fulfillment_export_accepted", {
+      reward_type_id: rewardTypeId,
+      file_ref: fileRef,
+    });
+  if (!accepted || !(await deps.storage.exists(EXPORT_BUCKET, path))) {
     throw new HttpError(404, "file_missing", "berkas ekspor tidak ditemukan");
   }
   const url = await deps.storage.signedUrl(EXPORT_BUCKET, path, SIGNED_URL_TTL_S);

@@ -232,11 +232,17 @@ begin
   if exists (select 1 from unnest(coalesce(p_exported, '{}')) e(id)
               where not exists (select 1 from finance.fulfillments f join market.reward_types rt on rt.id = f.reward_type_id
                                  where f.id = e.id and f.reward_type_id = p_reward_type and rt.fulfillment = 'manual_export'
-                                   and (f.status = 'requested' or (f.status = 'processing' and f.export_ref = p_file_ref)))) then
+                                   and (f.status = 'requested' or f.export_ref = p_file_ref))) then
     raise exception 'export_stale' using errcode = 'P0001', detail = 'klaim berubah sejak dibaca; ekspor ulang';
   end if;
   update finance.fulfillments set status = 'processing', export_ref = p_file_ref where id = any (p_exported) and status = 'requested';
 end $$;
+
+-- Unduh ulang CSV penerima: identity hanya menandatangani berkas yang benar-benar diterima core untuk reward type itu.
+create function api.bridge_fulfillment_export_accepted(p_reward_type uuid, p_file_ref text) returns boolean
+language sql stable security definer set search_path = '' as $$
+  select exists (select 1 from finance.fulfillments f where f.reward_type_id = p_reward_type and f.export_ref = p_file_ref);
+$$;
 
 -- Alur 10: ID lintas DB yang dirujuk core (profil belum ditutup, rekening & penerima milik mereka).
 create function api.bridge_collect_ids() returns jsonb
@@ -262,13 +268,13 @@ begin
 end $$;
 
 revoke execute on function api.bridge_get_batch(uuid), api.bridge_attach_export(uuid, text, jsonb, uuid[]),
-  api.bridge_attach_fulfillment_export(uuid, text, uuid[]),
+  api.bridge_attach_fulfillment_export(uuid, text, uuid[]), api.bridge_fulfillment_export_accepted(uuid, text),
   api.bridge_attach_proof(text, uuid, text), api.bridge_raise_fraud_flag(text, uuid, text, numeric, jsonb),
   api.bridge_close_account(uuid), api.bridge_get_payout(uuid), api.bridge_mark_instant(uuid, text, text, text),
   api.bridge_pph21(date, date), api.bridge_fulfillment_export(uuid), api.bridge_collect_ids(), api.bridge_report_orphans(jsonb)
   from public, anon, authenticated;
 grant execute on function api.bridge_get_batch(uuid), api.bridge_attach_export(uuid, text, jsonb, uuid[]),
-  api.bridge_attach_fulfillment_export(uuid, text, uuid[]),
+  api.bridge_attach_fulfillment_export(uuid, text, uuid[]), api.bridge_fulfillment_export_accepted(uuid, text),
   api.bridge_attach_proof(text, uuid, text), api.bridge_raise_fraud_flag(text, uuid, text, numeric, jsonb),
   api.bridge_close_account(uuid), api.bridge_get_payout(uuid), api.bridge_mark_instant(uuid, text, text, text),
   api.bridge_pph21(date, date), api.bridge_fulfillment_export(uuid), api.bridge_collect_ids(), api.bridge_report_orphans(jsonb)

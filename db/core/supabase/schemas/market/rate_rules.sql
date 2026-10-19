@@ -10,6 +10,7 @@ create table market.rate_rules (
   params jsonb not null check (jsonb_typeof(params) = 'object'),
   effective_from timestamptz not null default now(),
   effective_to timestamptz,
+  lineage_id uuid,  -- raise_rate: rule pertama yang digantikan (versi rule yang sama); null = rule asli
   constraint rate_rules_effective_range check (effective_to is null or effective_to > effective_from),
   constraint rate_rules_pool_match foreign key (pool_id, campaign_id, reward_type_id)
     references finance.reward_pools (id, campaign_id, reward_type_id),

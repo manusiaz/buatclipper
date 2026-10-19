@@ -491,6 +491,23 @@ select is((select array_agg(status order by issued_at, status) from finance.invo
           array['issued', 'void'], 'ajukan ulang: invoice lama yang belum lunas di-void, invoice baru terbit');
 select is((select count(*)::int from ops.notifications where event = 'campaign.rejected' and payload ->> 'reason' = 'asset_rights'
              and user_id = '22222222-0000-0000-0000-0000000000a2'), 1, 'campaign.rejected + alasan ke brand');
+-- Regresi review R6: invoice lunas saat in_review lalu ditolak → pool (akun ledger yang terisi) tidak boleh diganti.
+update finance.invoices set status = 'paid', payment_channel = 'transfer', payment_ref = 'REF-ORG2', paid_amount = total, paid_at = now(),
+       confirmed_by = '33333333-0000-0000-0000-0000000000ad'
+ where campaign_id = (select id from t_ids where k = 'c_org2') and status = 'issued';
+set local role authenticated;
+select pg_temp.jwt('33333333-0000-0000-0000-0000000000ad', '{admin_ops}', 'aal2');
+select api.record_review('campaign', (select id from t_ids where k = 'c_org2'), 'reject', 'asset_rights', 'Masih belum jelas');
+select pg_temp.jwt('22222222-0000-0000-0000-0000000000a2');
+select throws_ok($$ select api.save_campaign(jsonb_build_object('id', (select id from t_ids where k = 'c_org2'),
+                    'pools', '[{"key":"q","reward_type_id":"77777777-0000-0000-0000-000000000001","total":2000000,"max_per_clip":10000}]'::jsonb,
+                    'rules', '[{"kind":"flat_per_post","pool":"q","params":{"amount":25000}}]'::jsonb)) $$, 'P0001',
+                 'pools_locked_after_payment', 'pool yang sudah dibayar tidak bisa diganti pool baru (total sama)');
+select lives_ok($$ select api.save_campaign(jsonb_build_object('id', (select id from t_ids where k = 'c_org2'),
+                   'pools', jsonb_build_array(jsonb_build_object('id', (select id from api.reward_pools
+                      where campaign_id = (select id from t_ids where k = 'c_org2')), 'reward_type_id', '77777777-0000-0000-0000-000000000001',
+                      'total', 2000000, 'max_per_clip', 20000)))) $$, 'pool yang sama (max_per_clip berubah) tetap boleh disimpan');
+reset role;
 
 -- Paket managed (J-A7): brand minta dibantu → admin menyusun (override fee) → invoice managed_service + managed.draft_ready
 set local role authenticated;
@@ -557,6 +574,11 @@ select throws_ok($$ select api.control_campaign('55555555-0000-0000-0000-0000000
                  'raise_rate tidak bisa menurunkan rate');
 select lives_ok($$ select api.control_campaign('55555555-0000-0000-0000-000000000001', 'raise_rate',
                    '{"rule_id":"67676767-0000-0000-0000-000000000001","params":{"rate":3000}}') $$, 'raise_rate Rp3.000');
+reset role;
+select is((select count(*)::int from market.rate_rules
+            where lineage_id = '67676767-0000-0000-0000-000000000001' and effective_to is null), 1,
+          'raise_rate: rule baru = versi rule lama (lineage_id)');
+set local role authenticated;
 select throws_ok($$ select api.control_campaign('55555555-0000-0000-0000-000000000001', 'topup',
                     '{"pools":[{"pool_id":"66666666-0000-0000-0000-000000000002","amount":500000}]}') $$, 'P0001', 'invalid:pool',
                  'top-up hanya ke pool campaign itu');
