@@ -8,6 +8,33 @@ extra_search_path = ["extensions"]
 
 [auth]
 jwt_expiry = 600
+# Lokal: host dev *.clipper.localhost (produksi diatur di Dashboard, §15.10). Key ES256 dev dipakai bersama stack core
+# supaya core menerima JWT identity tanpa Custom OIDC (tidak ada di CLI, §15.6). File key tidak di-commit.
+site_url = "http://accounts.clipper.localhost:3001"
+additional_redirect_urls = ["http://accounts.clipper.localhost:3001/auth/callback", "http://accounts.clipper.localhost:3001/auth/confirm", "http://app.clipper.localhost:3002/auth/callback"]
+signing_keys_path = "./dev-keys/signing_keys.json"
+
+[auth.email]
+enable_signup = true
+enable_confirmations = false
+otp_length = 6
+otp_expiry = 600
+
+# Yang terkirim kode OTP, bukan magic link (PWA iOS, §15.6); undangan menaut ke accounts/auth/confirm (§15.10).
+[auth.email.template.magic_link]
+subject = "Kode masuk Clipper: {{ .Token }}"
+content_path = "./supabase/templates/magic_link.html"
+
+[auth.email.template.invite]
+subject = "Kamu diundang ke Clipper"
+content_path = "./supabase/templates/invite.html"
+
+[auth.mfa]
+max_enrolled_factors = 10
+
+[auth.mfa.totp]
+enroll_enabled = true
+verify_enabled = true
 
 [auth.hook.custom_access_token]
 enabled = true

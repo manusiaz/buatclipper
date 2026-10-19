@@ -2,9 +2,38 @@
 # (issuer identity) tidak tersedia di CLI: didaftarkan lewat Dashboard/Management API (PRD §15.6).
 project_id = "clipper-core"
 
+# Port lokal digeser dari default (dipakai stack identity) supaya dua stack jalan bareng.
 [api]
+port = 55321
 schemas = ["api"]
 extra_search_path = ["extensions"]
+
+[db]
+port = 55322
+shadow_port = 55320
+
+[db.pooler]
+port = 55329
+
+[studio]
+port = 55323
+
+[local_smtp]
+port = 55324
+
+[analytics]
+port = 55327
+
+[edge_runtime]
+inspector_port = 8084
+
+# Signup & provider core dimatikan: satu-satunya penerbit login = identity (§15.6). Key dev sama dengan identity.
+[auth]
+enable_signup = false
+signing_keys_path = "./dev-keys/signing_keys.json"
+
+[auth.email]
+enable_signup = false
 
 [storage.buckets.campaign-covers]
 public = true
