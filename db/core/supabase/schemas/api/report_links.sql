@@ -35,18 +35,13 @@ begin
   end if;
 end $$;
 
-create function api.report_by_token(p_token text) returns jsonb
-language plpgsql stable security definer set search_path = '' as $$
+-- Angka agregat campaign (views valid, klip, clipper, split platform, budget, top klip). Satu sumber untuk laporan read-only
+-- (report_by_token) dan dashboard brand (api.campaign_stats). Internal: tanpa cek akses, pemanggil yang menyaring.
+create function market.campaign_report(p_campaign uuid) returns jsonb
+language plpgsql stable set search_path = '' as $$
 declare
-  cid uuid;
   counted constant tracking.submission_status[] := array['tracking', 'flagged', 'locked', 'settled']::tracking.submission_status[];
 begin
-  select rl.campaign_id into cid from market.report_links rl
-   where rl.token_hash = sha256(convert_to(p_token, 'UTF8')) and rl.revoked_at is null
-     and (rl.expires_at is null or rl.expires_at > now());
-  if cid is null then
-    return null;
-  end if;
   return (
     select jsonb_build_object(
       'campaign', jsonb_build_object('title', c.title, 'status', c.status, 'start_at', c.start_at,
@@ -67,7 +62,22 @@ begin
                              from (select s.url, s.platform, s.counted_views from tracking.submissions s
                                    where s.campaign_id = c.id and s.status = any (counted)
                                    order by s.counted_views desc limit 10) t), '[]'::jsonb))
-    from market.campaigns c where c.id = cid);
+    from market.campaigns c where c.id = p_campaign);
+end $$;
+revoke execute on function market.campaign_report(uuid) from public;
+
+create function api.report_by_token(p_token text) returns jsonb
+language plpgsql stable security definer set search_path = '' as $$
+declare
+  cid uuid;
+begin
+  select rl.campaign_id into cid from market.report_links rl
+   where rl.token_hash = sha256(convert_to(p_token, 'UTF8')) and rl.revoked_at is null
+     and (rl.expires_at is null or rl.expires_at > now());
+  if cid is null then
+    return null;
+  end if;
+  return market.campaign_report(cid);
 end $$;
 
 revoke execute on function api.create_report_link(uuid, int), api.revoke_report_link(uuid), api.report_by_token(text) from public;

@@ -22,12 +22,16 @@ create table finance.invoices (
   issued_at timestamptz not null default now(),
   due_at timestamptz,
   pin_until timestamptz,
+  -- Top-up (F-B06): pool yang ditambah saat lunas, [{"pool_id": uuid, "amount": numeric}] (unit reward type pool).
+  -- Diisi control_campaign, diterapkan confirm_invoice_payment ke finance.reward_pools.total.
+  pool_topups jsonb,
   constraint invoices_number_unique unique (number),
   constraint invoices_payment_ref_unique unique (payment_ref),
   constraint invoices_faktur_unique unique (faktur_no),
   constraint invoices_total_consistent check (total = subtotal + mgmt_fee + admin_fee + service_fee + tax),
   constraint invoices_campaign_kinds check (kind not in ('campaign', 'topup', 'pinned') or campaign_id is not null),
   constraint invoices_pinned_has_period check ((kind = 'pinned') = (pin_until is not null)),
+  constraint invoices_topup_has_pools check ((kind = 'topup') = coalesce(jsonb_typeof(pool_topups) = 'array', false)),
   constraint invoices_paid_complete check (status <> 'paid' or (payment_ref is not null and paid_amount is not null
                                            and paid_at is not null and confirmed_by is not null and payment_channel is not null))
 );
