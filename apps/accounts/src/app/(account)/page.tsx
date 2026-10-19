@@ -104,10 +104,12 @@ export default async function HubPage({ searchParams }: { searchParams: SearchPa
         <Avatar name={name} src={avatar} size={56} />
         <div className="min-w-0 flex-1">
           <p className="truncate text-h6 text-ink">{name}</p>
-          <p className="truncate text-body-s text-muted">
-            {p?.username ? `@${p.username} · ` : ''}
-            {claims.email}
-          </p>
+          {p?.display_name && (
+            <p className="truncate text-body-s text-muted">
+              @{p.username}
+              {claims.email ? ` · ${claims.email}` : ''}
+            </p>
+          )}
         </div>
       </Card>
 

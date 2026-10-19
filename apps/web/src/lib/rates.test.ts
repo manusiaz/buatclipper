@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { estRemainingViews, idrRates, maxViews, parseRule, rateGroups, ruleRate, rulesFromJson, type Rule } from './rates';
+import { estRemainingViews, idrRates, maxViews, mergeViewRates, parseRule, rateGroups, ruleRate, rulesFromJson, type Rule } from './rates';
 
 const rule = (r: Partial<Rule>): Rule => ({
   kind: 'per_1k_views',
@@ -106,5 +106,21 @@ describe('rateGroups', () => {
   });
   it('skips platforms without rules', () => {
     expect(rateGroups([rule({ platform: 'tiktok' })], ['instagram'])).toEqual([]);
+  });
+});
+
+describe('mergeViewRates', () => {
+  it('sums stacked per-views rules of the same reward type without mutating input', () => {
+    const a = rule({});
+    const b = rule({ platform: 'tiktok', params: { rate: '1000' } });
+    const d = rule({ code: 'DIAMOND', params: { rate: 8 } });
+    const m = rule({ kind: 'milestone_bonus', params: { threshold: 1, amount: 2 } });
+    const out = mergeViewRates([a, b, d, m]);
+    expect(out.map((r) => [r.code, r.kind, r.params])).toEqual([
+      ['IDR', 'per_1k_views', { rate: 3000 }],
+      ['DIAMOND', 'per_1k_views', { rate: 8 }],
+      ['IDR', 'milestone_bonus', { threshold: 1, amount: 2 }],
+    ]);
+    expect(a.params).toEqual({ rate: 2000 });
   });
 });

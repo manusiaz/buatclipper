@@ -86,7 +86,7 @@ export function KycForm({ defaultName }: { defaultName: string }) {
       </Field>
 
       <Field label={t('photo')} required helper={t('photoHelper')}>
-        {(control) => (
+        {({ invalid: _invalid, ...control }) => (
           <label
             htmlFor={control.id}
             className="flex min-h-24 cursor-pointer items-center gap-4 rounded-card-sm border-[1.5px] border-dashed border-border-strong bg-surface-2 p-4 transition-colors duration-120 focus-ring-within hover:border-primary"

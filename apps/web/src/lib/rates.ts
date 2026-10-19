@@ -120,6 +120,22 @@ export function estRemainingViews(
   return best;
 }
 
+/** Rule per_1k_views ber-reward type sama ditumpuk jadi satu baris (rate dijumlah), sama seperti earning dihitung. */
+export function mergeViewRates(rules: readonly Rule[]): Rule[] {
+  const out: Rule[] = [];
+  for (const r of rules) {
+    const rate = r.kind === 'per_1k_views' ? ruleRate(r.kind, r.params) : null;
+    if (rate == null) {
+      out.push(r);
+      continue;
+    }
+    const prev = out.find((x) => x.kind === 'per_1k_views' && x.code === r.code);
+    if (prev) prev.params = { rate: (ruleRate(prev.kind, prev.params) ?? 0) + rate };
+    else out.push({ ...r, params: { rate } });
+  }
+  return out;
+}
+
 /** Platform dengan set rule yang sama digabung, supaya "semua platform" tidak diulang per platform. */
 export function rateGroups(rules: readonly Rule[], platforms: readonly Platform[]): Array<{ platforms: Platform[]; rules: Rule[] }> {
   const groups: Array<{ key: string; platforms: Platform[]; rules: Rule[] }> = [];

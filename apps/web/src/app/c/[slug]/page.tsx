@@ -13,8 +13,8 @@ type Props = { params: Promise<{ slug: string }> };
 
 export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const { slug } = await params;
-  const data = await getPublicCampaign(slug).catch(() => null);
-  if (!data) return {};
+  const data = await getPublicCampaign(slug);
+  if (!data) notFound();
   const [t, locale] = await Promise.all([getTranslations('web.campaign'), getLocale() as Promise<UiLocale>]);
   const c = data.campaign;
   const top = Math.max(0, ...idrRates(data.rules, c.platforms).map((r) => r.ratePer1k));
@@ -30,6 +30,7 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
   };
 }
 
+// Tanpa loading.tsx: data di-cache 60 dtk, dan notFound() sebelum flush pertama = status 404 sungguhan untuk SEO.
 export default async function PublicCampaignPage({ params }: Props) {
   const { slug } = await params;
   const [data, session, locale] = await Promise.all([getPublicCampaign(slug), hasSession(), getLocale()]);

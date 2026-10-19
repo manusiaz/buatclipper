@@ -1,0 +1,103 @@
+'use server';
+
+import { revalidatePath } from 'next/cache';
+import { coreServer, invokeFunction, requireAdmin } from '@clipper/auth/server';
+import { settle, settleFn, text, type ActionResult } from '@/lib/action';
+import { numeric } from '@/lib/data';
+import { wibToIso } from '@/lib/wib';
+import type { ExportResult } from '@/features/shared/export-panel';
+
+const MAX_PROOF = 10 * 1024 * 1024; // bucket payout-proofs (pii-export MAX_PROOF_BYTES)
+const PROOF_TYPES = ['application/pdf', 'image/jpeg', 'image/png'];
+
+async function finance() {
+  await requireAdmin('admin_finance');
+  return coreServer('admin');
+}
+
+/** A3.1: nominal = total invoice (amount_mismatch kalau beda), referensi unik (duplicate_payment_ref). */
+export async function confirmInvoice(invoiceId: string, fd: FormData): Promise<ActionResult> {
+  const db = await finance();
+  const amount = text(fd, 'amount').replace(/[^\d.]/g, '');
+  const { error } = await db.rpc('confirm_invoice_payment', {
+    p_invoice: invoiceId,
+    p_amount: numeric(amount),
+    p_paid_at: wibToIso(text(fd, 'paid_at')) ?? new Date().toISOString(),
+    p_ref: text(fd, 'ref'),
+    p_channel: text(fd, 'channel'),
+  });
+  return settle(error, '/finance', '/campaigns');
+}
+
+/** A3.2: batch dari payout requested (channel batch) sampai cut-off. */
+export async function createBatch(fd: FormData): Promise<ActionResult> {
+  const db = await finance();
+  const { error } = await db.rpc('create_payout_batch', { p_cutoff: wibToIso(text(fd, 'cutoff')) ?? new Date().toISOString() });
+  return settle(error, '/finance');
+}
+
+/** Dua orang: approved_by ≠ created_by (constraint payout_batches_two_person → two_person). */
+export async function approveBatch(batchId: string): Promise<ActionResult> {
+  const db = await finance();
+  const { error } = await db.rpc('approve_payout_batch', { p_batch: batchId });
+  return settle(error, '/finance');
+}
+
+/** A3.3: CSV transfer dibuat identity pii-export (satu-satunya tempat nomor rekening didekripsi). */
+export async function exportPayoutCsv(batchId: string): Promise<ActionResult<ExportResult>> {
+  await requireAdmin('admin_finance');
+  const r = await invokeFunction<{ url: string; expires_in: number; rows: number; held: { payout_id: string; reason: string }[] }>(
+    'identity', 'pii-export', { action: 'payout_csv', batch_id: batchId }, 'admin',
+  );
+  if (!r.ok) return { ok: false, error: r.error };
+  revalidatePath('/finance');
+  return { ok: true, data: { url: r.data.url, expires_in: r.data.expires_in, rows: r.data.rows, items: r.data.held.map((h) => ({ id: h.payout_id, reason: h.reason })) } };
+}
+
+/** A3.4: hasil transfer per payout (hanya yang masuk CSV = processing). failed → saldo kembali ke clipper (S-05). */
+export async function markBatch(batchId: string, results: { payout_id: string; status: 'paid' | 'failed'; bank_ref: string }[]): Promise<ActionResult> {
+  const db = await finance();
+  const { error } = await db.rpc('mark_batch_paid', {
+    p_batch: batchId,
+    p_results: results.map((r) => ({ payout_id: r.payout_id, status: r.status, bank_ref: r.bank_ref.trim() || null })),
+  });
+  return settle(error, '/finance');
+}
+
+/** Bukti transfer → pii-export upload_proof (batch: menutup batch yang sudah paid; refund: menandai refund dibayar). */
+export async function uploadProof(target: 'batch' | 'refund', id: string, fd: FormData): Promise<ActionResult> {
+  await requireAdmin('admin_finance');
+  const file = fd.get('file');
+  if (!(file instanceof File) || file.size === 0) return { ok: false, error: 'invalid:file' };
+  if (file.size > MAX_PROOF) return { ok: false, error: 'payload_too_large' };
+  if (!PROOF_TYPES.includes(file.type)) return { ok: false, error: 'unsupported_type' };
+  const content = Buffer.from(await file.arrayBuffer()).toString('base64');
+  const r = await invokeFunction('identity', 'pii-export', {
+    action: 'upload_proof', target, id, filename: file.name.slice(0, 200), content_type: file.type, content_base64: content,
+  }, 'admin');
+  return settleFn(r, '/finance');
+}
+
+/** Batalkan payout on_hold / batch requested: dana + fee kembali ke Tersedia. */
+export async function cancelPayout(payoutId: string, fd: FormData): Promise<ActionResult> {
+  const db = await finance();
+  const { error } = await db.rpc('cancel_payout', { p_payout: payoutId, p_reason: text(fd, 'reason') });
+  return settle(error, '/finance');
+}
+
+/** A3.6: refund disetujui admin_finance lain (constraint org_refunds_two_person). */
+export async function approveRefund(refundId: string): Promise<ActionResult> {
+  const db = await finance();
+  const { error } = await db.rpc('approve_refund', { p_refund: refundId });
+  return settle(error, '/finance');
+}
+
+/** Rekap PPh 21 (bruto per orang + NIK + nama KTP) dari pii-export; pajak tidak dihitung sistem. */
+export async function exportPph21(fd: FormData): Promise<ActionResult<ExportResult>> {
+  await requireAdmin('admin_finance');
+  const r = await invokeFunction<{ url: string; expires_in: number; rows: number; missing_kyc: string[] }>(
+    'identity', 'pii-export', { action: 'pph21', from: text(fd, 'from'), to: text(fd, 'to') }, 'admin',
+  );
+  if (!r.ok) return { ok: false, error: r.error };
+  return { ok: true, data: { url: r.data.url, expires_in: r.data.expires_in, rows: r.data.rows, items: r.data.missing_kyc.map((id) => ({ id, reason: 'missing_kyc' })) } };
+}

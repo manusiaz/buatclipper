@@ -22,7 +22,7 @@ import {
 } from '@clipper/ui';
 import { Markdown } from '@/components/markdown';
 import { coverUrl } from '@/lib/cover';
-import { estRemainingViews, idrRates, parseRule, rateGroups, type Rule } from '@/lib/rates';
+import { estRemainingViews, idrRates, mergeViewRates, parseRule, rateGroups, type Rule } from '@/lib/rates';
 import { clipperHref } from '@/lib/session';
 import type { PublicCampaign } from './data';
 import { formatAmount, formatWib } from './format';
@@ -188,7 +188,7 @@ export async function CampaignView({ data, session, category }: { data: PublicCa
                       )}
                     </p>
                     <ul className="flex flex-col gap-1.5">
-                      {g.rules.map((r, i) => (
+                      {mergeViewRates(g.rules).map((r, i) => (
                         <RuleLine key={i} rule={r} t={t} locale={locale} />
                       ))}
                     </ul>
@@ -216,9 +216,8 @@ export async function CampaignView({ data, session, category }: { data: PublicCa
                   <div key={p.id} className="flex flex-col gap-1.5">
                     <ProgressBar
                       value={p.total > 0 ? Math.min(100, (p.allocated / p.total) * 100) : 0}
-                      label={t('budgetUsed')}
-                      showLabel={pools.length > 1}
-                      valueLabel={p.unit_label ?? p.code ?? undefined}
+                      label={pools.length > 1 ? `${t('budgetUsed')} · ${p.code === 'IDR' ? 'Rupiah' : (p.unit_label ?? p.code)}` : t('budgetUsed')}
+                      showLabel
                       tone="auto"
                     />
                     <p className="text-caption text-muted tnum">
@@ -371,7 +370,7 @@ export async function CampaignView({ data, session, category }: { data: PublicCa
       </div>
 
       {closed ? null : (
-        <div className="surface-glass fixed inset-x-0 bottom-0 z-20 border-x-0 border-b-0 px-4 pt-3 pb-safe lg:hidden">
+        <div className="fixed inset-x-0 bottom-0 z-20 border-t border-border bg-surface/95 px-4 pt-3 pb-safe shadow-pop backdrop-blur-md lg:hidden print:hidden">
           <div className="mx-auto flex max-w-[680px] items-center gap-3 pb-3">
             {topIdr > 0 ? (
               <p className="min-w-0 flex-1 leading-tight">
