@@ -365,6 +365,10 @@ begin
                                     else fulfillment_margin_pct end
      where id = rid;
   end if;
+  if ops.has_admin() then
+    insert into ops.audit_logs (actor_id, action, target, after)
+    values (uid, 'reward_type.save', 'reward_type:' || rid, p - 'webhook_secret');
+  end if;
   return rid;
 end $$;
 
@@ -395,6 +399,10 @@ begin
   select rt.id, x.code, uid from (select distinct btrim(u) as code from unnest(p_codes) u where btrim(u) <> '') x
   on conflict (reward_type_id, code) do nothing;
   get diagnostics n = row_count;
+  if ops.has_admin('admin_ops') then
+    insert into ops.audit_logs (actor_id, action, target, after)
+    values (uid, 'reward_codes.upload', 'reward_type:' || rt.id, jsonb_build_object('inserted', n));
+  end if;
   return n;
 end $$;
 

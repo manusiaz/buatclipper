@@ -1085,6 +1085,24 @@ select ok((select pinned_until is not null from market.campaigns where id = '555
 set constraints all immediate;
 set constraints all deferred;
 
+select is((select array_agg(distinct action order by action) from ops.audit_logs
+            where action in ('invoice.confirm_payment', 'payout_batch.create', 'payout_batch.approve', 'payout_batch.mark_paid', 'refund.approve')),
+          array['invoice.confirm_payment', 'payout_batch.approve', 'payout_batch.create', 'payout_batch.mark_paid', 'refund.approve'],
+          'aksi finance admin tercatat audit log (F-A11)');
+
+-- job:reconcile-daily bagian ledger: bersih, lalu selisih cache pool terdeteksi + alert
+-- Fixture memakai jalan pintas: pool didanai jurnal ref 'fixture:<pool>' tanpa invoice, invoice c5 di-insert langsung lunas.
+create temp table t_reconcile on commit drop as select finance.reconcile_ledger() as v;
+select ok((select not (v ? 'pool_cache') and not (v ? 'negative_wallet') from t_reconcile), 'rekonsiliasi: cache pool & saldo clipper bersih');
+select is((select v -> 'invoice_unposted' from t_reconcile), '["dddddddd-0000-0000-0000-0000000000c5"]'::jsonb,
+          'rekonsiliasi: invoice lunas tanpa jurnal pembayaran terdeteksi');
+select ok((select (select bool_and(x like 'fixture:%') from jsonb_array_elements_text(v -> 'journal_without_invoice') x) from t_reconcile),
+          'rekonsiliasi: jurnal pembayaran tanpa invoice terdeteksi (hanya jalan pintas fixture)');
+update finance.reward_pools set allocated = allocated + 1 where id = '66666666-0000-0000-0000-0000000000a1';
+select ok(finance.reconcile_ledger() ? 'pool_cache', 'selisih cache pool vs jurnal terdeteksi');
+select ok(exists (select 1 from ops.alerts where kind = 'reconcile.ledger' and severity = 'critical'), 'alert rekonsiliasi ledger');
+update finance.reward_pools set allocated = allocated - 1 where id = '66666666-0000-0000-0000-0000000000a1';
+
 -- ========== Invarian akhir ==========
 select is((select count(*)::int from (select 1 from finance.ledger_entries e group by e.txn_id, e.reward_type_id having sum(e.amount) <> 0) x),
           0, 'akhir: ledger seimbang per transaksi per reward type');

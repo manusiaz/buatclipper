@@ -97,6 +97,8 @@ begin
   if not found then
     raise exception 'invalid_state:refund' using errcode = 'P0001';
   end if;
+  insert into ops.audit_logs (actor_id, action, target, before, after)
+  values ((select auth.uid()), 'refund.approve', 'refund:' || p_refund, '{"status": "requested"}', '{"status": "approved"}');
 end $$;
 
 -- Refund dibayar (dipanggil bridge_attach_proof setelah bukti transfer diunggah di identity).

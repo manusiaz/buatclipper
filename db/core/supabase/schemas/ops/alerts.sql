@@ -53,6 +53,7 @@ begin
   if not found then
     raise exception 'not_found:alert' using errcode = 'P0002';
   end if;
+  insert into ops.audit_logs (actor_id, action, target, after) values ((select auth.uid()), 'alert.resolve', 'alert:' || p_id, null);
 end $$;
 
 revoke execute on function ops.cfg(text, jsonb), ops.raise_alert(text, text, jsonb, interval), api.resolve_alert(bigint) from public;

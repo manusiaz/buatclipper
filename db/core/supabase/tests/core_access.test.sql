@@ -281,6 +281,10 @@ select is(array(select distinct m[1] from cron.job, regexp_matches(command, '([a
                 where to_regproc(m[1]) is null order by 1),
           '{}'::text[], 'semua fungsi yang dipanggil job pg_cron sudah ada');
 
+-- F-A11: fungsi api yang memeriksa role admin dan mengubah data wajib menulis ops.audit_logs.
+select is((select array_agg(p.proname::text order by p.proname) from pg_proc p
+            where p.pronamespace = 'api'::regnamespace and p.prosrc ~ 'has_admin\(' and p.prosrc ~* '\m(insert|update|delete)\M'
+              and p.prosrc !~ 'audit_logs'), null, 'setiap mutasi admin tercatat di audit log');
 -- Regresi 2026-10-19: enum internal di parameter RPC → 42501 lewat REST walau pgTAP (literal) lulus.
 select is((select array_agg(p.proname::text order by p.proname) from pg_proc p join pg_namespace n on n.oid = p.pronamespace
             where n.nspname = 'api' and exists (select 1 from unnest(p.proargtypes) t join pg_type ty on ty.oid = t

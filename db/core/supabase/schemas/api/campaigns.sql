@@ -211,6 +211,11 @@ begin
       perform market.fail('invalid:org_id', 'campaign tidak bisa pindah org');
     end if;
   end if;
+  if is_admin then  -- F-A11: builder admin (paket managed) tercatat; gagal di bawah = ikut di-rollback
+    insert into ops.audit_logs (actor_id, action, target, before, after)
+    values (uid, 'campaign.save', 'campaign:' || coalesce(p ->> 'id', 'new'), jsonb_build_object('status', c.status),
+            jsonb_build_object('submit', p_submit, 'keys', (select jsonb_agg(k2 order by k2) from jsonb_object_keys(p) k2)));
+  end if;
   select * into org from market.organizations where id = coalesce(c.org_id, (p ->> 'org_id')::uuid);
   if org.id is null then
     perform market.fail('not_found:org', null, 'P0002');

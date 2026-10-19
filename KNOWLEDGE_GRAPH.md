@@ -3,42 +3,51 @@
 > Everything is one system. Every page is a node; every line is a real data or design dependency.
 > Dikelola oleh skill `alaconnect`. Edit inkremental — jangan generate ulang.
 
-Last verified: belum ada commit — PRD Clipper Platform v0.3.1 + SQL teruji di Postgres 16 (2026-10-19)
+Last verified: a4432d3 — kode terbangun: 5 app, 2 project Supabase, 12 Edge Function, pgTAP, E2E lintas host, CI (2026-10-19)
 
-**Status:** lapisan database sudah ditulis dan dites (`db/identity`, `db/core`: schema deklaratif, config.toml, tes pgTAP); config.toml kedua project lolos parser Supabase CLI 2.121.0 (`supabase status` sampai tahap Docker), tapi stack Supabase lokal belum dijalankan. Node yang filenya ada punya kolom Path dan bukti `file:line` (dicek `check_graph.py`). App Next.js dan Edge Functions masih RENCANA: Path kosong, lokasi rencana di kolom terakhir, bukti = rujukan PRD v0.3.1 (§ / ID / Lampiran). Edge `reads` page → table = dependency data logis; di kode jalannya lewat view/fungsi schema `api` (`policy:core.api-only`). Rujukan lintas DB (`table → table` antar project) tidak punya foreign key.
+**Status:** sistem sudah dibangun dan dites. 5 app Next.js 16 (`apps/web`, `apps/accounts`, `apps/clipper`, `apps/brand`, `apps/admin`) di atas `packages/{ui,campaign-builder,auth,db-core,db-identity,i18n,config}`. 2 project Supabase (`db/identity`, `db/core`): schema deklaratif, `migrations/` (pg-delta), config.toml, seed.sql. 12 Edge Function: core `bridge`, `fulfill`, `notify`, `refresh-tokens`, `social`, `track-worker`; identity `admin-auth`, `bridge`, `delete-account`, `disburse`, `member-data`, `pii-export`. Tes: pgTAP 6 file (`db/core/supabase/tests` 4, `db/identity/supabase/tests` 2), unit test app/package (`pnpm test`, 38 file `*.test.ts(x)`), unit test Deno (29 file `*_test.ts` di `db/*/supabase/functions`), journey E2E lintas host `e2e/journey.cjs` (Playwright: web → accounts → app → undangan → brand), CI `.github/workflows/ci.yml` (job apps, functions, db per project). Dijalankan saat verifikasi a4432d3: `pnpm lint` ok, Deno core 70 + identity 81 tes lulus, pgTAP stub core 705 + identity 107 tes lulus (typecheck, build, `supabase test db` dan E2E tidak dijalankan saat itu). Node yang filenya ada punya kolom Path; bukti edge = `file:line` (dicek `check_graph.py`). Bukti yang masih rujukan PRD v0.3.1 = belum ada satu baris kode yang menyebut target, atau kodenya ada di folder route group `(account)`, `(auth)`, `(console)`: regex checker tidak menerima tanda kurung, jadi baris kodenya ditulis `kode baris N` (dicek manual). `(belum di kode)` = edge PRD yang tidak dibangun begitu. Edge `reads` page → table = dependency data logis; di kode jalannya lewat view/fungsi schema `api` (`policy:core.api-only`). Rujukan lintas DB (`table → table` antar project) tidak punya foreign key.
 
 ## Stack
 
 - Monorepo pnpm workspaces: `apps/{web,accounts,clipper,brand,admin}`, `packages/{ui,campaign-builder,auth,db-core,db-identity,i18n,config}`, `db/{identity,core}/supabase`.
 - Next.js 16 App Router + TypeScript (`proxy.ts` per app), Tailwind + shadcn/ui, next-intl, next-themes, Recharts. Hosting: Vercel Pro, 1 project per app, region Functions sin1.
 - Supabase ×2 di ap-southeast-1, compute Small + PITR: **identity** (Auth + MFA, schema `member`, Storage privat, Edge Functions `bridge`, `member-data`, `pii-export`, `delete-account`, `admin-auth`, `disburse`) dan **core** (schema `market`, `tracking`, `finance`, `trust`, `ops`, `api`; Vault; pg_cron; Queues `tracking` & `email`; Edge Functions `social`, `track-worker`, `refresh-tokens`, `notify`, `bridge`, `fulfill`). Core percaya JWT identity lewat Third-Party Auth → Custom OIDC; core tidak memegang private key identity.
-- Sumber kebenaran schema: `db/<project>/supabase/schemas/` (declarative, wajib pg-delta lewat `[experimental.pgdelta]`; engine migra membuang security_invoker) → `migrations/`. Registri entitas & state: `spec/kg.yaml` (fields dibangkitkan dari katalog DB). Struktur domain/URL/folder: `spec/structure.yaml`. Journey: `spec/journeys.yaml`. Kontrak fungsi yang belum ditulis: `spec/contracts.yaml`. Types: `packages/db-core`, `packages/db-identity` (supabase gen types).
-- Sumber kebenaran token desain: `packages/ui`. Copy: `packages/i18n`. Path alias rencana: `@/` → `apps/<app>/src/`.
+- Sumber kebenaran schema: `db/<project>/supabase/schemas/` (declarative, wajib pg-delta lewat `[experimental.pgdelta]`; engine migra membuang security_invoker) → `migrations/`. Registri entitas & state: `spec/kg.yaml` (fields dibangkitkan dari katalog DB). Struktur domain/URL/folder: `spec/structure.yaml`. Journey: `spec/journeys.yaml`. Kontrak fungsi (PRD Lampiran A.3; semua sudah ditulis di `db/**`, berkas belum dipangkas): `spec/contracts.yaml`. Types: `packages/db-core`, `packages/db-identity` (supabase gen types).
+- Sumber kebenaran token desain: `packages/ui`. Copy: `packages/i18n`. Path alias: `@/` → `apps/<app>/src/`.
 
 ## Entry points
 
 - Page publik: `page:accounts/invite/[token]`, `page:accounts/login`, `page:admin/login`, `page:app/login`, `page:www/`, `page:www/c/[slug]`, `page:www/legal/[doc]`, `page:www/r/[token]`.
 - Job terjadwal: `job:broadcast-dispatch`, `job:budget-alerts`, `job:claim-expiry`, `job:earning-release`, `job:fraud-device-scan`, `job:fulfillment-retry`, `job:leaderboard-refresh`, `job:lifecycle`, `job:notify-drain`, `job:reconcile-daily`, `job:referral-bonus`, `job:token-refresh`, `job:track-due`, `job:trust-score`.
-- Dipanggil sistem luar: `api:GET app/api/oauth/[platform]/callback` (redirect TikTok/Meta/Google), `api:GET accounts/auth/callback` dan `api:GET app/auth/callback` (redirect Google lewat Auth identity), `api:GET accounts/auth/confirm` (link email undangan), `fn:custom_access_token_hook` (dipanggil Supabase Auth).
-- Test (Path terisi = sudah ada & lulus; kosong = rencana): `test:accrue.idempotent`, `test:core.full-product`, `test:member-data.integrity`, `test:pwa.ios-login`, `test:rls.access-matrix`, `test:spike.oidc-cross-project`.
+- Dipanggil sistem luar: `api:GET app/api/oauth/[platform]/callback` (redirect TikTok/Meta/Google), `api:GET accounts/auth/callback` dan `api:GET app/auth/callback` (redirect Google lewat Auth identity), `api:GET accounts/auth/confirm` (link email undangan), `fn:custom_access_token_hook` (dipanggil Supabase Auth), `api:fn identity/disburse` (callback penyedia disbursement).
+- Test & CI (Path terisi = berkas tes ada; kosong = manual/Fase 0): `test:accrue.idempotent`, `test:core.full-product`, `test:e2e.cross-host`, `test:member-data.integrity`, `test:pwa.ios-login`, `test:rls.access-matrix`, `test:spike.oidc-cross-project`, `config:ci`.
 
 ## Perintah verifikasi
 
-Lapisan DB sudah bisa dites sekarang (baris 1–2, Postgres 16 + stub Supabase, dipakai menyusun v0.3–v0.3.1). Sisanya rencana: begitu app & Supabase CLI jalan, pakai persis ini (urut murah → mahal) dan perbarui kalau CI berbeda:
+Urut murah → mahal. `.github/workflows/ci.yml` menjalankan perintah yang sama: job `apps` (baris pnpm), `functions` (deno, matrix identity/core) dan `db` (`supabase start` lalu `test db`, `db lint`, `db advisors`, matrix identity/core). Stub pgTAP, `pnpm e2e` dan checker hanya lokal. Ubah perintah di sini dan di CI bersamaan.
 
 ```bash
-python3 db/test-local/load.py identity t_identity && python3 db/test-local/load.py core t_core
-pg_prove -d t_identity db/identity/supabase/tests/*.test.sql && pg_prove -d t_core db/core/supabase/tests/*.test.sql
+scripts/dev-stack.sh            # stack lokal: identity :54321 + core :55321, secret dev, Vault pg_cron, apps/*/.env.local (--reset = db reset)
 pnpm install --frozen-lockfile
-pnpm -r lint && pnpm -r typecheck && pnpm -r test && pnpm -r build
-supabase start --workdir db/identity && supabase db reset --workdir db/identity && supabase test db --workdir db/identity && supabase db lint --workdir db/identity && supabase db diff --strict-coverage --workdir db/identity && supabase db advisors --workdir db/identity
-supabase start --workdir db/core && supabase db reset --workdir db/core && supabase test db --workdir db/core && supabase db lint --workdir db/core && supabase db diff --strict-coverage --workdir db/core && supabase db advisors --workdir db/core
-python3 .claude/skills/alaconnect/scripts/check_graph.py .
+pnpm lint && pnpm typecheck && pnpm test && pnpm build      # lint = scripts/check-arch.mjs
+(cd db/identity/supabase/functions && deno fmt --check && deno lint && deno task check && deno task test)
+(cd db/core/supabase/functions && deno fmt --check && deno lint && deno task check && deno task test)
+# pgTAP tanpa Docker (Postgres 16 + stub Supabase), p = identity | core
+python3 db/test-local/load.py identity t_identity && pg_prove -h 127.0.0.1 -U postgres -d t_identity db/identity/supabase/tests/*.test.sql
+python3 db/test-local/load.py core t_core && pg_prove -h 127.0.0.1 -U postgres -d t_core db/core/supabase/tests/*.test.sql
+# pgTAP + lint + advisor di stack Supabase asli (setelah scripts/dev-stack.sh)
+supabase test db --workdir db/identity && supabase test db --workdir db/core
+supabase db lint --workdir db/identity -s member,api --fail-on error
+supabase db lint --workdir db/core -s market,tracking,finance,trust,ops,api --fail-on error
+supabase db advisors --workdir db/identity --type security --fail-on warn
+supabase db advisors --workdir db/core --type security --fail-on warn
+pnpm e2e                        # e2e/seed.sql ke core + e2e/journey.cjs; butuh dev-stack + app web/accounts/clipper/brand di port 3000–3003
+python3 <skill alaconnect>/scripts/check_graph.py .         # harus berakhir RESULT PASS
 ```
 
 ## Invarian pemisahan
 
-Wajib tetap benar setiap perubahan (dicek otomatis saat graph ini dibuat; cek ulang tiap task):
+Wajib tetap benar setiap perubahan (dicek otomatis saat graph ini dibuat; cek ulang tiap task; 1 dan 4 juga dicek `pnpm lint` = `scripts/check-arch.mjs`):
 
 1. Dari `layout:brand`, `layout:web`, semua `page:brand/…` dan `page:www/…` tidak ada jalur dependency ke data identity (`table:member.*`, `table:auth.*`, bucket identity, `api:* identity`, `mod:db-identity`, `env:PII_ENC_KEY`, `env:PII_HMAC_KEY`). Satu-satunya sentuhan ke identity = refresh sesi lewat `mod:auth`.
 2. Tabel `finance.*` hanya ditulis node `api:`, `fn:`, atau `job:` — tidak pernah langsung dari page.
@@ -48,7 +57,7 @@ Wajib tetap benar setiap perubahan (dicek otomatis saat graph ini dibuat; cek ul
 6. `env:PII_ENC_KEY` dan `env:PII_HMAC_KEY` hanya dibaca Edge Functions identity, tidak pernah oleh fungsi SQL: kunci tidak berada di database yang sama dengan ciphertext.
 7. Setiap page bisa dicapai dari entry point lewat `routes-to` (menu + journey §6), dan tidak ada edge navigasi bertanda `?`.
 8. Setiap tabel di SQL punya node dengan Path ke file pembuatnya, dan setiap edge `guarded-by` tabel → policy menunjuk baris `create policy` yang bertanda `-- policy:<id>` (dibangkitkan dari katalog DB uji).
-9. Di database (dites pgTAP): RLS aktif di semua tabel kedua project, semua view `api` security_invoker, `anon` tidak bisa EXECUTE fungsi `api` identity apa pun dan di core hanya `report_by_token`; di core setiap FK ber-index dan setiap tabel punya policy restrictive iss. Fungsi yang dipanggil job pg_cron tapi belum ditulis tercetak sebagai TODO pgTAP (6 fungsi kontrak).
+9. Di database (dites pgTAP): RLS aktif di semua tabel kedua project, semua view `api` security_invoker, `anon` tidak bisa EXECUTE fungsi `api` identity apa pun dan di core hanya `invite_preview`, `list_campaigns` (landing) & `report_by_token`; di core setiap FK ber-index dan setiap tabel punya policy restrictive iss; semua fungsi yang dipanggil job pg_cron ada.
 10. Fitur → URL → folder → tabel untuk 45 fitur (+ 2 kelompok lintas fitur §4/§16) ada di `spec/structure.yaml`; setiap page di graph milik minimal satu fitur/kelompok, dan setiap page di structure.yaml ada di graph.
 
 ## Nodes
@@ -81,6 +90,7 @@ Wajib tetap benar setiap perubahan (dicek otomatis saat graph ini dibuat; cek ul
 | `page:app/leaderboard` | page | apps/clipper/src/app/leaderboard/page.tsx | Leaderboard mingguan & per campaign (F-C13) |  |
 | `page:app/login` | page | apps/clipper/src/app/login/page.tsx | Login di dalam scope PWA: kode OTP & Google (F-C01, R-17) |  |
 | `page:app/notifications` | page | apps/clipper/src/app/notifications/page.tsx | Notifikasi in-app (F-C11) |  |
+| `page:app/offline` | page | apps/clipper/src/app/offline/page.tsx | Halaman offline PWA: disimpan service worker, tampil saat navigasi gagal tanpa koneksi (F-C14) |  |
 | `page:app/profile` | page | apps/clipper/src/app/profile/page.tsx | Statistik + Trust Score & riwayatnya (F-C12) |  |
 | `page:app/referral` | page | apps/clipper/src/app/referral/page.tsx | Kode & link referral, teman, bonus (F-C16) |  |
 | `page:app/settings` | page | apps/clipper/src/app/settings/page.tsx | Bahasa, tema, notifikasi email promosi, push (F-C11, F-C14, F-C18) |  |
@@ -107,28 +117,31 @@ Wajib tetap benar setiap perubahan (dicek otomatis saat graph ini dibuat; cek ul
 | `layout:brand` | layout | apps/brand/src/app/layout.tsx | Shell brand.{domain} per org, membaca cookie SSO |  |
 | `layout:clipper` | layout | apps/clipper/src/app/layout.tsx | Shell app.{domain}: PWA clipper, membaca cookie SSO |  |
 | `layout:web` | layout | apps/web/src/app/layout.tsx | Shell {domain}: halaman publik, tanpa sesi |  |
-| `comp:CampaignBuilder` | comp |  | Wizard 7 langkah F-B02, satu kode untuk brand & admin | packages/campaign-builder/src/index.tsx |
-| `mod:auth` | mod |  | Cookie SSO .{domain}, cookie admin host-only, getClaims, guard role + aal2; tolak sesi ber-role admin di luar admin.{domain} | packages/auth |
-| `mod:db-core` | mod |  | Client + types core; memakai access token sesi identity | packages/db-core |
-| `mod:db-identity` | mod |  | Client + types identity; hanya untuk accounts, clipper, admin | packages/db-identity |
-| `mod:i18n` | mod |  | Pesan ID/EN | packages/i18n |
-| `mod:social` | mod |  | PlatformAdapter TikTok/IG/YouTube/Threads (§11), dipakai Edge Functions core | db/core/supabase/functions/_shared/social/ |
-| `mod:ui` | mod |  | shadcn/ui + design token untuk 5 app | packages/ui |
+| `comp:CampaignBuilder` | comp | packages/campaign-builder/src/index.ts | Wizard 7 langkah F-B02, satu kode untuk brand & admin |  |
+| `mod:auth` | mod | packages/auth | Cookie SSO .{domain}, cookie admin host-only, getClaims, guard role + aal2; tolak sesi ber-role admin di luar admin.{domain} |  |
+| `mod:db-core` | mod | packages/db-core | Client + types core; memakai access token sesi identity |  |
+| `mod:db-identity` | mod | packages/db-identity | Client + types identity; hanya untuk accounts, clipper, admin |  |
+| `mod:i18n` | mod | packages/i18n | Pesan ID/EN |  |
+| `mod:social` | mod | db/core/supabase/functions/_shared/social | PlatformAdapter TikTok/Instagram/YouTube/Threads/Facebook/X (§11) + feature flag platform, dipakai Edge Functions core |  |
+| `mod:ui` | mod | packages/ui | shadcn/ui + design token untuk 5 app |  |
 | `api:GET accounts/auth/callback` | api | apps/accounts/src/app/auth/callback/route.ts | Tukar code OAuth Google (PKCE) jadi sesi, lalu ke onboarding atau next |  |
 | `api:GET accounts/auth/confirm` | api | apps/accounts/src/app/auth/confirm/route.ts | Verifikasi token_hash dari email (undangan, ganti email) jadi sesi |  |
+| `api:POST accounts/privacy/export` | api | apps/accounts/src/app/(account)/privacy/export/route.ts | Unduh data saya (C2.4, UU PDP): JSON gabungan data identity (member-data download_my_data) + data core milik sendiri; cek origin accounts |  |
 | `api:GET app/api/oauth/[platform]/callback` | api | apps/clipper/src/app/api/oauth/[platform]/callback/route.ts | Callback OAuth sosmed: cek state, teruskan code ke core/social |  |
+| `api:GET app/api/oauth/[platform]/start` | api | apps/clipper/src/app/api/oauth/[platform]/start/route.ts | Mulai connect sosmed (C1.5): minta URL izin + state/PKCE ke core/social, simpan di cookie httpOnly, redirect ke platform |  |
 | `api:GET app/auth/callback` | api | apps/clipper/src/app/auth/callback/route.ts | Tukar code OAuth Google untuk login di app (PWA) |  |
+| `api:GET brand/[org]/campaigns/[id]/report.csv` | api | apps/brand/src/app/[org]/campaigns/[id]/report.csv/route.ts | CSV laporan campaign per submisi + snapshot views untuk anggota org (F-B09) |  |
 | `api:GET identity/.well-known/openid-configuration` | api |  | Discovery OIDC + JWKS identity (publik): issuer, jwks_uri; selalu ada, tanpa OAuth 2.1 Server | Supabase Auth identity, bawaan |
-| `api:fn core/bridge` | api | db/core/supabase/functions/bridge/index.ts | Terima panggilan identity: get_batch, raise_fraud_flag, deletion_check, anonymize_profile |  |
+| `api:fn core/bridge` | api | db/core/supabase/functions/bridge/index.ts | Terima panggilan identity (HMAC): get_batch, attach_export, attach_proof, raise_fraud_flag, close_account, get_payout, mark_instant, pph21, fulfillment_export; dari pg_cron (apikey): reconcile_ids, disburse, ban_user → identity |  |
 | `api:fn core/fulfill` | api | db/core/supabase/functions/fulfill/index.ts | Fulfillment otomatis: pasang kode dari pool (E-41), kirim webhook reward ke brand (HMAC, retry 5 menit) |  |
 | `api:fn core/notify` | api | db/core/supabase/functions/notify/index.ts | Kuras antrean email → bridge identity (alur 4) |  |
 | `api:fn core/refresh-tokens` | api | db/core/supabase/functions/refresh-tokens/index.ts | Refresh token sosmed sebelum kedaluwarsa (§11, R-08) |  |
 | `api:fn core/social` | api | db/core/supabase/functions/social/index.ts | Connect OAuth (tukar code), daftar video, verifikasi kepemilikan, submit |  |
 | `api:fn core/track-worker` | api | db/core/supabase/functions/track-worker/index.ts | Ambil metrik per batch, tulis snapshot, panggil accrue (§11) |  |
 | `api:fn identity/admin-auth` | api | db/identity/supabase/functions/admin-auth/index.ts | Auth Admin API dengan secret key identity: undang user (paket managed), ban/unban (ban_duration), reset MFA admin |  |
-| `api:fn identity/bridge` | api | db/identity/supabase/functions/bridge/index.ts | Terima panggilan core: send_email, check_ids |  |
+| `api:fn identity/bridge` | api | db/identity/supabase/functions/bridge/index.ts | Terima panggilan core (HMAC): send_email, send_push, check_ids, disburse, ban_user; dari pg_cron (apikey): fraud_device_scan |  |
 | `api:fn identity/delete-account` | api | db/identity/supabase/functions/delete-account/index.ts | Orkestrasi hapus akun UU PDP (alur 7) |  |
-| `api:fn identity/disburse` | api | db/identity/supabase/functions/disburse/index.ts | Instant withdraw: ambil payout lewat bridge core, cek pemilik & nama rekening, kirim ke penyedia disbursement, terima callback, mark_instant |  |
+| `api:fn identity/disburse` | api | db/identity/supabase/functions/disburse/index.ts | Callback penyedia disbursement (POST /disburse/callback, header x-callback-token) → core mark_instant. Pengiriman instant withdraw dimulai core lewat identity/bridge aksi disburse (_shared/disburse.ts: cek pemilik & nama rekening, dekripsi, kirim ke Xendit) |  |
 | `api:fn identity/member-data` | api | db/identity/supabase/functions/member-data/index.ts | Tulis PII milik sendiri: KYC (NIK), rekening, data penerima. Verifikasi JWT, HMAC + enkripsi di fungsi, simpan lewat SQL khusus service role |  |
 | `api:fn identity/pii-export` | api | db/identity/supabase/functions/pii-export/index.ts | CSV ber-PII: payout (rekening) & reward fisik (alur 3) |  |
 | `api:rpc core.accept_org_invite` | api | db/core/supabase/schemas/api/org.sql | Terima undangan → org_members (alur 5) |  |
@@ -144,13 +157,18 @@ Wajib tetap benar setiap perubahan (dicek otomatis saat graph ini dibuat; cek ul
 | `api:rpc core.create_report_link` | api | db/core/supabase/schemas/api/report_links.sql | Buat link laporan read-only (token sekali tampil, simpan sha256) — brand_owner/manager |  |
 | `api:rpc core.duplicate_campaign` | api | db/core/supabase/schemas/api/campaigns.sql | salinan selalu draft |  |
 | `api:rpc core.ensure_profile` | api | db/core/supabase/schemas/api/ensure_profile.sql | Buat/ambil profil E-01 dari JWT identity, idempoten (alur 1) |  |
+| `api:rpc core.invite_preview` | api | db/core/supabase/schemas/api/org.sql | Preview undangan org dari token (nama org, agency, role, kedaluwarsa, terpakai); token = kapabilitas, anon & authenticated |  |
 | `api:rpc core.invite_to_campaign` | api | db/core/supabase/schemas/api/campaigns.sql | notifikasi campaign.invited |  |
 | `api:rpc core.link_agency` | api | db/core/supabase/schemas/api/org.sql | approved_by = brand_owner klien |  |
 | `api:rpc core.list_campaigns` | api | db/core/supabase/schemas/api/campaigns.sql | CTA per user: bisa claim / sudah claim belum submit / slot penuh / budget habis / deadline lewat / tidak eligible + alasan |  |
 | `api:rpc core.manage_org` | api | db/core/supabase/schemas/api/org.sql | Admin buat/verifikasi org, fee custom, tambah anggota + stub profil (paket managed F-A03, F-A07) |  |
+| `api:rpc core.manage_user` | api | db/core/supabase/schemas/trust/manage_user.sql | Admin atas clipper: override Trust Score, suspend/unsuspend + audit log (F-A07) |  |
 | `api:rpc core.mark_batch_paid` | api | db/core/supabase/schemas/finance/payout_flow.sql | Tandai batch paid/gagal + jurnal (F-A08) |  |
+| `api:rpc core.mark_fulfillment_delivered` | api | db/core/supabase/schemas/finance/fulfillment_admin.sql | Admin tandai fulfillment manual_export terkirim dengan referensi kiriman + audit log (F-A10) |  |
 | `api:rpc core.missing_brief_tags` | api | db/core/supabase/schemas/api/brief.sql | Hashtag/mention/link wajib yang belum ada di caption, urut brief; {} = lengkap, NULL = campaign tidak terlihat (sheet Submit, core/social, track-worker) |  |
 | `api:rpc core.my_referral_code` | api | db/core/supabase/schemas/market/referrals.sql | Kode referral 8 karakter milik sendiri, dibuat saat pertama diminta (F-C16) |  |
+| `api:rpc core.org_credit` | api | db/core/supabase/schemas/finance/invoice_confirm.sql | Kredit org (rollover): saldo, tersedia, riwayat, sisa per campaign dari ledger — brand_owner/brand_finance (F-B04) |  |
+| `api:rpc core.pay_invoice_with_credit` | api | db/core/supabase/schemas/finance/invoice_confirm.sql | Bayar invoice penuh dari kredit org (aal2); jurnal sama dengan transfer lewat finance.settle_invoice |  |
 | `api:rpc core.record_review` | api | db/core/supabase/schemas/api/review.sql | Keputusan review campaign/submisi (F-A02, F-A05, F-B07) |  |
 | `api:rpc core.report_by_token` | api | db/core/supabase/schemas/api/report_links.sql | Angka agregat campaign untuk {domain}/r/[token] (anon, tanpa data clipper selain URL posting) |  |
 | `api:rpc core.request_fulfillment` | api | db/core/supabase/schemas/finance/payout_flow.sql | Klaim reward non-tunai → antre fulfillment (F-C09) |  |
@@ -164,7 +182,10 @@ Wajib tetap benar setiap perubahan (dicek otomatis saat graph ini dibuat; cek ul
 | `api:rpc core.store_social_token` | api | db/core/supabase/schemas/tracking/vault.sql | Simpan/perbarui token OAuth sosmed di Vault core; hanya service role (core/social, refresh-tokens) |  |
 | `api:rpc core.update_config` | api | db/core/supabase/schemas/api/config.sql | Admin ubah settings, fee rules, pinned & kategori (F-A04, F-A09) |  |
 | `api:rpc core.upload_reward_codes` | api | db/core/supabase/schemas/api/org.sql | kode duplikat diabaikan (unique) |  |
+| `api:view core.admin_profiles` | api | db/core/supabase/schemas/api/views.sql | View status & Trust Score semua profil, hanya admin aal2 (F-A07) |  |
 | `api:rpc identity.admin_kyc_decision` | api | db/identity/supabase/schemas/api/admin_kyc_decision.sql | Admin approve/reject KYC (aal2) |  |
+| `api:rpc identity.admin_kyc_queue` | api | db/identity/supabase/schemas/api/admin_lists.sql | Antrean KYC tanpa PII untuk admin_moderator aal2 (F-A07) |  |
+| `api:rpc identity.admin_list_roles` | api | db/identity/supabase/schemas/api/admin_lists.sql | Daftar pemegang role platform + email, hanya admin_super aal2 (F-A07) |  |
 | `api:rpc identity.admin_read` | api | db/identity/supabase/schemas/api/admin_read.sql | Admin baca KYC & log akses PII, ikut tercatat (aal2) |  |
 | `api:rpc identity.admin_set_role` | api | db/identity/supabase/schemas/api/admin_set_role.sql | admin_super ubah role platform (E-27), aal2 |  |
 | `api:rpc identity.my_payout_methods` | api | db/identity/supabase/schemas/api/my_payout_methods.sql | Daftar rekening tersamar milik sendiri (withdraw) |  |
@@ -174,6 +195,8 @@ Wajib tetap benar setiap perubahan (dicek otomatis saat graph ini dibuat; cek ul
 | `api:rpc identity.store_kyc` | api | db/identity/supabase/schemas/api/member_data.sql | Simpan KYC (hash + ciphertext dari member-data); NIK di akun lain ditolak; hanya service role |  |
 | `api:rpc identity.store_payout_method` | api | db/identity/supabase/schemas/api/member_data.sql | Simpan rekening; nama wajib = nama KYC; rekening di akun lain ditolak; hanya service role |  |
 | `api:rpc identity.store_recipient` | api | db/identity/supabase/schemas/api/member_data.sql | Simpan data penerima reward terenkripsi; hanya service role |  |
+| `api:view identity.audit_logs` | api | db/identity/supabase/schemas/api/views.sql | View audit log identity (KYC, role, ekspor PII) untuk admin_super (F-A11) |  |
+| `api:view identity.my_recipients` | api | db/identity/supabase/schemas/api/views.sql | View data penerima reward milik sendiri (tanpa isi terenkripsi); id = recipient_ref klaim non-tunai |  |
 | `fn:accrue_earnings` | fn | db/core/supabase/schemas/finance/earnings.sql | Hitung earning per snapshot, alokasi pool atomik (§10.5) |  |
 | `fn:custom_access_token_hook` | fn | db/identity/supabase/schemas/member/custom_access_token_hook.sql | Isi claim app_roles & kyc sebelum JWT terbit |  |
 | `fn:enqueue_notification` | fn | db/core/supabase/schemas/ops/enqueue_notification.sql | Tulis notifikasi in-app + masukkan antrean email |  |
@@ -248,54 +271,55 @@ Wajib tetap benar setiap perubahan (dicek otomatis saat graph ini dibuat; cek ul
 | `table:trust.review_decisions` | table | db/core/supabase/schemas/trust/review_decisions.sql | E-19 keputusan review |  |
 | `table:trust.score_events` | table | db/core/supabase/schemas/trust/score_events.sql | E-40 score_events |  |
 | `table:vault.social-tokens` | table | db/core/supabase/schemas/tracking/vault.sql | Supabase Vault core: token sosmed |  |
-| `policy:bridge-hmac` | policy |  | Panggilan lintas project wajib tanda tangan HMAC per arah | db/*/supabase/functions/bridge/_hmac.ts |
+| `policy:bridge-hmac` | policy | db/core/supabase/functions/_shared/bridge.ts | Panggilan lintas project wajib tanda tangan HMAC per arah (x-bridge-ts + x-bridge-sig, skew 300 detik); salinan identity di db/identity/supabase/functions/_shared/bridge.ts |  |
 | `policy:core.admin-aal2` | policy | db/core/supabase/schemas/ops/_auth.sql | Claim app_roles admin_* + aal2 (tanpa IP allowlist: IP klien belum terbukti bisa dipercaya) |  |
-| `policy:core.api-only` | policy |  | Data API core hanya mengekspos schema api (view security_invoker); public & pgmq_public tidak diekspos, pg_graphql mati; EXECUTE fungsi baru dicabut dari PUBLIC | db/core/supabase/schemas/api/_auth.sql |
-| `policy:core.definer-only` | policy |  | Tanpa grant ke user; hanya fungsi security definer / Edge Function | db/core/supabase/schemas/api/_auth.sql |
-| `policy:core.inherit-parent` | policy |  | Baris terlihat kalau baris induknya terlihat (RLS induk ikut berlaku di subquery): aset/rule/pool → campaign, snapshot → submisi, entri → akun ledger | — |
+| `policy:core.api-only` | policy | db/core/supabase/config.toml | Data API core hanya mengekspos schema api (`[api] schemas`, view security_invoker); public & pgmq_public tidak diekspos, pg_graphql mati; EXECUTE fungsi baru dicabut dari PUBLIC (schemas/00_setup.sql) |  |
+| `policy:core.definer-only` | policy | db/core/supabase/schemas/tracking/vault.sql | Tanpa grant ke user; hanya fungsi security definer (EXECUTE khusus service_role) / Edge Function |  |
+| `policy:core.inherit-parent` | policy | db/core/supabase/schemas/market/rate_rules.sql | Baris terlihat kalau baris induknya terlihat (RLS induk ikut berlaku di subquery): aset/rule/pool → campaign, snapshot → submisi, entri → akun ledger; tag `-- policy:core.inherit-parent` di tiap tabel |  |
 | `policy:core.iss-identity` | policy | db/core/supabase/schemas/ops/_auth.sql | Restrictive TO authenticated: JWT harus terbitan identity; fungsi definer cek iss sendiri |  |
 | `policy:core.org-role` | policy | db/core/supabase/schemas/ops/_auth.sql | Role per org (E-03): owner kelola member, manager campaign & review, finance billing (aal2), viewer baca |  |
-| `policy:core.public-read` | policy |  | anon & clipper hanya baca campaign live (view api) | — |
+| `policy:core.public-read` | policy | db/core/supabase/schemas/market/campaigns.sql | anon & clipper hanya baca campaign live (view api); tag `-- policy:core.public-read` juga di categories, profiles, reward_types, settings public.*, fee_rules global |  |
 | `policy:core.rls-org` | policy | db/core/supabase/schemas/ops/_auth.sql | RLS anggota org lewat E-03 |  |
-| `policy:core.rls-self` | policy |  | RLS data sendiri: user_id = auth.uid() | — |
-| `policy:core.storage-private` | policy |  | Bucket core privat, signed URL berumur pendek | db/core/supabase/schemas/api/_auth.sql |
-| `policy:fn-cron-key` | policy |  | Worker yang dipicu pg_cron lewat pg_net: verify_jwt = false, cek secret key core di header apikey | db/core/supabase/functions/_shared/verify-cron.ts |
-| `policy:fn-verify-jwt` | policy |  | Edge Function yang dipanggil user: verify_jwt = false, JWT identity diverifikasi di kode lewat JWKS | db/*/supabase/functions/_shared/verify-jwt.ts |
+| `policy:core.rls-self` | policy | db/core/supabase/schemas/market/claims.sql | RLS data sendiri: user_id = auth.uid(); tag `-- policy:core.rls-self` di tiap tabel |  |
+| `policy:core.storage-private` | policy | db/core/supabase/schemas/market/storage.sql | Bucket core privat (campaign-assets, config.toml public = false), baca lewat signed URL berumur pendek |  |
+| `policy:fn-cron-key` | policy | db/core/supabase/functions/_shared/auth.ts | Worker yang dipicu pg_cron lewat pg_net: verify_jwt = false, cek secret key core di header apikey (requireApiKey); identity: isCronRequest di db/identity/supabase/functions/_shared/auth.ts |  |
+| `policy:fn-verify-jwt` | policy | db/core/supabase/functions/_shared/auth.ts | Edge Function yang dipanggil user: verify_jwt = false, JWT identity diverifikasi di kode lewat JWKS (verifyUserJwt); salinan identity di db/identity/supabase/functions/_shared/auth.ts |  |
 | `policy:identity.admin-aal2` | policy | db/identity/supabase/schemas/member/_auth.sql | Fungsi admin identity: role admin_* + aal2, akses tercatat |  |
-| `policy:identity.api-only` | policy |  | Data API identity hanya mengekspos schema api; schema auth & member tertutup; pg_graphql mati; EXECUTE fungsi baru dicabut dari PUBLIC | db/identity/supabase/schemas/api/_auth.sql |
-| `policy:identity.auth-hook` | policy |  | Hanya role supabase_auth_admin (custom access token hook) yang membaca tabel ini | — |
-| `policy:identity.public-read` | policy |  | anon & user login membaca versi dokumen legal | — |
-| `policy:identity.rls-self` | policy |  | Data member sendiri (user_id = auth.uid()) | — |
-| `policy:identity.storage-private` | policy |  | Bucket identity privat, signed URL berumur pendek | db/identity/supabase/schemas/api/_auth.sql |
-| `policy:identity.unique-identity` | policy |  | UNIQUE nik_hash dan bank_code + account_no_hash (F-C10, FR-04) | db/identity/supabase/schemas/api/_auth.sql |
-| `env:ADMIN_COOKIE_NAME` | env |  | Nama cookie host-only admin | .env.example per app |
-| `env:BRIDGE_SECRET_CORE_TO_IDENTITY` | env |  | HMAC core → identity | Edge Function secrets project pemilik |
-| `env:BRIDGE_SECRET_IDENTITY_TO_CORE` | env |  | HMAC identity → core | Edge Function secrets project pemilik |
-| `env:COOKIE_DOMAIN` | env |  | .{domain} untuk cookie SSO accounts/app/brand | .env.example per app |
-| `env:CORE_SECRET_KEY` | env |  | Secret key core (sb_secret): otomatis di env Edge Functions core; salinan di Vault core untuk pg_net | Env Edge Functions core (otomatis) + Vault core |
-| `env:DISBURSEMENT_API_KEY` | env |  | Kredensial penyedia disbursement — hanya Edge Function identity (disburse) | Edge Function secrets project pemilik |
-| `env:GOOGLE_CLIENT_SECRET` | env |  | Secret Google (YouTube) — hanya Edge Functions core | Edge Function secrets project pemilik |
-| `env:IDENTITY_ISSUER` | env |  | Issuer Auth identity (publik); JWKS = issuer + /.well-known/jwks.json — Edge Functions kedua project | Edge Function secrets project pemilik |
-| `env:META_APP_SECRET` | env |  | Secret Meta — hanya Edge Functions core | Edge Function secrets project pemilik |
-| `env:NEXT_PUBLIC_CORE_PUBLISHABLE_KEY` | env |  | sb_publishable core | .env.example per app |
-| `env:NEXT_PUBLIC_CORE_URL` | env |  | URL project core | .env.example per app |
-| `env:NEXT_PUBLIC_GOOGLE_CLIENT_ID` | env |  | Client ID Google untuk connect YouTube (publik) | .env.example per app |
-| `env:NEXT_PUBLIC_IDENTITY_PUBLISHABLE_KEY` | env |  | sb_publishable identity | .env.example per app |
-| `env:NEXT_PUBLIC_IDENTITY_URL` | env |  | URL project identity (auth.{domain}) | .env.example per app |
-| `env:NEXT_PUBLIC_META_APP_ID` | env |  | App ID Meta (publik) | .env.example per app |
-| `env:NEXT_PUBLIC_TIKTOK_CLIENT_KEY` | env |  | Client key TikTok (publik) | .env.example per app |
-| `env:NEXT_PUBLIC_TURNSTILE_SITE_KEY` | env |  | Site key Turnstile (publik) untuk form login | .env.example per app |
-| `env:NEXT_PUBLIC_VAPID_PUBLIC_KEY` | env |  | Kunci publik Web Push untuk service worker clipper | .env.example apps/clipper |
-| `env:PII_ENC_KEY` | env |  | Kunci enkripsi NIK/rekening/penerima — secret Edge Function identity, tidak di DB | Edge Function secrets project pemilik |
-| `env:PII_HMAC_KEY` | env |  | Kunci HMAC nik_hash & account_no_hash — secret Edge Function identity, tidak di DB | Edge Function secrets project pemilik |
-| `env:RESEND_API_KEY` | env |  | Kirim email — hanya identity | Edge Function secrets project pemilik |
-| `env:RESEND_SMTP_KEY` | env |  | API key Resend khusus SMTP Auth identity (terpisah dari RESEND_API_KEY bridge) | Setelan Auth identity (config.toml env()) |
-| `env:SUPABASE_DB_URL` | env |  | Koneksi Postgres core lewat pooler untuk worker Queue — otomatis di Edge Functions core | Env Edge Functions core (otomatis) |
-| `env:TIKTOK_CLIENT_SECRET` | env |  | Secret TikTok — hanya Edge Functions core | Edge Function secrets project pemilik |
-| `env:TURNSTILE_SECRET` | env |  | Secret Cloudflare Turnstile — setelan CAPTCHA Auth identity | Setelan Auth identity (config.toml env()) |
-| `env:VAPID_PRIVATE_KEY` | env |  | Kunci privat Web Push — hanya Edge Function identity (bridge) | Edge Function secrets project pemilik |
-| `env:YOUTUBE_API_KEY` | env |  | API key YouTube Data (fallback kode deskripsi) — Edge Functions core | Edge Function secrets project pemilik |
-| `config:eslint.imports` | config |  | Arah import apps → packages; db-identity dilarang di brand & web | packages/config/eslint |
+| `policy:identity.api-only` | policy | db/identity/supabase/config.toml | Data API identity hanya mengekspos schema api (`[api] schemas`); schema auth & member tertutup; pg_graphql mati; EXECUTE fungsi baru dicabut dari PUBLIC (schemas/00_setup.sql) |  |
+| `policy:identity.auth-hook` | policy | db/identity/supabase/schemas/member/platform_roles.sql | Hanya role supabase_auth_admin (custom access token hook) yang membaca tabel ini; tag `-- policy:identity.auth-hook` di consents, kyc_records, legal_versions, platform_roles |  |
+| `policy:identity.public-read` | policy | db/identity/supabase/schemas/member/legal_versions.sql | anon & user login membaca versi dokumen legal |  |
+| `policy:identity.rls-self` | policy | db/identity/supabase/schemas/member/kyc_records.sql | Data member sendiri (user_id = auth.uid()); tag `-- policy:identity.rls-self` di tiap tabel member & bucket kyc-docs |  |
+| `policy:identity.storage-private` | policy | db/identity/supabase/schemas/member/storage.sql | Bucket identity privat (config.toml public = false), signed URL berumur pendek dibuat Edge Function |  |
+| `policy:identity.unique-identity` | policy | db/identity/supabase/schemas/member/kyc_records.sql | UNIQUE nik_hash (kyc_records) dan bank_code + account_no_hash (payout_methods) (F-C10, FR-04) |  |
+| `env:ADMIN_COOKIE_NAME` | env | packages/auth/src/cookies.ts | Bukan env: nama cookie host-only admin tetap 'clipper-admin-auth' (cookieOptions('admin')) |  |
+| `env:BRIDGE_SECRET_CORE_TO_IDENTITY` | env | db/core/supabase/config.toml | HMAC core → identity; `[edge_runtime.secrets]` core (menandatangani) dan identity (memverifikasi) |  |
+| `env:BRIDGE_SECRET_IDENTITY_TO_CORE` | env | db/identity/supabase/config.toml | HMAC identity → core; `[edge_runtime.secrets]` identity (menandatangani) dan core (memverifikasi) |  |
+| `env:COOKIE_DOMAIN` | env | .env.example | Nama asli NEXT_PUBLIC_COOKIE_DOMAIN: .{domain} untuk cookie SSO accounts/app/brand (dibaca packages/auth/src/cookies.ts) |  |
+| `env:CORE_SECRET_KEY` | env | db/core/supabase/schemas/ops/enqueue_notification.sql | Secret key core: di Edge Functions = SUPABASE_SECRET_KEYS / SUPABASE_SERVICE_ROLE_KEY (otomatis); salinan di Vault core 'core_secret_key' dibaca ops.invoke_function untuk pg_net |  |
+| `env:DISBURSEMENT_API_KEY` | env | db/identity/supabase/config.toml | Nama asli XENDIT_SECRET_KEY (+ DISBURSE_PROVIDER, DISBURSE_CALLBACK_TOKEN): kredensial penyedia disbursement — hanya Edge Function identity (_shared/disburse.ts) |  |
+| `env:GOOGLE_CLIENT_SECRET` | env | db/core/supabase/config.toml | Secret Google (YouTube) — hanya Edge Functions core |  |
+| `env:IDENTITY_ISSUER` | env | db/core/supabase/config.toml | Issuer Auth identity (publik); JWKS = issuer + /.well-known/jwks.json atau IDENTITY_JWKS_URL — `[edge_runtime.secrets]` kedua project |  |
+| `env:META_APP_SECRET` | env | db/core/supabase/config.toml | Secret Meta — hanya Edge Functions core |  |
+| `env:NEXT_PUBLIC_CORE_PUBLISHABLE_KEY` | env | .env.example | sb_publishable core |  |
+| `env:NEXT_PUBLIC_CORE_URL` | env | .env.example | URL project core |  |
+| `env:NEXT_PUBLIC_GOOGLE_CLIENT_ID` | env | db/core/supabase/config.toml | Nama asli GOOGLE_CLIENT_ID: secret Edge Functions core (URL OAuth dibuat core/social), tidak dibaca app |  |
+| `env:NEXT_PUBLIC_IDENTITY_PUBLISHABLE_KEY` | env | .env.example | sb_publishable identity |  |
+| `env:NEXT_PUBLIC_IDENTITY_URL` | env | .env.example | URL project identity (auth.{domain}) |  |
+| `env:NEXT_PUBLIC_META_APP_ID` | env | db/core/supabase/config.toml | Nama asli META_APP_ID: secret Edge Functions core (URL OAuth dibuat core/social), tidak dibaca app |  |
+| `env:NEXT_PUBLIC_TIKTOK_CLIENT_KEY` | env | db/core/supabase/config.toml | Nama asli TIKTOK_CLIENT_KEY: secret Edge Functions core (URL OAuth dibuat core/social), tidak dibaca app |  |
+| `env:NEXT_PUBLIC_TURNSTILE_SITE_KEY` | env | .env.example | Site key Turnstile (publik) untuk form login |  |
+| `env:NEXT_PUBLIC_VAPID_PUBLIC_KEY` | env | .env.example | Kunci publik Web Push untuk service worker clipper |  |
+| `env:PII_ENC_KEY` | env | db/identity/supabase/config.toml | Nama asli PII_ENC_KEYS (JSON versi → kunci AES-256-GCM) + PII_ENC_KEY_VERSION: enkripsi NIK/rekening/penerima — secret Edge Function identity, tidak di DB |  |
+| `env:PII_HMAC_KEY` | env | db/identity/supabase/config.toml | Kunci HMAC nik_hash & account_no_hash — secret Edge Function identity, tidak di DB |  |
+| `env:RESEND_API_KEY` | env | db/identity/supabase/config.toml | Kirim email — hanya identity |  |
+| `env:RESEND_SMTP_KEY` | env |  | API key Resend khusus SMTP Auth identity (terpisah dari RESEND_API_KEY bridge) | Tidak ada di repo: SMTP Auth identity diatur di Dashboard/Management API (db/identity/supabase/config.toml baris 1–2) |
+| `env:SUPABASE_DB_URL` | env |  | Koneksi Postgres core lewat pooler untuk worker Queue — otomatis di Edge Functions core | Tidak dipakai: worker membaca Queue lewat RPC api.worker_dequeue (service role), bukan koneksi Postgres langsung |
+| `env:TIKTOK_CLIENT_SECRET` | env | db/core/supabase/config.toml | Secret TikTok — hanya Edge Functions core |  |
+| `env:TURNSTILE_SECRET` | env |  | Secret Cloudflare Turnstile — setelan CAPTCHA Auth identity | Tidak ada di repo: CAPTCHA Auth identity diatur di Dashboard/Management API (db/identity/supabase/config.toml baris 1–2) |
+| `env:VAPID_PRIVATE_KEY` | env | db/identity/supabase/config.toml | Kunci privat Web Push — hanya Edge Function identity (bridge) |  |
+| `env:YOUTUBE_API_KEY` | env |  | API key YouTube Data (fallback kode deskripsi) — Edge Functions core | Tidak dipakai: adapter YouTube memakai token OAuth (GOOGLE_CLIENT_ID/SECRET) |
+| `config:eslint.imports` | config | scripts/check-arch.mjs | Arah import apps → packages; db-identity & invokeFunction identity dilarang di brand & web; secret tidak boleh dibaca app/package (`pnpm lint`) |  |
+| `config:ci` | config | .github/workflows/ci.yml | CI: job apps (pnpm lint/typecheck/test/build), functions (deno per project), db (supabase test db, db lint, db advisors per project) |  |
 | `config:host.accounts` | config |  | accounts.{domain} → project Vercel apps/accounts; Vercel Pro, region Functions sin1 | Vercel / Supabase dashboard + DNS |
 | `config:host.admin` | config |  | admin.{domain} → project Vercel apps/admin; halaman dibatasi IP/zero-trust (tidak menjaga API Supabase); Vercel Pro, region Functions sin1 | Vercel / Supabase dashboard + DNS |
 | `config:host.app` | config |  | app.{domain} → project Vercel apps/clipper; host redirect URI OAuth sosmed; Vercel Pro, region Functions sin1 | Vercel / Supabase dashboard + DNS |
@@ -304,7 +328,7 @@ Wajib tetap benar setiap perubahan (dicek otomatis saat graph ini dibuat; cek ul
 | `config:host.www` | config |  | Domain {domain} + www → project Vercel apps/web; Vercel Pro, region Functions sin1 | Vercel / Supabase dashboard + DNS |
 | `config:identity-signing-key` | config |  | Signing key ES256 identity (asimetris, ber-kid; syarat Custom OIDC); private key hanya di identity | Supabase dashboard identity → JWT signing keys |
 | `config:supabase.core` | config | db/core/supabase/config.toml | config.toml core: project_id, port, pgdelta, auth off (signup & provider mati), signing_keys_path sama dengan identity (dev); hosted: compute Small + PITR; Branching tidak dipakai |  |
-| `config:supabase.identity` | config | db/identity/supabase/config.toml | config.toml identity: project_id, port, pgdelta, auth hook, jwt_expiry 600, SMTP Resend, CAPTCHA Turnstile, template OTP {{ .Token }}, signing_keys_path (dev); hosted: compute Small + PITR |  |
+| `config:supabase.identity` | config | db/identity/supabase/config.toml | config.toml identity: project_id, port, pgdelta, auth hook, jwt_expiry 600, template OTP {{ .Token }}, bucket privat, signing_keys_path (dev), `[edge_runtime.secrets]`; SMTP Resend & CAPTCHA Turnstile diatur di Dashboard; hosted: compute Small + PITR |  |
 | `config:tpa-oidc-identity` | config |  | Third-Party Auth core → Custom OIDC; issuer = nilai issuer discovery identity setelah custom domain aktif; tidak ada di CLI/config.toml | Supabase dashboard core / Management API (oidc_issuer_url) |
 | `ext:ai-clip` | ext |  | Tool AI Clip (produk terpisah, F-C17) — link keluar dari menu app | — |
 | `ext:bank` | ext |  | QRIS merchant + internet banking transfer massal (manual) | — |
@@ -319,13 +343,15 @@ Wajib tetap benar setiap perubahan (dicek otomatis saat graph ini dibuat; cek ul
 | `ext:tiktok` | ext |  | Login Kit + Display API | — |
 | `ext:turnstile` | ext |  | Cloudflare Turnstile: CAPTCHA sign-up & sign-in Auth identity | — |
 | `ext:web-push` | ext |  | Layanan push browser (FCM/APNs/Mozilla) lewat Web Push + VAPID | — |
-| `test:accrue.idempotent` | test |  | accrue_earnings dipanggil 2× = hasil sama; pool tidak minus | db/core/supabase/tests/accrue_earnings.sql |
+| `test:accrue.idempotent` | test | db/core/supabase/tests/core_contracts_finance.test.sql | accrue_earnings dipanggil 2× = hasil sama; pool tidak minus (bagian pgTAP kontrak finance core) |  |
 | `test:core.full-product` | test | db/core/supabase/tests/core_full_product.test.sql | pgTAP core fitur penuh: campaign privat & template, agency, referral, leaderboard, kode voucher, invoice pinned/managed, instant withdraw, Trust Score, brief terstruktur (format, cek caption, brief terkunci, berkas internal) — 36 tes |  |
+| `test:e2e.cross-host` | test | e2e/journey.cjs | Journey Playwright 390px lintas host: web → accounts (OTP Mailpit, onboarding + avatar) → app (claim, tasks) → accounts/invite → brand; seed e2e/seed.sql (`pnpm e2e`) |  |
 | `test:member-data.integrity` | test | db/identity/supabase/tests/identity_access.test.sql | pgTAP identity: consent versi terbaru, hook claim, NIK/rekening ganda, nama rekening = KYC, reviewer KYC aal2, tombstone hapus akun, push — 50 tes |  |
-| `test:pwa.ios-login` | test |  | Fase 0 di iPhone: login OTP & Google di PWA terinstal, buka accounts dari PWA, sesi > 7 hari | tests/manual/pwa-ios.md |
-| `test:rls.access-matrix` | test | db/core/supabase/tests/core_access.test.sql | pgTAP core: RLS per role (anon, clipper, anggota org, admin aal1/aal2, iss lain), state machine, ledger, constraint uang, link laporan, storage, job — 70 tes (1 TODO: fungsi kontrak yang dipanggil job) |  |
-| `test:spike.oidc-cross-project` | test |  | Spike Fase 0: discovery identity terbaca; JWT identity diterima REST, RLS, Storage core; iss lain ditolak | db/core/supabase/tests/oidc_cross_project.sql |
-| `doc:spec/contracts.yaml` | doc | spec/contracts.yaml | Kontrak fungsi SQL & Edge Function yang belum ditulis (PRD Lampiran A.3) |  |
+| `test:pwa.ios-login` | test |  | Fase 0 di iPhone: login OTP & Google di PWA terinstal, buka accounts dari PWA, sesi > 7 hari | Manual Fase 0 di iPhone (belum ada berkas tes) |
+| `test:rls.access-matrix` | test | db/core/supabase/tests/core_access.test.sql | pgTAP core: RLS per role (anon, clipper, anggota org, admin aal1/aal2, iss lain), state machine, ledger, constraint uang, link laporan, storage, job; bagian identity di db/identity/supabase/tests/identity_access.test.sql |  |
+| `test:spike.oidc-cross-project` | test |  | Spike Fase 0: discovery identity terbaca; JWT identity diterima REST, RLS, Storage core; iss lain ditolak | Fase 0 manual di project hosted (Custom OIDC tidak ada di CLI); lokal: kunci signing sama, iss lain ditolak di core_access.test.sql |
+| `doc:scripts/dev-stack.sh` | doc | scripts/dev-stack.sh | Stack lokal penuh: 2 project Supabase, secret dev Edge Function, Vault pg_cron, apps/*/.env.local |  |
+| `doc:spec/contracts.yaml` | doc | spec/contracts.yaml | Kontrak fungsi SQL & Edge Function (PRD Lampiran A.3); semua sudah ditulis di db/**, berkas belum dipangkas |  |
 | `doc:spec/journeys.yaml` | doc | spec/journeys.yaml | Journey per layar J-C1–C6, J-B1–B3, J-A1–A7, aturan pindah host, menu per app (PRD §6) |  |
 | `doc:spec/kg.yaml` | doc | spec/kg.yaml | Registri 42 entitas (fields = salinan kolom SQL) + state machine S-01–S-06; trigger state machine dibangkitkan spec/gen_states.py |  |
 | `doc:spec/structure.yaml` | doc | spec/structure.yaml | Host & DNS → URL → file route → folder fitur → tabel → fungsi (45 fitur + 2 kelompok lintas fitur; PRD §15.2–15.3, Lampiran B) |  |
@@ -336,600 +362,682 @@ Arah: `A --tipe--> B` = A bergantung pada B. `?` = belum terverifikasi.
 
 | From | Edge | To | Bukti |
 |---|---|---|---|
-| `page:accounts/` | calls | `api:rpc identity.my_payout_methods` | PRD v0.3.1 §6.2 C2.3 jumlah rekening |
-| `page:accounts/` | reads | `table:member.kyc_records` | PRD v0.3.1 §6.2 C2.3 status KYC |
-| `page:accounts/` | routes-to | `page:accounts/kyc` | PRD v0.3.1 §6 C2.3 |
-| `page:accounts/` | routes-to | `page:accounts/payout-methods` | PRD v0.3.1 §6 C2.3 |
-| `page:accounts/` | routes-to | `page:accounts/privacy` | PRD v0.3.1 §6 C2.3 |
-| `page:accounts/` | routes-to | `page:accounts/security` | PRD v0.3.1 §6 C2.3 |
-| `page:accounts/` | routes-to | `page:app/campaigns` | PRD v0.3.1 §6 C2.3 |
-| `page:accounts/` | routes-to | `page:brand/` | PRD v0.3.1 §6 C2.3 |
-| `page:accounts/` | wrapped-by | `layout:accounts` | PRD v0.3.1 §15.2 host accounts |
-| `page:accounts/invite/[token]` | calls | `api:rpc core.accept_org_invite` | PRD v0.3.1 §15.5 alur 5 |
-| `page:accounts/invite/[token]` | routes-to | `page:accounts/login` | PRD v0.3.1 §6 B2.2 |
-| `page:accounts/invite/[token]` | routes-to | `page:brand/` | PRD v0.3.1 §6 B2.2 |
-| `page:accounts/invite/[token]` | wrapped-by | `layout:accounts` | PRD v0.3.1 §15.2 host accounts |
-| `page:accounts/kyc` | calls | `api:fn identity/member-data` | PRD v0.3.1 §14 kg.yaml features.F-C10 fn |
-| `page:accounts/kyc` | reads | `table:member.kyc_records` | PRD v0.3.1 §6.1 C1.12 status KYC |
-| `page:accounts/kyc` | routes-to | `page:accounts/payout-methods` | PRD v0.3.1 §6 C1.12 |
-| `page:accounts/kyc` | routes-to | `page:app/wallet/withdraw` | PRD v0.3.1 §6 C1.12 |
-| `page:accounts/kyc` | wrapped-by | `layout:accounts` | PRD v0.3.1 §15.2 host accounts |
-| `page:accounts/kyc` | writes | `table:bucket.kyc-docs` | PRD v0.3.1 §15.4 identity storage |
-| `page:accounts/login` | calls | `mod:auth` | PRD v0.3.1 §7 F-C01 |
-| `page:accounts/login` | routes-to | `api:GET accounts/auth/callback` | PRD v0.3.1 §6 C1.2 |
-| `page:accounts/login` | routes-to | `page:accounts/onboarding` | PRD v0.3.1 §7 F-C01 user baru |
-| `page:accounts/login` | wrapped-by | `layout:accounts` | PRD v0.3.1 §15.2 host accounts |
-| `page:accounts/onboarding` | calls | `api:rpc core.ensure_profile` | PRD v0.3.1 §14 kg.yaml features.F-C01 + §15.5 alur 1 |
-| `page:accounts/onboarding` | calls | `api:rpc identity.record_consent` | PRD v0.3.1 §7 F-C01 terima ToS |
-| `page:accounts/onboarding` | routes-to | `page:app/campaigns` | PRD v0.3.1 §7 F-C01 AC sampai halaman campaign |
-| `page:accounts/onboarding` | routes-to | `page:brand/new` | PRD v0.3.1 §6 B1.3 |
-| `page:accounts/onboarding` | wrapped-by | `layout:accounts` | PRD v0.3.1 §15.2 host accounts |
-| `page:accounts/onboarding` | writes | `table:bucket.avatars` | PRD v0.3.1 Lampiran B (bucket.avatars) |
-| `page:accounts/payout-methods` | calls | `api:fn identity/member-data` | PRD v0.3.1 §15.4 rekening & data penerima lewat member-data |
-| `page:accounts/payout-methods` | routes-to | `page:app/wallet/withdraw` | PRD v0.3.1 §6 C1.13 |
-| `page:accounts/payout-methods` | wrapped-by | `layout:accounts` | PRD v0.3.1 §15.2 host accounts |
-| `page:accounts/privacy` | calls | `api:fn identity/delete-account` | PRD v0.3.1 §15.5 alur 7 |
-| `page:accounts/privacy` | calls | `api:fn identity/member-data` | PRD v0.3.1 §6.2 C2.4 unduh data (NIK & rekening sendiri) |
-| `page:accounts/privacy` | calls | `api:rpc identity.record_consent` | PRD v0.3.1 §16 privasi |
-| `page:accounts/privacy` | routes-to | `page:www/` | PRD v0.3.1 §6 C2.4 |
-| `page:accounts/privacy` | wrapped-by | `layout:accounts` | PRD v0.3.1 §15.2 host accounts |
-| `page:accounts/security` | calls | `mod:auth` | PRD v0.3.1 §15.6 MFA TOTP |
-| `page:accounts/security` | wrapped-by | `layout:accounts` | PRD v0.3.1 §15.2 host accounts |
-| `page:admin/` | reads | `table:finance.ledger_entries` | PRD v0.3.1 §9 F-A01 |
-| `page:admin/` | reads | `table:finance.payouts` | PRD v0.3.1 §9 F-A01 |
-| `page:admin/` | reads | `table:market.campaigns` | PRD v0.3.1 §9 F-A01 |
-| `page:admin/` | reads | `table:trust.fraud_flags` | PRD v0.3.1 §9 F-A01 |
-| `page:admin/` | routes-to | `page:admin/campaigns` | PRD v0.3.1 §6 A1.2 |
-| `page:admin/` | routes-to | `page:admin/finance` | PRD v0.3.1 §6 A1.2 |
-| `page:admin/` | routes-to | `page:admin/fraud` | PRD v0.3.1 §6 A1.2 |
-| `page:admin/` | routes-to | `page:admin/review` | PRD v0.3.1 §6 A1.2 |
-| `page:admin/` | routes-to | `page:admin/users` | PRD v0.3.1 §6 A1.2 |
-| `page:admin/` | wrapped-by | `layout:admin` | PRD v0.3.1 §15.2 host admin |
-| `page:admin/audit` | calls | `api:rpc identity.admin_read` | PRD v0.3.1 §14 kg.yaml E-24 (log akses PII) |
-| `page:admin/audit` | reads | `table:ops.audit_logs` | PRD v0.3.1 §14 kg.yaml features.F-A11 |
-| `page:admin/audit` | wrapped-by | `layout:admin` | PRD v0.3.1 §15.2 host admin |
-| `page:admin/broadcast` | calls | `api:rpc core.send_broadcast` | PRD v0.3.1 §6 + Lampiran B (send_broadcast) |
-| `page:admin/broadcast` | reads | `table:ops.broadcasts` | PRD v0.3.1 Lampiran B (ops.broadcasts) |
-| `page:admin/broadcast` | wrapped-by | `layout:admin` | PRD v0.3.1 §15.2 host admin |
-| `page:admin/campaigns` | calls | `api:rpc core.record_review` | PRD v0.3.1 §9 F-A02 + kg.yaml E-19 |
-| `page:admin/campaigns` | reads | `table:finance.invoices` | PRD v0.3.1 §9 F-A02 cek dana sudah masuk |
-| `page:admin/campaigns` | reads | `table:market.campaigns` | PRD v0.3.1 §9 F-A02 |
-| `page:admin/campaigns` | routes-to | `page:admin/campaigns/new` | PRD v0.3.1 §6 A7.1 |
-| `page:admin/campaigns` | wrapped-by | `layout:admin` | PRD v0.3.1 §15.2 host admin |
-| `page:admin/campaigns/new` | renders | `comp:CampaignBuilder` | PRD v0.3.1 §9 F-A03 |
-| `page:admin/campaigns/new` | wrapped-by | `layout:admin` | PRD v0.3.1 §15.2 host admin |
-| `page:admin/config` | calls | `api:rpc core.update_config` | PRD v0.3.1 §9 F-A09 |
-| `page:admin/config` | wrapped-by | `layout:admin` | PRD v0.3.1 §15.2 host admin |
-| `page:admin/finance` | calls | `api:fn identity/pii-export` | PRD v0.3.1 §14 kg.yaml features.F-A08 + §15.5 alur 3 |
-| `page:admin/finance` | calls | `api:rpc core.approve_payout_batch` | PRD v0.3.1 §6 + Lampiran B (approve_payout_batch) |
-| `page:admin/finance` | calls | `api:rpc core.confirm_invoice_payment` | PRD v0.3.1 §9 F-A08 |
-| `page:admin/finance` | calls | `api:rpc core.create_payout_batch` | PRD v0.3.1 §9 F-A08 |
-| `page:admin/finance` | calls | `api:rpc core.mark_batch_paid` | PRD v0.3.1 §9 F-A08 |
-| `page:admin/finance` | calls | `ext:bank` | PRD v0.3.1 §9 F-A08 upload CSV & cek mutasi (manual) |
-| `page:admin/finance` | reads | `table:finance.invoices` | PRD v0.3.1 §14 kg.yaml features.F-A08 |
-| `page:admin/finance` | reads | `table:finance.org_refunds` | PRD v0.3.1 Lampiran B (finance.org_refunds) |
-| `page:admin/finance` | reads | `table:finance.payout_batches` | PRD v0.3.1 §14 kg.yaml features.F-A08 |
-| `page:admin/finance` | reads | `table:finance.payouts` | PRD v0.3.1 §14 kg.yaml features.F-A08 |
-| `page:admin/finance` | wrapped-by | `layout:admin` | PRD v0.3.1 §15.2 host admin |
-| `page:admin/fraud` | calls | `api:fn identity/admin-auth` | PRD v0.3.1 §6 A4.2 ban → ban_duration |
-| `page:admin/fraud` | calls | `api:rpc core.resolve_fraud_flag` | PRD v0.3.1 §9 F-A06 aksi |
-| `page:admin/fraud` | reads | `table:trust.fraud_flags` | PRD v0.3.1 §14 kg.yaml features.F-A06 |
-| `page:admin/fraud` | wrapped-by | `layout:admin` | PRD v0.3.1 §15.2 host admin |
-| `page:admin/fulfillment` | calls | `api:fn identity/pii-export` | PRD v0.3.1 §14 kg.yaml features.F-A10 + §15.5 alur 3 |
-| `page:admin/fulfillment` | reads | `table:finance.fulfillments` | PRD v0.3.1 §14 kg.yaml features.F-A10 |
-| `page:admin/fulfillment` | wrapped-by | `layout:admin` | PRD v0.3.1 §15.2 host admin |
-| `page:admin/login` | calls | `mod:auth` | PRD v0.3.1 §15.6 login admin sendiri |
-| `page:admin/login` | routes-to | `page:admin/` | PRD v0.3.1 §15.6 login admin sendiri |
-| `page:admin/login` | wrapped-by | `layout:admin` | PRD v0.3.1 §15.2 host admin |
-| `page:admin/pinned` | calls | `api:rpc core.update_config` | PRD v0.3.1 §9 F-A04 pinned_until |
-| `page:admin/pinned` | reads | `table:market.categories` | PRD v0.3.1 Lampiran B (market.categories) |
-| `page:admin/pinned` | wrapped-by | `layout:admin` | PRD v0.3.1 §15.2 host admin |
-| `page:admin/review` | calls | `api:rpc core.record_review` | PRD v0.3.1 §14 kg.yaml features.F-A05 |
-| `page:admin/review` | reads | `table:tracking.submissions` | PRD v0.3.1 §14 kg.yaml features.F-A05 |
-| `page:admin/review` | wrapped-by | `layout:admin` | PRD v0.3.1 §15.2 host admin |
-| `page:admin/users` | calls | `api:fn identity/admin-auth` | PRD v0.3.1 §9 F-A07 undang user paket managed |
-| `page:admin/users` | calls | `api:rpc core.manage_org` | PRD v0.3.1 §9 F-A07 verifikasi brand + paket managed |
-| `page:admin/users` | calls | `api:rpc core.record_review` | PRD v0.3.1 §6.4 A2.1 keputusan KYC + notifikasi |
-| `page:admin/users` | calls | `api:rpc identity.admin_kyc_decision` | PRD v0.3.1 §9 F-A07 KYC |
-| `page:admin/users` | calls | `api:rpc identity.admin_read` | PRD v0.3.1 §9 F-A07 KYC |
-| `page:admin/users` | calls | `api:rpc identity.admin_set_role` | PRD v0.3.1 §4 admin_super kelola role |
-| `page:admin/users` | reads | `table:market.profiles` | PRD v0.3.1 §9 F-A07 trust score |
-| `page:admin/users` | wrapped-by | `layout:admin` | PRD v0.3.1 §15.2 host admin |
-| `page:app/campaigns` | calls | `api:rpc core.list_campaigns` | PRD v0.3.1 §6 + Lampiran B (list_campaigns) |
-| `page:app/campaigns` | reads | `table:bucket.campaign-covers` | PRD v0.3.1 §7 F-C03 card: cover |
-| `page:app/campaigns` | reads | `table:finance.reward_pools` | PRD v0.3.1 §14 kg.yaml features.F-C03 |
-| `page:app/campaigns` | reads | `table:market.campaigns` | PRD v0.3.1 §14 kg.yaml features.F-C03 |
-| `page:app/campaigns` | reads | `table:market.categories` | PRD v0.3.1 Lampiran B (market.categories) |
-| `page:app/campaigns` | reads | `table:market.reward_types` | PRD v0.3.1 §14 kg.yaml features.F-C03 |
-| `page:app/campaigns` | reads | `table:tracking.social_accounts` | PRD v0.3.1 §6.1 C1.4 banner + eligibility |
-| `page:app/campaigns` | routes-to | `page:app/campaigns/[id]` | PRD v0.3.1 §7 F-C03 CTA card |
-| `page:app/campaigns` | routes-to | `page:app/login` | PRD v0.3.1 §6 C1.4 |
-| `page:app/campaigns` | routes-to | `page:app/social` | PRD v0.3.1 §6 C1.4 |
-| `page:app/campaigns` | wrapped-by | `layout:clipper` | PRD v0.3.1 §15.2 host app |
-| `page:app/campaigns/[id]` | calls | `api:fn core/social` | PRD v0.3.1 §14 kg.yaml features.F-C06 (daftar video + submit) |
-| `page:app/campaigns/[id]` | calls | `api:rpc core.claim_campaign` | PRD v0.3.1 §14 kg.yaml features.F-C05 |
-| `page:app/campaigns/[id]` | calls | `api:rpc core.missing_brief_tags` | PRD v0.3.1 §6 C1.8 tanda caption kurang sebelum Submit |
-| `page:app/campaigns/[id]` | reads | `table:bucket.campaign-assets` | PRD v0.3.1 §7 F-C04 unduh aset |
-| `page:app/campaigns/[id]` | reads | `table:market.campaign_assets` | PRD v0.3.1 §14 kg.yaml features.F-C04 |
-| `page:app/campaigns/[id]` | reads | `table:market.campaigns` | PRD v0.3.1 §14 kg.yaml features.F-C04 |
-| `page:app/campaigns/[id]` | reads | `table:market.rate_rules` | PRD v0.3.1 §14 kg.yaml features.F-C04 |
-| `page:app/campaigns/[id]` | routes-to | `page:accounts/kyc` | PRD v0.3.1 §7 F-C03 CTA tidak eligible + alasan (KYC) |
-| `page:app/campaigns/[id]` | routes-to | `page:app/social` | PRD v0.3.1 §6 C1.6 |
-| `page:app/campaigns/[id]` | routes-to | `page:app/tasks` | PRD v0.3.1 §6 C1.8 |
-| `page:app/campaigns/[id]` | wrapped-by | `layout:clipper` | PRD v0.3.1 §15.2 host app |
-| `page:app/leaderboard` | reads | `table:market.leaderboard_campaign` | PRD v0.3.1 Lampiran B (market.leaderboard_campaign) |
-| `page:app/leaderboard` | reads | `table:market.leaderboard_weekly` | PRD v0.3.1 Lampiran B (market.leaderboard_weekly) |
-| `page:app/leaderboard` | routes-to | `page:app/campaigns/[id]` | PRD v0.3.1 §6 C4.2 |
-| `page:app/leaderboard` | wrapped-by | `layout:clipper` | PRD v0.3.1 §15.2 host app |
-| `page:app/login` | calls | `mod:auth` | PRD v0.3.1 §15.6 PWA iOS: login di app.{domain} |
-| `page:app/login` | routes-to | `api:GET app/auth/callback` | PRD v0.3.1 §6 C2.2 |
-| `page:app/login` | routes-to | `page:accounts/onboarding` | PRD v0.3.1 §15.6 user baru (jarang: PWA dipasang setelah daftar) |
-| `page:app/login` | routes-to | `page:app/campaigns` | PRD v0.3.1 §7 F-C01 sampai halaman campaign |
-| `page:app/login` | wrapped-by | `layout:clipper` | PRD v0.3.1 §15.2 host app |
-| `page:app/notifications` | reads | `table:ops.notifications` | PRD v0.3.1 §7 F-C11 + kg.yaml E-23 |
-| `page:app/notifications` | wrapped-by | `layout:clipper` | PRD v0.3.1 §15.2 host app |
-| `page:app/notifications` | writes | `table:ops.notifications` | PRD v0.3.1 Lampiran B (ops.notifications) |
-| `page:app/profile` | reads | `table:market.profiles` | PRD v0.3.1 Lampiran B (market.profiles) |
-| `page:app/profile` | reads | `table:trust.score_events` | PRD v0.3.1 Lampiran B (trust.score_events) |
-| `page:app/profile` | routes-to | `page:app/leaderboard` | PRD v0.3.1 §6 C4.1 |
-| `page:app/profile` | wrapped-by | `layout:clipper` | PRD v0.3.1 §15.2 host app |
-| `page:app/referral` | calls | `api:rpc core.my_referral_code` | PRD v0.3.1 §6 + Lampiran B (my_referral_code) |
-| `page:app/referral` | reads | `table:market.referrals` | PRD v0.3.1 Lampiran B (market.referrals) |
-| `page:app/referral` | routes-to | `page:app/wallet` | PRD v0.3.1 §6 C5.3 |
-| `page:app/referral` | routes-to | `page:www/` | PRD v0.3.1 §6 C5.1 |
-| `page:app/referral` | wrapped-by | `layout:clipper` | PRD v0.3.1 §15.2 host app |
-| `page:app/settings` | calls | `api:rpc identity.save_push_subscription` | PRD v0.3.1 §6 C3.2 |
-| `page:app/settings` | configured-by | `env:NEXT_PUBLIC_VAPID_PUBLIC_KEY` | PRD v0.3.1 §6 C3.2 langganan push |
-| `page:app/settings` | reads | `table:ops.notification_prefs` | PRD v0.3.1 Lampiran B (ops.notification_prefs) |
-| `page:app/settings` | routes-to | `page:app/campaigns` | PRD v0.3.1 §6 C2.5 |
-| `page:app/settings` | wrapped-by | `layout:clipper` | PRD v0.3.1 §15.2 host app |
-| `page:app/settings` | writes | `table:ops.notification_prefs` | PRD v0.3.1 Lampiran B (ops.notification_prefs) |
-| `page:app/social` | configured-by | `env:NEXT_PUBLIC_GOOGLE_CLIENT_ID` | PRD v0.3.1 §15.7 client ID publik |
-| `page:app/social` | configured-by | `env:NEXT_PUBLIC_META_APP_ID` | PRD v0.3.1 §15.7 client ID publik |
-| `page:app/social` | configured-by | `env:NEXT_PUBLIC_TIKTOK_CLIENT_KEY` | PRD v0.3.1 §15.7 client ID publik |
-| `page:app/social` | reads | `table:tracking.social_accounts` | PRD v0.3.1 §14 kg.yaml features.F-C02 |
-| `page:app/social` | routes-to | `api:GET app/api/oauth/[platform]/callback` | PRD v0.3.1 §6 C1.5 |
-| `page:app/social` | wrapped-by | `layout:clipper` | PRD v0.3.1 §15.2 host app |
-| `page:app/tasks` | calls | `api:rpc core.appeal_submission` | PRD v0.3.1 §6 + Lampiran B (appeal_submission) |
-| `page:app/tasks` | reads | `table:market.claims` | PRD v0.3.1 §14 kg.yaml features.F-C07 |
-| `page:app/tasks` | reads | `table:tracking.submissions` | PRD v0.3.1 §14 kg.yaml features.F-C07 |
-| `page:app/tasks` | reads | `table:tracking.view_snapshots` | PRD v0.3.1 §14 kg.yaml features.F-C07 |
-| `page:app/tasks` | routes-to | `page:app/social` | PRD v0.3.1 §6 C1.9 |
-| `page:app/tasks` | routes-to | `page:app/wallet` | PRD v0.3.1 §6 C1.9 |
-| `page:app/tasks` | wrapped-by | `layout:clipper` | PRD v0.3.1 §15.2 host app |
-| `page:app/wallet` | reads | `table:finance.ledger_accounts` | PRD v0.3.1 §14 kg.yaml features.F-C08 |
-| `page:app/wallet` | reads | `table:finance.ledger_entries` | PRD v0.3.1 §14 kg.yaml features.F-C08 |
-| `page:app/wallet` | reads | `table:finance.reward_codes` | PRD v0.3.1 Lampiran B (finance.reward_codes) |
-| `page:app/wallet` | routes-to | `page:app/wallet/withdraw` | PRD v0.3.1 §7 F-C08–C09 |
-| `page:app/wallet` | wrapped-by | `layout:clipper` | PRD v0.3.1 §15.2 host app |
-| `page:app/wallet/withdraw` | calls | `api:fn identity/disburse` | PRD v0.3.1 §6 C6.3 instant withdraw |
-| `page:app/wallet/withdraw` | calls | `api:rpc core.request_fulfillment` | PRD v0.3.1 §7 F-C09 non-tunai |
-| `page:app/wallet/withdraw` | calls | `api:rpc core.request_payout` | PRD v0.3.1 §14 kg.yaml features.F-C09 |
-| `page:app/wallet/withdraw` | calls | `api:rpc identity.my_payout_methods` | PRD v0.3.1 §15.5 alur 8 |
-| `page:app/wallet/withdraw` | routes-to | `page:accounts/kyc` | PRD v0.3.1 §6 C1.11 |
-| `page:app/wallet/withdraw` | routes-to | `page:accounts/payout-methods` | PRD v0.3.1 §15.2 rekening dikelola di accounts |
-| `page:app/wallet/withdraw` | routes-to | `page:app/wallet` | PRD v0.3.1 §6 C1.11 |
-| `page:app/wallet/withdraw` | typed-by | `fn:custom_access_token_hook` | PRD v0.3.1 §6.1 C1.11 checklist KYC dari claim kyc |
-| `page:app/wallet/withdraw` | wrapped-by | `layout:clipper` | PRD v0.3.1 §15.2 host app |
-| `page:brand/` | reads | `table:market.org_members` | PRD v0.3.1 §6.3 B1.4 keanggotaan org |
-| `page:brand/` | wrapped-by | `layout:brand` | PRD v0.3.1 §15.2 host brand |
-| `page:brand/[org]/billing` | calls | `api:rpc core.request_refund` | PRD v0.3.1 §6 + Lampiran B (request_refund) |
-| `page:brand/[org]/billing` | reads | `table:finance.invoices` | PRD v0.3.1 §8 F-B04 |
-| `page:brand/[org]/billing` | reads | `table:finance.org_refunds` | PRD v0.3.1 Lampiran B (finance.org_refunds) |
-| `page:brand/[org]/billing` | routes-to | `page:accounts/security` | PRD v0.3.1 §6 B3.7 |
-| `page:brand/[org]/billing` | routes-to | `page:brand/[org]/campaigns` | PRD v0.3.1 §6 B1.8 |
-| `page:brand/[org]/billing` | wrapped-by | `layout:brand` | PRD v0.3.1 §15.2 host brand |
-| `page:brand/[org]/campaigns` | calls | `api:rpc core.duplicate_campaign` | PRD v0.3.1 §6 + Lampiran B (duplicate_campaign) |
-| `page:brand/[org]/campaigns` | reads | `table:market.campaigns` | PRD v0.3.1 §14 kg.yaml features.F-B05 |
-| `page:brand/[org]/campaigns` | routes-to | `page:brand/[org]/campaigns/[id]` | PRD v0.3.1 §8 F-B05 |
-| `page:brand/[org]/campaigns` | routes-to | `page:brand/[org]/campaigns/new` | PRD v0.3.1 §8 F-B02 |
-| `page:brand/[org]/campaigns` | wrapped-by | `layout:brand` | PRD v0.3.1 §15.2 host brand |
-| `page:brand/[org]/campaigns/[id]` | calls | `api:rpc core.buy_pin` | PRD v0.3.1 §6 + Lampiran B (buy_pin) |
-| `page:brand/[org]/campaigns/[id]` | calls | `api:rpc core.control_campaign` | PRD v0.3.1 §6 + Lampiran B (control_campaign) |
-| `page:brand/[org]/campaigns/[id]` | calls | `api:rpc core.create_report_link` | PRD v0.3.1 §6 + Lampiran B (create_report_link) |
-| `page:brand/[org]/campaigns/[id]` | calls | `api:rpc core.invite_to_campaign` | PRD v0.3.1 §6 + Lampiran B (invite_to_campaign) |
-| `page:brand/[org]/campaigns/[id]` | calls | `api:rpc core.revoke_report_link` | PRD v0.3.1 §6 + Lampiran B (revoke_report_link) |
-| `page:brand/[org]/campaigns/[id]` | reads | `table:finance.ledger_entries` | PRD v0.3.1 §14 kg.yaml features.F-B05 |
-| `page:brand/[org]/campaigns/[id]` | reads | `table:finance.reward_pools` | PRD v0.3.1 Lampiran B (finance.reward_pools) |
-| `page:brand/[org]/campaigns/[id]` | reads | `table:market.campaign_invites` | PRD v0.3.1 Lampiran B (market.campaign_invites) |
-| `page:brand/[org]/campaigns/[id]` | reads | `table:market.campaigns` | PRD v0.3.1 §14 kg.yaml features.F-B05 |
-| `page:brand/[org]/campaigns/[id]` | reads | `table:market.report_links` | PRD v0.3.1 Lampiran B (market.report_links) |
-| `page:brand/[org]/campaigns/[id]` | reads | `table:tracking.submissions` | PRD v0.3.1 §14 kg.yaml features.F-B05 |
-| `page:brand/[org]/campaigns/[id]` | reads | `table:tracking.view_snapshots` | PRD v0.3.1 §14 kg.yaml features.F-B05 |
-| `page:brand/[org]/campaigns/[id]` | routes-to | `page:brand/[org]/billing` | PRD v0.3.1 §6 B3.3 |
-| `page:brand/[org]/campaigns/[id]` | routes-to | `page:brand/[org]/review` | PRD v0.3.1 §6 B3.1 |
-| `page:brand/[org]/campaigns/[id]` | routes-to | `page:www/r/[token]` | PRD v0.3.1 §6 B3.6 |
-| `page:brand/[org]/campaigns/[id]` | wrapped-by | `layout:brand` | PRD v0.3.1 §15.2 host brand |
-| `page:brand/[org]/campaigns/new` | renders | `comp:CampaignBuilder` | PRD v0.3.1 §8 F-B02 AC satu package |
-| `page:brand/[org]/campaigns/new` | routes-to | `page:brand/[org]/billing` | PRD v0.3.1 §6 B1.7 |
-| `page:brand/[org]/campaigns/new` | wrapped-by | `layout:brand` | PRD v0.3.1 §15.2 host brand |
-| `page:brand/[org]/review` | calls | `api:rpc core.record_review` | PRD v0.3.1 §8 F-B07 |
-| `page:brand/[org]/review` | wrapped-by | `layout:brand` | PRD v0.3.1 §15.2 host brand |
-| `page:brand/[org]/reward-types` | calls | `api:rpc core.save_reward_type` | PRD v0.3.1 §8 F-B03 |
-| `page:brand/[org]/reward-types` | calls | `api:rpc core.upload_reward_codes` | PRD v0.3.1 §6 + Lampiran B (upload_reward_codes) |
-| `page:brand/[org]/reward-types` | wrapped-by | `layout:brand` | PRD v0.3.1 §15.2 host brand |
-| `page:brand/[org]/settings` | calls | `api:rpc core.link_agency` | PRD v0.3.1 §6 + Lampiran B (link_agency) |
-| `page:brand/[org]/settings` | reads | `table:market.org_links` | PRD v0.3.1 Lampiran B (market.org_links) |
-| `page:brand/[org]/settings` | reads | `table:market.organizations` | PRD v0.3.1 Lampiran B (market.organizations) |
-| `page:brand/[org]/settings` | routes-to | `page:brand/` | PRD v0.3.1 §6 B2.3 |
-| `page:brand/[org]/settings` | wrapped-by | `layout:brand` | PRD v0.3.1 §15.2 host brand |
-| `page:brand/[org]/team` | calls | `api:rpc core.create_org_invite` | PRD v0.3.1 §15.5 alur 5 |
-| `page:brand/[org]/team` | reads | `table:market.org_members` | PRD v0.3.1 §14 kg.yaml features.F-B01 |
-| `page:brand/[org]/team` | reads | `table:market.organizations` | PRD v0.3.1 §8 F-B01 profil perusahaan |
-| `page:brand/[org]/team` | wrapped-by | `layout:brand` | PRD v0.3.1 §15.2 host brand |
-| `page:brand/new` | calls | `api:rpc core.create_org` | PRD v0.3.1 §6 + Lampiran B (create_org) |
-| `page:brand/new` | calls | `mod:auth` | PRD v0.3.1 §6 B1.4 guard consent_ok.brand |
-| `page:brand/new` | routes-to | `page:accounts/kyc` | PRD v0.3.1 §6 B1.4 |
-| `page:brand/new` | routes-to | `page:brand/[org]/campaigns` | PRD v0.3.1 §6 B1.4 |
-| `page:brand/new` | wrapped-by | `layout:brand` | PRD v0.3.1 §15.2 host brand |
-| `page:www/` | reads | `table:market.campaigns` | PRD v0.3.1 §6.1 C1.1 card campaign live (view publik) |
-| `page:www/` | routes-to | `page:accounts/login` | PRD v0.3.1 §6 C1.1 |
-| `page:www/` | wrapped-by | `layout:web` | PRD v0.3.1 §15.2 host www |
-| `page:www/c/[slug]` | reads | `table:bucket.campaign-covers` | PRD v0.3.1 §15.4 campaign-covers publik (OG F-X02) |
-| `page:www/c/[slug]` | reads | `table:market.campaigns` | PRD v0.3.1 §15.2 web: view publik |
-| `page:www/c/[slug]` | routes-to | `page:app/campaigns/[id]` | PRD v0.3.1 §6.5 CTA Ambil campaign ini → app (guard membawa ke login dulu) |
-| `page:www/c/[slug]` | wrapped-by | `layout:web` | PRD v0.3.1 §15.2 host www |
-| `page:www/legal/[doc]` | wrapped-by | `layout:web` | PRD v0.3.1 §15.2 host www |
-| `page:www/r/[token]` | calls | `api:rpc core.report_by_token` | PRD v0.3.1 §6 + Lampiran B (report_by_token) |
-| `page:www/r/[token]` | wrapped-by | `layout:web` | PRD v0.3.1 §15.2 host www |
-| `layout:accounts` | calls | `mod:auth` | PRD v0.3.1 §15.6 SSO & guard |
-| `layout:accounts` | calls | `mod:db-core` | PRD v0.3.1 §15.2 kolom Database |
-| `layout:accounts` | calls | `mod:db-identity` | PRD v0.3.1 §15.3 aturan db-identity |
-| `layout:accounts` | configured-by | `config:host.accounts` | PRD v0.3.1 §15.2 tabel host |
-| `layout:accounts` | renders | `mod:ui` | PRD v0.3.1 §15.3 packages/ui dipakai 5 app |
-| `layout:accounts` | routes-to | `page:accounts/` | PRD v0.3.1 §6.6 menu: Ringkasan akun |
-| `layout:accounts` | routes-to | `page:accounts/kyc` | PRD v0.3.1 §6.6 menu: KYC |
-| `layout:accounts` | routes-to | `page:accounts/payout-methods` | PRD v0.3.1 §6.6 menu: Rekening & penerima |
-| `layout:accounts` | routes-to | `page:accounts/privacy` | PRD v0.3.1 §6.6 menu: Privasi & data |
-| `layout:accounts` | routes-to | `page:accounts/security` | PRD v0.3.1 §6.6 menu: Keamanan (MFA) |
-| `layout:accounts` | routes-to | `page:app/campaigns` | PRD v0.3.1 §6.6 menu: Kembali ke app (atau ke next) |
-| `layout:accounts` | routes-to | `page:brand/` | PRD v0.3.1 §6.6 menu: Ke brand (kalau anggota org) |
-| `layout:admin` | calls | `mod:auth` | PRD v0.3.1 §15.6 SSO & guard |
-| `layout:admin` | calls | `mod:db-core` | PRD v0.3.1 §15.2 kolom Database |
-| `layout:admin` | calls | `mod:db-identity` | PRD v0.3.1 §15.3 aturan db-identity |
-| `layout:admin` | configured-by | `config:host.admin` | PRD v0.3.1 §15.2 tabel host |
-| `layout:admin` | renders | `mod:ui` | PRD v0.3.1 §15.3 packages/ui dipakai 5 app |
-| `layout:admin` | routes-to | `page:admin/` | PRD v0.3.1 §6.6 menu: Sidebar: Overview |
-| `layout:admin` | routes-to | `page:admin/audit` | PRD v0.3.1 §6.6 menu: Sidebar: Audit |
-| `layout:admin` | routes-to | `page:admin/broadcast` | PRD v0.3.1 §6.6 menu: Sidebar: Broadcast |
-| `layout:admin` | routes-to | `page:admin/campaigns` | PRD v0.3.1 §6.6 menu: Sidebar: Campaign |
-| `layout:admin` | routes-to | `page:admin/campaigns/new` | PRD v0.3.1 §6.6 menu: Sidebar: Builder |
-| `layout:admin` | routes-to | `page:admin/config` | PRD v0.3.1 §6.6 menu: Sidebar: Config |
-| `layout:admin` | routes-to | `page:admin/finance` | PRD v0.3.1 §6.6 menu: Sidebar: Finance |
-| `layout:admin` | routes-to | `page:admin/fraud` | PRD v0.3.1 §6.6 menu: Sidebar: Fraud |
-| `layout:admin` | routes-to | `page:admin/fulfillment` | PRD v0.3.1 §6.6 menu: Sidebar: Fulfillment |
-| `layout:admin` | routes-to | `page:admin/login` | PRD v0.3.1 §6.6 menu: Guard & Keluar |
-| `layout:admin` | routes-to | `page:admin/pinned` | PRD v0.3.1 §6.6 menu: Sidebar: Pinned & kategori |
-| `layout:admin` | routes-to | `page:admin/review` | PRD v0.3.1 §6.6 menu: Sidebar: Moderasi |
-| `layout:admin` | routes-to | `page:admin/users` | PRD v0.3.1 §6.6 menu: Sidebar: User & KYC |
-| `layout:brand` | calls | `mod:auth` | PRD v0.3.1 §15.6 SSO & guard |
-| `layout:brand` | calls | `mod:db-core` | PRD v0.3.1 §15.2 kolom Database |
-| `layout:brand` | configured-by | `config:host.brand` | PRD v0.3.1 §15.2 tabel host |
-| `layout:brand` | renders | `mod:ui` | PRD v0.3.1 §15.3 packages/ui dipakai 5 app |
-| `layout:brand` | routes-to | `page:accounts/` | PRD v0.3.1 §6.6 menu: Menu avatar: Akun (MFA, privasi) |
-| `layout:brand` | routes-to | `page:accounts/login` | PRD v0.3.1 §6.6 menu: Guard: belum login (next=brand) |
-| `layout:brand` | routes-to | `page:brand/` | PRD v0.3.1 §6.6 menu: Pemilih org (org sendiri + klien agency) |
-| `layout:brand` | routes-to | `page:brand/[org]/billing` | PRD v0.3.1 §6.6 menu: Sidebar: Billing |
-| `layout:brand` | routes-to | `page:brand/[org]/campaigns` | PRD v0.3.1 §6.6 menu: Sidebar: Campaign & template |
-| `layout:brand` | routes-to | `page:brand/[org]/review` | PRD v0.3.1 §6.6 menu: Sidebar: Review |
-| `layout:brand` | routes-to | `page:brand/[org]/reward-types` | PRD v0.3.1 §6.6 menu: Sidebar: Reward type |
-| `layout:brand` | routes-to | `page:brand/[org]/settings` | PRD v0.3.1 §6.6 menu: Sidebar: Pengaturan org & agency |
-| `layout:brand` | routes-to | `page:brand/[org]/team` | PRD v0.3.1 §6.6 menu: Sidebar: Tim |
-| `layout:brand` | routes-to | `page:brand/new` | PRD v0.3.1 §6.6 menu: Pemilih org: Buat organisasi |
-| `layout:brand` | routes-to | `page:www/` | PRD v0.3.1 §6.6 menu: Menu avatar: Keluar |
-| `layout:clipper` | calls | `mod:auth` | PRD v0.3.1 §15.6 SSO & guard |
-| `layout:clipper` | calls | `mod:db-core` | PRD v0.3.1 §15.2 kolom Database |
-| `layout:clipper` | calls | `mod:db-identity` | PRD v0.3.1 §15.3 aturan db-identity |
-| `layout:clipper` | configured-by | `config:host.app` | PRD v0.3.1 §15.2 tabel host |
-| `layout:clipper` | renders | `mod:ui` | PRD v0.3.1 §15.3 packages/ui dipakai 5 app |
-| `layout:clipper` | routes-to | `ext:ai-clip` | PRD v0.3.1 §6.6 menu: Menu: AI Clip (produk terpisah, tab baru, F-C17) |
-| `layout:clipper` | routes-to | `ext:community` | PRD v0.3.1 §6.6 menu: Menu: Komunitas (Discord/WhatsApp, F-C19) |
-| `layout:clipper` | routes-to | `page:accounts/` | PRD v0.3.1 §6.6 menu: Menu avatar: Akun & KYC (next=halaman ini) |
-| `layout:clipper` | routes-to | `page:app/campaigns` | PRD v0.3.1 §6.6 menu: Nav bawah: Campaign |
-| `layout:clipper` | routes-to | `page:app/leaderboard` | PRD v0.3.1 §6.6 menu: Menu avatar: Leaderboard |
-| `layout:clipper` | routes-to | `page:app/login` | PRD v0.3.1 §15.6 guard: belum login → /login |
-| `layout:clipper` | routes-to | `page:app/notifications` | PRD v0.3.1 §6.6 menu: Header: lonceng notifikasi |
-| `layout:clipper` | routes-to | `page:app/profile` | PRD v0.3.1 §6.6 menu: Menu avatar: Profil & Trust Score |
-| `layout:clipper` | routes-to | `page:app/referral` | PRD v0.3.1 §6.6 menu: Menu avatar: Ajak teman |
-| `layout:clipper` | routes-to | `page:app/settings` | PRD v0.3.1 §6.6 menu: Menu avatar: Pengaturan (bahasa, tema, notifikasi) |
-| `layout:clipper` | routes-to | `page:app/social` | PRD v0.3.1 §6.6 menu: Nav bawah: Sosmed |
-| `layout:clipper` | routes-to | `page:app/tasks` | PRD v0.3.1 §6.6 menu: Nav bawah: Tugas |
-| `layout:clipper` | routes-to | `page:app/wallet` | PRD v0.3.1 §6.6 menu: Nav bawah: Wallet |
-| `layout:clipper` | routes-to | `page:www/` | PRD v0.3.1 §6.6 menu: Menu avatar: Keluar |
-| `layout:clipper` | wrapped-by | `mod:i18n` | PRD v0.3.1 §7 F-C18 i18n ID/EN |
-| `layout:web` | calls | `mod:db-core` | PRD v0.3.1 §15.2 kolom Database |
-| `layout:web` | configured-by | `config:host.www` | PRD v0.3.1 §15.2 tabel host |
-| `layout:web` | renders | `mod:ui` | PRD v0.3.1 §15.3 packages/ui dipakai 5 app |
-| `layout:web` | routes-to | `page:accounts/login` | PRD v0.3.1 §6.6 menu: Masuk / Mulai jadi clipper (next=app) |
-| `layout:web` | routes-to | `page:app/campaigns` | PRD v0.3.1 §6.6 menu: Buka app (kalau cookie sesi ada) |
-| `layout:web` | routes-to | `page:www/legal/[doc]` | PRD v0.3.1 §6.6 menu: Footer: ToS clipper, ToS brand, privasi |
-| `comp:CampaignBuilder` | calls | `api:rpc core.save_campaign` | PRD v0.3.1 §14 kg.yaml features.F-B02 |
-| `comp:CampaignBuilder` | reads | `table:finance.fee_rules` | PRD v0.3.1 §14 kg.yaml features.F-B02 (ringkasan biaya) |
-| `comp:CampaignBuilder` | reads | `table:market.reward_types` | PRD v0.3.1 §14 kg.yaml features.F-B02 |
-| `comp:CampaignBuilder` | renders | `mod:ui` | PRD v0.3.1 §15.3 |
-| `comp:CampaignBuilder` | writes | `table:bucket.campaign-assets` | PRD v0.3.1 §8 F-B02 langkah 2 aset |
-| `comp:CampaignBuilder` | writes | `table:bucket.campaign-covers` | PRD v0.3.1 §8 F-B02 langkah 1 cover |
-| `mod:auth` | calls | `ext:supabase-identity` | PRD v0.3.1 §15.6 satu penerbit login |
-| `mod:auth` | calls | `ext:turnstile` | PRD v0.3.1 §15.6 widget CAPTCHA |
-| `mod:auth` | configured-by | `env:ADMIN_COOKIE_NAME` | PRD v0.3.1 §15.6 cookie admin host-only |
-| `mod:auth` | configured-by | `env:COOKIE_DOMAIN` | PRD v0.3.1 §15.6 cookie SSO |
-| `mod:auth` | configured-by | `env:NEXT_PUBLIC_IDENTITY_PUBLISHABLE_KEY` | PRD v0.3.1 §15.7 |
-| `mod:auth` | configured-by | `env:NEXT_PUBLIC_IDENTITY_URL` | PRD v0.3.1 §15.7 |
-| `mod:auth` | configured-by | `env:NEXT_PUBLIC_TURNSTILE_SITE_KEY` | PRD v0.3.1 §15.6 widget CAPTCHA di form login |
-| `mod:db-core` | calls | `ext:supabase-core` | PRD v0.3.1 §15.4 |
-| `mod:db-core` | calls | `mod:auth` | PRD v0.3.1 §15.6 opsi accessToken |
-| `mod:db-core` | configured-by | `env:NEXT_PUBLIC_CORE_PUBLISHABLE_KEY` | PRD v0.3.1 §15.7 |
-| `mod:db-core` | configured-by | `env:NEXT_PUBLIC_CORE_URL` | PRD v0.3.1 §15.7 |
-| `mod:db-identity` | calls | `ext:supabase-identity` | PRD v0.3.1 §15.4 |
-| `mod:db-identity` | calls | `mod:auth` | PRD v0.3.1 §15.6 |
-| `mod:db-identity` | configured-by | `env:NEXT_PUBLIC_IDENTITY_PUBLISHABLE_KEY` | PRD v0.3.1 §15.7 |
-| `mod:db-identity` | configured-by | `env:NEXT_PUBLIC_IDENTITY_URL` | PRD v0.3.1 §15.7 |
-| `mod:db-identity` | guarded-by | `config:eslint.imports` | PRD v0.3.1 §15.3 aturan import |
-| `mod:social` | calls | `ext:google` | PRD v0.3.1 §11 tabel adapter |
-| `mod:social` | calls | `ext:meta` | PRD v0.3.1 §11 tabel adapter |
-| `mod:social` | calls | `ext:tiktok` | PRD v0.3.1 §11 tabel adapter |
-| `mod:social` | configured-by | `env:YOUTUBE_API_KEY` | PRD v0.3.1 §11 + D-11 fallback kode deskripsi |
-| `api:GET accounts/auth/callback` | calls | `mod:auth` | PRD v0.3.1 §6.1 C1.2 |
-| `api:GET accounts/auth/callback` | routes-to | `page:accounts/onboarding` | PRD v0.3.1 §6.1 C1.2 belum onboarding |
-| `api:GET accounts/auth/callback` | routes-to | `page:app/campaigns` | PRD v0.3.1 §6.1 C1.2 next default |
-| `api:GET accounts/auth/confirm` | calls | `mod:auth` | PRD v0.3.1 §6.3 B1.3 |
-| `api:GET app/api/oauth/[platform]/callback` | calls | `api:fn core/social` | PRD v0.3.1 §14 kg.yaml features.F-C02 |
-| `api:GET app/api/oauth/[platform]/callback` | routes-to | `page:app/social` | PRD v0.3.1 §6.1 C1.5 kembali ke /social |
-| `api:GET app/auth/callback` | calls | `mod:auth` | PRD v0.3.1 §6.2 C2.2 |
-| `api:GET app/auth/callback` | routes-to | `page:accounts/onboarding` | PRD v0.3.1 §6.2 C2.2 user baru |
-| `api:GET app/auth/callback` | routes-to | `page:app/campaigns` | PRD v0.3.1 §6.2 C2.2 next |
+| `page:accounts/` | calls | `api:rpc identity.my_payout_methods` | PRD v0.3.1 §6.2 C2.3 jumlah rekening; kode baris 23 |
+| `page:accounts/` | reads | `table:member.kyc_records` | PRD v0.3.1 §6.2 C2.3 status KYC; kode baris 22 (view api.my_kyc) |
+| `page:accounts/` | routes-to | `page:accounts/kyc` | PRD v0.3.1 §6 C2.3; kode baris 47 |
+| `page:accounts/` | routes-to | `page:accounts/payout-methods` | PRD v0.3.1 §6 C2.3; kode baris 55 |
+| `page:accounts/` | routes-to | `page:accounts/privacy` | PRD v0.3.1 §6 C2.3; kode baris 75 |
+| `page:accounts/` | routes-to | `page:accounts/security` | PRD v0.3.1 §6 C2.3; kode baris 63 |
+| `page:accounts/` | routes-to | `page:app/campaigns` | PRD v0.3.1 §6 C2.3; kode baris 96 (safeNext → app/campaigns) |
+| `page:accounts/` | routes-to | `page:brand/` | PRD v0.3.1 §6 C2.3; kode baris 92 |
+| `page:accounts/` | wrapped-by | `layout:accounts` | apps/accounts/src/app/layout.tsx:20 |
+| `page:accounts/invite/[token]` | calls | `api:rpc core.accept_org_invite` | apps/accounts/src/features/invite/actions.ts:11 |
+| `page:accounts/invite/[token]` | calls | `api:rpc core.invite_preview` | kode: (auth)/invite/[token]/page.tsx baris 22 (path ber-kurung) |
+| `page:accounts/invite/[token]` | routes-to | `page:accounts/login` | apps/accounts/src/features/invite/actions.ts:20 (ganti akun → /login) |
+| `page:accounts/invite/[token]` | routes-to | `page:brand/` | apps/accounts/src/features/invite/actions.ts:13 |
+| `page:accounts/invite/[token]` | wrapped-by | `layout:accounts` | apps/accounts/src/app/layout.tsx:20 |
+| `page:accounts/kyc` | calls | `api:fn identity/member-data` | apps/accounts/src/features/kyc/actions.ts:23 |
+| `page:accounts/kyc` | reads | `table:member.kyc_records` | PRD v0.3.1 §6.1 C1.12 status KYC; kode baris 20 (view api.my_kyc) |
+| `page:accounts/kyc` | routes-to | `page:accounts/payout-methods` | PRD v0.3.1 §6 C1.12; kode baris 32 |
+| `page:accounts/kyc` | routes-to | `page:app/wallet/withdraw` | PRD v0.3.1 §6 C1.12; kode baris 27 (kembali ke next, mis. app/wallet/withdraw) |
+| `page:accounts/kyc` | wrapped-by | `layout:accounts` | apps/accounts/src/app/layout.tsx:20 |
+| `page:accounts/kyc` | writes | `table:bucket.kyc-docs` | apps/accounts/src/features/kyc/actions.ts:16 |
+| `page:accounts/login` | calls | `mod:auth` | PRD v0.3.1 §7 F-C01; kode baris 6 (LoginForm @clipper/auth/components) |
+| `page:accounts/login` | routes-to | `api:GET accounts/auth/callback` | packages/auth/src/actions.ts:62 (googleSignIn redirectTo) |
+| `page:accounts/login` | routes-to | `page:accounts/onboarding` | packages/auth/src/proxy.ts:93 (user baru: guard app → onboarding) |
+| `page:accounts/login` | wrapped-by | `layout:accounts` | apps/accounts/src/app/layout.tsx:20 |
+| `page:accounts/onboarding` | calls | `api:rpc core.ensure_profile` | apps/accounts/src/features/onboarding/actions.ts:67 |
+| `page:accounts/onboarding` | calls | `api:rpc identity.record_consent` | apps/accounts/src/features/onboarding/actions.ts:80 |
+| `page:accounts/onboarding` | routes-to | `page:app/campaigns` | PRD v0.3.1 §7 F-C01 AC sampai halaman campaign; kode baris 31 (fallback hosts.app/campaigns) |
+| `page:accounts/onboarding` | routes-to | `page:brand/new` | PRD v0.3.1 §6 B1.3; kode baris 31 (fallback hosts.brand/new) |
+| `page:accounts/onboarding` | wrapped-by | `layout:accounts` | apps/accounts/src/app/layout.tsx:20 |
+| `page:accounts/onboarding` | writes | `table:bucket.avatars` | apps/accounts/src/features/onboarding/actions.ts:31 |
+| `page:accounts/payout-methods` | calls | `api:fn identity/member-data` | apps/accounts/src/features/payout-methods/actions.ts:21 |
+| `page:accounts/payout-methods` | routes-to | `page:app/wallet/withdraw` | PRD v0.3.1 §6 C1.13; kode baris 62 (kembali ke next); features/payout-methods/actions.ts baris 30 membawa method_id |
+| `page:accounts/payout-methods` | wrapped-by | `layout:accounts` | apps/accounts/src/app/layout.tsx:20 |
+| `page:accounts/privacy` | calls | `api:fn identity/delete-account` | apps/accounts/src/features/privacy/actions.ts:27 |
+| `page:accounts/privacy` | routes-to | `api:POST accounts/privacy/export` | apps/accounts/src/features/privacy/privacy-panels.tsx:87 |
+| `page:accounts/privacy` | calls | `api:rpc identity.record_consent` | apps/accounts/src/features/privacy/actions.ts:18 |
+| `page:accounts/privacy` | routes-to | `page:www/` | PRD v0.3.1 §6 C2.4; kode: features/privacy/actions.ts baris 31 (hosts.web setelah hapus akun) |
+| `page:accounts/privacy` | wrapped-by | `layout:accounts` | apps/accounts/src/app/layout.tsx:20 |
+| `page:accounts/security` | calls | `mod:auth` | apps/accounts/src/features/security/mfa-section.tsx:6 |
+| `page:accounts/security` | wrapped-by | `layout:accounts` | apps/accounts/src/app/layout.tsx:20 |
+| `page:admin/` | reads | `table:finance.ledger_entries` | PRD v0.3.1 §9 F-A01; kode baris 33 (rpc admin_overview; tabel dibaca di db/core/supabase/schemas/api/admin_overview.sql baris 20) |
+| `page:admin/` | reads | `table:finance.payouts` | PRD v0.3.1 §9 F-A01; kode baris 33 (rpc admin_overview; tabel dibaca di db/core/supabase/schemas/api/admin_overview.sql baris 23) |
+| `page:admin/` | reads | `table:market.campaigns` | PRD v0.3.1 §9 F-A01; kode baris 33 (rpc admin_overview; tabel dibaca di db/core/supabase/schemas/api/admin_overview.sql baris 21) |
+| `page:admin/` | reads | `table:trust.fraud_flags` | PRD v0.3.1 §9 F-A01; kode baris 33 (rpc admin_overview; tabel dibaca di db/core/supabase/schemas/api/admin_overview.sql baris 24) |
+| `page:admin/` | routes-to | `page:admin/campaigns` | apps/admin/src/features/shell/nav.ts:11 (navFor, (console)/page.tsx baris 117) |
+| `page:admin/` | routes-to | `page:admin/finance` | apps/admin/src/features/shell/nav.ts:17 (navFor, (console)/page.tsx baris 117) |
+| `page:admin/` | routes-to | `page:admin/fraud` | apps/admin/src/features/shell/nav.ts:15 (navFor, (console)/page.tsx baris 117) |
+| `page:admin/` | routes-to | `page:admin/review` | apps/admin/src/features/shell/nav.ts:14 (navFor, (console)/page.tsx baris 117) |
+| `page:admin/` | routes-to | `page:admin/users` | apps/admin/src/features/shell/nav.ts:16 (navFor, (console)/page.tsx baris 117) |
+| `page:admin/` | wrapped-by | `layout:admin` | apps/admin/src/app/layout.tsx:20 |
+| `page:admin/audit` | calls | `api:rpc identity.admin_read` | PRD v0.3.1 §14 kg.yaml E-24 (log akses PII) (belum di kode: log akses PII identity dibaca lewat api:view identity.audit_logs, kode baris 34) |
+| `page:admin/audit` | calls | `api:rpc identity.admin_list_roles` | kode: (console)/audit/page.tsx baris 46 (path ber-kurung) |
+| `page:admin/audit` | reads | `api:view core.admin_profiles` | kode: (console)/audit/page.tsx baris 45 (path ber-kurung) |
+| `page:admin/audit` | reads | `api:view identity.audit_logs` | kode: (console)/audit/page.tsx baris 34, source=identity (path ber-kurung) |
+| `page:admin/audit` | reads | `table:ops.audit_logs` | PRD v0.3.1 §14 kg.yaml features.F-A11; kode baris 34 (view api.audit_logs core) |
+| `page:admin/audit` | wrapped-by | `layout:admin` | apps/admin/src/app/layout.tsx:20 |
+| `page:admin/broadcast` | calls | `api:rpc core.send_broadcast` | apps/admin/src/features/broadcast/actions.ts:15 |
+| `page:admin/broadcast` | reads | `table:ops.broadcasts` | PRD v0.3.1 Lampiran B (ops.broadcasts); kode baris 19 |
+| `page:admin/broadcast` | wrapped-by | `layout:admin` | apps/admin/src/app/layout.tsx:20 |
+| `page:admin/campaigns` | calls | `api:rpc core.record_review` | apps/admin/src/features/campaign-review/actions.ts:10 |
+| `page:admin/campaigns` | reads | `table:finance.invoices` | apps/admin/src/features/campaign-review/review-detail.tsx:34 |
+| `page:admin/campaigns` | reads | `table:market.campaigns` | apps/admin/src/features/campaign-review/managed-queue.tsx:13 |
+| `page:admin/campaigns` | routes-to | `page:admin/campaigns/new` | apps/admin/src/features/campaign-review/review-detail.tsx:218 |
+| `page:admin/campaigns` | wrapped-by | `layout:admin` | apps/admin/src/app/layout.tsx:20 |
+| `page:admin/campaigns/new` | renders | `comp:CampaignBuilder` | apps/admin/src/features/builder/admin-builder.tsx:4 |
+| `page:admin/campaigns/new` | wrapped-by | `layout:admin` | apps/admin/src/app/layout.tsx:20 |
+| `page:admin/config` | calls | `api:rpc core.update_config` | apps/admin/src/features/config/actions.ts:15 |
+| `page:admin/config` | wrapped-by | `layout:admin` | apps/admin/src/app/layout.tsx:20 |
+| `page:admin/finance` | calls | `api:fn identity/pii-export` | apps/admin/src/features/finance/actions.ts:75 |
+| `page:admin/finance` | calls | `api:rpc core.approve_payout_batch` | apps/admin/src/features/finance/actions.ts:42 |
+| `page:admin/finance` | calls | `api:rpc core.confirm_invoice_payment` | apps/admin/src/features/finance/actions.ts:22 |
+| `page:admin/finance` | calls | `api:rpc core.create_payout_batch` | apps/admin/src/features/finance/actions.ts:35 |
+| `page:admin/finance` | calls | `api:rpc core.mark_batch_paid` | apps/admin/src/features/finance/actions.ts:60 |
+| `page:admin/finance` | calls | `ext:bank` | apps/admin/src/features/finance/batch-results.tsx:15 (hasil transfer manual + referensi bank) |
+| `page:admin/finance` | reads | `table:finance.invoices` | PRD v0.3.1 §14 kg.yaml features.F-A08; kode baris 64 |
+| `page:admin/finance` | reads | `table:finance.org_refunds` | PRD v0.3.1 Lampiran B (finance.org_refunds); kode baris 419 |
+| `page:admin/finance` | reads | `table:finance.payout_batches` | PRD v0.3.1 §14 kg.yaml features.F-A08; kode baris 154 |
+| `page:admin/finance` | reads | `table:finance.payouts` | PRD v0.3.1 §14 kg.yaml features.F-A08; kode baris 152 |
+| `page:admin/finance` | wrapped-by | `layout:admin` | apps/admin/src/app/layout.tsx:20 |
+| `page:admin/fraud` | calls | `api:fn identity/admin-auth` | PRD v0.3.1 §6 A4.2 ban → ban_duration (belum di kode: ban dari fraud queue = resolve_fraud_flag → core bridge ban_user → identity bridge, features/fraud/actions.ts baris 9) |
+| `page:admin/fraud` | calls | `api:rpc core.resolve_fraud_flag` | apps/admin/src/features/fraud/actions.ts:15 |
+| `page:admin/fraud` | reads | `table:trust.fraud_flags` | PRD v0.3.1 §14 kg.yaml features.F-A06; kode baris 29 |
+| `page:admin/fraud` | wrapped-by | `layout:admin` | apps/admin/src/app/layout.tsx:20 |
+| `page:admin/fulfillment` | calls | `api:fn identity/pii-export` | apps/admin/src/features/fulfillment/actions.ts:12 |
+| `page:admin/fulfillment` | calls | `api:rpc core.mark_fulfillment_delivered` | apps/admin/src/features/fulfillment/actions.ts:30 |
+| `page:admin/fulfillment` | calls | `api:rpc core.upload_reward_codes` | apps/admin/src/features/fulfillment/actions.ts:43 |
+| `page:admin/fulfillment` | reads | `table:finance.fulfillments` | PRD v0.3.1 §14 kg.yaml features.F-A10; kode baris 51 |
+| `page:admin/fulfillment` | wrapped-by | `layout:admin` | apps/admin/src/app/layout.tsx:20 |
+| `page:admin/login` | calls | `mod:auth` | apps/admin/src/app/login/page.tsx:6 |
+| `page:admin/login` | routes-to | `page:admin/` | apps/admin/src/app/login/page.tsx:18 |
+| `page:admin/login` | wrapped-by | `layout:admin` | apps/admin/src/app/layout.tsx:20 |
+| `page:admin/pinned` | calls | `api:rpc core.update_config` | apps/admin/src/features/pinned/actions.ts:11 |
+| `page:admin/pinned` | reads | `table:market.categories` | PRD v0.3.1 Lampiran B (market.categories); kode baris 28 |
+| `page:admin/pinned` | wrapped-by | `layout:admin` | apps/admin/src/app/layout.tsx:20 |
+| `page:admin/review` | calls | `api:rpc core.record_review` | apps/admin/src/features/moderation/actions.ts:29 |
+| `page:admin/review` | reads | `table:tracking.submissions` | PRD v0.3.1 §14 kg.yaml features.F-A05; kode baris 25 |
+| `page:admin/review` | wrapped-by | `layout:admin` | apps/admin/src/app/layout.tsx:20 |
+| `page:admin/users` | calls | `api:fn identity/admin-auth` | apps/admin/src/features/users/actions.ts:111 |
+| `page:admin/users` | calls | `api:rpc core.manage_org` | apps/admin/src/features/users/actions.ts:73 |
+| `page:admin/users` | calls | `api:rpc core.record_review` | apps/admin/src/features/users/actions.ts:19 |
+| `page:admin/users` | calls | `api:rpc identity.admin_kyc_decision` | apps/admin/src/features/users/actions.ts:37 |
+| `page:admin/users` | calls | `api:rpc identity.admin_read` | apps/admin/src/features/users/user-detail.tsx:35 |
+| `page:admin/users` | calls | `api:rpc identity.admin_set_role` | apps/admin/src/features/users/actions.ts:124 |
+| `page:admin/users` | calls | `api:rpc core.manage_user` | apps/admin/src/features/users/actions.ts:155 |
+| `page:admin/users` | calls | `api:rpc identity.admin_kyc_queue` | kode: (console)/users/page.tsx baris 138 (path ber-kurung) |
+| `page:admin/users` | calls | `api:rpc identity.admin_list_roles` | kode: (console)/users/page.tsx baris 265 (path ber-kurung) |
+| `page:admin/users` | reads | `api:view core.admin_profiles` | apps/admin/src/features/users/user-detail.tsx:20 |
+| `page:admin/users` | reads | `table:bucket.kyc-docs` | apps/admin/src/features/users/user-detail.tsx:39 (signed URL foto KTP) |
+| `page:admin/users` | reads | `table:market.profiles` | apps/admin/src/features/users/user-detail.tsx:20 (view api.admin_profiles) |
+| `page:admin/users` | wrapped-by | `layout:admin` | apps/admin/src/app/layout.tsx:20 |
+| `page:app/campaigns` | calls | `api:rpc core.list_campaigns` | apps/clipper/src/features/campaigns/cards.ts:59 |
+| `page:app/campaigns` | reads | `table:bucket.campaign-covers` | apps/clipper/src/features/campaigns/cards.ts:97 |
+| `page:app/campaigns` | reads | `table:finance.reward_pools` | PRD v0.3.1 §14 kg.yaml features.F-C03; kode: lewat rpc list_campaigns (features/campaigns/cards.ts baris 59) |
+| `page:app/campaigns` | reads | `table:market.campaigns` | apps/clipper/src/features/campaigns/cards.ts:59 (rpc list_campaigns) |
+| `page:app/campaigns` | reads | `table:market.categories` | apps/clipper/src/features/campaigns/cards.ts:50 |
+| `page:app/campaigns` | reads | `table:market.reward_types` | apps/clipper/src/features/lib/server.ts:63 (rewardTypes, features/campaigns/cards.ts baris 77) |
+| `page:app/campaigns` | reads | `table:tracking.social_accounts` | apps/clipper/src/app/campaigns/page.tsx:28 |
+| `page:app/campaigns` | routes-to | `page:app/campaigns/[id]` | apps/clipper/src/features/campaigns/feed.tsx:51 |
+| `page:app/campaigns` | routes-to | `page:app/login` | packages/auth/src/server.ts:70 (requireClipper) |
+| `page:app/campaigns` | routes-to | `page:app/social` | apps/clipper/src/app/campaigns/page.tsx:39 |
+| `page:app/campaigns` | wrapped-by | `layout:clipper` | apps/clipper/src/app/layout.tsx:31 |
+| `page:app/campaigns/[id]` | calls | `api:fn core/social` | apps/clipper/src/features/submit/actions.ts:24 |
+| `page:app/campaigns/[id]` | calls | `api:rpc core.claim_campaign` | apps/clipper/src/features/claim/actions.ts:13 |
+| `page:app/campaigns/[id]` | calls | `api:rpc core.missing_brief_tags` | PRD v0.3.1 §6 C1.8 tanda caption kurang sebelum Submit (belum di kode langsung: tag kurang dihitung core/social list_videos → missing_brief_tags, features/submit/actions.ts baris 20) |
+| `page:app/campaigns/[id]` | reads | `table:bucket.campaign-assets` | apps/clipper/src/app/campaigns/[id]/page.tsx:65 |
+| `page:app/campaigns/[id]` | reads | `table:market.campaign_assets` | PRD v0.3.1 §14 kg.yaml features.F-C04; kode: lewat rpc campaign_detail (page.tsx baris 44) |
+| `page:app/campaigns/[id]` | reads | `table:market.campaigns` | PRD v0.3.1 §14 kg.yaml features.F-C04; kode: lewat rpc campaign_detail (page.tsx baris 44) |
+| `page:app/campaigns/[id]` | reads | `table:market.rate_rules` | PRD v0.3.1 §14 kg.yaml features.F-C04; kode: lewat rpc campaign_detail (page.tsx baris 44) |
+| `page:app/campaigns/[id]` | routes-to | `page:accounts/kyc` | apps/clipper/src/features/campaigns/fix.ts:13 (fixFor, features/claim/detail-cta.tsx baris 77) |
+| `page:app/campaigns/[id]` | routes-to | `page:app/social` | apps/clipper/src/features/campaigns/fix.ts:11 |
+| `page:app/campaigns/[id]` | routes-to | `page:app/tasks` | apps/clipper/src/app/campaigns/[id]/page.tsx:384 |
+| `page:app/campaigns/[id]` | wrapped-by | `layout:clipper` | apps/clipper/src/app/layout.tsx:31 |
+| `page:app/leaderboard` | reads | `table:market.leaderboard_campaign` | apps/clipper/src/app/leaderboard/page.tsx:40 (view api.leaderboard scope campaign) |
+| `page:app/leaderboard` | reads | `table:market.leaderboard_weekly` | apps/clipper/src/app/leaderboard/page.tsx:38 (view api.leaderboard scope week) |
+| `page:app/leaderboard` | routes-to | `page:app/campaigns/[id]` | apps/clipper/src/app/leaderboard/page.tsx:75 |
+| `page:app/leaderboard` | wrapped-by | `layout:clipper` | apps/clipper/src/app/layout.tsx:31 |
+| `page:app/login` | calls | `mod:auth` | apps/clipper/src/app/login/page.tsx:7 |
+| `page:app/login` | routes-to | `api:GET app/auth/callback` | packages/auth/src/actions.ts:62 (googleSignIn redirectTo origin app) |
+| `page:app/login` | routes-to | `page:accounts/onboarding` | packages/auth/src/server.ts:72 (requireClipper: belum consent → onboarding) |
+| `page:app/login` | routes-to | `page:app/campaigns` | apps/clipper/src/app/login/page.tsx:17 |
+| `page:app/login` | wrapped-by | `layout:clipper` | apps/clipper/src/app/layout.tsx:31 |
+| `page:app/notifications` | reads | `table:ops.notifications` | apps/clipper/src/app/notifications/page.tsx:38 |
+| `page:app/notifications` | wrapped-by | `layout:clipper` | apps/clipper/src/app/layout.tsx:31 |
+| `page:app/notifications` | writes | `table:ops.notifications` | apps/clipper/src/features/notifications/actions.ts:19 |
+| `page:app/offline` | routes-to | `page:app/campaigns` | apps/clipper/src/app/offline/page.tsx:12 |
+| `page:app/offline` | wrapped-by | `layout:clipper` | apps/clipper/src/app/layout.tsx:31 |
+| `page:app/profile` | reads | `table:market.profiles` | PRD v0.3.1 Lampiran B (market.profiles); kode baris 36 (view api.my_profile) |
+| `page:app/profile` | reads | `table:trust.score_events` | apps/clipper/src/app/profile/page.tsx:37 |
+| `page:app/profile` | routes-to | `page:app/leaderboard` | apps/clipper/src/app/profile/page.tsx:175 |
+| `page:app/profile` | wrapped-by | `layout:clipper` | apps/clipper/src/app/layout.tsx:31 |
+| `page:app/referral` | calls | `api:rpc core.my_referral_code` | apps/clipper/src/app/referral/page.tsx:20 |
+| `page:app/referral` | reads | `table:market.referrals` | apps/clipper/src/app/referral/page.tsx:21 |
+| `page:app/referral` | routes-to | `page:app/wallet` | PRD v0.3.1 §6 C5.3 (belum di kode: bonus referral tampil di halaman ini, tanpa link ke /wallet) |
+| `page:app/referral` | routes-to | `page:www/` | PRD v0.3.1 §6 C5.1; kode baris 27 (link hosts.web/?ref=) |
+| `page:app/referral` | wrapped-by | `layout:clipper` | apps/clipper/src/app/layout.tsx:31 |
+| `page:app/settings` | calls | `api:rpc identity.save_push_subscription` | apps/clipper/src/features/settings/actions.ts:47 |
+| `page:app/settings` | configured-by | `env:NEXT_PUBLIC_VAPID_PUBLIC_KEY` | apps/clipper/src/features/settings/push-card.tsx:13 |
+| `page:app/settings` | reads | `table:ops.notification_prefs` | apps/clipper/src/app/settings/page.tsx:23 |
+| `page:app/settings` | routes-to | `page:app/campaigns` | PRD v0.3.1 §6 C2.5 (belum di kode: halaman ini tanpa link ke /campaigns; lewat nav bawah layout:clipper) |
+| `page:app/settings` | wrapped-by | `layout:clipper` | apps/clipper/src/app/layout.tsx:31 |
+| `page:app/settings` | writes | `table:ops.notification_prefs` | apps/clipper/src/features/settings/actions.ts:29 |
+| `page:app/social` | configured-by | `env:NEXT_PUBLIC_GOOGLE_CLIENT_ID` | PRD v0.3.1 §15.7 client ID publik (belum di kode: app tidak membaca client ID; URL OAuth dibuat core/social, lihat mod:social) |
+| `page:app/social` | configured-by | `env:NEXT_PUBLIC_META_APP_ID` | PRD v0.3.1 §15.7 client ID publik (belum di kode: app tidak membaca client ID; URL OAuth dibuat core/social, lihat mod:social) |
+| `page:app/social` | configured-by | `env:NEXT_PUBLIC_TIKTOK_CLIENT_KEY` | PRD v0.3.1 §15.7 client ID publik (belum di kode: app tidak membaca client ID; URL OAuth dibuat core/social, lihat mod:social) |
+| `page:app/social` | reads | `table:tracking.social_accounts` | apps/clipper/src/app/social/page.tsx:55 |
+| `page:app/social` | routes-to | `api:GET app/api/oauth/[platform]/start` | apps/clipper/src/app/social/page.tsx:64 |
+| `page:app/social` | wrapped-by | `layout:clipper` | apps/clipper/src/app/layout.tsx:31 |
+| `page:app/tasks` | calls | `api:rpc core.appeal_submission` | apps/clipper/src/features/tasks/actions.ts:15 |
+| `page:app/tasks` | reads | `table:market.claims` | apps/clipper/src/app/tasks/page.tsx:45 |
+| `page:app/tasks` | reads | `table:tracking.submissions` | apps/clipper/src/app/tasks/page.tsx:47 |
+| `page:app/tasks` | reads | `table:tracking.view_snapshots` | PRD v0.3.1 §14 kg.yaml features.F-C07 (belum di kode: views dari submissions.counted_views/last_snapshot_at, page.tsx baris 48) |
+| `page:app/tasks` | routes-to | `api:GET app/api/oauth/[platform]/start` | apps/clipper/src/app/tasks/page.tsx:232 (sambung ulang akun) |
+| `page:app/tasks` | routes-to | `page:app/wallet` | apps/clipper/src/app/tasks/page.tsx:270 |
+| `page:app/tasks` | wrapped-by | `layout:clipper` | apps/clipper/src/app/layout.tsx:31 |
+| `page:app/wallet` | reads | `table:finance.ledger_accounts` | PRD v0.3.1 §14 kg.yaml features.F-C08; kode: view api.wallet_balances (features/wallet/data.ts baris 21) |
+| `page:app/wallet` | reads | `table:finance.ledger_entries` | PRD v0.3.1 §14 kg.yaml features.F-C08; kode baris 42 (view api.wallet_entries) |
+| `page:app/wallet` | reads | `table:finance.reward_codes` | apps/clipper/src/app/wallet/page.tsx:54 |
+| `page:app/wallet` | routes-to | `page:app/wallet/withdraw` | apps/clipper/src/app/wallet/page.tsx:100 |
+| `page:app/wallet` | wrapped-by | `layout:clipper` | apps/clipper/src/app/layout.tsx:31 |
+| `page:app/wallet/withdraw` | calls | `api:fn identity/disburse` | PRD v0.3.1 §6 C6.3 instant withdraw (belum di kode: instant = request_payout channel instant; core memicu bridge disburse, finance/payout_flow.sql baris 93) |
+| `page:app/wallet/withdraw` | calls | `api:rpc core.request_fulfillment` | apps/clipper/src/features/withdraw/actions.ts:54 |
+| `page:app/wallet/withdraw` | calls | `api:rpc core.request_payout` | apps/clipper/src/features/withdraw/actions.ts:23 |
+| `page:app/wallet/withdraw` | calls | `api:rpc identity.my_payout_methods` | apps/clipper/src/app/wallet/withdraw/page.tsx:47 |
+| `page:app/wallet/withdraw` | reads | `api:view identity.my_recipients` | apps/clipper/src/app/wallet/withdraw/page.tsx:48 |
+| `page:app/wallet/withdraw` | routes-to | `page:accounts/kyc` | apps/clipper/src/app/wallet/withdraw/page.tsx:74 |
+| `page:app/wallet/withdraw` | routes-to | `page:accounts/payout-methods` | apps/clipper/src/app/wallet/withdraw/page.tsx:63 |
+| `page:app/wallet/withdraw` | routes-to | `page:app/wallet` | apps/clipper/src/app/wallet/withdraw/page.tsx:184 |
+| `page:app/wallet/withdraw` | typed-by | `fn:custom_access_token_hook` | PRD v0.3.1 §6.1 C1.11 checklist KYC dari claim kyc; kode baris 55 (claim kyc) |
+| `page:app/wallet/withdraw` | wrapped-by | `layout:clipper` | apps/clipper/src/app/layout.tsx:31 |
+| `page:brand/` | reads | `table:market.org_members` | apps/brand/src/app/page.tsx:20 |
+| `page:brand/` | wrapped-by | `layout:brand` | apps/brand/src/app/layout.tsx:20 |
+| `page:brand/[org]/billing` | calls | `api:rpc core.request_refund` | apps/brand/src/features/billing/actions.ts:19 |
+| `page:brand/[org]/billing` | calls | `api:rpc core.org_credit` | apps/brand/src/app/[org]/billing/page.tsx:76 |
+| `page:brand/[org]/billing` | calls | `api:rpc core.pay_invoice_with_credit` | apps/brand/src/features/billing/actions.ts:36 |
+| `page:brand/[org]/billing` | reads | `table:finance.invoices` | apps/brand/src/app/[org]/billing/page.tsx:72 |
+| `page:brand/[org]/billing` | reads | `table:finance.org_refunds` | apps/brand/src/app/[org]/billing/page.tsx:75 |
+| `page:brand/[org]/billing` | routes-to | `page:accounts/security` | apps/brand/src/app/[org]/billing/page.tsx:115 |
+| `page:brand/[org]/billing` | routes-to | `page:brand/[org]/campaigns` | PRD v0.3.1 §6 B1.8 (belum di kode: halaman billing tanpa link ke daftar campaign; lewat sidebar layout:brand) |
+| `page:brand/[org]/billing` | wrapped-by | `layout:brand` | apps/brand/src/app/layout.tsx:20 |
+| `page:brand/[org]/campaigns` | calls | `api:rpc core.duplicate_campaign` | apps/brand/src/features/campaigns/actions.ts:12 |
+| `page:brand/[org]/campaigns` | reads | `table:market.campaigns` | apps/brand/src/app/[org]/campaigns/page.tsx:49 |
+| `page:brand/[org]/campaigns` | routes-to | `page:brand/[org]/campaigns/[id]` | apps/brand/src/app/[org]/campaigns/page.tsx:62 (base; href = base/id baris 117) |
+| `page:brand/[org]/campaigns` | routes-to | `page:brand/[org]/campaigns/new` | apps/brand/src/app/[org]/campaigns/page.tsx:70 |
+| `page:brand/[org]/campaigns` | wrapped-by | `layout:brand` | apps/brand/src/app/layout.tsx:20 |
+| `page:brand/[org]/campaigns/[id]` | calls | `api:rpc core.buy_pin` | apps/brand/src/features/controls/actions.ts:27 |
+| `page:brand/[org]/campaigns/[id]` | calls | `api:rpc core.control_campaign` | apps/brand/src/features/controls/actions.ts:17 |
+| `page:brand/[org]/campaigns/[id]` | calls | `api:rpc core.create_report_link` | apps/brand/src/features/reports/actions.ts:11 |
+| `page:brand/[org]/campaigns/[id]` | calls | `api:rpc core.invite_to_campaign` | apps/brand/src/features/invites/actions.ts:13 |
+| `page:brand/[org]/campaigns/[id]` | calls | `api:rpc core.revoke_report_link` | apps/brand/src/features/reports/actions.ts:20 |
+| `page:brand/[org]/campaigns/[id]` | reads | `table:finance.ledger_entries` | PRD v0.3.1 §14 kg.yaml features.F-B05; kode baris 59 (rpc campaign_stats) |
+| `page:brand/[org]/campaigns/[id]` | reads | `table:finance.reward_pools` | PRD v0.3.1 Lampiran B (finance.reward_pools); kode baris 59 (rpc campaign_stats) |
+| `page:brand/[org]/campaigns/[id]` | reads | `table:market.campaign_invites` | apps/brand/src/app/[org]/campaigns/[id]/page.tsx:62 |
+| `page:brand/[org]/campaigns/[id]` | reads | `table:market.campaigns` | apps/brand/src/app/[org]/campaigns/[id]/page.tsx:48 |
+| `page:brand/[org]/campaigns/[id]` | reads | `table:market.report_links` | apps/brand/src/app/[org]/campaigns/[id]/page.tsx:63 |
+| `page:brand/[org]/campaigns/[id]` | reads | `table:tracking.submissions` | PRD v0.3.1 §14 kg.yaml features.F-B05; kode baris 59 (rpc campaign_stats); per submisi lewat api:GET brand/[org]/campaigns/[id]/report.csv |
+| `page:brand/[org]/campaigns/[id]` | reads | `table:tracking.view_snapshots` | PRD v0.3.1 §14 kg.yaml features.F-B05; kode baris 59 (rpc campaign_stats); per snapshot lewat api:GET brand/[org]/campaigns/[id]/report.csv |
+| `page:brand/[org]/campaigns/[id]` | routes-to | `page:brand/[org]/billing` | apps/brand/src/features/controls/control-panel.tsx:285 |
+| `page:brand/[org]/campaigns/[id]` | routes-to | `page:brand/[org]/review` | PRD v0.3.1 §6 B3.1 (belum di kode: dashboard tanpa link ke review; lewat sidebar layout:brand) |
+| `page:brand/[org]/campaigns/[id]` | routes-to | `api:GET brand/[org]/campaigns/[id]/report.csv` | apps/brand/src/app/[org]/campaigns/[id]/page.tsx:168 |
+| `page:brand/[org]/campaigns/[id]` | routes-to | `page:www/r/[token]` | PRD v0.3.1 §6 B3.6; kode: features/reports/actions.ts baris 14 (hosts.web/r/<token>) |
+| `page:brand/[org]/campaigns/[id]` | wrapped-by | `layout:brand` | apps/brand/src/app/layout.tsx:20 |
+| `page:brand/[org]/campaigns/new` | renders | `comp:CampaignBuilder` | apps/brand/src/features/campaigns/builder-host.tsx:6 |
+| `page:brand/[org]/campaigns/new` | routes-to | `page:brand/[org]/billing` | apps/brand/src/features/campaigns/builder-host.tsx:44 |
+| `page:brand/[org]/campaigns/new` | wrapped-by | `layout:brand` | apps/brand/src/app/layout.tsx:20 |
+| `page:brand/[org]/review` | calls | `api:rpc core.record_review` | apps/brand/src/features/review/actions.ts:21 |
+| `page:brand/[org]/review` | wrapped-by | `layout:brand` | apps/brand/src/app/layout.tsx:20 |
+| `page:brand/[org]/reward-types` | calls | `api:rpc core.save_reward_type` | apps/brand/src/features/reward-types/actions.ts:43 |
+| `page:brand/[org]/reward-types` | calls | `api:rpc core.upload_reward_codes` | apps/brand/src/features/reward-types/actions.ts:55 |
+| `page:brand/[org]/reward-types` | wrapped-by | `layout:brand` | apps/brand/src/app/layout.tsx:20 |
+| `page:brand/[org]/settings` | calls | `api:rpc core.link_agency` | apps/brand/src/features/org/actions.ts:51 |
+| `page:brand/[org]/settings` | reads | `table:market.org_links` | apps/brand/src/app/[org]/settings/page.tsx:21 |
+| `page:brand/[org]/settings` | reads | `table:market.organizations` | apps/brand/src/app/[org]/settings/page.tsx:25 |
+| `page:brand/[org]/settings` | routes-to | `page:brand/` | PRD v0.3.1 §6 B2.3 (belum di kode: halaman ini tanpa link ke pemilih org; lewat menu avatar layout:brand) |
+| `page:brand/[org]/settings` | wrapped-by | `layout:brand` | apps/brand/src/app/layout.tsx:20 |
+| `page:brand/[org]/team` | calls | `api:rpc core.create_org_invite` | apps/brand/src/features/org/actions.ts:41 |
+| `page:brand/[org]/team` | reads | `table:market.org_members` | apps/brand/src/app/[org]/team/page.tsx:18 |
+| `page:brand/[org]/team` | reads | `table:market.organizations` | apps/brand/src/lib/org.ts:48 (getOrgContext) |
+| `page:brand/[org]/team` | wrapped-by | `layout:brand` | apps/brand/src/app/layout.tsx:20 |
+| `page:brand/new` | calls | `api:rpc core.create_org` | apps/brand/src/features/org/actions.ts:26 |
+| `page:brand/new` | calls | `mod:auth` | apps/brand/src/app/new/page.tsx:4 |
+| `page:brand/new` | routes-to | `page:accounts/kyc` | apps/brand/src/features/org/actions.ts:34 |
+| `page:brand/new` | routes-to | `page:brand/[org]/campaigns` | apps/brand/src/features/org/actions.ts:35 |
+| `page:brand/new` | wrapped-by | `layout:brand` | apps/brand/src/app/layout.tsx:20 |
+| `page:www/` | reads | `table:market.campaigns` | apps/web/src/features/landing/data.ts:10 |
+| `page:www/` | routes-to | `page:accounts/login` | apps/web/src/lib/session.ts:12 (clipperHref → loginUrl, dipakai features/landing/sections.tsx baris 61) |
+| `page:www/` | wrapped-by | `layout:web` | apps/web/src/app/layout.tsx:30 |
+| `page:www/c/[slug]` | reads | `table:bucket.campaign-covers` | apps/web/src/lib/cover.ts:5 (coverUrl, features/campaign-public/campaign-view.tsx baris 93) |
+| `page:www/c/[slug]` | reads | `table:market.campaigns` | apps/web/src/features/campaign-public/data.ts:53 |
+| `page:www/c/[slug]` | routes-to | `page:app/campaigns/[id]` | apps/web/src/features/campaign-public/campaign-view.tsx:97 |
+| `page:www/c/[slug]` | wrapped-by | `layout:web` | apps/web/src/app/layout.tsx:30 |
+| `page:www/legal/[doc]` | wrapped-by | `layout:web` | apps/web/src/app/layout.tsx:30 |
+| `page:www/r/[token]` | calls | `api:rpc core.report_by_token` | apps/web/src/features/report/data.ts:7 |
+| `page:www/r/[token]` | wrapped-by | `layout:web` | apps/web/src/app/layout.tsx:30 |
+| `layout:accounts` | calls | `mod:auth` | apps/accounts/src/features/hub/account-nav.tsx:6 |
+| `layout:accounts` | calls | `mod:db-core` | apps/accounts/package.json:16 |
+| `layout:accounts` | calls | `mod:db-identity` | apps/accounts/src/lib/identity.ts:2 |
+| `layout:accounts` | configured-by | `config:host.accounts` | packages/auth/src/index.ts:7 |
+| `layout:accounts` | renders | `mod:ui` | apps/accounts/src/app/layout.tsx:6 |
+| `layout:accounts` | routes-to | `page:accounts/` | PRD v0.3.1 §6.6 menu: Ringkasan akun; kode: features/hub/account-nav.tsx baris 11 |
+| `layout:accounts` | routes-to | `page:accounts/kyc` | apps/accounts/src/features/hub/account-nav.tsx:12 |
+| `layout:accounts` | routes-to | `page:accounts/payout-methods` | apps/accounts/src/features/hub/account-nav.tsx:13 |
+| `layout:accounts` | routes-to | `page:accounts/privacy` | apps/accounts/src/features/hub/account-nav.tsx:15 |
+| `layout:accounts` | routes-to | `page:accounts/security` | apps/accounts/src/features/hub/account-nav.tsx:14 |
+| `layout:accounts` | routes-to | `page:app/campaigns` | packages/auth/src/index.ts:33 (safeNext default, BackToApp features/hub/account-nav.tsx baris 62) |
+| `layout:accounts` | routes-to | `page:brand/` | PRD v0.3.1 §6.6 menu: Ke brand (kalau anggota org) (belum di kode di layout: tombol Ke brand hanya di page:accounts/, (account)/page.tsx baris 92) |
+| `layout:admin` | calls | `mod:auth` | apps/admin/src/features/shell/admin-shell.tsx:7 |
+| `layout:admin` | calls | `mod:db-core` | apps/admin/package.json:16 |
+| `layout:admin` | calls | `mod:db-identity` | apps/admin/package.json:16 |
+| `layout:admin` | configured-by | `config:host.admin` | packages/auth/src/index.ts:10 |
+| `layout:admin` | renders | `mod:ui` | apps/admin/src/app/layout.tsx:6 |
+| `layout:admin` | routes-to | `page:admin/` | PRD v0.3.1 §6.6 menu: Sidebar: Overview; kode: features/shell/nav.ts baris 10 (href /) |
+| `layout:admin` | routes-to | `page:admin/audit` | apps/admin/src/features/shell/nav.ts:20 |
+| `layout:admin` | routes-to | `page:admin/broadcast` | apps/admin/src/features/shell/nav.ts:21 |
+| `layout:admin` | routes-to | `page:admin/campaigns` | apps/admin/src/features/shell/nav.ts:11 |
+| `layout:admin` | routes-to | `page:admin/campaigns/new` | apps/admin/src/features/shell/nav.ts:12 |
+| `layout:admin` | routes-to | `page:admin/config` | apps/admin/src/features/shell/nav.ts:19 |
+| `layout:admin` | routes-to | `page:admin/finance` | apps/admin/src/features/shell/nav.ts:17 |
+| `layout:admin` | routes-to | `page:admin/fraud` | apps/admin/src/features/shell/nav.ts:15 |
+| `layout:admin` | routes-to | `page:admin/fulfillment` | apps/admin/src/features/shell/nav.ts:18 |
+| `layout:admin` | routes-to | `page:admin/login` | packages/auth/src/server.ts:100 (requireAdmin, (console)/layout.tsx baris 6) |
+| `layout:admin` | routes-to | `page:admin/pinned` | apps/admin/src/features/shell/nav.ts:13 |
+| `layout:admin` | routes-to | `page:admin/review` | apps/admin/src/features/shell/nav.ts:14 |
+| `layout:admin` | routes-to | `page:admin/users` | apps/admin/src/features/shell/nav.ts:16 |
+| `layout:brand` | calls | `mod:auth` | apps/brand/src/app/[org]/layout.tsx:3 |
+| `layout:brand` | calls | `mod:db-core` | apps/brand/package.json:16 |
+| `layout:brand` | configured-by | `config:host.brand` | packages/auth/src/index.ts:9 |
+| `layout:brand` | renders | `mod:ui` | apps/brand/src/app/layout.tsx:6 |
+| `layout:brand` | routes-to | `page:accounts/` | apps/brand/src/features/shell/user-menu.tsx:37 |
+| `layout:brand` | routes-to | `page:accounts/login` | packages/auth/src/proxy.ts:83 (loginUrl, next=brand) |
+| `layout:brand` | routes-to | `page:brand/` | PRD v0.3.1 §6.6 menu: Pemilih org (org sendiri + klien agency); kode: features/shell/user-menu.tsx baris 40 (href /, pemilih org) |
+| `layout:brand` | routes-to | `page:brand/[org]/billing` | apps/brand/src/app/[org]/layout.tsx:28 |
+| `layout:brand` | routes-to | `page:brand/[org]/campaigns` | apps/brand/src/app/[org]/layout.tsx:26 |
+| `layout:brand` | routes-to | `page:brand/[org]/review` | apps/brand/src/app/[org]/layout.tsx:27 |
+| `layout:brand` | routes-to | `page:brand/[org]/reward-types` | apps/brand/src/app/[org]/layout.tsx:29 |
+| `layout:brand` | routes-to | `page:brand/[org]/settings` | apps/brand/src/app/[org]/layout.tsx:31 |
+| `layout:brand` | routes-to | `page:brand/[org]/team` | apps/brand/src/app/[org]/layout.tsx:30 |
+| `layout:brand` | routes-to | `page:brand/new` | apps/brand/src/features/shell/org-switcher.tsx:56 |
+| `layout:brand` | routes-to | `page:www/` | PRD v0.3.1 §6.6 menu: Menu avatar: Keluar; kode: features/shell/user-menu.tsx baris 44 → signOut → hosts.web (packages/auth/src/actions.ts baris 70) |
+| `layout:clipper` | calls | `mod:auth` | apps/clipper/src/features/shell/chrome.ts:2 |
+| `layout:clipper` | calls | `mod:db-core` | apps/clipper/package.json:16 |
+| `layout:clipper` | calls | `mod:db-identity` | apps/clipper/package.json:16 |
+| `layout:clipper` | configured-by | `config:host.app` | packages/auth/src/index.ts:8 |
+| `layout:clipper` | renders | `mod:ui` | apps/clipper/src/app/layout.tsx:6 |
+| `layout:clipper` | routes-to | `ext:ai-clip` | apps/clipper/src/features/shell/account-menu.tsx:61 |
+| `layout:clipper` | routes-to | `ext:community` | apps/clipper/src/features/shell/account-menu.tsx:55 |
+| `layout:clipper` | routes-to | `page:accounts/` | apps/clipper/src/features/shell/account-menu.tsx:23 |
+| `layout:clipper` | routes-to | `page:app/campaigns` | apps/clipper/src/features/shell/app-chrome.tsx:32 |
+| `layout:clipper` | routes-to | `page:app/leaderboard` | apps/clipper/src/features/shell/account-menu.tsx:45 |
+| `layout:clipper` | routes-to | `page:app/login` | packages/auth/src/proxy.ts:84 |
+| `layout:clipper` | routes-to | `page:app/notifications` | apps/clipper/src/features/shell/app-chrome.tsx:53 |
+| `layout:clipper` | routes-to | `page:app/offline` | apps/clipper/public/sw.js:36 (fallback service worker, didaftarkan layout.tsx baris 41) |
+| `layout:clipper` | routes-to | `page:app/profile` | apps/clipper/src/features/shell/account-menu.tsx:42 |
+| `layout:clipper` | routes-to | `page:app/referral` | apps/clipper/src/features/shell/account-menu.tsx:48 |
+| `layout:clipper` | routes-to | `page:app/settings` | apps/clipper/src/features/shell/account-menu.tsx:51 |
+| `layout:clipper` | routes-to | `page:app/social` | apps/clipper/src/features/shell/app-chrome.tsx:35 |
+| `layout:clipper` | routes-to | `page:app/tasks` | apps/clipper/src/features/shell/app-chrome.tsx:33 |
+| `layout:clipper` | routes-to | `page:app/wallet` | apps/clipper/src/features/shell/app-chrome.tsx:34 |
+| `layout:clipper` | routes-to | `page:www/` | PRD v0.3.1 §6.6 menu: Menu avatar: Keluar; kode: features/shell/account-menu.tsx baris 76 → signOut → hosts.web (packages/auth/src/actions.ts baris 70) |
+| `layout:clipper` | wrapped-by | `mod:i18n` | apps/clipper/src/i18n/request.ts:3 |
+| `layout:web` | calls | `mod:db-core` | apps/web/src/lib/core.ts:2 (client anon app web) |
+| `layout:web` | configured-by | `config:host.www` | apps/web/src/app/layout.tsx:14 |
+| `layout:web` | renders | `mod:ui` | apps/web/src/app/layout.tsx:7 |
+| `layout:web` | routes-to | `page:accounts/login` | apps/web/src/components/site-shell.tsx:28 (Masuk = clipperHref(false) → loginUrl) |
+| `layout:web` | routes-to | `page:app/campaigns` | apps/web/src/lib/session.ts:11 (clipperHref, components/site-shell.tsx baris 33) |
+| `layout:web` | routes-to | `page:www/legal/[doc]` | apps/web/src/components/site-shell.tsx:59 |
+| `comp:CampaignBuilder` | calls | `api:rpc core.save_campaign` | packages/campaign-builder/src/types.ts:62 (BuilderActions.save; host: apps/brand/src/features/campaigns/actions.ts baris 25) |
+| `comp:CampaignBuilder` | reads | `table:finance.fee_rules` | apps/brand/src/features/campaigns/builder-context.ts:21 (BuilderContext dari host) |
+| `comp:CampaignBuilder` | reads | `table:market.reward_types` | apps/brand/src/features/campaigns/builder-context.ts:16 (BuilderContext dari host) |
+| `comp:CampaignBuilder` | renders | `mod:ui` | packages/campaign-builder/src/builder.tsx:4 |
+| `comp:CampaignBuilder` | writes | `table:bucket.campaign-assets` | packages/campaign-builder/src/types.ts:64 |
+| `comp:CampaignBuilder` | writes | `table:bucket.campaign-covers` | packages/campaign-builder/src/types.ts:64 |
+| `mod:auth` | calls | `ext:supabase-identity` | packages/auth/src/server.ts:15 |
+| `mod:auth` | calls | `ext:turnstile` | packages/auth/src/components.tsx:95 |
+| `mod:auth` | configured-by | `env:ADMIN_COOKIE_NAME` | PRD v0.3.1 §15.6 cookie admin host-only; kode: packages/auth/src/cookies.ts baris 13 (nama tetap clipper-admin-auth, bukan env) |
+| `mod:auth` | configured-by | `env:COOKIE_DOMAIN` | packages/auth/src/cookies.ts:14 |
+| `mod:auth` | configured-by | `env:NEXT_PUBLIC_IDENTITY_PUBLISHABLE_KEY` | packages/auth/src/cookies.ts:18 |
+| `mod:auth` | configured-by | `env:NEXT_PUBLIC_IDENTITY_URL` | packages/auth/src/cookies.ts:17 |
+| `mod:auth` | configured-by | `env:NEXT_PUBLIC_TURNSTILE_SITE_KEY` | apps/clipper/src/app/login/page.tsx:38 (prop turnstileSiteKey ke LoginForm) |
+| `mod:auth` | calls | `mod:db-core` | packages/auth/src/server.ts:5 (coreServer → createCoreClient) |
+| `mod:db-core` | calls | `ext:supabase-core` | packages/db-core/src/index.ts:11 |
+| `mod:db-core` | calls | `mod:auth` | PRD v0.3.1 §15.6 opsi accessToken (belum di kode: arah terbalik, @clipper/auth memanggil createCoreClient, packages/auth/src/server.ts baris 5; db-core hanya menerima accessToken) |
+| `mod:db-core` | configured-by | `env:NEXT_PUBLIC_CORE_PUBLISHABLE_KEY` | packages/db-core/src/index.ts:11 |
+| `mod:db-core` | configured-by | `env:NEXT_PUBLIC_CORE_URL` | packages/db-core/src/index.ts:11 |
+| `mod:db-identity` | calls | `ext:supabase-identity` | packages/db-identity/src/index.ts:17 |
+| `mod:db-identity` | calls | `mod:auth` | packages/db-identity/src/index.ts:8 (client sesi dari @clipper/auth) |
+| `mod:db-identity` | configured-by | `env:NEXT_PUBLIC_IDENTITY_PUBLISHABLE_KEY` | PRD v0.3.1 §15.7 (belum di kode: db-identity tidak membaca env; client sesi dibuat @clipper/auth, packages/auth/src/cookies.ts baris 18) |
+| `mod:db-identity` | configured-by | `env:NEXT_PUBLIC_IDENTITY_URL` | packages/db-identity/src/index.ts:17 |
+| `mod:db-identity` | guarded-by | `config:eslint.imports` | PRD v0.3.1 §15.3 aturan import; kode: scripts/check-arch.mjs baris 23, 30 (baris tidak menyebut nama node) |
+| `mod:social` | calls | `ext:google` | db/core/supabase/functions/_shared/social/youtube.ts:24 |
+| `mod:social` | calls | `ext:meta` | db/core/supabase/functions/_shared/social/instagram.ts:23 (Graph API Meta) |
+| `mod:social` | calls | `ext:tiktok` | db/core/supabase/functions/_shared/social/tiktok.ts:20 |
+| `mod:social` | configured-by | `env:YOUTUBE_API_KEY` | PRD v0.3.1 §11 + D-11 fallback kode deskripsi (belum di kode: adapter YouTube memakai token OAuth, tanpa API key) |
+| `mod:social` | configured-by | `env:NEXT_PUBLIC_GOOGLE_CLIENT_ID` | kode: _shared/social/mod.ts baris 19 (nama asli GOOGLE_CLIENT_ID) |
+| `mod:social` | configured-by | `env:NEXT_PUBLIC_META_APP_ID` | kode: _shared/social/mod.ts baris 18 (nama asli META_APP_ID) |
+| `mod:social` | configured-by | `env:NEXT_PUBLIC_TIKTOK_CLIENT_KEY` | kode: _shared/social/mod.ts baris 17 (nama asli TIKTOK_CLIENT_KEY) |
+| `api:GET accounts/auth/callback` | calls | `mod:auth` | apps/accounts/src/app/auth/callback/route.ts:1 |
+| `api:GET accounts/auth/callback` | routes-to | `page:accounts/onboarding` | packages/auth/src/proxy.ts:93 (user baru: guard app → onboarding) |
+| `api:GET accounts/auth/callback` | routes-to | `page:app/campaigns` | packages/auth/src/index.ts:33 (safeNext default, routes.ts baris 9) |
+| `api:GET accounts/auth/confirm` | calls | `mod:auth` | apps/accounts/src/app/auth/confirm/route.ts:1 |
+| `api:POST accounts/privacy/export` | calls | `api:fn identity/member-data` | apps/accounts/src/features/privacy/export.ts:24 |
+| `api:POST accounts/privacy/export` | calls | `mod:auth` | apps/accounts/src/features/privacy/export.ts:1 |
+| `api:POST accounts/privacy/export` | reads | `table:finance.fulfillments` | apps/accounts/src/features/privacy/export.ts:38 |
+| `api:POST accounts/privacy/export` | reads | `table:finance.payouts` | apps/accounts/src/features/privacy/export.ts:37 |
+| `api:POST accounts/privacy/export` | reads | `table:market.claims` | apps/accounts/src/features/privacy/export.ts:33 |
+| `api:POST accounts/privacy/export` | reads | `table:market.referrals` | apps/accounts/src/features/privacy/export.ts:40 |
+| `api:POST accounts/privacy/export` | reads | `table:ops.notifications` | apps/accounts/src/features/privacy/export.ts:39 |
+| `api:POST accounts/privacy/export` | reads | `table:tracking.social_accounts` | apps/accounts/src/features/privacy/export.ts:35 |
+| `api:POST accounts/privacy/export` | reads | `table:tracking.submissions` | apps/accounts/src/features/privacy/export.ts:34 |
+| `api:POST accounts/privacy/export` | reads | `table:trust.score_events` | apps/accounts/src/features/privacy/export.ts:41 |
+| `api:GET app/api/oauth/[platform]/callback` | calls | `api:fn core/social` | apps/clipper/src/app/api/oauth/[platform]/callback/route.ts:26 |
+| `api:GET app/api/oauth/[platform]/callback` | routes-to | `page:app/social` | apps/clipper/src/app/api/oauth/[platform]/callback/route.ts:15 |
+| `api:GET app/api/oauth/[platform]/start` | calls | `api:fn core/social` | apps/clipper/src/app/api/oauth/[platform]/start/route.ts:15 |
+| `api:GET app/api/oauth/[platform]/start` | calls | `mod:auth` | apps/clipper/src/app/api/oauth/[platform]/start/route.ts:3 |
+| `api:GET app/api/oauth/[platform]/start` | routes-to | `api:GET app/api/oauth/[platform]/callback` | apps/clipper/src/features/social/oauth.ts:16 (redirect_uri, start/route.ts baris 18) |
+| `api:GET app/auth/callback` | calls | `mod:auth` | apps/clipper/src/app/auth/callback/route.ts:1 |
+| `api:GET app/auth/callback` | routes-to | `page:accounts/onboarding` | packages/auth/src/proxy.ts:93 (user baru: guard app → onboarding) |
+| `api:GET app/auth/callback` | routes-to | `page:app/campaigns` | packages/auth/src/index.ts:33 (safeNext default, routes.ts baris 9) |
+| `api:GET brand/[org]/campaigns/[id]/report.csv` | calls | `mod:auth` | apps/brand/src/app/[org]/campaigns/[id]/report.csv/route.ts:1 |
+| `api:GET brand/[org]/campaigns/[id]/report.csv` | reads | `table:market.campaigns` | apps/brand/src/app/[org]/campaigns/[id]/report.csv/route.ts:15 |
+| `api:GET brand/[org]/campaigns/[id]/report.csv` | reads | `table:market.profiles` | apps/brand/src/app/[org]/campaigns/[id]/report.csv/route.ts:35 |
+| `api:GET brand/[org]/campaigns/[id]/report.csv` | reads | `table:tracking.submissions` | apps/brand/src/app/[org]/campaigns/[id]/report.csv/route.ts:21 |
+| `api:GET brand/[org]/campaigns/[id]/report.csv` | reads | `table:tracking.view_snapshots` | apps/brand/src/app/[org]/campaigns/[id]/report.csv/route.ts:42 |
 | `api:GET identity/.well-known/openid-configuration` | reads | `config:identity-signing-key` | PRD v0.3.1 §15.6 public key di JWKS |
-| `api:fn core/bridge` | configured-by | `env:BRIDGE_SECRET_IDENTITY_TO_CORE` | PRD v0.3.1 §15.5 HMAC per arah |
-| `api:fn core/bridge` | guarded-by | `policy:bridge-hmac` | PRD v0.3.1 §15.5 HMAC per arah |
-| `api:fn core/bridge` | reads | `table:finance.fulfillments` | PRD v0.3.1 §15.5 alur 3 reward fisik |
-| `api:fn core/bridge` | reads | `table:finance.ledger_entries` | PRD v0.3.1 §15.5 alur 7 cek saldo |
-| `api:fn core/bridge` | reads | `table:finance.payout_batches` | PRD v0.3.1 §15.5 alur 3 get_batch |
-| `api:fn core/bridge` | reads | `table:finance.payouts` | PRD v0.3.1 §15.5 alur 3 get_batch |
-| `api:fn core/bridge` | writes | `table:finance.payout_batches` | PRD v0.3.1 §15.5 alur 3 attach_export |
-| `api:fn core/bridge` | writes | `table:finance.payouts` | PRD v0.3.1 §15.5 alur 3 hold + alur 9 attach_proof |
-| `api:fn core/bridge` | writes | `table:market.profiles` | PRD v0.3.1 §15.5 alur 7 anonimkan |
-| `api:fn core/bridge` | writes | `table:tracking.social_accounts` | PRD v0.3.1 §15.5 alur 7 close_account |
-| `api:fn core/bridge` | writes | `table:trust.fraud_flags` | PRD v0.3.1 §15.5 alur 6 |
-| `api:fn core/bridge` | writes | `table:vault.social-tokens` | PRD v0.3.1 §15.5 alur 7 hapus token |
-| `api:fn core/fulfill` | calls | `ext:brand-webhook` | PRD v0.3.1 Lampiran A.3 core/fulfill webhook |
-| `api:fn core/fulfill` | guarded-by | `policy:fn-cron-key` | PRD v0.3.1 §15.6 worker pg_cron |
-| `api:fn core/fulfill` | reads | `table:finance.fulfillments` | PRD v0.3.1 Lampiran A.3 core/fulfill |
-| `api:fn core/fulfill` | reads | `table:vault.social-tokens` | PRD v0.3.1 Lampiran A.3 core/fulfill secret webhook di Vault core |
-| `api:fn core/fulfill` | writes | `table:finance.fulfillments` | PRD v0.3.1 Lampiran A.3 core/fulfill delivered/attempts |
-| `api:fn core/fulfill` | writes | `table:finance.reward_codes` | PRD v0.3.1 Lampiran A.3 core/fulfill pasang kode |
-| `api:fn core/notify` | calls | `api:fn identity/bridge` | PRD v0.3.1 §15.5 alur 4 |
-| `api:fn core/notify` | configured-by | `env:BRIDGE_SECRET_CORE_TO_IDENTITY` | PRD v0.3.1 §15.5 HMAC per arah |
-| `api:fn core/notify` | configured-by | `env:SUPABASE_DB_URL` | PRD v0.3.1 §15.8 Queue lewat koneksi Postgres langsung |
-| `api:fn core/notify` | guarded-by | `policy:fn-cron-key` | PRD v0.3.1 §15.6 worker dipicu pg_cron |
-| `api:fn core/notify` | subscribes | `event:queue.email` | PRD v0.3.1 §15.5 alur 4 |
-| `api:fn core/refresh-tokens` | calls | `api:rpc core.store_social_token` | PRD v0.3.1 Lampiran A.3 core/refresh-tokens |
-| `api:fn core/refresh-tokens` | calls | `mod:social` | PRD v0.3.1 §11 refreshToken |
-| `api:fn core/refresh-tokens` | configured-by | `env:GOOGLE_CLIENT_SECRET` | PRD v0.3.1 §11 kolom token |
-| `api:fn core/refresh-tokens` | configured-by | `env:META_APP_SECRET` | PRD v0.3.1 §11 kolom token |
-| `api:fn core/refresh-tokens` | configured-by | `env:TIKTOK_CLIENT_SECRET` | PRD v0.3.1 §11 kolom token |
-| `api:fn core/refresh-tokens` | guarded-by | `policy:fn-cron-key` | PRD v0.3.1 §15.6 worker dipicu pg_cron |
-| `api:fn core/refresh-tokens` | writes | `table:tracking.social_accounts` | PRD v0.3.1 §7 F-C02 status token |
-| `api:fn core/refresh-tokens` | writes | `table:vault.social-tokens` | PRD v0.3.1 §11 kolom token |
-| `api:fn core/social` | calls | `api:rpc core.missing_brief_tags` | PRD v0.3.1 Lampiran A.3 core/social validasi caption saat submit |
-| `api:fn core/social` | calls | `api:rpc core.store_social_token` | PRD v0.3.1 Lampiran A.3 core/social tukar code → token |
-| `api:fn core/social` | calls | `mod:social` | PRD v0.3.1 §11 PlatformAdapter |
-| `api:fn core/social` | configured-by | `env:GOOGLE_CLIENT_SECRET` | PRD v0.3.1 §15.7 Edge Functions core |
-| `api:fn core/social` | configured-by | `env:META_APP_SECRET` | PRD v0.3.1 §15.7 Edge Functions core |
-| `api:fn core/social` | configured-by | `env:TIKTOK_CLIENT_SECRET` | PRD v0.3.1 §15.7 Edge Functions core |
-| `api:fn core/social` | guarded-by | `policy:fn-verify-jwt` | PRD v0.3.1 §15.6 verify_jwt=false + JWKS identity |
-| `api:fn core/social` | reads | `table:market.claims` | PRD v0.3.1 §7 F-C06 video setelah claim |
-| `api:fn core/social` | writes | `table:tracking.social_accounts` | PRD v0.3.1 §14 kg.yaml features.F-C02 |
-| `api:fn core/social` | writes | `table:tracking.submissions` | PRD v0.3.1 §14 kg.yaml features.F-C06 |
-| `api:fn core/social` | writes | `table:vault.social-tokens` | PRD v0.3.1 §15.8 token sosmed di Vault core |
-| `api:fn core/track-worker` | calls | `api:rpc core.missing_brief_tags` | PRD v0.3.1 Lampiran A.3 core/track-worker cek ulang caption tiap snapshot |
-| `api:fn core/track-worker` | calls | `fn:accrue_earnings` | PRD v0.3.1 §11 pipeline |
-| `api:fn core/track-worker` | calls | `fn:reverse_earning` | PRD v0.3.1 §11 post dihapus → hangus |
-| `api:fn core/track-worker` | calls | `mod:social` | PRD v0.3.1 §11 fetchMetrics |
-| `api:fn core/track-worker` | configured-by | `env:SUPABASE_DB_URL` | PRD v0.3.1 §15.8 Queue lewat koneksi Postgres langsung |
-| `api:fn core/track-worker` | guarded-by | `policy:fn-cron-key` | PRD v0.3.1 §15.6 worker dipicu pg_cron |
-| `api:fn core/track-worker` | reads | `table:tracking.submissions` | PRD v0.3.1 §11 pipeline |
-| `api:fn core/track-worker` | reads | `table:vault.social-tokens` | PRD v0.3.1 §11 + §15.8 |
-| `api:fn core/track-worker` | subscribes | `event:queue.tracking` | PRD v0.3.1 §11 pipeline |
-| `api:fn core/track-worker` | writes | `table:tracking.view_snapshots` | PRD v0.3.1 §11 pipeline |
-| `api:fn core/track-worker` | writes | `table:trust.fraud_flags` | PRD v0.3.1 §12 FR-01–03, 06, 08–11 dari snapshot |
-| `api:fn identity/admin-auth` | guarded-by | `policy:identity.admin-aal2` | PRD v0.3.1 Lampiran A.3 identity/admin-auth: admin aal2 |
-| `api:fn identity/admin-auth` | writes | `table:auth.users` | PRD v0.3.1 Lampiran A.3 identity/admin-auth (invite, ban_duration) |
-| `api:fn identity/bridge` | calls | `api:rpc identity.shared_device_groups` | PRD v0.3.1 Lampiran A.3 identity/bridge fraud_device_scan |
-| `api:fn identity/bridge` | calls | `ext:resend` | PRD v0.3.1 §15.5 alur 4 + §15.8 email |
-| `api:fn identity/bridge` | calls | `ext:web-push` | PRD v0.3.1 Lampiran A.3 identity/bridge send_push |
-| `api:fn identity/bridge` | configured-by | `env:BRIDGE_SECRET_CORE_TO_IDENTITY` | PRD v0.3.1 §15.5 HMAC per arah |
-| `api:fn identity/bridge` | configured-by | `env:RESEND_API_KEY` | PRD v0.3.1 §15.7 |
-| `api:fn identity/bridge` | configured-by | `env:VAPID_PRIVATE_KEY` | PRD v0.3.1 §15.7 |
-| `api:fn identity/bridge` | guarded-by | `policy:bridge-hmac` | PRD v0.3.1 §15.5 HMAC per arah |
-| `api:fn identity/bridge` | reads | `table:auth.users` | PRD v0.3.1 §15.5 alur 4 cari email |
-| `api:fn identity/delete-account` | calls | `api:fn core/bridge` | PRD v0.3.1 §15.5 alur 7 |
-| `api:fn identity/delete-account` | configured-by | `env:BRIDGE_SECRET_IDENTITY_TO_CORE` | PRD v0.3.1 §15.5 HMAC per arah |
-| `api:fn identity/delete-account` | guarded-by | `policy:fn-verify-jwt` | PRD v0.3.1 §15.6 verify_jwt=false + JWKS identity |
-| `api:fn identity/delete-account` | guarded-by | `policy:identity.rls-self` | PRD v0.3.1 §15.5 alur 7 pemilik akun |
-| `api:fn identity/delete-account` | writes | `table:auth.users` | PRD v0.3.1 §15.5 alur 7 |
-| `api:fn identity/delete-account` | writes | `table:bucket.kyc-docs` | PRD v0.3.1 §15.5 alur 7 hapus foto KTP |
-| `api:fn identity/delete-account` | writes | `table:member.consents` | PRD v0.3.1 §15.5 alur 7 hapus PII (kecuali wajib pajak) |
-| `api:fn identity/delete-account` | writes | `table:member.kyc_records` | PRD v0.3.1 §15.5 alur 7 hapus PII (kecuali wajib pajak) |
-| `api:fn identity/delete-account` | writes | `table:member.payout_methods` | PRD v0.3.1 §15.5 alur 7 hapus PII (kecuali wajib pajak) |
-| `api:fn identity/delete-account` | writes | `table:member.recipient_details` | PRD v0.3.1 §15.5 alur 7 hapus PII (kecuali wajib pajak) |
-| `api:fn identity/disburse` | calls | `api:fn core/bridge` | PRD v0.3.1 §15.5 alur 11 get_payout + mark_instant |
-| `api:fn identity/disburse` | calls | `ext:disbursement` | PRD v0.3.1 Lampiran A.3 identity/disburse |
-| `api:fn identity/disburse` | configured-by | `env:DISBURSEMENT_API_KEY` | PRD v0.3.1 §15.7 |
-| `api:fn identity/disburse` | configured-by | `env:PII_ENC_KEY` | PRD v0.3.1 §15.7 dekripsi rekening |
-| `api:fn identity/disburse` | guarded-by | `policy:fn-verify-jwt` | PRD v0.3.1 §15.6 dipanggil user |
-| `api:fn identity/disburse` | reads | `table:member.payout_methods` | PRD v0.3.1 Lampiran A.3 identity/disburse dekripsi rekening |
-| `api:fn identity/member-data` | calls | `api:rpc identity.store_kyc` | PRD v0.3.1 Lampiran A.3 identity/member-data submit KYC |
-| `api:fn identity/member-data` | calls | `api:rpc identity.store_payout_method` | PRD v0.3.1 Lampiran A.3 identity/member-data tambah rekening |
-| `api:fn identity/member-data` | calls | `api:rpc identity.store_recipient` | PRD v0.3.1 Lampiran A.3 identity/member-data data penerima |
-| `api:fn identity/member-data` | configured-by | `env:PII_ENC_KEY` | PRD v0.3.1 §14 kg.yaml E-05 nik_enc, E-16 account_no_enc, E-29 data_enc |
-| `api:fn identity/member-data` | configured-by | `env:PII_HMAC_KEY` | PRD v0.3.1 §14 kg.yaml E-05 nik_hash, E-16 account_no_hash |
-| `api:fn identity/member-data` | guarded-by | `policy:fn-verify-jwt` | PRD v0.3.1 §15.6 verify_jwt=false + JWKS identity |
-| `api:fn identity/member-data` | guarded-by | `policy:identity.rls-self` | PRD v0.3.1 §15.4 fungsi verifikasi JWT, hanya baris milik sub |
-| `api:fn identity/member-data` | guarded-by | `policy:identity.unique-identity` | PRD v0.3.1 §15.4 SQL simpan PII khusus service role |
-| `api:fn identity/member-data` | reads | `table:member.kyc_records` | PRD v0.3.1 §7 F-C09 nama rekening = nama KYC |
-| `api:fn identity/member-data` | writes | `table:member.consents` | PRD v0.3.1 §16 consent KYC |
-| `api:fn identity/member-data` | writes | `table:member.kyc_records` | PRD v0.3.1 §14 kg.yaml features.F-C10 |
-| `api:fn identity/member-data` | writes | `table:member.payout_methods` | PRD v0.3.1 §14 kg.yaml features.F-C10/F-C09 |
-| `api:fn identity/member-data` | writes | `table:member.recipient_details` | PRD v0.3.1 §14 kg.yaml E-29 |
-| `api:fn identity/pii-export` | calls | `api:fn core/bridge` | PRD v0.3.1 §15.5 alur 3 get_batch |
-| `api:fn identity/pii-export` | configured-by | `env:BRIDGE_SECRET_IDENTITY_TO_CORE` | PRD v0.3.1 §15.5 HMAC per arah |
-| `api:fn identity/pii-export` | configured-by | `env:PII_ENC_KEY` | PRD v0.3.1 §15.5 alur 3 dekripsi |
-| `api:fn identity/pii-export` | guarded-by | `policy:fn-verify-jwt` | PRD v0.3.1 §15.6 verify_jwt=false + JWKS identity |
-| `api:fn identity/pii-export` | guarded-by | `policy:identity.admin-aal2` | PRD v0.3.1 §15.5 alur 3 admin_finance aal2 |
-| `api:fn identity/pii-export` | reads | `table:member.consents` | PRD v0.3.1 §15.5 alur 3 |
-| `api:fn identity/pii-export` | reads | `table:member.kyc_records` | PRD v0.3.1 §15.5 alur 3 |
-| `api:fn identity/pii-export` | reads | `table:member.payout_methods` | PRD v0.3.1 §15.5 alur 3 |
-| `api:fn identity/pii-export` | reads | `table:member.recipient_details` | PRD v0.3.1 §15.5 alur 3 |
-| `api:fn identity/pii-export` | writes | `table:bucket.payout-proofs` | PRD v0.3.1 §15.5 alur 9 bukti transfer |
-| `api:fn identity/pii-export` | writes | `table:bucket.pii-exports` | PRD v0.3.1 §15.5 alur 3 CSV bucket privat |
-| `api:fn identity/pii-export` | writes | `table:member.audit_logs` | PRD v0.3.1 §15.5 alur 3 akses tercatat |
-| `api:rpc core.accept_org_invite` | reads | `table:market.org_invites` | PRD v0.3.1 §15.5 alur 5 |
-| `api:rpc core.accept_org_invite` | writes | `table:market.org_invites` | PRD v0.3.1 Lampiran A.3 accept_org_invite |
-| `api:rpc core.accept_org_invite` | writes | `table:market.org_members` | PRD v0.3.1 §15.5 alur 5 |
-| `api:rpc core.accept_org_invite` | writes | `table:market.profiles` | PRD v0.3.1 §15.5 alur 5 profil dibuat dulu |
-| `api:rpc core.appeal_submission` | writes | `table:tracking.submissions` | PRD v0.3.1 Lampiran A.3 appeal_submission |
-| `api:rpc core.appeal_submission` | writes | `table:trust.review_decisions` | PRD v0.3.1 Lampiran A.3 appeal_submission |
-| `api:rpc core.approve_payout_batch` | writes | `table:finance.payout_batches` | PRD v0.3.1 Lampiran A.3 approve_payout_batch |
-| `api:rpc core.buy_pin` | writes | `table:finance.invoices` | PRD v0.3.1 Lampiran A.3 buy_pin |
-| `api:rpc core.claim_campaign` | reads | `table:market.campaigns` | PRD v0.3.1 §7 F-C05 kuota & eligibility |
-| `api:rpc core.claim_campaign` | reads | `table:market.profiles` | PRD v0.3.1 §15.6 cek status E-01 |
-| `api:rpc core.claim_campaign` | writes | `table:market.claims` | PRD v0.3.1 §14 kg.yaml features.F-C05 |
-| `api:rpc core.confirm_invoice_payment` | guarded-by | `policy:core.admin-aal2` | PRD v0.3.1 §15.6 aal2 + §4 RBAC |
-| `api:rpc core.confirm_invoice_payment` | writes | `table:finance.invoices` | PRD v0.3.1 §9 F-A08 |
-| `api:rpc core.confirm_invoice_payment` | writes | `table:finance.ledger_entries` | PRD v0.3.1 §14 jurnal bayar invoice |
-| `api:rpc core.confirm_invoice_payment` | writes | `table:finance.reward_pools` | PRD v0.3.1 Lampiran A.3 confirm_invoice_payment |
-| `api:rpc core.confirm_invoice_payment` | writes | `table:ops.audit_logs` | PRD v0.3.1 §9 F-A11 semua aksi admin/finance |
-| `api:rpc core.control_campaign` | writes | `table:finance.invoices` | PRD v0.3.1 Lampiran A.3 control_campaign |
-| `api:rpc core.control_campaign` | writes | `table:market.campaigns` | PRD v0.3.1 Lampiran A.3 control_campaign |
-| `api:rpc core.control_campaign` | writes | `table:market.rate_rules` | PRD v0.3.1 Lampiran A.3 control_campaign |
-| `api:rpc core.create_org` | writes | `table:market.org_members` | PRD v0.3.1 Lampiran A.3 create_org |
-| `api:rpc core.create_org` | writes | `table:market.organizations` | PRD v0.3.1 Lampiran A.3 create_org |
-| `api:rpc core.create_org_invite` | guarded-by | `policy:core.org-role` | PRD v0.3.1 §4 brand_owner kelola member |
-| `api:rpc core.create_org_invite` | writes | `table:market.org_invites` | PRD v0.3.1 §15.5 alur 5 |
-| `api:rpc core.create_payout_batch` | guarded-by | `policy:core.admin-aal2` | PRD v0.3.1 §15.6 aal2 + §4 RBAC |
-| `api:rpc core.create_payout_batch` | reads | `table:finance.payouts` | PRD v0.3.1 §9 F-A08 |
-| `api:rpc core.create_payout_batch` | writes | `table:finance.payout_batches` | PRD v0.3.1 §9 F-A08 + E-26 |
-| `api:rpc core.create_payout_batch` | writes | `table:finance.payouts` | PRD v0.3.1 Lampiran A.3 create_payout_batch |
-| `api:rpc core.create_payout_batch` | writes | `table:ops.audit_logs` | PRD v0.3.1 §9 F-A11 semua aksi admin/finance |
-| `api:rpc core.create_report_link` | guarded-by | `policy:core.org-role` | PRD v0.3.1 Lampiran A.2 create_report_link |
+| `api:fn core/bridge` | configured-by | `env:BRIDGE_SECRET_IDENTITY_TO_CORE` | db/core/supabase/functions/bridge/index.ts:10 |
+| `api:fn core/bridge` | guarded-by | `policy:bridge-hmac` | db/core/supabase/functions/bridge/handler.ts:141 |
+| `api:fn core/bridge` | reads | `table:finance.fulfillments` | db/core/supabase/schemas/api/bridge.sql:206 (rpc bridge_fulfillment_export) |
+| `api:fn core/bridge` | reads | `table:finance.ledger_entries` | db/core/supabase/schemas/api/bridge.sql:109 (rpc bridge_close_account: cek saldo) |
+| `api:fn core/bridge` | reads | `table:finance.payout_batches` | db/core/supabase/schemas/api/bridge.sql:11 (rpc bridge_get_batch) |
+| `api:fn core/bridge` | reads | `table:finance.payouts` | db/core/supabase/schemas/api/bridge.sql:22 (rpc bridge_get_batch) |
+| `api:fn core/bridge` | writes | `table:finance.payout_batches` | db/core/supabase/schemas/api/bridge.sql:54 (rpc bridge_attach_export) |
+| `api:fn core/bridge` | writes | `table:finance.payouts` | db/core/supabase/schemas/api/bridge.sql:46 (hold, bridge_attach_export), db/core/supabase/schemas/api/bridge.sql:77 (bridge_attach_proof) |
+| `api:fn core/bridge` | writes | `table:market.profiles` | db/core/supabase/schemas/api/bridge.sql:130 (rpc bridge_close_account: anonimkan) |
+| `api:fn core/bridge` | writes | `table:tracking.social_accounts` | db/core/supabase/schemas/api/bridge.sql:128 (rpc bridge_close_account) |
+| `api:fn core/bridge` | writes | `table:trust.fraud_flags` | db/core/supabase/schemas/api/bridge.sql:91 (rpc bridge_raise_fraud_flag → trust.raise_flag) |
+| `api:fn core/bridge` | writes | `table:vault.social-tokens` | db/core/supabase/schemas/api/bridge.sql:125 (rpc bridge_close_account: hapus token) |
+| `api:fn core/bridge` | calls | `api:fn identity/bridge` | db/core/supabase/functions/bridge/handler.ts:129 (cron disburse & ban_user → identity) |
+| `api:fn core/fulfill` | calls | `ext:brand-webhook` | db/core/supabase/functions/fulfill/fulfill.ts:115 |
+| `api:fn core/fulfill` | guarded-by | `policy:fn-cron-key` | db/core/supabase/functions/fulfill/index.ts:10 |
+| `api:fn core/fulfill` | reads | `table:finance.fulfillments` | db/core/supabase/schemas/api/worker.sql:472 (rpc worker_fulfillments_due) |
+| `api:fn core/fulfill` | reads | `table:vault.social-tokens` | db/core/supabase/schemas/api/worker.sql:482 (secret webhook reward type di Vault core) |
+| `api:fn core/fulfill` | writes | `table:finance.fulfillments` | db/core/supabase/schemas/api/worker.sql:538 (rpc worker_fulfillment_result) |
+| `api:fn core/fulfill` | writes | `table:finance.reward_codes` | db/core/supabase/schemas/api/worker.sql:517 (rpc worker_assign_code) |
+| `api:fn core/notify` | calls | `api:fn identity/bridge` | db/core/supabase/functions/notify/notify.ts:88 |
+| `api:fn core/notify` | configured-by | `env:BRIDGE_SECRET_CORE_TO_IDENTITY` | db/core/supabase/functions/_shared/bridge.ts:66 |
+| `api:fn core/notify` | configured-by | `env:SUPABASE_DB_URL` | PRD v0.3.1 §15.8 Queue lewat koneksi Postgres langsung (belum di kode: queue dibaca lewat rpc api.worker_dequeue dengan secret key, bukan koneksi Postgres) |
+| `api:fn core/notify` | guarded-by | `policy:fn-cron-key` | db/core/supabase/functions/notify/index.ts:16 |
+| `api:fn core/notify` | subscribes | `event:queue.email` | db/core/supabase/functions/notify/notify.ts:49 |
+| `api:fn core/refresh-tokens` | calls | `api:rpc core.store_social_token` | db/core/supabase/functions/refresh-tokens/refresh.ts:43 |
+| `api:fn core/refresh-tokens` | calls | `mod:social` | db/core/supabase/functions/refresh-tokens/index.ts:5 |
+| `api:fn core/refresh-tokens` | configured-by | `env:GOOGLE_CLIENT_SECRET` | db/core/supabase/functions/_shared/social/mod.ts:19 |
+| `api:fn core/refresh-tokens` | configured-by | `env:META_APP_SECRET` | db/core/supabase/functions/_shared/social/mod.ts:18 |
+| `api:fn core/refresh-tokens` | configured-by | `env:TIKTOK_CLIENT_SECRET` | db/core/supabase/functions/_shared/social/mod.ts:17 |
+| `api:fn core/refresh-tokens` | guarded-by | `policy:fn-cron-key` | db/core/supabase/functions/refresh-tokens/index.ts:11 |
+| `api:fn core/refresh-tokens` | writes | `table:tracking.social_accounts` | db/core/supabase/schemas/api/worker.sql:278 (rpc worker_account_status) |
+| `api:fn core/refresh-tokens` | writes | `table:vault.social-tokens` | db/core/supabase/functions/refresh-tokens/refresh.ts:43 (store_social_token → Vault) |
+| `api:fn core/social` | calls | `api:rpc core.missing_brief_tags` | db/core/supabase/functions/social/handler.ts:290 |
+| `api:fn core/social` | calls | `api:rpc core.store_social_token` | db/core/supabase/schemas/api/worker.sql:349 (rpc worker_upsert_social_account) |
+| `api:fn core/social` | calls | `mod:social` | db/core/supabase/functions/social/handler.ts:20 |
+| `api:fn core/social` | configured-by | `env:GOOGLE_CLIENT_SECRET` | db/core/supabase/functions/_shared/social/mod.ts:19 |
+| `api:fn core/social` | configured-by | `env:META_APP_SECRET` | db/core/supabase/functions/_shared/social/mod.ts:18 |
+| `api:fn core/social` | configured-by | `env:TIKTOK_CLIENT_SECRET` | db/core/supabase/functions/_shared/social/mod.ts:17 |
+| `api:fn core/social` | guarded-by | `policy:fn-verify-jwt` | db/core/supabase/functions/social/handler.ts:277 |
+| `api:fn core/social` | reads | `table:market.claims` | db/core/supabase/functions/social/handler.ts:282 |
+| `api:fn core/social` | writes | `table:tracking.social_accounts` | db/core/supabase/schemas/api/worker.sql:342 (rpc worker_upsert_social_account) |
+| `api:fn core/social` | writes | `table:tracking.submissions` | db/core/supabase/schemas/api/worker.sql:422 (rpc worker_create_submission) |
+| `api:fn core/social` | writes | `table:vault.social-tokens` | db/core/supabase/schemas/api/worker.sql:349 (api.store_social_token) |
+| `api:fn core/track-worker` | calls | `api:rpc core.missing_brief_tags` | db/core/supabase/schemas/api/worker.sql:152 (rpc worker_record_snapshot) |
+| `api:fn core/track-worker` | calls | `fn:accrue_earnings` | db/core/supabase/schemas/api/worker.sql:214 (rpc worker_record_snapshot) |
+| `api:fn core/track-worker` | calls | `fn:reverse_earning` | db/core/supabase/schemas/api/worker.sql:250 (rpc worker_post_gone) |
+| `api:fn core/track-worker` | calls | `mod:social` | db/core/supabase/functions/track-worker/index.ts:6 |
+| `api:fn core/track-worker` | configured-by | `env:SUPABASE_DB_URL` | PRD v0.3.1 §15.8 Queue lewat koneksi Postgres langsung (belum di kode: queue dibaca lewat rpc api.worker_dequeue dengan secret key, bukan koneksi Postgres) |
+| `api:fn core/track-worker` | guarded-by | `policy:fn-cron-key` | db/core/supabase/functions/track-worker/index.ts:12 |
+| `api:fn core/track-worker` | reads | `table:tracking.submissions` | db/core/supabase/schemas/api/worker.sql:47 (rpc worker_submission_context) |
+| `api:fn core/track-worker` | reads | `table:vault.social-tokens` | db/core/supabase/schemas/api/worker.sql:53 (rpc worker_submission_context) |
+| `api:fn core/track-worker` | subscribes | `event:queue.tracking` | db/core/supabase/functions/track-worker/worker.ts:116 |
+| `api:fn core/track-worker` | writes | `table:tracking.view_snapshots` | db/core/supabase/schemas/api/worker.sql:144 (rpc worker_record_snapshot) |
+| `api:fn core/track-worker` | writes | `table:trust.fraud_flags` | db/core/supabase/schemas/api/worker.sql:154 (rpc worker_record_snapshot → trust.raise_flag) |
+| `api:fn identity/admin-auth` | guarded-by | `policy:identity.admin-aal2` | db/identity/supabase/functions/admin-auth/handler.ts:33 |
+| `api:fn identity/admin-auth` | writes | `table:auth.users` | db/identity/supabase/functions/admin-auth/handler.ts:51 (invite; ban_duration lewat _shared/moderation.ts) |
+| `api:fn identity/bridge` | calls | `api:rpc identity.shared_device_groups` | db/identity/supabase/functions/bridge/handler.ts:113 |
+| `api:fn identity/bridge` | calls | `ext:resend` | db/identity/supabase/functions/bridge/index.ts:28 |
+| `api:fn identity/bridge` | calls | `ext:web-push` | db/identity/supabase/functions/bridge/index.ts:29 |
+| `api:fn identity/bridge` | configured-by | `env:BRIDGE_SECRET_CORE_TO_IDENTITY` | db/identity/supabase/functions/bridge/index.ts:21 |
+| `api:fn identity/bridge` | configured-by | `env:RESEND_API_KEY` | db/identity/supabase/functions/bridge/index.ts:28 |
+| `api:fn identity/bridge` | configured-by | `env:VAPID_PRIVATE_KEY` | db/identity/supabase/functions/_shared/push.ts:37 |
+| `api:fn identity/bridge` | guarded-by | `policy:bridge-hmac` | db/identity/supabase/functions/bridge/handler.ts:154 |
+| `api:fn identity/bridge` | reads | `table:auth.users` | db/identity/supabase/functions/bridge/handler.ts:71 |
+| `api:fn identity/bridge` | calls | `api:fn core/bridge` | db/identity/supabase/functions/_shared/disburse.ts:249 (aksi disburse: get_payout, lalu mark_instant) |
+| `api:fn identity/bridge` | calls | `ext:disbursement` | db/identity/supabase/functions/_shared/disburse.ts:111 (runDisburse → Xendit Payouts API) |
+| `api:fn identity/bridge` | configured-by | `env:DISBURSEMENT_API_KEY` | kode: _shared/disburse.ts baris 203 (XENDIT_SECRET_KEY lewat providerFromEnv, bridge/index.ts baris 30) |
+| `api:fn identity/bridge` | configured-by | `env:PII_ENC_KEY` | db/identity/supabase/functions/_shared/crypto.ts:97 (dekripsi rekening aksi disburse) |
+| `api:fn identity/bridge` | reads | `table:member.payout_methods` | db/identity/supabase/schemas/api/svc.sql:13 (rpc svc_payout_methods, _shared/disburse.ts baris 256) |
+| `api:fn identity/bridge` | writes | `table:auth.users` | db/identity/supabase/functions/_shared/moderation.ts:41 (aksi ban_user → ban_duration) |
+| `api:fn identity/delete-account` | calls | `api:fn core/bridge` | db/identity/supabase/functions/delete-account/handler.ts:47 |
+| `api:fn identity/delete-account` | configured-by | `env:BRIDGE_SECRET_IDENTITY_TO_CORE` | db/identity/supabase/functions/_shared/bridge.ts:136 |
+| `api:fn identity/delete-account` | guarded-by | `policy:fn-verify-jwt` | db/identity/supabase/functions/delete-account/index.ts:10 |
+| `api:fn identity/delete-account` | guarded-by | `policy:identity.rls-self` | PRD v0.3.1 §15.5 alur 7 pemilik akun; kode: hanya akun claims.sub (delete-account/handler.ts baris 41) |
+| `api:fn identity/delete-account` | writes | `table:auth.users` | db/identity/supabase/functions/delete-account/handler.ts:67 |
+| `api:fn identity/delete-account` | writes | `table:bucket.kyc-docs` | db/identity/supabase/functions/delete-account/handler.ts:66 |
+| `api:fn identity/delete-account` | writes | `table:member.consents` | db/identity/supabase/functions/delete-account/handler.ts:7 (deleteUser baris 67 → FK on delete cascade) |
+| `api:fn identity/delete-account` | writes | `table:member.kyc_records` | db/identity/supabase/schemas/api/svc.sql:131 (rpc svc_close_member: tombstone) |
+| `api:fn identity/delete-account` | writes | `table:member.payout_methods` | db/identity/supabase/schemas/api/svc.sql:151 (rpc svc_close_member) |
+| `api:fn identity/delete-account` | writes | `table:member.recipient_details` | PRD v0.3.1 §15.5 alur 7 hapus PII (kecuali wajib pajak); kode: auth.admin.deleteUser (delete-account/handler.ts baris 67) → FK on delete cascade (member/recipient_details.sql baris 4) |
+| `api:fn identity/disburse` | calls | `api:fn core/bridge` | db/identity/supabase/functions/disburse/index.ts:14 (callback → core mark_instant) |
+| `api:fn identity/disburse` | calls | `ext:disbursement` | PRD v0.3.1 Lampiran A.3 identity/disburse (belum di kode: fungsi ini hanya menerima callback penyedia; panggilan ke penyedia = identity/bridge aksi disburse → _shared/disburse.ts runDisburse) |
+| `api:fn identity/disburse` | configured-by | `env:DISBURSEMENT_API_KEY` | PRD v0.3.1 §15.7; kode: providerFromEnv → XENDIT_SECRET_KEY (_shared/disburse.ts baris 203) untuk parse callback |
+| `api:fn identity/disburse` | configured-by | `env:PII_ENC_KEY` | PRD v0.3.1 §15.7 dekripsi rekening (belum di kode: dekripsi di identity/bridge aksi disburse, bukan fungsi callback ini) |
+| `api:fn identity/disburse` | guarded-by | `policy:fn-verify-jwt` | PRD v0.3.1 §15.6 dipanggil user (belum di kode: callback penyedia dijaga header x-callback-token = DISBURSE_CALLBACK_TOKEN, _shared/disburse.ts baris 312) |
+| `api:fn identity/disburse` | reads | `table:member.payout_methods` | PRD v0.3.1 Lampiran A.3 identity/disburse dekripsi rekening (belum di kode: dibaca identity/bridge aksi disburse lewat rpc svc_payout_methods) |
+| `api:fn identity/member-data` | calls | `api:rpc identity.store_kyc` | db/identity/supabase/functions/member-data/handler.ts:102 |
+| `api:fn identity/member-data` | calls | `api:rpc identity.store_payout_method` | db/identity/supabase/functions/member-data/handler.ts:147 |
+| `api:fn identity/member-data` | calls | `api:rpc identity.store_recipient` | db/identity/supabase/functions/member-data/handler.ts:177 |
+| `api:fn identity/member-data` | configured-by | `env:PII_ENC_KEY` | db/identity/supabase/functions/_shared/crypto.ts:97 (PII_ENC_KEYS) |
+| `api:fn identity/member-data` | configured-by | `env:PII_HMAC_KEY` | db/identity/supabase/functions/_shared/crypto.ts:92 |
+| `api:fn identity/member-data` | guarded-by | `policy:fn-verify-jwt` | db/identity/supabase/functions/member-data/index.ts:10 |
+| `api:fn identity/member-data` | guarded-by | `policy:identity.rls-self` | PRD v0.3.1 §15.4 fungsi verifikasi JWT, hanya baris milik sub; kode: semua RPC memakai c.sub dari JWT (member-data/handler.ts baris 86, 103, 148, 178) |
+| `api:fn identity/member-data` | guarded-by | `policy:identity.unique-identity` | db/identity/supabase/schemas/api/member_data.sql:10 (rpc store_kyc, handler.ts baris 102) |
+| `api:fn identity/member-data` | reads | `table:member.kyc_records` | db/identity/supabase/schemas/api/svc.sql:24 (rpc svc_kyc, handler.ts baris 133) |
+| `api:fn identity/member-data` | writes | `table:member.consents` | db/identity/supabase/schemas/api/record_consent.sql:29 (rpc record_consent kind kyc, handler.ts baris 93) |
+| `api:fn identity/member-data` | writes | `table:member.kyc_records` | db/identity/supabase/schemas/api/member_data.sql:13 (rpc store_kyc) |
+| `api:fn identity/member-data` | writes | `table:member.payout_methods` | db/identity/supabase/schemas/api/member_data.sql:41 (rpc store_payout_method) |
+| `api:fn identity/member-data` | writes | `table:member.recipient_details` | db/identity/supabase/schemas/api/member_data.sql:52 (rpc store_recipient) |
+| `api:fn identity/pii-export` | calls | `api:fn core/bridge` | db/identity/supabase/functions/pii-export/handler.ts:55 |
+| `api:fn identity/pii-export` | configured-by | `env:BRIDGE_SECRET_IDENTITY_TO_CORE` | db/identity/supabase/functions/_shared/bridge.ts:136 |
+| `api:fn identity/pii-export` | configured-by | `env:PII_ENC_KEY` | db/identity/supabase/functions/_shared/crypto.ts:97 (PII_ENC_KEYS) |
+| `api:fn identity/pii-export` | guarded-by | `policy:fn-verify-jwt` | db/identity/supabase/functions/pii-export/index.ts:11 |
+| `api:fn identity/pii-export` | guarded-by | `policy:identity.admin-aal2` | db/identity/supabase/functions/pii-export/handler.ts:306 |
+| `api:fn identity/pii-export` | reads | `table:member.consents` | db/identity/supabase/schemas/api/svc.sql:49 (rpc svc_has_consent, handler.ts baris 237) |
+| `api:fn identity/pii-export` | reads | `table:member.kyc_records` | db/identity/supabase/schemas/api/svc.sql:24 (rpc svc_kyc) |
+| `api:fn identity/pii-export` | reads | `table:member.payout_methods` | db/identity/supabase/schemas/api/svc.sql:13 (rpc svc_payout_methods) |
+| `api:fn identity/pii-export` | reads | `table:member.recipient_details` | db/identity/supabase/schemas/api/svc.sql:39 (rpc svc_recipients) |
+| `api:fn identity/pii-export` | writes | `table:bucket.payout-proofs` | db/identity/supabase/functions/pii-export/handler.ts:147 |
+| `api:fn identity/pii-export` | writes | `table:bucket.pii-exports` | db/identity/supabase/functions/pii-export/handler.ts:46 |
+| `api:fn identity/pii-export` | writes | `table:member.audit_logs` | db/identity/supabase/schemas/api/svc.sql:174 (rpc svc_audit, handler.ts baris 42) |
+| `api:rpc core.accept_org_invite` | reads | `table:market.org_invites` | db/core/supabase/schemas/api/org.sql:181 |
+| `api:rpc core.accept_org_invite` | writes | `table:market.org_invites` | db/core/supabase/schemas/api/org.sql:199 |
+| `api:rpc core.accept_org_invite` | writes | `table:market.org_members` | db/core/supabase/schemas/api/org.sql:198 |
+| `api:rpc core.accept_org_invite` | writes | `table:market.profiles` | db/core/supabase/schemas/api/org.sql:20 (market.ensure_member_profile) |
+| `api:rpc core.appeal_submission` | writes | `table:tracking.submissions` | db/core/supabase/schemas/api/review.sql:32 |
+| `api:rpc core.appeal_submission` | writes | `table:trust.review_decisions` | db/core/supabase/schemas/api/review.sql:27 |
+| `api:rpc core.approve_payout_batch` | writes | `table:finance.payout_batches` | db/core/supabase/schemas/finance/payout_flow.sql:168 |
+| `api:rpc core.buy_pin` | writes | `table:finance.invoices` | db/core/supabase/schemas/api/campaigns.sql:678 (finance.issue_invoice) |
+| `api:rpc core.claim_campaign` | reads | `table:market.campaigns` | db/core/supabase/schemas/api/campaigns.sql:136 |
+| `api:rpc core.claim_campaign` | reads | `table:market.profiles` | db/core/supabase/schemas/api/_helpers.sql:182 (market.claim_check) |
+| `api:rpc core.claim_campaign` | writes | `table:market.claims` | db/core/supabase/schemas/api/campaigns.sql:150 |
+| `api:rpc core.confirm_invoice_payment` | guarded-by | `policy:core.admin-aal2` | db/core/supabase/schemas/finance/invoice_confirm.sql:79 |
+| `api:rpc core.confirm_invoice_payment` | writes | `table:finance.invoices` | db/core/supabase/schemas/finance/invoice_confirm.sql:106 |
+| `api:rpc core.confirm_invoice_payment` | writes | `table:finance.ledger_accounts` | db/core/supabase/schemas/finance/invoice_confirm.sql:39 (finance.account membuat akun campaign_pool, finance.settle_invoice) |
+| `api:rpc core.confirm_invoice_payment` | writes | `table:finance.ledger_entries` | db/core/supabase/schemas/finance/invoice_confirm.sql:109 (finance.settle_invoice → finance.post) |
+| `api:rpc core.confirm_invoice_payment` | writes | `table:finance.reward_pools` | db/core/supabase/schemas/finance/invoice_confirm.sql:37 (finance.settle_invoice) |
+| `api:rpc core.confirm_invoice_payment` | writes | `table:ops.audit_logs` | PRD v0.3.1 §9 F-A11 semua aksi admin/finance (belum di kode: fungsi ini tidak menulis ops.audit_logs) |
+| `api:rpc core.control_campaign` | writes | `table:finance.invoices` | db/core/supabase/schemas/api/campaigns.sql:559 (topup → finance.issue_invoice) |
+| `api:rpc core.control_campaign` | writes | `table:market.campaigns` | db/core/supabase/schemas/api/campaigns.sql:497 |
+| `api:rpc core.control_campaign` | writes | `table:market.rate_rules` | db/core/supabase/schemas/api/campaigns.sql:540 |
+| `api:rpc core.create_org` | writes | `table:market.org_members` | db/core/supabase/schemas/api/org.sql:94 |
+| `api:rpc core.create_org` | writes | `table:market.organizations` | db/core/supabase/schemas/api/org.sql:90 |
+| `api:rpc core.create_org_invite` | guarded-by | `policy:core.org-role` | db/core/supabase/schemas/api/org.sql:162 |
+| `api:rpc core.create_org_invite` | writes | `table:market.org_invites` | db/core/supabase/schemas/api/org.sql:169 |
+| `api:rpc core.create_payout_batch` | guarded-by | `policy:core.admin-aal2` | db/core/supabase/schemas/finance/payout_flow.sql:141 |
+| `api:rpc core.create_payout_batch` | reads | `table:finance.payouts` | db/core/supabase/schemas/finance/payout_flow.sql:146 |
+| `api:rpc core.create_payout_batch` | writes | `table:finance.payout_batches` | db/core/supabase/schemas/finance/payout_flow.sql:144 |
+| `api:rpc core.create_payout_batch` | writes | `table:finance.payouts` | db/core/supabase/schemas/finance/payout_flow.sql:146 |
+| `api:rpc core.create_payout_batch` | writes | `table:ops.audit_logs` | PRD v0.3.1 §9 F-A11 semua aksi admin/finance (belum di kode: fungsi ini tidak menulis ops.audit_logs) |
+| `api:rpc core.create_report_link` | guarded-by | `policy:core.org-role` | db/core/supabase/schemas/api/report_links.sql:13 |
 | `api:rpc core.create_report_link` | reads | `table:market.campaigns` | db/core/supabase/schemas/api/report_links.sql:12 |
 | `api:rpc core.create_report_link` | writes | `table:market.report_links` | db/core/supabase/schemas/api/report_links.sql:17 |
-| `api:rpc core.duplicate_campaign` | writes | `table:finance.reward_pools` | PRD v0.3.1 Lampiran A.3 duplicate_campaign |
-| `api:rpc core.duplicate_campaign` | writes | `table:market.campaigns` | PRD v0.3.1 Lampiran A.3 duplicate_campaign |
-| `api:rpc core.duplicate_campaign` | writes | `table:market.rate_rules` | PRD v0.3.1 Lampiran A.3 duplicate_campaign |
-| `api:rpc core.ensure_profile` | writes | `table:market.profiles` | db/core/supabase/schemas/api/ensure_profile.sql:15 |
-| `api:rpc core.ensure_profile` | writes | `table:market.referrals` | db/core/supabase/schemas/api/ensure_profile.sql:28 |
-| `api:rpc core.invite_to_campaign` | writes | `table:market.campaign_invites` | PRD v0.3.1 Lampiran A.3 invite_to_campaign |
-| `api:rpc core.link_agency` | writes | `table:market.org_links` | PRD v0.3.1 Lampiran A.3 link_agency |
-| `api:rpc core.list_campaigns` | reads | `table:finance.reward_pools` | PRD v0.3.1 Lampiran A.3 list_campaigns |
-| `api:rpc core.list_campaigns` | reads | `table:market.campaigns` | PRD v0.3.1 Lampiran A.3 list_campaigns |
-| `api:rpc core.list_campaigns` | reads | `table:market.claims` | PRD v0.3.1 Lampiran A.3 list_campaigns |
-| `api:rpc core.list_campaigns` | reads | `table:market.profiles` | PRD v0.3.1 Lampiran A.3 list_campaigns |
-| `api:rpc core.list_campaigns` | reads | `table:tracking.social_accounts` | PRD v0.3.1 Lampiran A.3 list_campaigns |
-| `api:rpc core.manage_org` | guarded-by | `policy:core.admin-aal2` | PRD v0.3.1 §15.6 aal2 + §4 RBAC |
-| `api:rpc core.manage_org` | writes | `table:market.org_members` | PRD v0.3.1 §8 F-B01 + §9 F-A07, F-A11 + §15.5 alur 5 |
-| `api:rpc core.manage_org` | writes | `table:market.organizations` | PRD v0.3.1 §8 F-B01 + §9 F-A07, F-A11 + §15.5 alur 5 |
-| `api:rpc core.manage_org` | writes | `table:market.profiles` | PRD v0.3.1 §8 F-B01 + §9 F-A07, F-A11 + §15.5 alur 5 |
-| `api:rpc core.manage_org` | writes | `table:ops.audit_logs` | PRD v0.3.1 §8 F-B01 + §9 F-A07, F-A11 + §15.5 alur 5 |
-| `api:rpc core.mark_batch_paid` | calls | `fn:enqueue_notification` | PRD v0.3.1 §9 F-X01 payout sukses/gagal |
-| `api:rpc core.mark_batch_paid` | guarded-by | `policy:core.admin-aal2` | PRD v0.3.1 §15.6 aal2 + §4 RBAC |
-| `api:rpc core.mark_batch_paid` | writes | `table:finance.ledger_entries` | PRD v0.3.1 §9 F-A08 + S-05 |
-| `api:rpc core.mark_batch_paid` | writes | `table:finance.payout_batches` | PRD v0.3.1 §9 F-A08 + S-05 |
-| `api:rpc core.mark_batch_paid` | writes | `table:finance.payouts` | PRD v0.3.1 §9 F-A08 + S-05 |
-| `api:rpc core.mark_batch_paid` | writes | `table:ops.audit_logs` | PRD v0.3.1 §9 F-A11 semua aksi admin/finance |
-| `api:rpc core.missing_brief_tags` | guarded-by | `policy:core.public-read` | PRD v0.3.1 Lampiran A.2 missing_brief_tags |
-| `api:rpc core.missing_brief_tags` | guarded-by | `policy:core.rls-org` | PRD v0.3.1 Lampiran A.2 missing_brief_tags |
+| `api:rpc core.duplicate_campaign` | writes | `table:finance.reward_pools` | db/core/supabase/schemas/api/campaigns.sql:604 |
+| `api:rpc core.duplicate_campaign` | writes | `table:market.campaigns` | db/core/supabase/schemas/api/campaigns.sql:592 |
+| `api:rpc core.duplicate_campaign` | writes | `table:market.rate_rules` | db/core/supabase/schemas/api/campaigns.sql:607 |
+| `api:rpc core.ensure_profile` | writes | `table:market.profiles` | db/core/supabase/schemas/api/ensure_profile.sql:21 |
+| `api:rpc core.ensure_profile` | writes | `table:market.referrals` | db/core/supabase/schemas/api/ensure_profile.sql:35 |
+| `api:rpc core.invite_preview` | reads | `table:market.org_invites` | db/core/supabase/schemas/api/org.sql:209 |
+| `api:rpc core.invite_preview` | reads | `table:market.organizations` | db/core/supabase/schemas/api/org.sql:209 |
+| `api:rpc core.invite_to_campaign` | writes | `table:market.campaign_invites` | db/core/supabase/schemas/api/campaigns.sql:641 |
+| `api:rpc core.link_agency` | writes | `table:market.org_links` | db/core/supabase/schemas/api/org.sql:120 |
+| `api:rpc core.list_campaigns` | reads | `table:finance.reward_pools` | db/core/supabase/schemas/api/campaigns.sql:82 |
+| `api:rpc core.list_campaigns` | reads | `table:market.campaigns` | db/core/supabase/schemas/api/campaigns.sql:90 |
+| `api:rpc core.list_campaigns` | reads | `table:market.claims` | db/core/supabase/schemas/api/_helpers.sql:163 (market.claim_check) |
+| `api:rpc core.list_campaigns` | reads | `table:market.profiles` | db/core/supabase/schemas/api/_helpers.sql:182 (market.claim_check) |
+| `api:rpc core.list_campaigns` | reads | `table:tracking.social_accounts` | db/core/supabase/schemas/api/_helpers.sql:206 (market.claim_check) |
+| `api:rpc core.manage_org` | guarded-by | `policy:core.admin-aal2` | db/core/supabase/schemas/api/org.sql:229 |
+| `api:rpc core.manage_org` | writes | `table:market.org_members` | db/core/supabase/schemas/api/org.sql:268 |
+| `api:rpc core.manage_org` | writes | `table:market.organizations` | db/core/supabase/schemas/api/org.sql:244 |
+| `api:rpc core.manage_org` | writes | `table:market.profiles` | db/core/supabase/schemas/api/org.sql:20 (add_member → market.ensure_member_profile) |
+| `api:rpc core.manage_org` | writes | `table:ops.audit_logs` | db/core/supabase/schemas/api/org.sql:246 |
+| `api:rpc core.manage_user` | calls | `fn:enqueue_notification` | db/core/supabase/schemas/trust/manage_user.sql:42 |
+| `api:rpc core.manage_user` | guarded-by | `policy:core.admin-aal2` | db/core/supabase/schemas/trust/manage_user.sql:13 |
+| `api:rpc core.manage_user` | writes | `table:market.claims` | db/core/supabase/schemas/trust/manage_user.sql:41 |
+| `api:rpc core.manage_user` | writes | `table:market.profiles` | db/core/supabase/schemas/trust/manage_user.sql:40 |
+| `api:rpc core.manage_user` | writes | `table:ops.audit_logs` | db/core/supabase/schemas/trust/manage_user.sql:52 |
+| `api:rpc core.manage_user` | writes | `table:trust.score_events` | db/core/supabase/schemas/trust/manage_user.sql:28 |
+| `api:rpc core.mark_batch_paid` | calls | `fn:enqueue_notification` | db/core/supabase/schemas/finance/payout_flow.sql:207 |
+| `api:rpc core.mark_batch_paid` | guarded-by | `policy:core.admin-aal2` | db/core/supabase/schemas/finance/payout_flow.sql:186 |
+| `api:rpc core.mark_batch_paid` | writes | `table:finance.ledger_entries` | db/core/supabase/schemas/finance/payout_flow.sql:211 (gagal → finance.return_payout → jurnal balik) |
+| `api:rpc core.mark_batch_paid` | writes | `table:finance.payout_batches` | db/core/supabase/schemas/finance/payout_flow.sql:217 |
+| `api:rpc core.mark_batch_paid` | writes | `table:finance.payouts` | db/core/supabase/schemas/finance/payout_flow.sql:206 |
+| `api:rpc core.mark_batch_paid` | writes | `table:ops.audit_logs` | PRD v0.3.1 §9 F-A11 semua aksi admin/finance (belum di kode: fungsi ini tidak menulis ops.audit_logs) |
+| `api:rpc core.mark_fulfillment_delivered` | guarded-by | `policy:core.admin-aal2` | db/core/supabase/schemas/finance/fulfillment_admin.sql:9 |
+| `api:rpc core.mark_fulfillment_delivered` | reads | `table:market.reward_types` | db/core/supabase/schemas/finance/fulfillment_admin.sql:16 |
+| `api:rpc core.mark_fulfillment_delivered` | writes | `table:finance.fulfillments` | db/core/supabase/schemas/finance/fulfillment_admin.sql:12, db/core/supabase/schemas/api/worker.sql:538 (api.worker_fulfillment_result, baris 28) |
+| `api:rpc core.mark_fulfillment_delivered` | writes | `table:ops.audit_logs` | db/core/supabase/schemas/finance/fulfillment_admin.sql:29 |
+| `api:rpc core.missing_brief_tags` | guarded-by | `policy:core.public-read` | db/core/supabase/schemas/api/brief.sql:4 (security invoker lewat api.campaigns) |
+| `api:rpc core.missing_brief_tags` | guarded-by | `policy:core.rls-org` | db/core/supabase/schemas/api/brief.sql:4 (security invoker lewat api.campaigns) |
 | `api:rpc core.missing_brief_tags` | reads | `table:market.campaigns` | db/core/supabase/schemas/api/brief.sql:15 |
-| `api:rpc core.my_referral_code` | guarded-by | `policy:core.rls-self` | PRD v0.3.1 Lampiran A.2 my_referral_code |
+| `api:rpc core.my_referral_code` | guarded-by | `policy:core.rls-self` | PRD v0.3.1 Lampiran A.2 my_referral_code; kode: security definer, hanya profil auth.uid() (market/referrals.sql baris 27, 33) |
 | `api:rpc core.my_referral_code` | writes | `table:market.profiles` | db/core/supabase/schemas/market/referrals.sql:36 |
-| `api:rpc core.record_review` | calls | `fn:enqueue_notification` | PRD v0.3.1 §9 F-X01 submisi approved/rejected |
-| `api:rpc core.record_review` | guarded-by | `policy:core.admin-aal2` | PRD v0.3.1 §9 F-A05 |
-| `api:rpc core.record_review` | guarded-by | `policy:core.org-role` | PRD v0.3.1 §4 brand_manager review |
-| `api:rpc core.record_review` | writes | `table:market.campaigns` | PRD v0.3.1 §14 kg.yaml E-19 target_type |
-| `api:rpc core.record_review` | writes | `table:ops.audit_logs` | PRD v0.3.1 §9 F-A11 semua aksi admin/finance |
-| `api:rpc core.record_review` | writes | `table:tracking.submissions` | PRD v0.3.1 §14 kg.yaml E-19 target_type |
-| `api:rpc core.record_review` | writes | `table:trust.review_decisions` | PRD v0.3.1 §14 kg.yaml E-19 target_type |
-| `api:rpc core.report_by_token` | guarded-by | `policy:core.public-read` | PRD v0.3.1 Lampiran A.2 report_by_token |
-| `api:rpc core.report_by_token` | reads | `table:finance.reward_pools` | db/core/supabase/schemas/api/report_links.sql:59 |
-| `api:rpc core.report_by_token` | reads | `table:market.campaigns` | db/core/supabase/schemas/api/report_links.sql:67 |
-| `api:rpc core.report_by_token` | reads | `table:market.report_links` | db/core/supabase/schemas/api/report_links.sql:40 |
-| `api:rpc core.report_by_token` | reads | `table:tracking.submissions` | db/core/supabase/schemas/api/report_links.sql:55 |
-| `api:rpc core.request_fulfillment` | reads | `table:market.profiles` | PRD v0.3.1 §15.6 cek status E-01 |
-| `api:rpc core.request_fulfillment` | reads | `table:market.reward_types` | PRD v0.3.1 §10.1 fulfillment |
-| `api:rpc core.request_fulfillment` | writes | `table:finance.fulfillments` | PRD v0.3.1 §14 kg.yaml features.F-C09 |
-| `api:rpc core.request_fulfillment` | writes | `table:finance.ledger_entries` | PRD v0.3.1 §14 E-15 satu-satunya jalan uang |
-| `api:rpc core.request_payout` | reads | `table:finance.ledger_accounts` | PRD v0.3.1 §14 jurnal withdraw |
-| `api:rpc core.request_payout` | reads | `table:finance.ledger_entries` | PRD v0.3.1 §14 saldo = jumlah jurnal |
-| `api:rpc core.request_payout` | reads | `table:market.profiles` | PRD v0.3.1 §15.6 cek status E-01 |
-| `api:rpc core.request_payout` | writes | `table:finance.ledger_entries` | PRD v0.3.1 §14 jurnal withdraw |
-| `api:rpc core.request_payout` | writes | `table:finance.payouts` | PRD v0.3.1 §14 kg.yaml features.F-C09 |
-| `api:rpc core.request_refund` | writes | `table:finance.ledger_entries` | PRD v0.3.1 Lampiran A.3 request_refund |
-| `api:rpc core.request_refund` | writes | `table:finance.org_refunds` | PRD v0.3.1 Lampiran A.3 request_refund |
-| `api:rpc core.resolve_fraud_flag` | calls | `fn:reverse_earning` | PRD v0.3.1 §9 F-A06 reverse earning |
-| `api:rpc core.resolve_fraud_flag` | guarded-by | `policy:core.admin-aal2` | PRD v0.3.1 §15.6 aal2 + §4 RBAC |
-| `api:rpc core.resolve_fraud_flag` | writes | `table:finance.ledger_entries` | PRD v0.3.1 Lampiran A.3 resolve_fraud_flag |
-| `api:rpc core.resolve_fraud_flag` | writes | `table:market.profiles` | PRD v0.3.1 §9 F-A06 suspend = status E-01 |
-| `api:rpc core.resolve_fraud_flag` | writes | `table:ops.audit_logs` | PRD v0.3.1 §9 F-A11 semua aksi admin/finance |
-| `api:rpc core.resolve_fraud_flag` | writes | `table:trust.fraud_flags` | PRD v0.3.1 §9 F-A06 |
-| `api:rpc core.resolve_fraud_flag` | writes | `table:trust.score_events` | PRD v0.3.1 Lampiran A.3 resolve_fraud_flag |
-| `api:rpc core.revoke_report_link` | guarded-by | `policy:core.org-role` | PRD v0.3.1 Lampiran A.2 revoke_report_link |
+| `api:rpc core.org_credit` | guarded-by | `policy:core.admin-aal2` | db/core/supabase/schemas/finance/invoice_confirm.sql:130 |
+| `api:rpc core.org_credit` | guarded-by | `policy:core.org-role` | db/core/supabase/schemas/finance/invoice_confirm.sql:130 |
+| `api:rpc core.org_credit` | reads | `table:finance.ledger_accounts` | db/core/supabase/schemas/finance/invoice_confirm.sql:133 |
+| `api:rpc core.org_credit` | reads | `table:finance.ledger_entries` | db/core/supabase/schemas/finance/invoice_confirm.sql:140 |
+| `api:rpc core.org_credit` | reads | `table:finance.org_refunds` | db/core/supabase/schemas/finance/invoice_confirm.sql:121 (finance.org_credit_available) |
+| `api:rpc core.org_credit` | reads | `table:finance.reward_pools` | db/core/supabase/schemas/finance/invoice_confirm.sql:145 |
+| `api:rpc core.pay_invoice_with_credit` | guarded-by | `policy:core.org-role` | db/core/supabase/schemas/finance/invoice_confirm.sql:159 |
+| `api:rpc core.pay_invoice_with_credit` | writes | `table:finance.invoices` | db/core/supabase/schemas/finance/invoice_confirm.sql:179 |
+| `api:rpc core.pay_invoice_with_credit` | writes | `table:finance.ledger_entries` | db/core/supabase/schemas/finance/invoice_confirm.sql:182 (finance.settle_invoice → finance.post) |
+| `api:rpc core.pay_invoice_with_credit` | writes | `table:finance.reward_pools` | db/core/supabase/schemas/finance/invoice_confirm.sql:37 (finance.settle_invoice) |
+| `api:rpc core.record_review` | calls | `fn:enqueue_notification` | db/core/supabase/schemas/trust/decisions.sql:50 (trust.apply_submission_decision) |
+| `api:rpc core.record_review` | guarded-by | `policy:core.admin-aal2` | db/core/supabase/schemas/api/review.sql:49 |
+| `api:rpc core.record_review` | guarded-by | `policy:core.org-role` | db/core/supabase/schemas/api/review.sql:92 |
+| `api:rpc core.record_review` | writes | `table:market.campaigns` | db/core/supabase/schemas/api/review.sql:63 |
+| `api:rpc core.record_review` | writes | `table:ops.audit_logs` | db/core/supabase/schemas/api/review.sql:77 |
+| `api:rpc core.record_review` | writes | `table:tracking.submissions` | db/core/supabase/schemas/trust/decisions.sql:41 (trust.apply_submission_decision) |
+| `api:rpc core.record_review` | writes | `table:trust.review_decisions` | db/core/supabase/schemas/api/review.sql:72 |
+| `api:rpc core.report_by_token` | guarded-by | `policy:core.public-read` | PRD v0.3.1 Lampiran A.2 report_by_token (belum di kode: bukan RLS public-read; security definer, anon boleh EXECUTE, token sha256 = kapabilitas, api/report_links.sql baris 74, 85) |
+| `api:rpc core.report_by_token` | reads | `table:finance.reward_pools` | db/core/supabase/schemas/api/report_links.sql:59 (market.campaign_report) |
+| `api:rpc core.report_by_token` | reads | `table:market.campaigns` | db/core/supabase/schemas/api/report_links.sql:65 (market.campaign_report) |
+| `api:rpc core.report_by_token` | reads | `table:market.report_links` | db/core/supabase/schemas/api/report_links.sql:74 |
+| `api:rpc core.report_by_token` | reads | `table:tracking.submissions` | db/core/supabase/schemas/api/report_links.sql:55 (market.campaign_report) |
+| `api:rpc core.request_fulfillment` | reads | `table:market.profiles` | db/core/supabase/schemas/finance/payout_flow.sql:16 (finance.require_active_clipper) |
+| `api:rpc core.request_fulfillment` | reads | `table:market.reward_types` | db/core/supabase/schemas/finance/payout_flow.sql:247 |
+| `api:rpc core.request_fulfillment` | writes | `table:finance.fulfillments` | db/core/supabase/schemas/finance/payout_flow.sql:277 |
+| `api:rpc core.request_fulfillment` | writes | `table:finance.ledger_entries` | db/core/supabase/schemas/finance/payout_flow.sql:279 (finance.post) |
+| `api:rpc core.request_payout` | reads | `table:finance.ledger_accounts` | db/core/supabase/schemas/finance/payout_flow.sql:76 |
+| `api:rpc core.request_payout` | reads | `table:finance.ledger_entries` | db/core/supabase/schemas/finance/payout_flow.sql:77 (finance.balance) |
+| `api:rpc core.request_payout` | reads | `table:market.profiles` | db/core/supabase/schemas/finance/payout_flow.sql:16 (finance.require_active_clipper) |
+| `api:rpc core.request_payout` | writes | `table:finance.ledger_entries` | db/core/supabase/schemas/finance/payout_flow.sql:83 (finance.post) |
+| `api:rpc core.request_payout` | writes | `table:finance.payouts` | db/core/supabase/schemas/finance/payout_flow.sql:81 |
+| `api:rpc core.request_payout` | calls | `api:fn core/bridge` | db/core/supabase/schemas/finance/payout_flow.sql:93 (instant → bridge disburse) |
+| `api:rpc core.request_refund` | writes | `table:finance.ledger_entries` | db/core/supabase/schemas/finance/refund_flow.sql:85 (finance.post) |
+| `api:rpc core.request_refund` | writes | `table:finance.org_refunds` | db/core/supabase/schemas/finance/refund_flow.sql:67 |
+| `api:rpc core.resolve_fraud_flag` | calls | `fn:reverse_earning` | db/core/supabase/schemas/trust/fraud_resolve.sql:89 |
+| `api:rpc core.resolve_fraud_flag` | guarded-by | `policy:core.admin-aal2` | db/core/supabase/schemas/trust/fraud_resolve.sql:43 |
+| `api:rpc core.resolve_fraud_flag` | writes | `table:finance.ledger_entries` | db/core/supabase/schemas/trust/fraud_resolve.sql:89 (finance.reverse_earning → jurnal balik) |
+| `api:rpc core.resolve_fraud_flag` | writes | `table:market.profiles` | db/core/supabase/schemas/trust/fraud_resolve.sql:98 |
+| `api:rpc core.resolve_fraud_flag` | writes | `table:ops.audit_logs` | db/core/supabase/schemas/trust/fraud_resolve.sql:121 |
+| `api:rpc core.resolve_fraud_flag` | writes | `table:trust.fraud_flags` | db/core/supabase/schemas/trust/fraud_resolve.sql:77 |
+| `api:rpc core.resolve_fraud_flag` | writes | `table:trust.score_events` | db/core/supabase/schemas/trust/fraud_resolve.sql:119 |
+| `api:rpc core.resolve_fraud_flag` | calls | `api:fn core/bridge` | db/core/supabase/schemas/trust/fraud_resolve.sql:113 (ban → bridge ban_user) |
+| `api:rpc core.revoke_report_link` | guarded-by | `policy:core.org-role` | db/core/supabase/schemas/api/report_links.sql:32 |
 | `api:rpc core.revoke_report_link` | writes | `table:market.report_links` | db/core/supabase/schemas/api/report_links.sql:29 |
-| `api:rpc core.save_campaign` | guarded-by | `policy:core.admin-aal2` | PRD v0.3.1 §9 F-A03 builder admin |
-| `api:rpc core.save_campaign` | guarded-by | `policy:core.org-role` | PRD v0.3.1 §4 brand_manager buat campaign |
-| `api:rpc core.save_campaign` | reads | `table:finance.fee_rules` | PRD v0.3.1 §14 kg.yaml features.F-B02 |
-| `api:rpc core.save_campaign` | writes | `table:finance.invoices` | PRD v0.3.1 §8 F-B02 ringkasan biaya → bayar |
-| `api:rpc core.save_campaign` | writes | `table:finance.ledger_accounts` | PRD v0.3.1 §14 kg.yaml E-14 akun campaign_pool |
-| `api:rpc core.save_campaign` | writes | `table:finance.reward_pools` | PRD v0.3.1 §14 kg.yaml features.F-B02 |
-| `api:rpc core.save_campaign` | writes | `table:market.campaign_assets` | PRD v0.3.1 §14 kg.yaml features.F-B02 |
-| `api:rpc core.save_campaign` | writes | `table:market.campaigns` | PRD v0.3.1 §14 kg.yaml features.F-B02 |
-| `api:rpc core.save_campaign` | writes | `table:market.rate_rules` | PRD v0.3.1 §14 kg.yaml features.F-B02 |
-| `api:rpc core.save_reward_type` | guarded-by | `policy:core.org-role` | PRD v0.3.1 §4 role org |
-| `api:rpc core.save_reward_type` | writes | `table:market.reward_types` | PRD v0.3.1 §8 F-B03 |
-| `api:rpc core.send_broadcast` | writes | `table:ops.broadcasts` | PRD v0.3.1 Lampiran A.3 send_broadcast |
-| `api:rpc core.store_social_token` | guarded-by | `policy:fn-cron-key` | PRD v0.3.1 Lampiran A.2 store_social_token |
+| `api:rpc core.save_campaign` | guarded-by | `policy:core.admin-aal2` | db/core/supabase/schemas/api/campaigns.sql:170 |
+| `api:rpc core.save_campaign` | guarded-by | `policy:core.org-role` | db/core/supabase/schemas/api/campaigns.sql:223 |
+| `api:rpc core.save_campaign` | reads | `table:finance.fee_rules` | db/core/supabase/schemas/api/campaigns.sql:400 (finance.effective_fee_rule) |
+| `api:rpc core.save_campaign` | writes | `table:finance.invoices` | db/core/supabase/schemas/api/campaigns.sql:457 (finance.issue_invoice) |
+| `api:rpc core.save_campaign` | writes | `table:finance.ledger_accounts` | PRD v0.3.1 §14 kg.yaml E-14 akun campaign_pool (belum di kode: akun campaign_pool dibuat finance.settle_invoice saat invoice lunas, finance/invoice_confirm.sql baris 39) |
+| `api:rpc core.save_campaign` | writes | `table:finance.reward_pools` | db/core/supabase/schemas/api/campaigns.sql:327 |
+| `api:rpc core.save_campaign` | writes | `table:market.campaign_assets` | db/core/supabase/schemas/api/campaigns.sql:387 |
+| `api:rpc core.save_campaign` | writes | `table:market.campaigns` | db/core/supabase/schemas/api/campaigns.sql:285 |
+| `api:rpc core.save_campaign` | writes | `table:market.rate_rules` | db/core/supabase/schemas/api/campaigns.sql:367 |
+| `api:rpc core.save_reward_type` | guarded-by | `policy:core.org-role` | db/core/supabase/schemas/api/org.sql:316 |
+| `api:rpc core.save_reward_type` | writes | `table:market.reward_types` | db/core/supabase/schemas/api/org.sql:345 |
+| `api:rpc core.send_broadcast` | writes | `table:ops.broadcasts` | db/core/supabase/schemas/api/config.sql:156 |
+| `api:rpc core.store_social_token` | guarded-by | `policy:core.definer-only` | db/core/supabase/schemas/tracking/vault.sql:4 (security definer; EXECUTE hanya service_role, baris 23) |
 | `api:rpc core.store_social_token` | writes | `table:tracking.social_accounts` | db/core/supabase/schemas/tracking/vault.sql:14 |
 | `api:rpc core.store_social_token` | writes | `table:vault.social-tokens` | db/core/supabase/schemas/tracking/vault.sql:13 |
-| `api:rpc core.update_config` | guarded-by | `policy:core.admin-aal2` | PRD v0.3.1 §15.6 aal2 + §4 RBAC |
-| `api:rpc core.update_config` | writes | `table:finance.fee_rules` | PRD v0.3.1 §9 F-A04, F-A09, F-A11 |
-| `api:rpc core.update_config` | writes | `table:market.campaigns` | PRD v0.3.1 §9 F-A04, F-A09, F-A11 |
-| `api:rpc core.update_config` | writes | `table:market.categories` | PRD v0.3.1 Lampiran A.3 update_config |
-| `api:rpc core.update_config` | writes | `table:ops.audit_logs` | PRD v0.3.1 §9 F-A04, F-A09, F-A11 |
-| `api:rpc core.update_config` | writes | `table:ops.settings` | PRD v0.3.1 §9 F-A04, F-A09, F-A11 |
-| `api:rpc core.upload_reward_codes` | writes | `table:finance.reward_codes` | PRD v0.3.1 Lampiran A.3 upload_reward_codes |
-| `api:rpc identity.admin_kyc_decision` | guarded-by | `policy:identity.admin-aal2` | PRD v0.3.1 §15.4 fungsi admin aal2 |
+| `api:rpc core.update_config` | guarded-by | `policy:core.admin-aal2` | db/core/supabase/schemas/api/config.sql:23 |
+| `api:rpc core.update_config` | writes | `table:finance.fee_rules` | db/core/supabase/schemas/api/config.sql:64 |
+| `api:rpc core.update_config` | writes | `table:market.campaigns` | db/core/supabase/schemas/api/config.sql:55 |
+| `api:rpc core.update_config` | writes | `table:market.categories` | db/core/supabase/schemas/api/config.sql:36 |
+| `api:rpc core.update_config` | writes | `table:ops.audit_logs` | db/core/supabase/schemas/api/config.sql:118 |
+| `api:rpc core.update_config` | writes | `table:ops.settings` | db/core/supabase/schemas/api/config.sql:113 |
+| `api:rpc core.upload_reward_codes` | writes | `table:finance.reward_codes` | db/core/supabase/schemas/api/org.sql:398 |
+| `api:view core.admin_profiles` | guarded-by | `policy:core.admin-aal2` | db/core/supabase/schemas/api/views.sql:38 |
+| `api:view core.admin_profiles` | reads | `table:market.profiles` | db/core/supabase/schemas/api/views.sql:38 |
+| `api:rpc identity.admin_kyc_decision` | guarded-by | `policy:identity.admin-aal2` | db/identity/supabase/schemas/api/admin_kyc_decision.sql:11 |
 | `api:rpc identity.admin_kyc_decision` | writes | `table:member.audit_logs` | db/identity/supabase/schemas/api/admin_kyc_decision.sql:26 |
-| `api:rpc identity.admin_kyc_decision` | writes | `table:member.kyc_records` | db/identity/supabase/schemas/api/admin_kyc_decision.sql:11 |
-| `api:rpc identity.admin_read` | guarded-by | `policy:identity.admin-aal2` | PRD v0.3.1 §15.4 fungsi admin aal2 |
-| `api:rpc identity.admin_read` | reads | `table:bucket.kyc-docs` | PRD v0.3.1 §9 F-A07 cek KTP |
-| `api:rpc identity.admin_read` | reads | `table:member.audit_logs` | PRD v0.3.1 §14 kg.yaml E-24 akses PII |
+| `api:rpc identity.admin_kyc_decision` | writes | `table:member.kyc_records` | db/identity/supabase/schemas/api/admin_kyc_decision.sql:17 |
+| `api:rpc identity.admin_kyc_queue` | guarded-by | `policy:identity.admin-aal2` | db/identity/supabase/schemas/api/admin_lists.sql:6 |
+| `api:rpc identity.admin_kyc_queue` | reads | `table:member.kyc_records` | db/identity/supabase/schemas/api/admin_lists.sql:11 |
+| `api:rpc identity.admin_list_roles` | guarded-by | `policy:identity.admin-aal2` | db/identity/supabase/schemas/api/admin_lists.sql:22 |
+| `api:rpc identity.admin_list_roles` | reads | `table:auth.users` | db/identity/supabase/schemas/api/admin_lists.sql:27 |
+| `api:rpc identity.admin_list_roles` | reads | `table:member.platform_roles` | db/identity/supabase/schemas/api/admin_lists.sql:27 |
+| `api:rpc identity.admin_read` | guarded-by | `policy:identity.admin-aal2` | db/identity/supabase/schemas/api/admin_read.sql:7 |
+| `api:rpc identity.admin_read` | reads | `table:bucket.kyc-docs` | PRD v0.3.1 §9 F-A07 cek KTP (belum di kode: admin_read hanya mengembalikan doc_ref; foto dibaca page:admin/users lewat signed URL) |
+| `api:rpc identity.admin_read` | reads | `table:member.audit_logs` | PRD v0.3.1 §14 kg.yaml E-24 akses PII (belum di kode: admin_read hanya menulis audit log, baris 10; dibaca lewat api:view identity.audit_logs) |
 | `api:rpc identity.admin_read` | reads | `table:member.kyc_records` | db/identity/supabase/schemas/api/admin_read.sql:17 |
 | `api:rpc identity.admin_read` | writes | `table:member.audit_logs` | db/identity/supabase/schemas/api/admin_read.sql:10 |
-| `api:rpc identity.admin_set_role` | guarded-by | `policy:identity.admin-aal2` | PRD v0.3.1 §15.4 fungsi admin aal2 |
-| `api:rpc identity.admin_set_role` | writes | `table:member.audit_logs` | db/identity/supabase/schemas/api/admin_set_role.sql:17 |
-| `api:rpc identity.admin_set_role` | writes | `table:member.platform_roles` | db/identity/supabase/schemas/api/admin_set_role.sql:10 |
-| `api:rpc identity.my_payout_methods` | guarded-by | `policy:identity.rls-self` | PRD v0.3.1 §15.4 data sendiri |
+| `api:rpc identity.admin_set_role` | guarded-by | `policy:identity.admin-aal2` | db/identity/supabase/schemas/api/admin_set_role.sql:10 |
+| `api:rpc identity.admin_set_role` | writes | `table:member.audit_logs` | db/identity/supabase/schemas/api/admin_set_role.sql:23 |
+| `api:rpc identity.admin_set_role` | writes | `table:member.platform_roles` | db/identity/supabase/schemas/api/admin_set_role.sql:17 |
+| `api:rpc identity.my_payout_methods` | guarded-by | `policy:identity.rls-self` | PRD v0.3.1 §15.4 data sendiri; kode: security definer + filter auth.uid() (api/my_payout_methods.sql baris 9) |
 | `api:rpc identity.my_payout_methods` | reads | `table:member.payout_methods` | db/identity/supabase/schemas/api/my_payout_methods.sql:8 |
-| `api:rpc identity.record_consent` | guarded-by | `policy:identity.rls-self` | PRD v0.3.1 §15.4 data sendiri |
-| `api:rpc identity.record_consent` | reads | `table:member.legal_versions` | db/identity/supabase/schemas/api/record_consent.sql:17 |
+| `api:rpc identity.record_consent` | guarded-by | `policy:identity.rls-self` | PRD v0.3.1 §15.4 data sendiri; kode: uid = auth.uid() (api/record_consent.sql baris 10) |
+| `api:rpc identity.record_consent` | reads | `table:member.legal_versions` | db/identity/supabase/schemas/api/record_consent.sql:22 |
 | `api:rpc identity.record_consent` | writes | `table:member.consents` | db/identity/supabase/schemas/api/record_consent.sql:29 |
-| `api:rpc identity.save_push_subscription` | guarded-by | `policy:identity.rls-self` | PRD v0.3.1 Lampiran A.2 save_push_subscription |
+| `api:rpc identity.save_push_subscription` | guarded-by | `policy:identity.rls-self` | PRD v0.3.1 Lampiran A.2 save_push_subscription; kode: uid = auth.uid() (member/push_subscriptions.sql baris 26) |
 | `api:rpc identity.save_push_subscription` | writes | `table:member.push_subscriptions` | db/identity/supabase/schemas/member/push_subscriptions.sql:32 |
 | `api:rpc identity.shared_device_groups` | reads | `table:auth.sessions` | db/identity/supabase/schemas/api/shared_device_groups.sql:6 |
-| `api:rpc identity.store_kyc` | guarded-by | `policy:identity.unique-identity` | PRD v0.3.1 Lampiran A.2 store_kyc |
+| `api:rpc identity.store_kyc` | guarded-by | `policy:identity.unique-identity` | db/identity/supabase/schemas/api/member_data.sql:10 |
 | `api:rpc identity.store_kyc` | writes | `table:member.audit_logs` | db/identity/supabase/schemas/api/member_data.sql:23 |
 | `api:rpc identity.store_kyc` | writes | `table:member.kyc_records` | db/identity/supabase/schemas/api/member_data.sql:13 |
-| `api:rpc identity.store_payout_method` | guarded-by | `policy:identity.unique-identity` | PRD v0.3.1 Lampiran A.2 store_payout_method |
+| `api:rpc identity.store_payout_method` | guarded-by | `policy:identity.unique-identity` | db/identity/supabase/schemas/member/payout_methods.sql:18 (UNIQUE menolak insert baris 41) |
 | `api:rpc identity.store_payout_method` | reads | `table:member.kyc_records` | db/identity/supabase/schemas/api/member_data.sql:34 |
 | `api:rpc identity.store_payout_method` | writes | `table:member.payout_methods` | db/identity/supabase/schemas/api/member_data.sql:41 |
 | `api:rpc identity.store_recipient` | writes | `table:member.recipient_details` | db/identity/supabase/schemas/api/member_data.sql:52 |
-| `fn:accrue_earnings` | reads | `table:market.campaigns` | PRD v0.3.1 §10.5 langkah 1–3 |
-| `fn:accrue_earnings` | reads | `table:market.rate_rules` | PRD v0.3.1 §10.5 langkah 1–3 |
-| `fn:accrue_earnings` | reads | `table:tracking.submissions` | PRD v0.3.1 §10.5 langkah 1–3 |
-| `fn:accrue_earnings` | reads | `table:tracking.view_snapshots` | PRD v0.3.1 §10.5 langkah 1–3 |
-| `fn:accrue_earnings` | writes | `table:finance.ledger_accounts` | PRD v0.3.1 §14 kg.yaml E-14 wallet dibuat saat earning pertama |
-| `fn:accrue_earnings` | writes | `table:finance.ledger_entries` | PRD v0.3.1 §10.5 langkah 4 |
-| `fn:accrue_earnings` | writes | `table:finance.reward_pools` | PRD v0.3.1 §10.5 langkah 4 + kg.yaml E-09 rule |
-| `fn:accrue_earnings` | writes | `table:tracking.submissions` | PRD v0.3.1 §10.5 counted_views |
+| `api:view identity.audit_logs` | guarded-by | `policy:identity.admin-aal2` | db/identity/supabase/schemas/api/views.sql:17 |
+| `api:view identity.audit_logs` | reads | `table:member.audit_logs` | db/identity/supabase/schemas/api/views.sql:19 |
+| `api:view identity.my_recipients` | reads | `table:member.recipient_details` | db/identity/supabase/schemas/api/views.sql:16 |
+| `fn:accrue_earnings` | reads | `table:market.campaigns` | db/core/supabase/schemas/finance/earnings.sql:143 |
+| `fn:accrue_earnings` | reads | `table:market.rate_rules` | db/core/supabase/schemas/finance/earnings.sql:157 |
+| `fn:accrue_earnings` | reads | `table:tracking.submissions` | db/core/supabase/schemas/finance/earnings.sql:132 |
+| `fn:accrue_earnings` | reads | `table:tracking.view_snapshots` | db/core/supabase/schemas/finance/earnings.sql:136 |
+| `fn:accrue_earnings` | writes | `table:finance.ledger_accounts` | db/core/supabase/schemas/finance/earnings.sql:199 (finance.account membuat wallet bila belum ada) |
+| `fn:accrue_earnings` | writes | `table:finance.ledger_entries` | db/core/supabase/schemas/finance/earnings.sql:215 (finance.post) |
+| `fn:accrue_earnings` | writes | `table:finance.reward_pools` | db/core/supabase/schemas/finance/earnings.sql:200 |
+| `fn:accrue_earnings` | writes | `table:tracking.submissions` | db/core/supabase/schemas/finance/earnings.sql:148 |
 | `fn:custom_access_token_hook` | reads | `table:member.consents` | db/identity/supabase/schemas/member/custom_access_token_hook.sql:31 |
 | `fn:custom_access_token_hook` | reads | `table:member.kyc_records` | db/identity/supabase/schemas/member/custom_access_token_hook.sql:25 |
 | `fn:custom_access_token_hook` | reads | `table:member.legal_versions` | db/identity/supabase/schemas/member/custom_access_token_hook.sql:10 |
@@ -937,60 +1045,60 @@ Arah: `A --tipe--> B` = A bergantung pada B. `?` = belum terverifikasi.
 | `fn:enqueue_notification` | emits | `event:queue.email` | db/core/supabase/schemas/ops/enqueue_notification.sql:13 |
 | `fn:enqueue_notification` | reads | `table:ops.notification_prefs` | db/core/supabase/schemas/ops/enqueue_notification.sql:11 |
 | `fn:enqueue_notification` | writes | `table:ops.notifications` | db/core/supabase/schemas/ops/enqueue_notification.sql:10 |
-| `fn:reverse_earning` | writes | `table:finance.ledger_entries` | PRD v0.3.1 §10.5 langkah 6 + §12 sanksi |
-| `fn:reverse_earning` | writes | `table:finance.reward_pools` | PRD v0.3.1 §14 kg.yaml E-09 rule |
-| `job:broadcast-dispatch` | calls | `fn:enqueue_notification` | PRD v0.3.1 Lampiran A.3 broadcast-dispatch |
-| `job:broadcast-dispatch` | writes | `table:ops.broadcasts` | PRD v0.3.1 Lampiran A.3 dispatch_broadcasts |
-| `job:broadcast-dispatch` | writes | `table:ops.notifications` | PRD v0.3.1 Lampiran A.3 dispatch_broadcasts |
-| `job:budget-alerts` | calls | `fn:enqueue_notification` | PRD v0.3.1 Lampiran A.3 budget-alerts |
-| `job:budget-alerts` | writes | `table:ops.notifications` | PRD v0.3.1 Lampiran A.3 run_budget_alerts |
+| `fn:reverse_earning` | writes | `table:finance.ledger_entries` | db/core/supabase/schemas/finance/earnings.sql:300 (finance.post) |
+| `fn:reverse_earning` | writes | `table:finance.reward_pools` | db/core/supabase/schemas/finance/earnings.sql:293 |
+| `job:broadcast-dispatch` | calls | `fn:enqueue_notification` | db/core/supabase/schemas/ops/broadcast_dispatch.sql:39 |
+| `job:broadcast-dispatch` | writes | `table:ops.broadcasts` | db/core/supabase/schemas/ops/broadcast_dispatch.sql:45 |
+| `job:broadcast-dispatch` | writes | `table:ops.notifications` | db/core/supabase/schemas/ops/broadcast_dispatch.sql:39 (ops.enqueue_notification) |
+| `job:budget-alerts` | calls | `fn:enqueue_notification` | db/core/supabase/schemas/api/_helpers.sql:58 (market.notify_org, dipanggil market/jobs.sql baris 92) |
+| `job:budget-alerts` | writes | `table:ops.notifications` | db/core/supabase/schemas/api/_helpers.sql:58 (market.notify_org → ops.enqueue_notification) |
 | `job:claim-expiry` | calls | `fn:enqueue_notification` | db/core/supabase/schemas/market/claims.sql:37 |
 | `job:claim-expiry` | writes | `table:market.claims` | db/core/supabase/schemas/market/claims.sql:40 |
-| `job:earning-release` | calls | `fn:enqueue_notification` | PRD v0.3.1 §9 F-X01 earning tersedia |
-| `job:earning-release` | writes | `table:finance.ledger_entries` | PRD v0.3.1 §10.5 langkah 7 + jurnal |
-| `job:fraud-device-scan` | calls | `api:fn core/bridge` | PRD v0.3.1 §15.5 alur 6 raise_fraud_flag |
+| `job:earning-release` | calls | `fn:enqueue_notification` | db/core/supabase/schemas/finance/earnings.sql:421 |
+| `job:earning-release` | writes | `table:finance.ledger_entries` | db/core/supabase/schemas/finance/earnings.sql:419 (finance.post) |
+| `job:fraud-device-scan` | calls | `api:fn core/bridge` | db/identity/supabase/functions/bridge/handler.ts:127 |
 | `job:fraud-device-scan` | calls | `api:fn identity/bridge` | db/identity/supabase/schemas/member/cron.sql:15 |
-| `job:fraud-device-scan` | configured-by | `env:BRIDGE_SECRET_IDENTITY_TO_CORE` | PRD v0.3.1 §15.5 HMAC per arah |
-| `job:fraud-device-scan` | reads | `table:auth.sessions` | PRD v0.3.1 §15.5 alur 6 (kolom ip & user_agent) |
-| `job:fulfillment-retry` | calls | `api:fn core/fulfill` | db/core/supabase/schemas/finance/cron.sql:11 |
-| `job:fulfillment-retry` | configured-by | `env:CORE_SECRET_KEY` | PRD v0.3.1 §15.7 secret key di Vault core → header apikey |
+| `job:fraud-device-scan` | configured-by | `env:BRIDGE_SECRET_IDENTITY_TO_CORE` | db/identity/supabase/functions/_shared/bridge.ts:136 |
+| `job:fraud-device-scan` | reads | `table:auth.sessions` | db/identity/supabase/schemas/api/shared_device_groups.sql:6 (dipanggil bridge/handler.ts baris 113) |
+| `job:fulfillment-retry` | calls | `api:fn core/fulfill` | db/core/supabase/schemas/finance/cron.sql:12 |
+| `job:fulfillment-retry` | configured-by | `env:CORE_SECRET_KEY` | db/core/supabase/schemas/ops/enqueue_notification.sql:29 (ops.invoke_function → header apikey) |
 | `job:leaderboard-refresh` | writes | `table:market.leaderboard_campaign` | db/core/supabase/schemas/market/leaderboard.sql:27 |
 | `job:leaderboard-refresh` | writes | `table:market.leaderboard_weekly` | db/core/supabase/schemas/market/leaderboard.sql:26 |
-| `job:lifecycle` | calls | `fn:accrue_earnings` | PRD v0.3.1 §10.5 langkah 5 settlement |
-| `job:lifecycle` | calls | `fn:reverse_earning` | PRD v0.3.1 §10.5 langkah 6 koreksi turun |
-| `job:lifecycle` | writes | `table:market.campaigns` | PRD v0.3.1 §14 S-01 |
-| `job:lifecycle` | writes | `table:tracking.submissions` | PRD v0.3.1 §10.5 langkah 6 lock |
-| `job:lifecycle` | writes | `table:trust.review_decisions` | PRD v0.3.1 §8 F-B07 auto-approve 72 jam |
+| `job:lifecycle` | calls | `fn:accrue_earnings` | db/core/supabase/schemas/market/lifecycle.sql:71 |
+| `job:lifecycle` | calls | `fn:reverse_earning` | PRD v0.3.1 §10.5 langkah 6 koreksi turun (belum di kode: koreksi turun = finance.correct_down di accrue_earnings; reverse_earning hanya dipanggil api.worker_post_gone & resolve_fraud_flag) |
+| `job:lifecycle` | writes | `table:market.campaigns` | db/core/supabase/schemas/market/lifecycle.sql:54 |
+| `job:lifecycle` | writes | `table:tracking.submissions` | db/core/supabase/schemas/market/lifecycle.sql:72 |
+| `job:lifecycle` | writes | `table:trust.review_decisions` | db/core/supabase/schemas/market/lifecycle.sql:106 (trust.auto_approve_overdue) |
 | `job:notify-drain` | calls | `api:fn core/notify` | db/core/supabase/schemas/ops/cron.sql:8 |
-| `job:notify-drain` | configured-by | `env:CORE_SECRET_KEY` | PRD v0.3.1 §15.7 secret key di Vault core → header apikey |
-| `job:reconcile-daily` | calls | `api:fn core/bridge` | db/core/supabase/schemas/finance/cron.sql:6 |
-| `job:reconcile-daily` | calls | `api:fn identity/bridge` | PRD v0.3.1 §15.5 alur 10 check_ids |
-| `job:reconcile-daily` | configured-by | `env:BRIDGE_SECRET_CORE_TO_IDENTITY` | PRD v0.3.1 §15.5 HMAC per arah |
-| `job:reconcile-daily` | reads | `table:finance.ledger_entries` | PRD v0.3.1 §16 rekonsiliasi harian |
-| `job:referral-bonus` | writes | `table:finance.ledger_entries` | PRD v0.3.1 Lampiran A.3 accrue_referral_bonus |
-| `job:referral-bonus` | writes | `table:market.referrals` | PRD v0.3.1 Lampiran A.3 accrue_referral_bonus |
+| `job:notify-drain` | configured-by | `env:CORE_SECRET_KEY` | db/core/supabase/schemas/ops/enqueue_notification.sql:29 (ops.invoke_function → header apikey) |
+| `job:reconcile-daily` | calls | `api:fn core/bridge` | db/core/supabase/schemas/finance/cron.sql:7 |
+| `job:reconcile-daily` | calls | `api:fn identity/bridge` | db/core/supabase/functions/bridge/handler.ts:94 |
+| `job:reconcile-daily` | configured-by | `env:BRIDGE_SECRET_CORE_TO_IDENTITY` | db/core/supabase/functions/_shared/bridge.ts:66 |
+| `job:reconcile-daily` | reads | `table:finance.ledger_entries` | db/core/supabase/schemas/finance/reconcile.sql:15 |
+| `job:referral-bonus` | writes | `table:finance.ledger_entries` | db/core/supabase/schemas/finance/referral_bonus.sql:29 (finance.post) |
+| `job:referral-bonus` | reads | `table:market.referrals` | db/core/supabase/schemas/finance/referral_bonus.sql:19 |
 | `job:token-refresh` | calls | `api:fn core/refresh-tokens` | db/core/supabase/schemas/tracking/cron.sql:5 |
-| `job:token-refresh` | configured-by | `env:CORE_SECRET_KEY` | PRD v0.3.1 §15.7 secret key di Vault core → header apikey |
+| `job:token-refresh` | configured-by | `env:CORE_SECRET_KEY` | db/core/supabase/schemas/ops/enqueue_notification.sql:29 (ops.invoke_function → header apikey) |
 | `job:track-due` | calls | `api:fn core/track-worker` | db/core/supabase/schemas/tracking/cron.sql:4 |
-| `job:track-due` | configured-by | `env:CORE_SECRET_KEY` | PRD v0.3.1 §15.7 secret key di Vault core → header apikey |
+| `job:track-due` | configured-by | `env:CORE_SECRET_KEY` | db/core/supabase/schemas/ops/enqueue_notification.sql:29 (ops.invoke_function → header apikey); cron track-worker, tracking/cron.sql baris 4 |
 | `job:track-due` | emits | `event:queue.tracking` | db/core/supabase/schemas/tracking/submissions.sql:57 |
 | `job:track-due` | reads | `table:tracking.submissions` | db/core/supabase/schemas/tracking/submissions.sql:53 |
-| `job:trust-score` | reads | `table:trust.score_events` | PRD v0.3.1 Lampiran A.3 recalc_scores |
-| `job:trust-score` | writes | `table:market.profiles` | PRD v0.3.1 Lampiran A.3 recalc_scores |
+| `job:trust-score` | reads | `table:trust.score_events` | db/core/supabase/schemas/trust/decisions.sql:84 |
+| `job:trust-score` | writes | `table:market.profiles` | db/core/supabase/schemas/trust/decisions.sql:82 |
 | `table:auth.sessions` | guarded-by | `policy:identity.api-only` | PRD v0.3.1 §15.4 kolom Akses |
 | `table:auth.users` | guarded-by | `policy:identity.api-only` | PRD v0.3.1 §15.4 kolom Akses |
-| `table:bucket.avatars` | guarded-by | `policy:core.public-read` | db/core/supabase/config.toml:30 |
+| `table:bucket.avatars` | guarded-by | `policy:core.public-read` | db/core/supabase/config.toml:49 |
 | `table:bucket.avatars` | guarded-by | `policy:core.rls-self` | db/core/supabase/schemas/market/storage.sql:17 |
 | `table:bucket.campaign-assets` | guarded-by | `policy:core.inherit-parent` | db/core/supabase/schemas/market/storage.sql:10 |
 | `table:bucket.campaign-assets` | guarded-by | `policy:core.org-role` | db/core/supabase/schemas/market/storage.sql:6 |
-| `table:bucket.campaign-assets` | guarded-by | `policy:core.storage-private` | db/core/supabase/config.toml:3 |
+| `table:bucket.campaign-assets` | guarded-by | `policy:core.storage-private` | db/core/supabase/config.toml:43 (public = false baris 44) |
 | `table:bucket.campaign-covers` | guarded-by | `policy:core.org-role` | db/core/supabase/schemas/market/storage.sql:6 |
-| `table:bucket.campaign-covers` | guarded-by | `policy:core.public-read` | db/core/supabase/config.toml:3 |
+| `table:bucket.campaign-covers` | guarded-by | `policy:core.public-read` | db/core/supabase/config.toml:39 |
 | `table:bucket.kyc-docs` | guarded-by | `policy:identity.admin-aal2` | db/identity/supabase/schemas/member/storage.sql:10 |
 | `table:bucket.kyc-docs` | guarded-by | `policy:identity.rls-self` | db/identity/supabase/schemas/member/storage.sql:6 |
-| `table:bucket.kyc-docs` | guarded-by | `policy:identity.storage-private` | db/identity/supabase/config.toml:12 |
-| `table:bucket.payout-proofs` | guarded-by | `policy:identity.storage-private` | db/identity/supabase/config.toml:12 |
-| `table:bucket.pii-exports` | guarded-by | `policy:identity.storage-private` | db/identity/supabase/config.toml:12 |
+| `table:bucket.kyc-docs` | guarded-by | `policy:identity.storage-private` | db/identity/supabase/config.toml:43 (public = false) |
+| `table:bucket.payout-proofs` | guarded-by | `policy:identity.storage-private` | db/identity/supabase/config.toml:53 (public = false) |
+| `table:bucket.pii-exports` | guarded-by | `policy:identity.storage-private` | db/identity/supabase/config.toml:48 (public = false) |
 | `table:finance.fee_rules` | guarded-by | `policy:core.inherit-parent` | db/core/supabase/schemas/finance/fee_rules.sql:29 |
 | `table:finance.fee_rules` | guarded-by | `policy:core.iss-identity` | db/core/supabase/schemas/finance/fee_rules.sql:27 |
 | `table:finance.fulfillments` | guarded-by | `policy:core.admin-aal2` | db/core/supabase/schemas/finance/fulfillments.sql:29 |
@@ -999,10 +1107,10 @@ Arah: `A --tipe--> B` = A bergantung pada B. `?` = belum terverifikasi.
 | `table:finance.fulfillments` | typed-by | `doc:spec/kg.yaml` | db/core/supabase/schemas/ops/state_triggers.sql:1 |
 | `table:finance.fulfillments` | typed-by | `table:market.profiles` | db/core/supabase/schemas/finance/fulfillments.sql:5 |
 | `table:finance.fulfillments` | typed-by | `table:market.reward_types` | db/core/supabase/schemas/finance/fulfillments.sql:6 |
-| `table:finance.fulfillments` | typed-by | `table:member.recipient_details` | PRD v0.3.1 §14 kg.yaml E-18 refs E-29 (recipient_ref, tanpa FK) |
-| `table:finance.invoices` | guarded-by | `policy:core.admin-aal2` | db/core/supabase/schemas/finance/invoices.sql:42 |
-| `table:finance.invoices` | guarded-by | `policy:core.iss-identity` | db/core/supabase/schemas/finance/invoices.sql:38 |
-| `table:finance.invoices` | guarded-by | `policy:core.org-role` | db/core/supabase/schemas/finance/invoices.sql:38 |
+| `table:finance.fulfillments` | typed-by | `table:member.recipient_details` | PRD v0.3.1 §14 kg.yaml E-18 refs E-29 (recipient_ref, tanpa FK); kode: finance/fulfillments.sql baris 9 recipient_ref |
+| `table:finance.invoices` | guarded-by | `policy:core.admin-aal2` | db/core/supabase/schemas/finance/invoices.sql:47 |
+| `table:finance.invoices` | guarded-by | `policy:core.iss-identity` | db/core/supabase/schemas/finance/invoices.sql:42 |
+| `table:finance.invoices` | guarded-by | `policy:core.org-role` | db/core/supabase/schemas/finance/invoices.sql:44 |
 | `table:finance.invoices` | typed-by | `table:market.campaigns` | db/core/supabase/schemas/finance/invoices.sql:7 |
 | `table:finance.invoices` | typed-by | `table:market.organizations` | db/core/supabase/schemas/finance/invoices.sql:6 |
 | `table:finance.ledger_accounts` | guarded-by | `policy:core.admin-aal2` | db/core/supabase/schemas/finance/ledger_accounts.sql:24 |
@@ -1010,7 +1118,7 @@ Arah: `A --tipe--> B` = A bergantung pada B. `?` = belum terverifikasi.
 | `table:finance.ledger_accounts` | guarded-by | `policy:core.org-role` | db/core/supabase/schemas/finance/ledger_accounts.sql:22 |
 | `table:finance.ledger_accounts` | guarded-by | `policy:core.rls-self` | db/core/supabase/schemas/finance/ledger_accounts.sql:20 |
 | `table:finance.ledger_accounts` | typed-by | `table:market.reward_types` | db/core/supabase/schemas/finance/ledger_accounts.sql:8 |
-| `table:finance.ledger_entries` | guarded-by | `policy:core.inherit-parent` | db/core/supabase/schemas/finance/ledger_entries.sql:57 |
+| `table:finance.ledger_entries` | guarded-by | `policy:core.inherit-parent` | db/core/supabase/schemas/finance/ledger_entries.sql:59 |
 | `table:finance.ledger_entries` | guarded-by | `policy:core.iss-identity` | db/core/supabase/schemas/finance/ledger_entries.sql:57 |
 | `table:finance.ledger_entries` | typed-by | `table:finance.ledger_accounts` | db/core/supabase/schemas/finance/ledger_entries.sql:22 |
 | `table:finance.org_refunds` | guarded-by | `policy:core.admin-aal2` | db/core/supabase/schemas/finance/org_refunds.sql:31 |
@@ -1020,15 +1128,15 @@ Arah: `A --tipe--> B` = A bergantung pada B. `?` = belum terverifikasi.
 | `table:finance.org_refunds` | typed-by | `table:market.organizations` | db/core/supabase/schemas/finance/org_refunds.sql:5 |
 | `table:finance.payout_batches` | guarded-by | `policy:core.admin-aal2` | db/core/supabase/schemas/finance/payout_batches.sql:23 |
 | `table:finance.payout_batches` | guarded-by | `policy:core.iss-identity` | db/core/supabase/schemas/finance/payout_batches.sql:21 |
-| `table:finance.payout_batches` | typed-by | `table:bucket.pii-exports` | PRD v0.3.1 §14 kg.yaml E-26 file_ref (lintas DB, tanpa FK) |
+| `table:finance.payout_batches` | typed-by | `table:bucket.pii-exports` | db/core/supabase/schemas/finance/payout_batches.sql:2 |
 | `table:finance.payouts` | guarded-by | `policy:core.admin-aal2` | db/core/supabase/schemas/finance/payouts.sql:35 |
 | `table:finance.payouts` | guarded-by | `policy:core.iss-identity` | db/core/supabase/schemas/finance/payouts.sql:32 |
 | `table:finance.payouts` | guarded-by | `policy:core.rls-self` | db/core/supabase/schemas/finance/payouts.sql:34 |
 | `table:finance.payouts` | typed-by | `doc:spec/kg.yaml` | db/core/supabase/schemas/ops/state_triggers.sql:1 |
-| `table:finance.payouts` | typed-by | `table:bucket.payout-proofs` | PRD v0.3.1 §14 kg.yaml E-17 proof_ref (lintas DB, tanpa FK) |
+| `table:finance.payouts` | typed-by | `table:bucket.payout-proofs` | db/core/supabase/schemas/finance/payouts.sql:2 |
 | `table:finance.payouts` | typed-by | `table:finance.payout_batches` | db/core/supabase/schemas/finance/payouts.sql:7 |
 | `table:finance.payouts` | typed-by | `table:market.profiles` | db/core/supabase/schemas/finance/payouts.sql:5 |
-| `table:finance.payouts` | typed-by | `table:member.payout_methods` | PRD v0.3.1 §14 kg.yaml E-17 refs E-16 (method_id, tanpa FK) |
+| `table:finance.payouts` | typed-by | `table:member.payout_methods` | PRD v0.3.1 §14 kg.yaml E-17 refs E-16 (method_id, tanpa FK); kode: finance/payouts.sql baris 1, 6 method_id |
 | `table:finance.reward_codes` | guarded-by | `policy:core.admin-aal2` | db/core/supabase/schemas/finance/reward_codes.sql:25 |
 | `table:finance.reward_codes` | guarded-by | `policy:core.iss-identity` | db/core/supabase/schemas/finance/reward_codes.sql:18 |
 | `table:finance.reward_codes` | guarded-by | `policy:core.org-role` | db/core/supabase/schemas/finance/reward_codes.sql:22 |
@@ -1042,19 +1150,19 @@ Arah: `A --tipe--> B` = A bergantung pada B. `?` = belum terverifikasi.
 | `table:market.campaign_assets` | guarded-by | `policy:core.inherit-parent` | db/core/supabase/schemas/market/campaign_assets.sql:27 |
 | `table:market.campaign_assets` | guarded-by | `policy:core.iss-identity` | db/core/supabase/schemas/market/campaign_assets.sql:23 |
 | `table:market.campaign_assets` | guarded-by | `policy:core.public-read` | db/core/supabase/schemas/market/campaign_assets.sql:25 |
-| `table:market.campaign_assets` | typed-by | `table:bucket.campaign-assets` | PRD v0.3.1 §14 kg.yaml E-10 path file |
-| `table:market.campaign_assets` | typed-by | `table:bucket.campaign-covers` | PRD v0.3.1 §14 kg.yaml E-10 kind cover |
+| `table:market.campaign_assets` | typed-by | `table:bucket.campaign-assets` | db/core/supabase/schemas/market/campaign_assets.sql:1 |
+| `table:market.campaign_assets` | typed-by | `table:bucket.campaign-covers` | db/core/supabase/schemas/market/campaign_assets.sql:1 |
 | `table:market.campaign_assets` | typed-by | `table:market.campaigns` | db/core/supabase/schemas/market/campaign_assets.sql:7 |
-| `table:market.campaign_invites` | guarded-by | `policy:core.admin-aal2` | db/core/supabase/schemas/market/campaigns.sql:101 |
+| `table:market.campaign_invites` | guarded-by | `policy:core.admin-aal2` | db/core/supabase/schemas/market/campaigns.sql:104 |
 | `table:market.campaign_invites` | guarded-by | `policy:core.iss-identity` | db/core/supabase/schemas/market/campaigns.sql:101 |
-| `table:market.campaign_invites` | guarded-by | `policy:core.rls-org` | db/core/supabase/schemas/market/campaigns.sql:135 |
-| `table:market.campaign_invites` | guarded-by | `policy:core.rls-self` | db/core/supabase/schemas/market/campaigns.sql:101 |
-| `table:market.campaign_invites` | typed-by | `table:market.campaigns` | db/core/supabase/schemas/market/campaigns.sql:90 |
-| `table:market.campaign_invites` | typed-by | `table:market.profiles` | db/core/supabase/schemas/market/campaigns.sql:91 |
-| `table:market.campaigns` | guarded-by | `policy:core.admin-aal2` | db/core/supabase/schemas/market/campaigns.sql:130 |
+| `table:market.campaign_invites` | guarded-by | `policy:core.rls-org` | db/core/supabase/schemas/market/campaigns.sql:136 |
+| `table:market.campaign_invites` | guarded-by | `policy:core.rls-self` | db/core/supabase/schemas/market/campaigns.sql:103 |
+| `table:market.campaign_invites` | typed-by | `table:market.campaigns` | db/core/supabase/schemas/market/campaigns.sql:92 |
+| `table:market.campaign_invites` | typed-by | `table:market.profiles` | db/core/supabase/schemas/market/campaigns.sql:93 |
+| `table:market.campaigns` | guarded-by | `policy:core.admin-aal2` | db/core/supabase/schemas/market/campaigns.sql:132 |
 | `table:market.campaigns` | guarded-by | `policy:core.iss-identity` | db/core/supabase/schemas/market/campaigns.sql:118 |
-| `table:market.campaigns` | guarded-by | `policy:core.public-read` | db/core/supabase/schemas/market/campaigns.sql:121 |
-| `table:market.campaigns` | guarded-by | `policy:core.rls-org` | db/core/supabase/schemas/market/campaigns.sql:130 |
+| `table:market.campaigns` | guarded-by | `policy:core.public-read` | db/core/supabase/schemas/market/campaigns.sql:123 |
+| `table:market.campaigns` | guarded-by | `policy:core.rls-org` | db/core/supabase/schemas/market/campaigns.sql:131 |
 | `table:market.campaigns` | typed-by | `doc:spec/kg.yaml` | db/core/supabase/schemas/ops/state_triggers.sql:1 |
 | `table:market.campaigns` | typed-by | `table:finance.fee_rules` | db/core/supabase/schemas/market/campaigns.sql:43 |
 | `table:market.campaigns` | typed-by | `table:market.categories` | db/core/supabase/schemas/market/campaigns.sql:9 |
@@ -1069,9 +1177,9 @@ Arah: `A --tipe--> B` = A bergantung pada B. `?` = belum terverifikasi.
 | `table:market.claims` | typed-by | `doc:spec/kg.yaml` | db/core/supabase/schemas/ops/state_triggers.sql:1 |
 | `table:market.claims` | typed-by | `table:market.campaigns` | db/core/supabase/schemas/market/claims.sql:5 |
 | `table:market.claims` | typed-by | `table:market.profiles` | db/core/supabase/schemas/market/claims.sql:6 |
-| `table:market.leaderboard_campaign` | guarded-by | `policy:core.api-only` | db/core/supabase/schemas/api/views.sql:102 |
+| `table:market.leaderboard_campaign` | guarded-by | `policy:core.api-only` | db/core/supabase/schemas/api/views.sql:106 |
 | `table:market.leaderboard_campaign` | reads | `table:tracking.submissions` | db/core/supabase/schemas/market/leaderboard.sql:16 |
-| `table:market.leaderboard_weekly` | guarded-by | `policy:core.api-only` | db/core/supabase/schemas/api/views.sql:102 |
+| `table:market.leaderboard_weekly` | guarded-by | `policy:core.api-only` | db/core/supabase/schemas/api/views.sql:106 |
 | `table:market.leaderboard_weekly` | reads | `table:tracking.submissions` | db/core/supabase/schemas/market/leaderboard.sql:8 |
 | `table:market.org_invites` | guarded-by | `policy:core.iss-identity` | db/core/supabase/schemas/market/org_invites.sql:21 |
 | `table:market.org_invites` | guarded-by | `policy:core.org-role` | db/core/supabase/schemas/market/org_invites.sql:23 |
@@ -1092,7 +1200,7 @@ Arah: `A --tipe--> B` = A bergantung pada B. `?` = belum terverifikasi.
 | `table:market.organizations` | typed-by | `table:finance.fee_rules` | db/core/supabase/schemas/market/organizations.sql:11 |
 | `table:market.profiles` | guarded-by | `policy:core.iss-identity` | db/core/supabase/schemas/market/profiles.sql:20 |
 | `table:market.profiles` | guarded-by | `policy:core.public-read` | db/core/supabase/schemas/market/profiles.sql:22 |
-| `table:market.profiles` | typed-by | `table:auth.users` | PRD v0.3.1 §14 kg.yaml E-01 id = sub JWT identity (tanpa FK) |
+| `table:market.profiles` | typed-by | `table:auth.users` | db/core/supabase/schemas/market/profiles.sql:1 |
 | `table:market.rate_rules` | guarded-by | `policy:core.inherit-parent` | db/core/supabase/schemas/market/rate_rules.sql:29 |
 | `table:market.rate_rules` | guarded-by | `policy:core.iss-identity` | db/core/supabase/schemas/market/rate_rules.sql:27 |
 | `table:market.rate_rules` | typed-by | `table:finance.reward_pools` | db/core/supabase/schemas/market/rate_rules.sql:15 |
@@ -1117,7 +1225,7 @@ Arah: `A --tipe--> B` = A bergantung pada B. `?` = belum terverifikasi.
 | `table:member.kyc_records` | guarded-by | `policy:identity.rls-self` | db/identity/supabase/schemas/member/kyc_records.sql:33 |
 | `table:member.kyc_records` | guarded-by | `policy:identity.unique-identity` | db/identity/supabase/schemas/member/kyc_records.sql:21 |
 | `table:member.kyc_records` | typed-by | `table:auth.users` | db/identity/supabase/schemas/member/kyc_records.sql:7 |
-| `table:member.kyc_records` | typed-by | `table:bucket.kyc-docs` | PRD v0.3.1 §14 kg.yaml E-05 doc_ref |
+| `table:member.kyc_records` | typed-by | `table:bucket.kyc-docs` | db/identity/supabase/schemas/member/kyc_records.sql:25 (doc_ref di folder user bucket kyc-docs) |
 | `table:member.legal_versions` | guarded-by | `policy:identity.auth-hook` | db/identity/supabase/schemas/member/legal_versions.sql:12 |
 | `table:member.legal_versions` | guarded-by | `policy:identity.public-read` | db/identity/supabase/schemas/member/legal_versions.sql:11 |
 | `table:member.payout_methods` | guarded-by | `policy:identity.rls-self` | db/identity/supabase/schemas/member/payout_methods.sql:26 |
@@ -1166,21 +1274,25 @@ Arah: `A --tipe--> B` = A bergantung pada B. `?` = belum terverifikasi.
 | `table:trust.score_events` | guarded-by | `policy:core.iss-identity` | db/core/supabase/schemas/trust/score_events.sql:19 |
 | `table:trust.score_events` | guarded-by | `policy:core.rls-self` | db/core/supabase/schemas/trust/score_events.sql:21 |
 | `table:trust.score_events` | typed-by | `table:market.profiles` | db/core/supabase/schemas/trust/score_events.sql:5 |
-| `table:vault.social-tokens` | guarded-by | `policy:core.definer-only` | PRD v0.3.1 §15.4 kolom Akses |
-| `policy:bridge-hmac` | configured-by | `env:BRIDGE_SECRET_CORE_TO_IDENTITY` | PRD v0.3.1 §15.5 |
-| `policy:bridge-hmac` | configured-by | `env:BRIDGE_SECRET_IDENTITY_TO_CORE` | PRD v0.3.1 §15.5 |
-| `policy:core.admin-aal2` | typed-by | `fn:custom_access_token_hook` | PRD v0.3.1 §15.5 alur 2 kontrak claim app_roles |
-| `policy:core.iss-identity` | configured-by | `config:tpa-oidc-identity` | PRD v0.3.1 §15.6 issuer dari discovery = iss JWT (supabase/auth service.go baris 719, jwks.go baris 76) |
-| `policy:core.iss-identity` | reads | `table:ops.settings` | PRD v0.3.1 §15.6 issuer per environment dari E-25 |
-| `policy:core.org-role` | reads | `table:market.org_members` | PRD v0.3.1 §4 role brand per org |
-| `policy:core.rls-org` | reads | `table:market.org_members` | PRD v0.3.1 §4 role brand per org |
-| `policy:fn-cron-key` | configured-by | `env:CORE_SECRET_KEY` | PRD v0.3.1 §15.6 + §15.7 |
-| `policy:fn-verify-jwt` | calls | `api:GET identity/.well-known/openid-configuration` | PRD v0.3.1 §15.6 ambil JWKS identity |
-| `policy:fn-verify-jwt` | configured-by | `env:IDENTITY_ISSUER` | PRD v0.3.1 §15.7 URL JWKS identity |
-| `policy:identity.admin-aal2` | reads | `table:member.platform_roles` | PRD v0.3.1 §14 kg.yaml E-27 |
-| `config:supabase.identity` | configured-by | `env:RESEND_SMTP_KEY` | PRD v0.3.1 §15.7 + §15.10 SMTP custom |
-| `config:supabase.identity` | configured-by | `env:TURNSTILE_SECRET` | PRD v0.3.1 §15.6 + §15.7 CAPTCHA |
+| `table:vault.social-tokens` | guarded-by | `policy:core.definer-only` | db/core/supabase/schemas/tracking/vault.sql:4 |
+| `policy:bridge-hmac` | configured-by | `env:BRIDGE_SECRET_CORE_TO_IDENTITY` | db/core/supabase/functions/_shared/bridge.ts:66 |
+| `policy:bridge-hmac` | configured-by | `env:BRIDGE_SECRET_IDENTITY_TO_CORE` | db/core/supabase/functions/bridge/index.ts:10 |
+| `policy:core.admin-aal2` | typed-by | `fn:custom_access_token_hook` | PRD v0.3.1 §15.5 alur 2 kontrak claim app_roles; kode: ops/_auth.sql baris 12, 18 (claim app_roles dari hook) |
+| `policy:core.iss-identity` | configured-by | `config:tpa-oidc-identity` | PRD v0.3.1 §15.6 issuer dari discovery = iss JWT (supabase/auth service.go baris 719, jwks.go baris 76); kode: Custom OIDC di Dashboard, policy membandingkan iss dengan ops.settings auth.identity_issuer (ops/_auth.sql baris 9) |
+| `policy:core.iss-identity` | reads | `table:ops.settings` | db/core/supabase/schemas/ops/_auth.sql:9 |
+| `policy:core.org-role` | reads | `table:market.org_members` | db/core/supabase/schemas/ops/_auth.sql:28 |
+| `policy:core.rls-org` | reads | `table:market.org_members` | db/core/supabase/schemas/ops/_auth.sql:28 (ops.org_role, dipanggil is_org_member baris 38) |
+| `policy:fn-cron-key` | configured-by | `env:CORE_SECRET_KEY` | db/core/supabase/schemas/ops/enqueue_notification.sql:29 |
+| `policy:fn-verify-jwt` | calls | `api:GET identity/.well-known/openid-configuration` | db/core/supabase/functions/_shared/auth.ts:22 |
+| `policy:fn-verify-jwt` | configured-by | `env:IDENTITY_ISSUER` | db/core/supabase/functions/_shared/auth.ts:38 |
+| `policy:identity.admin-aal2` | reads | `table:member.platform_roles` | db/identity/supabase/schemas/member/_auth.sql:10 |
+| `config:supabase.identity` | configured-by | `env:RESEND_SMTP_KEY` | PRD v0.3.1 §15.7 + §15.10 SMTP custom (belum di kode: SMTP Auth diatur di Dashboard/Management API, config.toml baris 1–2) |
+| `config:supabase.identity` | configured-by | `env:TURNSTILE_SECRET` | PRD v0.3.1 §15.6 + §15.7 CAPTCHA (belum di kode: CAPTCHA Auth diatur di Dashboard/Management API, config.toml baris 1–2) |
+| `config:ci` | calls | `config:eslint.imports` | kode: .github/workflows/ci.yml baris 29 (pnpm lint = scripts/check-arch.mjs) |
+| `config:ci` | tests | `config:supabase.core` | .github/workflows/ci.yml:63 |
+| `config:ci` | tests | `config:supabase.identity` | .github/workflows/ci.yml:63 |
 | `config:tpa-oidc-identity` | calls | `api:GET identity/.well-known/openid-configuration` | PRD v0.3.1 §15.6; kode supabase/auth api.go baris 207 (route tanpa syarat OAuth Server) |
+| `ext:disbursement` | calls | `api:fn identity/disburse` | db/identity/supabase/functions/disburse/index.ts:1 (callback penyedia, POST /disburse/callback) |
 | `ext:google` | configured-by | `config:host.app` | PRD v0.3.1 §15.2 redirect URI per host |
 | `ext:google` | configured-by | `config:host.auth` | PRD v0.3.1 §15.2 consent screen login Google |
 | `ext:meta` | configured-by | `config:host.app` | PRD v0.3.1 §15.2 redirect URI per host |
@@ -1197,42 +1309,60 @@ Arah: `A --tipe--> B` = A bergantung pada B. `?` = belum terverifikasi.
 | `ext:supabase-identity` | configured-by | `config:supabase.identity` | PRD v0.3.1 §15.3 |
 | `ext:supabase-identity` | guarded-by | `policy:identity.api-only` | PRD v0.3.1 §15.4 hanya schema api |
 | `ext:tiktok` | configured-by | `config:host.app` | PRD v0.3.1 §15.2 redirect URI per host |
-| `test:accrue.idempotent` | tests | `fn:accrue_earnings` | PRD v0.3.1 §10.5 deterministik & idempotent |
+| `test:accrue.idempotent` | tests | `fn:accrue_earnings` | db/core/supabase/tests/core_contracts_finance.test.sql:161 |
 | `test:core.full-product` | tests | `api:rpc core.missing_brief_tags` | db/core/supabase/tests/core_full_product.test.sql:163 |
 | `test:core.full-product` | tests | `table:bucket.campaign-assets` | db/core/supabase/tests/core_full_product.test.sql:184 |
-| `test:core.full-product` | tests | `table:finance.reward_codes` | db/core/supabase/tests/core_full_product.test.sql:110 |
-| `test:core.full-product` | tests | `table:market.campaign_assets` | db/core/supabase/tests/core_full_product.test.sql:169 |
-| `test:core.full-product` | tests | `table:market.campaign_invites` | db/core/supabase/tests/core_full_product.test.sql:33 |
-| `test:core.full-product` | tests | `table:market.leaderboard_campaign` | db/core/supabase/tests/core_full_product.test.sql:7 |
+| `test:core.full-product` | tests | `table:finance.reward_codes` | db/core/supabase/tests/core_full_product.test.sql:120 |
+| `test:core.full-product` | tests | `table:market.campaign_assets` | db/core/supabase/tests/core_full_product.test.sql:190 |
+| `test:core.full-product` | tests | `table:market.campaign_invites` | db/core/supabase/tests/core_full_product.test.sql:36 |
+| `test:core.full-product` | tests | `table:market.leaderboard_campaign` | db/core/supabase/tests/core_full_product.test.sql:103 |
 | `test:core.full-product` | tests | `table:market.org_links` | db/core/supabase/tests/core_full_product.test.sql:59 |
 | `test:core.full-product` | tests | `table:market.referrals` | db/core/supabase/tests/core_full_product.test.sql:86 |
-| `test:core.full-product` | tests | `table:trust.score_events` | db/core/supabase/tests/core_full_product.test.sql:137 |
-| `test:member-data.integrity` | tests | `api:fn identity/member-data` | PRD v0.3.1 §15.4 |
+| `test:core.full-product` | tests | `table:trust.score_events` | db/core/supabase/tests/core_full_product.test.sql:141 |
+| `test:e2e.cross-host` | configured-by | `doc:scripts/dev-stack.sh` | e2e/journey.cjs:1 |
+| `test:e2e.cross-host` | tests | `page:accounts/invite/[token]` | e2e/journey.cjs:96 |
+| `test:e2e.cross-host` | tests | `page:accounts/login` | e2e/journey.cjs:49 |
+| `test:e2e.cross-host` | tests | `page:accounts/onboarding` | e2e/journey.cjs:56 |
+| `test:e2e.cross-host` | tests | `page:app/campaigns` | e2e/journey.cjs:69 |
+| `test:e2e.cross-host` | tests | `page:app/campaigns/[id]` | e2e/journey.cjs:80 |
+| `test:e2e.cross-host` | tests | `page:app/tasks` | e2e/journey.cjs:88 |
+| `test:e2e.cross-host` | tests | `page:brand/` | e2e/journey.cjs:110 |
+| `test:e2e.cross-host` | tests | `page:www/` | e2e/journey.cjs:38 |
+| `test:e2e.cross-host` | tests | `page:www/c/[slug]` | e2e/journey.cjs:43 |
+| `test:member-data.integrity` | tests | `api:fn identity/member-data` | db/identity/supabase/tests/identity_access.test.sql:61 (SQL di balik member-data; handler dites Deno member-data/handler_test.ts) |
 | `test:member-data.integrity` | tests | `api:rpc identity.store_kyc` | db/identity/supabase/tests/identity_access.test.sql:64 |
 | `test:member-data.integrity` | tests | `fn:custom_access_token_hook` | db/identity/supabase/tests/identity_access.test.sql:46 |
-| `test:member-data.integrity` | tests | `policy:identity.unique-identity` | PRD v0.3.1 §15.4 FR-04 |
-| `test:member-data.integrity` | tests | `table:member.push_subscriptions` | db/identity/supabase/tests/identity_access.test.sql:142 |
+| `test:member-data.integrity` | tests | `policy:identity.unique-identity` | PRD v0.3.1 §15.4 FR-04; kode: identity_access.test.sql baris 72–73 (FR-04 NIK ganda ditolak) |
+| `test:member-data.integrity` | tests | `table:member.push_subscriptions` | db/identity/supabase/tests/identity_access.test.sql:160 |
 | `test:pwa.ios-login` | tests | `mod:auth` | PRD v0.3.1 R-17 sesi diset dari server |
 | `test:pwa.ios-login` | tests | `page:app/login` | PRD v0.3.1 R-17 |
 | `test:rls.access-matrix` | tests | `job:broadcast-dispatch` | db/core/supabase/tests/core_access.test.sql:279 |
-| `test:rls.access-matrix` | tests | `job:budget-alerts` | db/core/supabase/tests/core_access.test.sql:175 |
+| `test:rls.access-matrix` | tests | `job:budget-alerts` | db/core/supabase/tests/core_access.test.sql:279 (job terdaftar; perilaku dites core_contracts_market.test.sql) |
 | `test:rls.access-matrix` | tests | `job:earning-release` | db/core/supabase/tests/core_access.test.sql:279 |
 | `test:rls.access-matrix` | tests | `job:lifecycle` | db/core/supabase/tests/core_access.test.sql:279 |
-| `test:rls.access-matrix` | tests | `job:referral-bonus` | db/core/supabase/tests/core_access.test.sql:84 |
-| `test:rls.access-matrix` | tests | `job:trust-score` | db/core/supabase/tests/core_access.test.sql:194 |
-| `test:rls.access-matrix` | tests | `policy:core.admin-aal2` | PRD v0.3.1 §15.4 + §15.6 |
-| `test:rls.access-matrix` | tests | `policy:core.iss-identity` | db/core/supabase/tests/core_access.test.sql:51 |
-| `test:rls.access-matrix` | tests | `policy:core.org-role` | PRD v0.3.1 §15.4 + §15.6 |
-| `test:rls.access-matrix` | tests | `policy:core.rls-org` | PRD v0.3.1 §15.4 + §15.6 |
-| `test:rls.access-matrix` | tests | `policy:core.rls-self` | PRD v0.3.1 §15.4 + §15.6 |
-| `test:rls.access-matrix` | tests | `policy:identity.admin-aal2` | PRD v0.3.1 §15.4 + §15.6 |
-| `test:rls.access-matrix` | tests | `policy:identity.rls-self` | PRD v0.3.1 §15.4 + §15.6 |
-| `test:rls.access-matrix` | tests | `table:finance.ledger_entries` | db/core/supabase/tests/core_access.test.sql:130 |
-| `test:rls.access-matrix` | tests | `table:finance.payout_batches` | db/core/supabase/tests/core_access.test.sql:147 |
-| `test:rls.access-matrix` | tests | `table:market.claims` | db/core/supabase/tests/core_access.test.sql:81 |
+| `test:rls.access-matrix` | tests | `job:referral-bonus` | db/core/supabase/tests/core_access.test.sql:279 (job terdaftar; perilaku dites core_contracts_finance.test.sql) |
+| `test:rls.access-matrix` | tests | `job:trust-score` | db/core/supabase/tests/core_access.test.sql:279 (job terdaftar; perilaku dites core_contracts_market.test.sql) |
+| `test:rls.access-matrix` | tests | `policy:core.admin-aal2` | db/core/supabase/tests/core_access.test.sql:221 |
+| `test:rls.access-matrix` | tests | `policy:core.iss-identity` | db/core/supabase/tests/core_access.test.sql:183 |
+| `test:rls.access-matrix` | tests | `policy:core.org-role` | db/core/supabase/tests/core_access.test.sql:212 |
+| `test:rls.access-matrix` | tests | `policy:core.rls-org` | db/core/supabase/tests/core_access.test.sql:207 |
+| `test:rls.access-matrix` | tests | `policy:core.rls-self` | db/core/supabase/tests/core_access.test.sql:185 |
+| `test:rls.access-matrix` | tests | `policy:identity.admin-aal2` | db/identity/supabase/tests/identity_access.test.sql:112 |
+| `test:rls.access-matrix` | tests | `policy:identity.rls-self` | db/identity/supabase/tests/identity_access.test.sql:82 |
+| `test:rls.access-matrix` | tests | `table:finance.ledger_entries` | db/core/supabase/tests/core_access.test.sql:151 |
+| `test:rls.access-matrix` | tests | `table:finance.payout_batches` | db/core/supabase/tests/core_access.test.sql:153 |
+| `test:rls.access-matrix` | tests | `table:market.claims` | db/core/supabase/tests/core_access.test.sql:89 |
 | `test:spike.oidc-cross-project` | tests | `config:tpa-oidc-identity` | PRD v0.3.1 R-14 |
 | `test:spike.oidc-cross-project` | tests | `policy:core.iss-identity` | PRD v0.3.1 R-14 + §15.6 |
 | `test:spike.oidc-cross-project` | tests | `policy:fn-verify-jwt` | PRD v0.3.1 §15.6 |
+| `doc:scripts/dev-stack.sh` | documents | `config:supabase.core` | scripts/dev-stack.sh:56 |
+| `doc:scripts/dev-stack.sh` | documents | `config:supabase.identity` | scripts/dev-stack.sh:56 |
+| `doc:scripts/dev-stack.sh` | documents | `env:BRIDGE_SECRET_CORE_TO_IDENTITY` | scripts/dev-stack.sh:17 |
+| `doc:scripts/dev-stack.sh` | documents | `env:BRIDGE_SECRET_IDENTITY_TO_CORE` | scripts/dev-stack.sh:18 |
+| `doc:scripts/dev-stack.sh` | documents | `env:IDENTITY_ISSUER` | scripts/dev-stack.sh:39 |
+| `doc:scripts/dev-stack.sh` | documents | `env:PII_ENC_KEY` | scripts/dev-stack.sh:20 |
+| `doc:scripts/dev-stack.sh` | documents | `env:PII_HMAC_KEY` | scripts/dev-stack.sh:19 |
+| `doc:scripts/dev-stack.sh` | documents | `env:VAPID_PRIVATE_KEY` | scripts/dev-stack.sh:25 |
 | `doc:spec/contracts.yaml` | documents | `api:fn core/bridge` | spec/contracts.yaml:45 |
 | `doc:spec/contracts.yaml` | documents | `api:fn core/fulfill` | spec/contracts.yaml:46 |
 | `doc:spec/contracts.yaml` | documents | `api:fn core/notify` | spec/contracts.yaml:44 |
@@ -1977,6 +2107,9 @@ Masalah sistem yang ditemukan saat menyusun PRD v0.2 dan saat dicek ulang (v0.2.
 | 2026-10-19 | `test:rls.access-matrix` | Tes di stack lokal ikut menghitung data uji manual (profil, antrean pgmq, objek storage) | diperbaiki: tiap tes mengosongkan semua tabel domain + antrean + objek bucket dulu (di-rollback) |
 | 2026-10-19 | `scripts/dev-stack.sh` | Clone baru gagal start (kunci signing dev gitignored), link unduh PII menunjuk http://kong:8000, CSP memblokir gambar storage http lokal, /icon.svg ter-redirect ke login | diperbaiki: kunci ES256 dibuat otomatis, PUBLIC_SUPABASE_URL, img-src origin Supabase, matcher proxy |
 | 2026-10-19 | `table:member.legal_versions` | URL dokumen wajib https (CHECK) → link ToS/privasi di onboarding lokal (http) rusak | diterima: invarian produksi tidak dilonggarkan demi dev; login menautkan {domain}/legal |
+| 2026-10-19 | `api:rpc core.confirm_invoice_payment`, `api:rpc core.create_payout_batch`, `api:rpc core.mark_batch_paid` | F-A11 "semua aksi admin/finance tercatat" belum terpenuhi: ketiga fungsi tidak menulis `ops.audit_logs` (record_review, update_config, manage_org, manage_user, resolve_fraud_flag, cancel_payout, cancel_fulfillment menulis) | diperbaiki: audit di semua mutasi admin/finance (confirm_invoice_payment, create/approve/mark_batch_paid, approve_refund, resolve_alert, save_campaign/save_reward_type/upload_reward_codes jalur admin) + tes struktural: fungsi api ber-has_admin yang menulis data wajib menulis ops.audit_logs |
+| 2026-10-19 | `job:reconcile-daily` | Komentar finance/cron.sql menyebut ledger dibandingkan dengan mutasi bank, padahal reconcile_ids hanya mencocokkan ID profil/rekening/penerima dengan identity (api.bridge_collect_ids) | diperbaiki: finance.reconcile_ledger (cache pool, saldo negatif, invoice lunas tanpa jurnal & sebaliknya → alert reconcile.ledger) dijalankan job yang sama sebelum reconcile_ids; komentar disesuaikan |
+| 2026-10-19 | `KNOWLEDGE_GRAPH.md` (check_graph.py) | Regex bukti `file:line` tidak menerima tanda kurung, jadi baris kode di route group `(account)`, `(auth)`, `(console)` tidak bisa dicek otomatis; edge page accounts/admin memakai `kode baris N` | open |
 
 ## Keputusan
 

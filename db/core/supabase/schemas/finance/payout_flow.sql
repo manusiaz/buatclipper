@@ -152,6 +152,9 @@ begin
   update finance.payout_batches b set count = n,
          total = (select sum(p.amount - p.fee) from finance.payouts p where p.batch_id = bid)
    where b.id = bid;
+  insert into ops.audit_logs (actor_id, action, target, after)
+  values ((select auth.uid()), 'payout_batch.create', 'payout_batch:' || bid,
+          (select jsonb_build_object('count', b.count, 'total', b.total, 'cutoff', p_cutoff) from finance.payout_batches b where b.id = bid));
   return bid;
 end $$;
 
@@ -167,6 +170,8 @@ begin
   if not found then
     raise exception 'batch_not_draft' using errcode = 'P0001';
   end if;
+  insert into ops.audit_logs (actor_id, action, target, before, after)
+  values ((select auth.uid()), 'payout_batch.approve', 'payout_batch:' || p_batch, '{"status": "draft"}', '{"status": "approved"}');
 end $$;
 
 -- p_results: [{payout_id, status: paid|failed, bank_ref}]. Hanya payout yang masuk CSV (status processing, alur 3).
@@ -211,6 +216,9 @@ begin
   if not exists (select 1 from finance.payouts p where p.batch_id = p_batch and p.status = 'processing') and b.status = 'exported' then
     update finance.payout_batches set status = 'paid', executed_at = now() where id = p_batch;
   end if;
+  insert into ops.audit_logs (actor_id, action, target, before, after)
+  values ((select auth.uid()), 'payout_batch.mark_paid', 'payout_batch:' || p_batch, jsonb_build_object('status', b.status),
+          jsonb_build_object('results', p_results));
 end $$;
 
 -- Klaim reward non-tunai. recipient_schema reward type = [{key, pii, required}]: field pii tidak boleh ada di p_recipient
