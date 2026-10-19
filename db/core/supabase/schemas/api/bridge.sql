@@ -1,0 +1,241 @@
+-- RPC service_role untuk Edge Function core/bridge: panggilan dari identity (alur 3, 6, 7, 9, 10, 11) yang sudah diverifikasi
+-- tanda tangan HMAC-nya di Edge Function. EXECUTE hanya untuk service_role.
+
+-- Alur 3: isi batch yang sudah disetujui dua orang (approved_by ≠ created_by) untuk dibuat CSV di identity.
+create function api.bridge_get_batch(p_batch uuid) returns jsonb
+language plpgsql stable security definer set search_path = '' as $$
+declare
+  b finance.payout_batches;
+begin
+  select * into b from finance.payout_batches x where x.id = p_batch;
+  if not found then
+    raise exception 'not_found:batch' using errcode = 'P0002';
+  end if;
+  if b.status <> 'approved' then
+    raise exception 'invalid_state:%', b.status using errcode = 'P0001';
+  end if;
+  return jsonb_build_object(
+    'batch', jsonb_build_object('id', b.id, 'status', b.status, 'created_by', b.created_by, 'approved_by', b.approved_by),
+    'payouts', coalesce((select jsonb_agg(jsonb_build_object('id', p.id, 'user_id', p.user_id, 'method_id', p.method_id,
+                                                             'amount', p.amount - p.fee) order by p.id)
+                         from finance.payouts p where p.batch_id = b.id and p.status = 'requested'), '[]'));
+end $$;
+
+-- Alur 3: CSV jadi. Payout yang gagal cek (pemilik/nama rekening) → on_hold dengan alasan; sisanya processing (masuk CSV).
+create function api.bridge_attach_export(p_batch uuid, p_file_ref text, p_held jsonb) returns void
+language plpgsql security definer set search_path = '' as $$
+declare
+  b finance.payout_batches;
+  x record;
+begin
+  select * into b from finance.payout_batches pb where pb.id = p_batch for update;
+  if not found then
+    raise exception 'not_found:batch' using errcode = 'P0002';
+  end if;
+  if b.status = 'exported' and b.file_ref = p_file_ref then
+    return;
+  end if;
+  if b.status <> 'approved' then
+    raise exception 'invalid_state:%', b.status using errcode = 'P0001';
+  end if;
+  if p_file_ref is null or btrim(p_file_ref) = '' then
+    raise exception 'invalid:file_ref' using errcode = 'P0001';
+  end if;
+  for x in select * from jsonb_to_recordset(coalesce(p_held, '[]')) h(payout_id uuid, reason text) loop
+    update finance.payouts set status = 'on_hold', hold_reason = coalesce(nullif(btrim(x.reason), ''), 'export_check_failed')
+     where id = x.payout_id and batch_id = b.id and status = 'requested';
+    if found then
+      perform ops.raise_alert('payout.on_hold', 'warning', jsonb_build_object('payout_id', x.payout_id, 'batch_id', b.id,
+                                                                                'reason', x.reason));
+    end if;
+  end loop;
+  update finance.payouts set status = 'processing' where batch_id = b.id and status = 'requested';
+  update finance.payout_batches pb set status = 'exported', file_ref = p_file_ref,
+         count = (select count(*) from finance.payouts p where p.batch_id = b.id and p.status = 'processing'),
+         total = coalesce((select sum(p.amount - p.fee) from finance.payouts p where p.batch_id = b.id and p.status = 'processing'), 0)
+   where pb.id = b.id;
+end $$;
+
+-- Alur 9: bukti transfer. batch: proof_ref ke payout paid, batch → closed. refund: E-35 dibayar + jurnal (finance.pay_refund).
+create function api.bridge_attach_proof(p_target text, p_id uuid, p_proof_ref text) returns void
+language plpgsql security definer set search_path = '' as $$
+declare
+  st text;
+begin
+  if p_proof_ref is null or btrim(p_proof_ref) = '' then
+    raise exception 'invalid:proof_ref' using errcode = 'P0001';
+  end if;
+  if p_target = 'batch' then
+    select b.status into st from finance.payout_batches b where b.id = p_id for update;
+    if st is null then
+      raise exception 'not_found:batch' using errcode = 'P0002';
+    end if;
+    if st not in ('paid', 'closed') then
+      raise exception 'invalid_state:%', st using errcode = 'P0001';
+    end if;
+    update finance.payouts set proof_ref = p_proof_ref where batch_id = p_id and status = 'paid';
+    update finance.payout_batches set status = 'closed' where id = p_id;
+  elsif p_target = 'refund' then
+    perform finance.pay_refund(p_id, p_proof_ref);
+  else
+    raise exception 'invalid:target' using errcode = 'P0001';
+  end if;
+end $$;
+
+-- Alur 6: sinyal fraud dari identity (FR-04 NIK/rekening ganda, FR-05 device/IP sama).
+create function api.bridge_raise_fraud_flag(p_target_type text, p_target_id uuid, p_signal text, p_score numeric, p_details jsonb)
+returns uuid
+language plpgsql security definer set search_path = '' as $$
+begin
+  return trust.raise_flag(p_target_type, p_target_id, p_signal, p_score, p_details);
+end $$;
+
+-- Alur 7 (UU PDP): tutup akun dalam satu transaksi. Ditolak kalau masih ada saldo pending/Tersedia atau payout/fulfillment
+-- berjalan. Akun sosmed yang pernah dipakai submisi tidak bisa dihapus (FK riwayat earning) → token Vault dihapus, akun
+-- diputus & handle dianonimkan; yang belum pernah dipakai dihapus. Ledger tetap utuh.
+create function api.bridge_close_account(p_user uuid) returns jsonb
+language plpgsql security definer set search_path = '' as $$
+declare
+  pr market.profiles;
+begin
+  select * into pr from market.profiles p where p.id = p_user for update;
+  if not found then
+    return jsonb_build_object('ok', true, 'reason', 'no_profile');
+  end if;
+  if pr.status = 'closed' then
+    return jsonb_build_object('ok', true, 'reason', 'already_closed');
+  end if;
+  if exists (select 1 from finance.ledger_accounts a join finance.ledger_entries e on e.account_id = a.id
+             where a.owner_type = 'user_wallet' and a.owner_id = p_user and e.state in ('pending', 'available')
+             group by a.id, e.state having sum(e.amount) <> 0) then
+    return jsonb_build_object('ok', false, 'reason', 'balance_remaining');
+  end if;
+  if exists (select 1 from finance.payouts p where p.user_id = p_user and p.status in ('requested', 'on_hold', 'processing', 'failed')) then
+    return jsonb_build_object('ok', false, 'reason', 'payout_in_progress');
+  end if;
+  if exists (select 1 from finance.fulfillments f where f.user_id = p_user and f.status in ('requested', 'on_hold', 'processing', 'failed')) then
+    return jsonb_build_object('ok', false, 'reason', 'fulfillment_in_progress');
+  end if;
+
+  update tracking.submissions set status = 'forfeited', next_poll_at = null where user_id = p_user and status in ('tracking', 'flagged');
+  update tracking.submissions set status = 'rejected' where user_id = p_user and status in ('validating', 'in_review');
+  update tracking.submissions set status = 'rejected_final' where user_id = p_user and status = 'appealed';
+  update market.claims set status = 'released' where user_id = p_user and status = 'open';
+  delete from vault.secrets v where v.id in (select a.token_ref from tracking.social_accounts a where a.user_id = p_user);
+  delete from tracking.social_accounts a
+   where a.user_id = p_user and not exists (select 1 from tracking.submissions s where s.social_account_id = a.id);
+  update tracking.social_accounts set status = 'disconnected', token_ref = null, handle = 'deleted', followers = null
+   where user_id = p_user;
+  update market.profiles set username = 'deleted_' || substr(md5(id::text), 1, 12), display_name = 'Akun dihapus',
+         avatar_path = null, referral_code = null, suspended_until = null, status = 'closed'
+   where id = p_user;
+  return jsonb_build_object('ok', true, 'reason', null);
+end $$;
+
+-- Alur 11: data payout instant untuk disburse (transfer = net_amount = amount − fee).
+create function api.bridge_get_payout(p_payout uuid) returns jsonb
+language plpgsql stable security definer set search_path = '' as $$
+declare
+  p finance.payouts;
+begin
+  select * into p from finance.payouts x where x.id = p_payout;
+  if not found then
+    raise exception 'not_found:payout' using errcode = 'P0002';
+  end if;
+  return jsonb_build_object('id', p.id, 'user_id', p.user_id, 'method_id', p.method_id, 'amount', p.amount, 'fee', p.fee,
+                            'net_amount', p.amount - p.fee, 'channel', p.channel, 'status', p.status);
+end $$;
+
+-- Alur 11: hasil penyedia disbursement. provider_ref UNIQUE (satu payout = satu transfer); failed → dana + fee kembali ke
+-- Tersedia (finance.return_payout). Status yang sama dikirim ulang = no-op.
+create function api.bridge_mark_instant(p_payout uuid, p_status text, p_provider_ref text, p_error text) returns void
+language plpgsql security definer set search_path = '' as $$
+declare
+  p finance.payouts;
+begin
+  if p_status is null or p_status not in ('processing', 'paid', 'failed') then
+    raise exception 'invalid:status' using errcode = 'P0001';
+  end if;
+  select * into p from finance.payouts x where x.id = p_payout for update;
+  if not found then
+    raise exception 'not_found:payout' using errcode = 'P0002';
+  end if;
+  if p.channel <> 'instant' then
+    raise exception 'invalid:channel' using errcode = 'P0001';
+  end if;
+  if p.status::text = p_status or (p_status = 'failed' and p.status = 'returned') or (p_status = 'processing' and p.status <> 'requested') then
+    return;
+  end if;
+  begin
+    if p.status = 'requested' then
+      update finance.payouts set status = 'processing', provider_ref = coalesce(p_provider_ref, provider_ref) where id = p.id;
+    elsif p_provider_ref is not null then
+      update finance.payouts set provider_ref = p_provider_ref where id = p.id and provider_ref is null;
+    end if;
+  exception when unique_violation then
+    raise exception 'duplicate_provider_ref' using errcode = '23505';
+  end;
+  if p_status = 'paid' then
+    update finance.payouts set status = 'paid', paid_at = now() where id = p.id;
+    perform ops.enqueue_notification(p.user_id, 'payout.paid', jsonb_build_object('payout_id', p.id, 'amount', p.amount - p.fee));
+  elsif p_status = 'failed' then
+    perform finance.return_payout(p.id, p_error);
+  end if;
+end $$;
+
+-- Alur 9: rekap bruto payout terbayar per clipper (dasar PPh 21), rentang tanggal WIB inklusif.
+create function api.bridge_pph21(p_from date, p_to date) returns table (user_id uuid, gross numeric)
+language plpgsql stable security definer set search_path = '' as $$
+begin
+  return query
+  select p.user_id, sum(p.amount)::numeric from finance.payouts p
+   where p.status = 'paid' and p.paid_at >= (p_from::timestamp at time zone 'Asia/Jakarta')
+     and p.paid_at < ((p_to + 1)::timestamp at time zone 'Asia/Jakarta')
+   group by p.user_id order by p.user_id;
+end $$;
+
+-- Alur 3 (reward fisik/manual_export): klaim yang menunggu export ke brand. Hanya baca; data PII penerima ada di identity.
+create function api.bridge_fulfillment_export(p_reward_type uuid)
+returns table (id uuid, user_id uuid, amount numeric, recipient jsonb, recipient_ref uuid)
+language plpgsql stable security definer set search_path = '' as $$
+begin
+  return query
+  select f.id, f.user_id, f.amount::numeric, f.recipient, f.recipient_ref
+    from finance.fulfillments f join market.reward_types rt on rt.id = f.reward_type_id
+   where f.reward_type_id = p_reward_type and f.status = 'requested' and rt.fulfillment = 'manual_export'
+   order by f.created_at, f.id;
+end $$;
+
+-- Alur 10: ID lintas DB yang dirujuk core (profil belum ditutup, rekening & penerima milik mereka).
+create function api.bridge_collect_ids() returns jsonb
+language plpgsql stable security definer set search_path = '' as $$
+begin
+  return jsonb_build_object(
+    'user_ids', coalesce((select jsonb_agg(p.id order by p.id) from market.profiles p where p.status <> 'closed'), '[]'),
+    'method_ids', coalesce((select jsonb_agg(distinct x.method_id) from finance.payouts x
+                            join market.profiles p on p.id = x.user_id where p.status <> 'closed'), '[]'),
+    'recipient_refs', coalesce((select jsonb_agg(distinct f.recipient_ref) from finance.fulfillments f
+                                join market.profiles p on p.id = f.user_id
+                                where f.recipient_ref is not null and p.status <> 'closed'), '[]'));
+end $$;
+
+-- Alur 10: ID yang tidak ada lagi di identity → alert antrean review finance.
+create function api.bridge_report_orphans(p_missing jsonb) returns void
+language plpgsql security definer set search_path = '' as $$
+begin
+  if exists (select 1 from jsonb_each(coalesce(p_missing, '{}')) e
+             where jsonb_typeof(e.value) = 'array' and jsonb_array_length(e.value) > 0) then
+    perform ops.raise_alert('reconcile.orphans', 'critical', p_missing);
+  end if;
+end $$;
+
+revoke execute on function api.bridge_get_batch(uuid), api.bridge_attach_export(uuid, text, jsonb),
+  api.bridge_attach_proof(text, uuid, text), api.bridge_raise_fraud_flag(text, uuid, text, numeric, jsonb),
+  api.bridge_close_account(uuid), api.bridge_get_payout(uuid), api.bridge_mark_instant(uuid, text, text, text),
+  api.bridge_pph21(date, date), api.bridge_fulfillment_export(uuid), api.bridge_collect_ids(), api.bridge_report_orphans(jsonb)
+  from public, anon, authenticated;
+grant execute on function api.bridge_get_batch(uuid), api.bridge_attach_export(uuid, text, jsonb),
+  api.bridge_attach_proof(text, uuid, text), api.bridge_raise_fraud_flag(text, uuid, text, numeric, jsonb),
+  api.bridge_close_account(uuid), api.bridge_get_payout(uuid), api.bridge_mark_instant(uuid, text, text, text),
+  api.bridge_pph21(date, date), api.bridge_fulfillment_export(uuid), api.bridge_collect_ids(), api.bridge_report_orphans(jsonb)
+  to service_role;

@@ -47,11 +47,11 @@ create function api.resolve_alert(p_id bigint) returns void
 language plpgsql security definer set search_path = '' as $$
 begin
   if not ops.has_admin() then
-    raise exception 'forbidden' using errcode = '42501';
+    raise exception 'auth:forbidden' using errcode = '42501';
   end if;
   update ops.alerts set resolved_at = now(), resolved_by = (select auth.uid()) where id = p_id and resolved_at is null;
   if not found then
-    raise exception 'alert_not_open' using errcode = 'P0002';
+    raise exception 'not_found:alert' using errcode = 'P0002';
   end if;
 end $$;
 

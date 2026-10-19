@@ -1,0 +1,515 @@
+/*
+ * Clipper design system: tokens + base styles (Tailwind CSS v4, CSS-first).
+ * Source of truth: Clipper Web DS 01–24 + ds-notes (blue #1D5BFF, ink #0A1226, Plus Jakarta Sans).
+ *
+ * Apps — src/app/globals.css (exactly these two lines first, in this order):
+ *   @import "tailwindcss";
+ *   @import "@clipper/ui/styles.css";
+ *
+ * Why Tailwind is not imported here: Tailwind resolves `@import` relative to this file's real path
+ * (packages/ui/src), and `tailwindcss` is installed only in the apps (devDependency), so it is not
+ * resolvable from this package. Importing it from the app keeps a single Tailwind instance per app.
+ */
+@import "@fontsource-variable/plus-jakarta-sans";
+
+/* Let every app's Tailwind build see the classes used by the ui components. */
+@source "./";
+@source not "./icons.generated.ts";
+
+/* next-themes sets class="dark" on <html>; any subtree with .dark also switches. */
+@custom-variant dark (&:where(.dark, .dark *));
+
+/* ───────────────────────── Static brand palette + scales ───────────────────────── */
+@theme static {
+  --font-sans: "Plus Jakarta Sans Variable", "Plus Jakarta Sans", ui-sans-serif, system-ui, -apple-system, "Segoe UI",
+    Roboto, "Helvetica Neue", Arial, sans-serif;
+  --font-mono: ui-monospace, "JetBrains Mono", SFMono-Regular, Menlo, Consolas, monospace;
+
+  /* Clipper Blue (DS 03) */
+  --color-brand-50: #f2f6ff;
+  --color-brand-100: #eaf0ff;
+  --color-brand-200: #d5e1ff;
+  --color-brand-300: #a9c1ff;
+  --color-brand-400: #5f8bff;
+  --color-brand-500: #1d5bff;
+  --color-brand-600: #0f47e0;
+  --color-brand-700: #0b37b0;
+  --color-brand-800: #0a2a80;
+  --color-brand-900: #0a1a4d;
+
+  /* DS neutral (replaces Tailwind's neutral so `neutral-*` stays on-brand) */
+  --color-neutral-0: #ffffff;
+  --color-neutral-50: #f6f8fc;
+  --color-neutral-100: #edf0f6;
+  --color-neutral-200: #e3e8f0;
+  --color-neutral-300: #cfd6e2;
+  --color-neutral-400: #8a93a6;
+  --color-neutral-500: #5b6479;
+  --color-neutral-600: #3a4459;
+  --color-neutral-700: #2a3449;
+  --color-neutral-800: #1a2238;
+  --color-neutral-900: #0a1226;
+  --color-neutral-950: #070d1c;
+
+  /* Ink surfaces that stay dark in both themes (DARK style, ink button, photo scrims) */
+  --color-navy: #0a1226;
+  --color-navy-2: #1e2a4a;
+  --color-navy-3: #1e3470;
+
+  /* Radius (DS 06 §2) */
+  --radius-tag: 4px;
+  --radius-chip: 8px;
+  --radius-control: 12px;
+  --radius-card-sm: 14px;
+  --radius-popover: 16px;
+  --radius-card: 18px;
+  --radius-modal: 20px;
+  --radius-media: 24px;
+
+  /* Type scale (DS 04). Fluid sizes: mobile value at 360 px → desktop value at 1280 px. */
+  --text-display: clamp(2.5rem, 1.717rem + 3.478vw, 4.5rem);
+  --text-display--line-height: 1.06;
+  --text-display--letter-spacing: -0.045em;
+  --text-display--font-weight: 800;
+  --text-h1: clamp(2.125rem, 1.125rem + 4vw, 3.5rem);
+  --text-h1--line-height: 1.08;
+  --text-h1--letter-spacing: -0.04em;
+  --text-h1--font-weight: 800;
+  --text-h2: clamp(1.875rem, 1.5325rem + 1.522vw, 2.75rem);
+  --text-h2--line-height: 1.1;
+  --text-h2--letter-spacing: -0.035em;
+  --text-h2--font-weight: 800;
+  --text-h3: clamp(1.5rem, 1.304rem + 0.87vw, 2rem);
+  --text-h3--line-height: 1.2;
+  --text-h3--letter-spacing: -0.03em;
+  --text-h3--font-weight: 700;
+  --text-h4: clamp(1.25rem, 1.152rem + 0.435vw, 1.5rem);
+  --text-h4--line-height: 1.27;
+  --text-h4--letter-spacing: -0.02em;
+  --text-h4--font-weight: 700;
+  --text-h5: clamp(1.125rem, 1.076rem + 0.217vw, 1.25rem);
+  --text-h5--line-height: 1.3;
+  --text-h5--letter-spacing: -0.015em;
+  --text-h5--font-weight: 700;
+  --text-h6: clamp(1rem, 0.975rem + 0.109vw, 1.0625rem);
+  --text-h6--line-height: 1.4;
+  --text-h6--letter-spacing: -0.01em;
+  --text-h6--font-weight: 700;
+  --text-body-l: clamp(1rem, 0.951rem + 0.217vw, 1.125rem);
+  --text-body-l--line-height: 1.6;
+  --text-body: clamp(0.9375rem, 0.913rem + 0.109vw, 1rem);
+  --text-body--line-height: 1.5;
+  --text-body-s: 0.875rem;
+  --text-body-s--line-height: 1.43;
+  --text-label: 0.875rem;
+  --text-label--line-height: 1.43;
+  --text-label--font-weight: 600;
+  --text-button: 0.9375rem;
+  --text-button--line-height: 1.33;
+  --text-button--font-weight: 700;
+  --text-caption: 0.75rem;
+  --text-caption--line-height: 1.33;
+  --text-caption--letter-spacing: 0.01em;
+  --text-overline: 0.75rem;
+  --text-overline--line-height: 1.33;
+  --text-overline--letter-spacing: 0.18em;
+  --text-overline--font-weight: 600;
+  --text-numeric: clamp(1.5rem, 1.402rem + 0.435vw, 1.75rem);
+  --text-numeric--line-height: 1.15;
+  --text-numeric--letter-spacing: -0.03em;
+  --text-numeric--font-weight: 800;
+
+  /* Motion (DS 22–26) */
+  --ease-out: cubic-bezier(0.23, 1, 0.32, 1);
+  --ease-in-out: cubic-bezier(0.77, 0, 0.175, 1);
+  --ease-drawer: cubic-bezier(0.32, 0.72, 0, 1);
+  --ease-exit: cubic-bezier(0.3, 0, 0.8, 0.15);
+  --duration-instant: 0ms;
+  --duration-press: 120ms;
+  --duration-fast: 160ms;
+  --duration-base: 220ms;
+  --duration-slow: 280ms;
+  --duration-story: 500ms;
+
+  --animate-fade-in: cl-fade-in var(--duration-base) var(--ease-out);
+  --animate-fade-out: cl-fade-out var(--duration-fast) var(--ease-exit);
+  --animate-pop-in: cl-pop-in var(--duration-fast) var(--ease-out);
+  --animate-pop-out: cl-pop-out 120ms var(--ease-exit);
+  --animate-dialog-in: cl-dialog-in var(--duration-slow) var(--ease-out);
+  --animate-dialog-out: cl-dialog-out var(--duration-fast) var(--ease-exit);
+  --animate-sheet-up: cl-sheet-up var(--duration-slow) var(--ease-drawer);
+  --animate-sheet-down: cl-sheet-down var(--duration-base) var(--ease-exit);
+  --animate-sheet-in-right: cl-sheet-in-right var(--duration-slow) var(--ease-drawer);
+  --animate-sheet-out-right: cl-sheet-out-right var(--duration-base) var(--ease-exit);
+  --animate-sheet-in-left: cl-sheet-in-left var(--duration-slow) var(--ease-drawer);
+  --animate-sheet-out-left: cl-sheet-out-left var(--duration-base) var(--ease-exit);
+  --animate-shimmer: cl-shimmer 1.4s linear infinite;
+  --animate-indeterminate: cl-indeterminate 1.2s var(--ease-in-out) infinite;
+
+  @keyframes cl-fade-in { from { opacity: 0; } }
+  @keyframes cl-fade-out { to { opacity: 0; } }
+  @keyframes cl-pop-in { from { opacity: 0; transform: translateY(4px) scale(0.97); } }
+  @keyframes cl-pop-out { to { opacity: 0; transform: scale(0.97); } }
+  @keyframes cl-dialog-in { from { opacity: 0; transform: translateY(8px) scale(0.96); } }
+  @keyframes cl-dialog-out { to { opacity: 0; transform: translateY(4px) scale(0.97); } }
+  @keyframes cl-sheet-up { from { transform: translateY(100%); } }
+  @keyframes cl-sheet-down { to { transform: translateY(100%); } }
+  @keyframes cl-sheet-in-right { from { transform: translateX(100%); } }
+  @keyframes cl-sheet-out-right { to { transform: translateX(100%); } }
+  @keyframes cl-sheet-in-left { from { transform: translateX(-100%); } }
+  @keyframes cl-sheet-out-left { to { transform: translateX(-100%); } }
+  @keyframes cl-shimmer { from { background-position: 150% 0; } to { background-position: -50% 0; } }
+  @keyframes cl-indeterminate { from { transform: translateX(-100%); } to { transform: translateX(250%); } }
+}
+
+/* ───────────────────────── Semantic tokens (light) — flipped under .dark ───────────────────────── */
+@theme static {
+  --color-canvas: #f6f8fc;
+  --color-surface: #ffffff;
+  --color-surface-2: #f6f8fc;
+  --color-subtle: #edf0f6;
+  --color-disabled: #f2f4f8;
+  --color-inverse: #0a1226;
+  --color-inverse-fg: #ffffff;
+
+  --color-ink: #0a1226;
+  --color-text-2: #3a4459;
+  --color-muted: #5b6479;
+  --color-faint: #8a93a6;
+  --color-placeholder: #6b7590;
+  --color-disabled-fg: #a6b0c4;
+
+  --color-border: #e3e8f0;
+  --color-border-strong: #cfd6e2;
+  --color-border-hover: #a9b3c6;
+  --color-focus: #1d5bff;
+  --color-focus-halo: rgb(29 91 255 / 0.18);
+
+  --color-primary: #1d5bff;
+  --color-primary-hover: #0f47e0;
+  --color-primary-pressed: #0b37b0;
+  --color-primary-fg: #ffffff;
+  --color-primary-soft: #eaf0ff;
+  --color-primary-soft-hover: #d5e1ff;
+  --color-primary-soft-pressed: #c2d3ff;
+  --color-primary-soft-fg: #0f47e0;
+  --color-link: #1d5bff;
+
+  --color-info: #1d5bff;
+  --color-info-fg: #0f47e0;
+  --color-info-bg: #f2f6ff;
+  --color-info-border: #d5e1ff;
+  --color-success: #0b7f45;
+  --color-success-fg: #0b6b3a;
+  --color-success-bg: #e6f6ee;
+  --color-success-border: #bfe6cf;
+  --color-warn: #d97706;
+  --color-warn-fg: #9a4a00;
+  --color-warn-bg: #fff4e0;
+  --color-warn-border: #fbd9a6;
+  --color-danger: #d02f33;
+  --color-danger-fg: #b0202a;
+  --color-danger-bg: #fdecec;
+  --color-danger-border: #f5c7c8;
+  --color-paid: #0e9384;
+  --color-paid-fg: #0b6e63;
+  --color-paid-bg: #e3f6f3;
+  --color-paid-border: #b5e6dd;
+  --color-premium: #7c3aed;
+  --color-premium-fg: #5b21b6;
+  --color-premium-bg: #f1eafe;
+
+  /* Elevation (DS 06 §4 + ds-notes CARD/DARK/BLUE) */
+  --shadow-hairline: 0 1px 2px rgb(10 18 38 / 0.06);
+  --shadow-card: inset 0 1px 0 #fff, 0 1px 2px rgb(10 18 38 / 0.05), 0 18px 40px -18px rgb(16 40 110 / 0.22);
+  --shadow-card-hover: inset 0 1px 0 #fff, 0 1px 2px rgb(10 18 38 / 0.05), 0 28px 52px -20px rgb(16 40 110 / 0.34);
+  --shadow-raised: inset 0 1px 0 #fff, 0 2px 4px rgb(10 18 38 / 0.04), 0 24px 48px -18px rgb(16 40 110 / 0.32);
+  --shadow-pop: 0 0 0 1px rgb(10 18 38 / 0.04), 0 12px 28px -10px rgb(10 18 38 / 0.26);
+  --shadow-modal: 0 24px 48px -14px rgb(10 18 38 / 0.45);
+  --shadow-dark: 0 30px 60px -24px rgb(10 18 38 / 0.55);
+  --shadow-blue: 0 14px 28px -12px rgb(29 91 255 / 0.6);
+  --shadow-btn: inset 0 1px 0 rgb(255 255 255 / 0.3), 0 12px 24px -10px rgb(29 91 255 / 0.7);
+  --shadow-btn-hover: inset 0 1px 0 rgb(255 255 255 / 0.3), 0 16px 28px -10px rgb(29 91 255 / 0.85);
+  --shadow-btn-pressed: 0 4px 8px -4px rgb(29 91 255 / 0.6);
+  --shadow-btn-ink: inset 0 1px 0 rgb(255 255 255 / 0.12), 0 12px 24px -10px rgb(10 18 38 / 0.7);
+  --shadow-bar: 0 -8px 24px -12px rgb(10 18 38 / 0.25);
+}
+
+@layer base {
+  :root {
+    color-scheme: light;
+    --page-aura-1: #d9e4ff;
+    --page-aura-1-0: rgb(217 228 255 / 0);
+    --page-aura-2: #e6ecfb;
+    --page-aura-2-0: rgb(230 236 251 / 0);
+    --card-gradient-end: #fbfcfe;
+    --glass-bg: rgb(255 255 255 / 0.78);
+    --glass-border: rgb(255 255 255 / 0.6);
+    --scrim: rgb(10 18 38 / 0.48);
+    --skeleton-base: #edf0f6;
+    --skeleton-shine: #f8f9fc;
+    --safe-top: env(safe-area-inset-top, 0px);
+    --safe-bottom: env(safe-area-inset-bottom, 0px);
+    --safe-left: env(safe-area-inset-left, 0px);
+    --safe-right: env(safe-area-inset-right, 0px);
+  }
+
+  /* Dark theme — ink-blue surfaces (DS DARK style + semantic dark column, DS 03). All text pairs ≥ 4.5:1. */
+  .dark {
+    color-scheme: dark;
+    --color-canvas: #070d1c;
+    --color-surface: #0e1730;
+    --color-surface-2: #111c3a;
+    --color-subtle: #152040;
+    --color-disabled: #131b33;
+    --color-inverse: #f6f8fc;
+    --color-inverse-fg: #0a1226;
+
+    --color-ink: #f6f8fc;
+    --color-text-2: #c9d3ea;
+    --color-muted: #a6b0c4;
+    --color-faint: #8a93a6;
+    --color-placeholder: #7f89a3;
+    --color-disabled-fg: #5d6784;
+
+    --color-border: #22305a;
+    --color-border-strong: #33437a;
+    --color-border-hover: #4a5b91;
+    --color-focus: #7fa2ff;
+    --color-focus-halo: rgb(127 162 255 / 0.3);
+
+    --color-primary: #1d5bff;
+    --color-primary-hover: #2f66ff;
+    --color-primary-pressed: #0f47e0;
+    --color-primary-fg: #ffffff;
+    --color-primary-soft: #162755;
+    --color-primary-soft-hover: #1d3270;
+    --color-primary-soft-pressed: #223a82;
+    --color-primary-soft-fg: #a9c1ff;
+    --color-link: #7fa2ff;
+
+    --color-info: #5f8bff;
+    --color-info-fg: #a9c1ff;
+    --color-info-bg: #131f45;
+    --color-info-border: #2e4583;
+    --color-success: #2bb673;
+    --color-success-fg: #7ed3a6;
+    --color-success-bg: #0d2c34;
+    --color-success-border: #184f47;
+    --color-warn: #f59e0b;
+    --color-warn-fg: #ffc266;
+    --color-warn-bg: #2e2626;
+    --color-warn-border: #5f4623;
+    --color-danger: #d02f33;
+    --color-danger-fg: #ff9c9c;
+    --color-danger-bg: #351c31;
+    --color-danger-border: #682f3e;
+    --color-paid: #2bc2ae;
+    --color-paid-fg: #5fd3c4;
+    --color-paid-bg: #0e3041;
+    --color-paid-border: #175a5c;
+    --color-premium: #a78bfa;
+    --color-premium-fg: #c4a8ff;
+    --color-premium-bg: #261f5a;
+
+    --shadow-hairline: 0 1px 2px rgb(0 0 0 / 0.35);
+    --shadow-card: inset 0 1px 0 rgb(255 255 255 / 0.04), 0 1px 2px rgb(0 0 0 / 0.35), 0 18px 40px -18px rgb(0 0 0 / 0.6);
+    --shadow-card-hover: inset 0 1px 0 rgb(255 255 255 / 0.06), 0 1px 2px rgb(0 0 0 / 0.35), 0 28px 52px -20px rgb(0 0 0 / 0.75);
+    --shadow-raised: inset 0 1px 0 rgb(255 255 255 / 0.05), 0 2px 4px rgb(0 0 0 / 0.3), 0 24px 48px -18px rgb(0 0 0 / 0.7);
+    --shadow-pop: 0 0 0 1px rgb(127 162 255 / 0.1), 0 16px 32px -12px rgb(0 0 0 / 0.7);
+    --shadow-modal: 0 0 0 1px rgb(127 162 255 / 0.08), 0 24px 56px -14px rgb(0 0 0 / 0.8);
+    --shadow-dark: 0 0 0 1px rgb(127 162 255 / 0.1), 0 30px 60px -24px rgb(0 0 0 / 0.8);
+    --shadow-blue: 0 14px 28px -12px rgb(29 91 255 / 0.55);
+    --shadow-btn: inset 0 1px 0 rgb(255 255 255 / 0.25), 0 12px 24px -10px rgb(29 91 255 / 0.55);
+    --shadow-btn-hover: inset 0 1px 0 rgb(255 255 255 / 0.25), 0 16px 28px -10px rgb(47 102 255 / 0.7);
+    --shadow-btn-ink: inset 0 1px 0 rgb(255 255 255 / 0.1), 0 0 0 1px rgb(127 162 255 / 0.18), 0 12px 24px -10px rgb(0 0 0 / 0.7);
+    --shadow-bar: 0 -8px 24px -12px rgb(0 0 0 / 0.6);
+
+    --page-aura-1: rgb(30 52 112 / 0.55);
+    --page-aura-1-0: rgb(30 52 112 / 0);
+    --page-aura-2: rgb(19 31 69 / 0.6);
+    --page-aura-2-0: rgb(19 31 69 / 0);
+    --card-gradient-end: #0c1429;
+    --glass-bg: rgb(14 23 48 / 0.72);
+    --glass-border: rgb(127 162 255 / 0.14);
+    --scrim: rgb(3 6 15 / 0.66);
+    --skeleton-base: #152040;
+    --skeleton-shine: #1c2a52;
+  }
+
+  html {
+    -webkit-text-size-adjust: 100%;
+    text-size-adjust: 100%;
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  body {
+    font-family: var(--font-sans);
+    font-size: var(--text-body);
+    line-height: var(--text-body--line-height);
+    color: var(--color-ink);
+    background-color: var(--color-canvas);
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+
+  ::selection {
+    background-color: var(--color-primary-soft-hover);
+    color: var(--color-ink);
+  }
+
+  :focus-visible {
+    outline: 2px solid var(--color-focus);
+    outline-offset: 2px;
+  }
+
+  /* DS 22: respect reduced motion — crossfade-only. Spinners opt out with data-motion="essential". */
+  @media (prefers-reduced-motion: reduce) {
+    *:not([data-motion="essential"]),
+    *::before,
+    *::after {
+      animation-duration: 0.01ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.01ms !important;
+      scroll-behavior: auto !important;
+    }
+  }
+}
+
+/* ───────────────────────── Surface & helper utilities ───────────────────────── */
+
+/* PAGE background: two soft blue auras on canvas (ds-notes PAGE). */
+@utility bg-page {
+  background:
+    radial-gradient(900px 640px at 92% -4%, var(--page-aura-1) 0%, var(--page-aura-1-0) 62%),
+    radial-gradient(700px 500px at -6% 46%, var(--page-aura-2) 0%, var(--page-aura-2-0) 60%),
+    var(--color-canvas);
+}
+
+/* CARD surface: white→#FBFCFE + layered shadow. */
+@utility surface-card {
+  background: linear-gradient(180deg, var(--color-surface), var(--card-gradient-end));
+  box-shadow: var(--shadow-card);
+}
+
+@utility surface-raised {
+  background: linear-gradient(180deg, var(--color-surface), var(--card-gradient-end));
+  box-shadow: var(--shadow-raised);
+}
+
+/* DARK surface: ink with a navy aura top-right. Text on it must be light. */
+@utility surface-dark {
+  background: radial-gradient(90% 70% at 100% 0%, #1e3470 0%, #0a1226 60%);
+  box-shadow: var(--shadow-dark);
+  color: #ffffff;
+}
+
+/* BLUE surface: hero/CTA band gradient. */
+@utility surface-blue {
+  background: linear-gradient(160deg, #4d7dff, #1d5bff 55%, #0f47e0);
+  box-shadow: var(--shadow-blue);
+  color: #ffffff;
+}
+
+/* GLASS: only on top of photos. */
+@utility surface-glass {
+  background: var(--glass-bg);
+  -webkit-backdrop-filter: blur(18px) saturate(160%);
+  backdrop-filter: blur(18px) saturate(160%);
+  border: 1px solid var(--glass-border);
+}
+
+/* Small dark-glass chip on photos (platform chip, play button). */
+@utility surface-glass-dark {
+  background: rgb(10 18 38 / 0.55);
+  -webkit-backdrop-filter: blur(10px);
+  backdrop-filter: blur(10px);
+  color: #ffffff;
+}
+
+/* Primary CTA gradient and ink (financial) gradient. */
+@utility bg-cta {
+  background-image: linear-gradient(160deg, #4d7dff 0%, #1d5bff 50%, #0f47e0 100%);
+}
+
+@utility bg-cta-hover {
+  background-image: linear-gradient(160deg, #3d6fff 0%, #0f47e0 100%);
+}
+
+@utility bg-cta-ink {
+  background-image: linear-gradient(160deg, #1e2a4a, #0a1226);
+}
+
+@utility bg-scrim {
+  background-color: var(--scrim);
+}
+
+/* Photo scrim for text over images (DS 06: "Scrim ink, hanya di atas foto"). */
+@utility bg-photo-scrim {
+  background-image: linear-gradient(0deg, rgb(10 18 38 / 0.85), rgb(10 18 38 / 0) 60%);
+}
+
+/* DS focus ring: 2 px gap + 2 px blue + 4 px halo. Keyboard only. */
+@utility focus-ring {
+  &:focus-visible {
+    outline: 2px solid transparent;
+    outline-offset: 2px;
+    box-shadow:
+      0 0 0 2px var(--color-surface),
+      0 0 0 4px var(--color-focus),
+      0 0 0 8px var(--color-focus-halo);
+  }
+}
+
+/* Same ring, applied when a descendant control has keyboard focus (custom controls, cards with stretched links). */
+@utility focus-ring-within {
+  &:has(:focus-visible) {
+    box-shadow:
+      0 0 0 2px var(--color-surface),
+      0 0 0 4px var(--color-focus),
+      0 0 0 8px var(--color-focus-halo);
+  }
+}
+
+/* Extends the hit area of small controls to ≥ 44×44 px on touch devices without changing layout (DS 15 §8). */
+@utility touch-target {
+  position: relative;
+  @media (pointer: coarse) {
+    &::after {
+      content: "";
+      position: absolute;
+      left: 50%;
+      top: 50%;
+      width: max(100%, 44px);
+      height: max(100%, 44px);
+      transform: translate(-50%, -50%);
+    }
+  }
+}
+
+/* Tabular numbers for money, views, tables (DS 11: "tnum, semua angka sejajar"). */
+@utility tnum {
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: "tnum" 1;
+}
+
+@utility skeleton-shimmer {
+  background-color: var(--skeleton-base);
+  background-image: linear-gradient(90deg, var(--skeleton-base) 0%, var(--skeleton-shine) 50%, var(--skeleton-base) 100%);
+  background-size: 200% 100%;
+}
+
+@utility no-scrollbar {
+  scrollbar-width: none;
+  &::-webkit-scrollbar {
+    display: none;
+  }
+}
+
+@utility pb-safe {
+  padding-bottom: var(--safe-bottom);
+}
+
+@utility pt-safe {
+  padding-top: var(--safe-top);
+}

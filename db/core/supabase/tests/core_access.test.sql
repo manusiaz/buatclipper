@@ -41,7 +41,8 @@ insert into market.campaigns (id, org_id, slug, title, type, category_id, platfo
 select is((select count(*)::int from pg_class c where c.relnamespace = 'api'::regnamespace and c.relkind = 'v'
             and not coalesce(c.reloptions @> array['security_invoker=true'], false)), 0, 'semua view api security_invoker');
 select is((select array_agg(p.proname::text order by p.proname) from pg_proc p where p.pronamespace = 'api'::regnamespace
-            and has_function_privilege('anon', p.oid, 'execute')), array['report_by_token'], 'anon hanya bisa EXECUTE report_by_token');
+            and has_function_privilege('anon', p.oid, 'execute')), array['list_campaigns', 'report_by_token'],
+          'anon hanya bisa EXECUTE list_campaigns (landing) & report_by_token');
 select is((select count(*)::int from pg_class c where c.relnamespace in ('market'::regnamespace, 'tracking'::regnamespace,
             'finance'::regnamespace, 'trust'::regnamespace, 'ops'::regnamespace) and c.relkind = 'r' and not c.relrowsecurity),
           0, 'RLS aktif di semua tabel core');

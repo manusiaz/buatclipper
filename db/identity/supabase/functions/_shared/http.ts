@@ -74,7 +74,6 @@ function applyCors(req: Request, res: Response): Response {
   const h = new Headers(res.headers);
   h.set("access-control-allow-origin", origin);
   h.set("vary", "Origin");
-  h.set("access-control-allow-credentials", "false");
   h.set("access-control-expose-headers", "x-correlation-id");
   return new Response(res.body, { status: res.status, headers: h });
 }
@@ -179,7 +178,9 @@ export function str(
   }
   if (typeof v !== "string") throw new HttpError(400, "invalid_input", `${key} harus teks`);
   if (opts.min !== undefined && v.length < opts.min) throw new HttpError(400, "invalid_input", `${key} terlalu pendek`);
-  if (opts.max !== undefined && v.length > opts.max) throw new HttpError(400, "invalid_input", `${key} terlalu panjang`);
+  if (opts.max !== undefined && v.length > opts.max) {
+    throw new HttpError(400, "invalid_input", `${key} terlalu panjang`);
+  }
   if (opts.pattern && !opts.pattern.test(v)) throw new HttpError(400, "invalid_input", `${key} tidak valid`);
   return v;
 }
@@ -201,5 +202,5 @@ export function uuidList(o: Record<string, unknown>, key: string, max: number): 
 }
 
 export function action(o: Record<string, unknown>): string {
-  return str(o, "action", { max: 64, pattern: /^[a-z_]+$/ });
+  return str(o, "action", { max: 64, pattern: /^[a-z][a-z0-9_]*$/ });
 }

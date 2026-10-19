@@ -4,24 +4,11 @@
 -- Konvensi error fungsi api core (UI memetakan KODE ke teks; DETAIL = penjelasan bahasa Indonesia untuk log):
 --   errcode 42501  auth:no_session            tidak ada JWT identity / iss salah
 --                  auth:forbidden             role org / admin (aal2) tidak cukup
---   errcode P0002  not_found:<objek>          campaign | submission | org | reward_type | invite — tidak ada atau tidak terlihat
---   errcode P0001  kode bisnis, mis. invalid:<field>, invalid_state:<status>, campaign_locked, org_not_verified, invoice_unpaid
---   Claim (api.claim_campaign) — urutan cek sama dengan cta_state api.list_campaigns:
---     deadline_passed                      status tracking/settling/settled atau submit_deadline lewat
---     budget_exhausted                     status exhausted atau semua pool habis
---     already_claimed                      masih ada claim terbuka (cta claimed_not_submitted)
---     not_eligible:campaign_not_live       paused/scheduled/draft (terlihat anggota org/admin)
---     slots_full                           kuota clipper (clipper_quota) penuh
---     not_eligible:profile_missing         belum ensure_profile
---     not_eligible:profile_inactive        E-01 suspended/banned/closed
---     not_eligible:own_org                 anggota org pemilik (langsung atau lewat agency)
---     not_eligible:not_invited             campaign invite tanpa undangan
---     not_eligible:min_trust_score         Trust Score < ambang
---     not_eligible:kyc_required            claim JWT kyc ≠ approved
---     not_eligible:need_social_account:<platform>   belum ada akun verified di platform campaign
---     not_eligible:min_followers           follower kurang di semua akun platform campaign
---     not_eligible:min_account_age         umur akun (platform_created_at) kurang
---     not_eligible:max_clips               submisi (selain ditolak) sudah = max_clips_per_clipper
+--   errcode P0002  not_found:<objek>          campaign | submission | org | reward_type | invite | profile — tidak ada / tidak terlihat
+--   errcode P0001  kode bisnis: invalid:<field>, invalid_state:<status>, campaign_locked, org_not_verified, org_suspended,
+--                  invoice_unpaid, slug_taken, pools_locked_after_payment, appeal_used, invite_used, invite_expired, not_agency,
+--                  already_linked, reward_type_in_use, consent_required:brand, config_key_locked, config:fee_rule_missing
+--   Kode claim / CTA (not_eligible:<alasan>): daftar lengkap di kepala api/campaigns.sql.
 
 create function market.fail(p_code text, p_detail text default null, p_errcode text default 'P0001') returns void
 language plpgsql set search_path = '' as $$
@@ -147,7 +134,7 @@ language sql stable set search_path = '' as $$
 $$;
 
 -- CTA F-C03 / eligibility claim untuk pemanggil (auth.uid). state ∈ can_claim | claimed_not_submitted | slots_full |
--- budget_exhausted | deadline_passed | not_eligible (+ reason, kode di kepala file). uid NULL (anon) → NULL.
+-- budget_exhausted | deadline_passed | not_eligible (+ reason, daftar kode di kepala api/campaigns.sql). uid NULL (anon) → NULL.
 -- Visibilitas dicek pemanggil (market.campaign_visible). claim_campaign memakai fungsi yang sama → CTA = hasil claim.
 create function market.claim_check(p_campaign uuid, out state text, out reason text)
 language plpgsql stable security definer set search_path = '' as $$

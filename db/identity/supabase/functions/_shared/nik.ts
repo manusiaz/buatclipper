@@ -53,7 +53,9 @@ export function parseNik(input: string, today: Ymd = todayJakarta()): NikInfo {
   const yy = Number(nik.slice(10, 12));
   const female = dd > 40;
   if (female) dd -= 40;
-  if (mm < 1 || mm > 12 || dd < 1 || dd > 31) throw new HttpError(422, "invalid_nik", "tanggal lahir di NIK tidak valid");
+  if (mm < 1 || mm > 12 || dd < 1 || dd > 31) {
+    throw new HttpError(422, "invalid_nik", "tanggal lahir di NIK tidak valid");
+  }
 
   const century = Math.floor(today.y / 100) * 100;
   let y = century + yy;

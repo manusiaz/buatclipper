@@ -53,6 +53,9 @@ create policy budget_alerts_org_read on market.budget_alerts for select to authe
   using (exists (select 1 from market.campaigns c where c.id = campaign_id and (select ops.is_org_member(c.org_id))));
 create policy budget_alerts_admin_read on market.budget_alerts for select to authenticated using ((select ops.has_admin()));  -- policy:core.admin-aal2
 grant select on market.budget_alerts to authenticated;
+create view api.budget_alerts with (security_invoker = true) as
+  select campaign_id, kind, utilization_pct, created_at from market.budget_alerts;
+grant select on api.budget_alerts to authenticated;
 
 -- job:budget-alerts (30 menit): budget terpakai 50/80/100% → budget.used (sekali per ambang; kalau beberapa ambang terlewati
 -- sekaligus, hanya yang tertinggi yang dikirim), proyeksi < 50% saat live (setelah ≥ 2 hari berjalan) → budget.projection_low.
