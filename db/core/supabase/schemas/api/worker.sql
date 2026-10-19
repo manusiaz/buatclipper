@@ -313,18 +313,21 @@ begin
 end $$;
 
 -- Connect OAuth (F-C02): satu akun sosmed = satu clipper selamanya (social_taken); batas 3 akun/platform dari trigger.
-create function api.worker_upsert_social_account(p_user uuid, p_platform market.platform, p_external_id text, p_handle text,
+-- Parameter text (bukan enum member/market): PostgREST meng-cast argumen RPC ke tipe deklarasi, dan role API tidak
+-- punya USAGE ke schema internal → enum di parameter = 42501. Cast di dalam fungsi definer.
+create function api.worker_upsert_social_account(p_user uuid, p_platform text, p_external_id text, p_handle text,
                                                  p_followers int, p_platform_created_at timestamptz, p_token text)
 returns uuid
 language plpgsql security definer set search_path = '' as $$
 declare
+  pf market.platform := p_platform::market.platform;
   a tracking.social_accounts;
   aid uuid;
 begin
   if not exists (select 1 from market.profiles pr where pr.id = p_user and pr.status = 'active') then
     raise exception 'profile_inactive' using errcode = 'P0001';
   end if;
-  select * into a from tracking.social_accounts x where x.platform = p_platform and x.external_id = p_external_id for update;
+  select * into a from tracking.social_accounts x where x.platform = pf and x.external_id = p_external_id for update;
   if found then
     if a.user_id <> p_user then
       raise exception 'social_taken' using errcode = 'P0001';
@@ -337,7 +340,7 @@ begin
   else
     begin
       insert into tracking.social_accounts (user_id, platform, external_id, handle, followers, platform_created_at)
-      values (p_user, p_platform, p_external_id, p_handle, p_followers, p_platform_created_at) returning id into aid;
+      values (p_user, pf, p_external_id, p_handle, p_followers, p_platform_created_at) returning id into aid;
     exception when unique_violation then
       raise exception 'social_taken' using errcode = 'P0001';
     end;
@@ -553,7 +556,7 @@ revoke execute on function api.worker_dequeue(text, int, int), api.worker_ack(te
   api.worker_account_token(uuid), api.worker_defer(uuid, timestamptz),
   api.worker_submission_context(uuid), api.worker_record_snapshot(uuid, bigint, bigint, bigint, bigint, text, jsonb, jsonb),
   api.worker_post_gone(uuid, text), api.worker_account_status(uuid, text), api.worker_accounts_to_refresh(interval),
-  api.worker_upsert_social_account(uuid, market.platform, text, text, int, timestamptz, text),
+  api.worker_upsert_social_account(uuid, text, text, text, int, timestamptz, text),
   api.worker_create_submission(uuid, uuid, uuid, text, text, timestamptz, text, int), api.worker_notification(bigint),
   api.worker_unsubscribe(uuid), api.worker_fulfillments_due(int), api.worker_assign_code(uuid),
   api.worker_fulfillment_result(uuid, boolean, text, text)
@@ -562,7 +565,7 @@ grant execute on function api.worker_dequeue(text, int, int), api.worker_ack(tex
   api.worker_account_token(uuid), api.worker_defer(uuid, timestamptz),
   api.worker_submission_context(uuid), api.worker_record_snapshot(uuid, bigint, bigint, bigint, bigint, text, jsonb, jsonb),
   api.worker_post_gone(uuid, text), api.worker_account_status(uuid, text), api.worker_accounts_to_refresh(interval),
-  api.worker_upsert_social_account(uuid, market.platform, text, text, int, timestamptz, text),
+  api.worker_upsert_social_account(uuid, text, text, text, int, timestamptz, text),
   api.worker_create_submission(uuid, uuid, uuid, text, text, timestamptz, text, int), api.worker_notification(bigint),
   api.worker_unsubscribe(uuid), api.worker_fulfillments_due(int), api.worker_assign_code(uuid),
   api.worker_fulfillment_result(uuid, boolean, text, text)

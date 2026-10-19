@@ -150,21 +150,24 @@ end $$;
 
 -- B2.1: link undangan anggota (berlaku 7 hari). Token acak dikembalikan sekali; yang disimpan sha256-nya.
 -- Hanya brand_owner langsung (bukan lewat agency) yang mengelola anggota.
-create function api.create_org_invite(p_org uuid, p_role market.org_role) returns text
+-- Parameter text (bukan enum member/market): PostgREST meng-cast argumen RPC ke tipe deklarasi, dan role API tidak
+-- punya USAGE ke schema internal → enum di parameter = 42501. Cast di dalam fungsi definer.
+create function api.create_org_invite(p_org uuid, p_role text) returns text
 language plpgsql security definer set search_path = '' as $$
 declare
+  r market.org_role := p_role::market.org_role;
   uid uuid := market.session_uid();
   tok text;
 begin
   if not market.is_direct_member(p_org, uid, 'brand_owner') then
     perform market.fail('auth:forbidden', 'hanya brand_owner org ini', '42501');
   end if;
-  if p_role is null then
+  if r is null then
     perform market.fail('invalid:role', 'role wajib');
   end if;
   tok := rtrim(translate(encode(extensions.gen_random_bytes(32), 'base64'), '+/', '-_'), '=');
   insert into market.org_invites (org_id, role, token_hash, expires_at, created_by)
-  values (p_org, p_role, sha256(convert_to(tok, 'UTF8')), now() + interval '7 days', uid);
+  values (p_org, r, sha256(convert_to(tok, 'UTF8')), now() + interval '7 days', uid);
   return tok;
 end $$;
 
@@ -384,8 +387,8 @@ end $$;
 revoke execute on function market.ensure_member_profile(uuid, text, text),
   market.decide_org(uuid, text, uuid, text, text, text) from public;
 revoke execute on function api.create_org(text, text, text, text, text, boolean), api.link_agency(uuid, uuid, text),
-  api.create_org_invite(uuid, market.org_role), api.accept_org_invite(text), api.manage_org(uuid, text, jsonb),
+  api.create_org_invite(uuid, text), api.accept_org_invite(text), api.manage_org(uuid, text, jsonb),
   api.save_reward_type(jsonb), api.upload_reward_codes(uuid, text[]) from public;
 grant execute on function api.create_org(text, text, text, text, text, boolean), api.link_agency(uuid, uuid, text),
-  api.create_org_invite(uuid, market.org_role), api.accept_org_invite(text), api.manage_org(uuid, text, jsonb),
+  api.create_org_invite(uuid, text), api.accept_org_invite(text), api.manage_org(uuid, text, jsonb),
   api.save_reward_type(jsonb), api.upload_reward_codes(uuid, text[]) to authenticated;

@@ -68,7 +68,7 @@ export type Database = {
           }
           Functions: {
             "admin_kyc_decision":
-{ Args: { "p_decision": "pending"|"approved"|"rejected","p_reason"?: string,"p_user_id": string }; Returns: undefined
+{ Args: { "p_decision": string,"p_reason"?: string,"p_user_id": string }; Returns: undefined
                            },
 "admin_read":
 { Args: { "p_user_id": string }; Returns: {
@@ -76,7 +76,7 @@ export type Database = {
             }[]
                            },
 "admin_set_role":
-{ Args: { "p_grant": boolean,"p_role": "admin_super"|"admin_ops"|"admin_moderator"|"admin_finance"|"admin_support","p_user_id": string }; Returns: undefined
+{ Args: { "p_grant": boolean,"p_role": string,"p_user_id": string }; Returns: undefined
                            },
 "my_payout_methods":
 { Args: Record<PropertyKey, never>; Returns: {
@@ -84,7 +84,7 @@ export type Database = {
             }[]
                            },
 "record_consent":
-{ Args: { "p_granted"?: boolean,"p_kind": "tos_clipper"|"tos_brand"|"privacy"|"age_18_plus"|"kyc"|"share_with_brand","p_version"?: string }; Returns: undefined
+{ Args: { "p_granted"?: boolean,"p_kind": string,"p_version"?: string }; Returns: undefined
                            },
 "save_push_subscription":
 { Args: { "p_auth": string,"p_endpoint": string,"p_p256dh": string }; Returns: string
@@ -116,7 +116,7 @@ export type Database = {
 { Args: { "p_endpoint": string }; Returns: undefined
                            },
 "svc_has_consent":
-{ Args: { "p_kind": "tos_clipper"|"tos_brand"|"privacy"|"age_18_plus"|"kyc"|"share_with_brand","p_user": string }; Returns: boolean
+{ Args: { "p_kind": string,"p_user": string }; Returns: boolean
                            },
 "svc_kyc":
 { Args: { "p_user_ids": (string)[] }; Returns: {

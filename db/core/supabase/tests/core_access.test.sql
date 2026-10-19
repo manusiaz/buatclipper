@@ -272,5 +272,10 @@ select is(array(select distinct m[1] from cron.job, regexp_matches(command, '([a
           '{}'::text[], 'semua fungsi yang dipanggil job pg_cron sudah ada');
 select todo_end();
 
+-- Regresi 2026-10-19: enum internal di parameter RPC → 42501 lewat REST walau pgTAP (literal) lulus.
+select is((select array_agg(p.proname::text order by p.proname) from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+            where n.nspname = 'api' and exists (select 1 from unnest(p.proargtypes) t join pg_type ty on ty.oid = t
+              join pg_namespace tn on tn.oid = ty.typnamespace where tn.nspname not in ('pg_catalog', 'api', 'extensions'))),
+          null, 'argumen fungsi api tidak bertipe schema internal (PostgREST meng-cast argumen; role API tanpa USAGE schema itu)');
 select * from finish();
 rollback;

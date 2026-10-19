@@ -632,7 +632,7 @@ export type Database = {
 { Args: { "p_address"?: string,"p_is_agency"?: boolean,"p_legal_name"?: string,"p_name": string,"p_npwp"?: string,"p_org_type": string }; Returns: string
                            },
 "create_org_invite":
-{ Args: { "p_org": string,"p_role": "brand_owner"|"brand_manager"|"brand_finance"|"brand_viewer" }; Returns: string
+{ Args: { "p_org": string,"p_role": string }; Returns: string
                            },
 "create_payout_batch":
 { Args: { "p_cutoff": string }; Returns: string
@@ -778,7 +778,7 @@ export type Database = {
 { Args: { "p_user": string }; Returns: undefined
                            },
 "worker_upsert_social_account":
-{ Args: { "p_external_id": string,"p_followers": number,"p_handle": string,"p_platform": "tiktok"|"instagram"|"youtube"|"threads"|"facebook"|"x","p_platform_created_at": string,"p_token": string,"p_user": string }; Returns: string
+{ Args: { "p_external_id": string,"p_followers": number,"p_handle": string,"p_platform": string,"p_platform_created_at": string,"p_token": string,"p_user": string }; Returns: string
                            }
           }
           Enums: {

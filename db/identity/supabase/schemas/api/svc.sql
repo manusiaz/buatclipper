@@ -41,13 +41,13 @@ language sql stable security definer set search_path = '' as $$
 $$;
 
 -- Consent aktif. Dokumen legal (ToS/privasi) harus versi terbaru (E-31); kyc/share_with_brand/age_18_plus cukup belum dicabut.
-create function api.svc_has_consent(p_user uuid, p_kind member.consent_kind)
+create function api.svc_has_consent(p_user uuid, p_kind text)
 returns boolean
 language sql stable security definer set search_path = '' as $$
   select case
-    when p_kind in ('tos_clipper', 'tos_brand', 'privacy') then member.has_current_consent(p_user, p_kind)
+    when p_kind in ('tos_clipper', 'tos_brand', 'privacy') then member.has_current_consent(p_user, p_kind::member.consent_kind)
     else exists (select 1 from member.consents c
-                 where c.user_id = p_user and c.kind = p_kind and c.revoked_at is null)
+                 where c.user_id = p_user and c.kind = p_kind::member.consent_kind and c.revoked_at is null)
   end;
 $$;
 
@@ -213,7 +213,7 @@ $$;
 revoke execute on function api.svc_payout_methods(uuid[]) from public, anon, authenticated;
 revoke execute on function api.svc_kyc(uuid[]) from public, anon, authenticated;
 revoke execute on function api.svc_recipients(uuid[]) from public, anon, authenticated;
-revoke execute on function api.svc_has_consent(uuid, member.consent_kind) from public, anon, authenticated;
+revoke execute on function api.svc_has_consent(uuid, text) from public, anon, authenticated;
 revoke execute on function api.svc_platform_roles(uuid) from public, anon, authenticated;
 revoke execute on function api.svc_push_subscriptions(uuid) from public, anon, authenticated;
 revoke execute on function api.svc_delete_push(text) from public, anon, authenticated;
@@ -225,7 +225,7 @@ revoke execute on function api.svc_my_data(uuid) from public, anon, authenticate
 grant execute on function api.svc_payout_methods(uuid[]) to service_role;
 grant execute on function api.svc_kyc(uuid[]) to service_role;
 grant execute on function api.svc_recipients(uuid[]) to service_role;
-grant execute on function api.svc_has_consent(uuid, member.consent_kind) to service_role;
+grant execute on function api.svc_has_consent(uuid, text) to service_role;
 grant execute on function api.svc_platform_roles(uuid) to service_role;
 grant execute on function api.svc_push_subscriptions(uuid) to service_role;
 grant execute on function api.svc_delete_push(text) to service_role;
