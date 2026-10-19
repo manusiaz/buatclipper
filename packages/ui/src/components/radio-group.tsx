@@ -31,7 +31,7 @@ export interface RadioGroupProps {
 }
 
 const radioClasses = cn(
-  'peer touch-target size-[22px] shrink-0 cursor-pointer appearance-none rounded-full border-[1.5px] border-border-hover bg-surface',
+  'peer size-[22px] shrink-0 cursor-pointer appearance-none rounded-full border-[1.5px] border-border-hover bg-surface',
   'transition-[border-color,background-color,box-shadow] duration-120 ease-out',
   'hover:border-primary hover:bg-primary-tint focus-ring',
   'checked:border-2 checked:border-primary checked:bg-[radial-gradient(circle,var(--color-primary)_0_4.5px,transparent_5px)] checked:hover:bg-surface checked:hover:bg-[radial-gradient(circle,var(--color-primary)_0_4.5px,transparent_5px)]',
@@ -113,19 +113,21 @@ export function RadioGroup({
             );
           }
           return (
-            <div key={o.value} className="flex items-start gap-3">
+            <label
+              key={o.value}
+              htmlFor={optId}
+              className="flex cursor-pointer items-start gap-3 has-[:disabled]:cursor-not-allowed has-[:disabled]:text-disabled-fg pointer-coarse:min-h-11 pointer-coarse:py-2.5"
+            >
               <span className="flex h-6 items-center">{input}</span>
               <span className="flex min-w-0 flex-col">
-                <label htmlFor={optId} className="cursor-pointer text-sm leading-6 font-semibold text-ink peer-disabled:cursor-not-allowed">
-                  {o.label}
-                </label>
+                <span className="text-sm leading-6 font-semibold text-ink">{o.label}</span>
                 {o.description ? (
                   <span id={descId} className="text-caption text-muted">
                     {o.description}
                   </span>
                 ) : null}
               </span>
-            </div>
+            </label>
           );
         })}
       </div>

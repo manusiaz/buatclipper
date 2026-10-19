@@ -102,6 +102,50 @@ export type Database = {
                            },
 "store_recipient":
 { Args: { "p_data_enc": string,"p_key_version": number,"p_reward_type_id": string,"p_user_id": string }; Returns: string
+                           },
+"svc_audit":
+{ Args: { "p_action": string,"p_actor": string,"p_after"?: Json,"p_target": string }; Returns: undefined
+                           },
+"svc_check_ids":
+{ Args: { "p_method_ids": (string)[],"p_recipient_refs": (string)[],"p_user_ids": (string)[] }; Returns: Json
+                           },
+"svc_close_member":
+{ Args: { "p_blocked": boolean,"p_retain_until": string,"p_user": string }; Returns: Json
+                           },
+"svc_delete_push":
+{ Args: { "p_endpoint": string }; Returns: undefined
+                           },
+"svc_has_consent":
+{ Args: { "p_kind": "tos_clipper"|"tos_brand"|"privacy"|"age_18_plus"|"kyc"|"share_with_brand","p_user": string }; Returns: boolean
+                           },
+"svc_kyc":
+{ Args: { "p_user_ids": (string)[] }; Returns: {
+              "closed": boolean,"enc_key_version": number,"legal_name": string,"nik_enc": string,"status": "pending"|"approved"|"rejected","user_id": string
+            }[]
+                           },
+"svc_my_data":
+{ Args: { "p_user": string }; Returns: Json
+                           },
+"svc_payout_methods":
+{ Args: { "p_ids": (string)[] }; Returns: {
+              "account_last4": string,"account_name": string,"account_no_enc": string,"bank_code": string,"blocked": boolean,"disabled_at": string,"enc_key_version": number,"id": string,"kind": string,"user_id": string
+            }[]
+                           },
+"svc_platform_roles":
+{ Args: { "p_user": string }; Returns: (string)[]
+                           },
+"svc_push_subscriptions":
+{ Args: { "p_user": string }; Returns: {
+              "auth_secret": string,"endpoint": string,"p256dh": string
+            }[]
+                           },
+"svc_recipients":
+{ Args: { "p_ids": (string)[] }; Returns: {
+              "data_enc": string,"enc_key_version": number,"id": string,"reward_type_id": string,"user_id": string
+            }[]
+                           },
+"svc_touch_push":
+{ Args: { "p_endpoint": string }; Returns: undefined
                            }
           }
           Enums: {

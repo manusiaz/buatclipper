@@ -57,7 +57,7 @@ export function MobileAppShell({
       <header className="sticky top-0 z-30 border-b border-border/70 bg-surface/85 pt-[var(--safe-top)] backdrop-blur-[14px] backdrop-saturate-150">
         <div className="mx-auto flex h-14 w-full max-w-[560px] items-center gap-2 px-4">
           {back ? (
-            <L href={back.href} aria-label={back.label} className="touch-target -ml-2 grid size-10 place-items-center rounded-control text-ink hover:bg-subtle focus-ring">
+            <L href={back.href} aria-label={back.label} className="touch-target relative -ml-2 grid size-10 place-items-center rounded-control text-ink hover:bg-subtle focus-ring">
               <Icon name="arrow_back" size={22} />
             </L>
           ) : null}

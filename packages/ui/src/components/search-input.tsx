@@ -78,7 +78,7 @@ export function SearchInput({
             type="button"
             onClick={clear}
             aria-label={clearLabel}
-            className="touch-target -mr-1 grid size-7 place-items-center rounded-full text-muted transition-colors duration-120 hover:bg-subtle hover:text-ink focus-ring"
+            className="touch-target relative -mr-1 grid size-7 place-items-center rounded-full text-muted transition-colors duration-120 hover:bg-subtle hover:text-ink focus-ring"
           >
             <Icon name="close" size={18} />
           </button>

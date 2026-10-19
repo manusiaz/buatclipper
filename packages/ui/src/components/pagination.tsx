@@ -29,7 +29,7 @@ function range(page: number, count: number, siblings: number): Array<number | 'g
 }
 
 const itemCls =
-  'touch-target inline-grid h-10 min-w-10 place-items-center rounded-[11px] px-2 text-sm font-semibold text-text-2 tnum transition-colors duration-120 hover:bg-subtle hover:text-ink focus-ring';
+  'touch-target relative inline-grid h-10 min-w-10 place-items-center rounded-[11px] px-2 text-sm font-semibold text-text-2 tnum transition-colors duration-120 hover:bg-subtle hover:text-ink focus-ring';
 
 /** Pagination (DS 10 §7): active page = blue gradient pill. Server-compatible in link mode. */
 export function Pagination({ page, pageCount, getHref, linkAs, onPageChange, siblings = 1, labels, className }: PaginationProps) {

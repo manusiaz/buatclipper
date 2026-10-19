@@ -109,6 +109,7 @@ begin
         end if;
       end loop;
       update market.claims set status = 'released' where user_id = target_user and status = 'open';
+      perform ops.enqueue_notification(target_user, 'account.banned', jsonb_build_object('signal', f.signal, 'flag_id', f.id));
       perform ops.invoke_function('bridge', jsonb_build_object('action', 'ban_user', 'user_id', target_user));
     end if;
   end if;

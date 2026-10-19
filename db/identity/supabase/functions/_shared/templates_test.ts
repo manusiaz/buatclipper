@@ -10,8 +10,8 @@ const ORG = "00000000-0000-0000-0000-0000000000aa";
 const CAMP = "00000000-0000-0000-0000-0000000000cc";
 
 Deno.test("templates: one template per F-X01 event (31), all render with an empty payload", () => {
-  assertEquals(EVENTS.length, 34);
-  assertEquals(new Set(EVENTS).size, 34);
+  assertEquals(EVENTS.length, 35);
+  assertEquals(new Set(EVENTS).size, 35);
   for (const e of EVENTS) {
     const r = render(e, {}, L, { unsubscribeUrl: PROMO_EVENTS.has(e) ? "https://app.clipper.test/u/1" : null });
     assert(r.subject.length > 0 && r.text.length > 0 && r.html.startsWith("<!doctype html>"), e);

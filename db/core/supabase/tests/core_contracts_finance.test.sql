@@ -442,6 +442,22 @@ select api.bridge_mark_instant((select id from t_pay where k = 'i2'), 'failed', 
 select is((select status::text from finance.payouts where id = (select id from t_pay where k = 'i2')), 'returned', 'instant paid lalu REVERSED → returned');
 select is(pg_temp.bal('11111111-0000-0000-0000-00000000000a', 'available'), 602502::numeric, 'REVERSED: dana + biaya kembali ke Tersedia (sekali)');
 select is(pg_temp.bal('11111111-0000-0000-0000-00000000000a', 'withdrawn'), 395000::numeric, 'REVERSED: Ditarik berkurang Rp95.000');
+set local role authenticated;
+select pg_temp.jwt('33333333-0000-0000-0000-0000000000f1', '{"app_roles":["admin_finance"]}');
+select throws_ok($$ select api.cancel_payout((select id from t_pay where k = 'b3'), 'nama tidak cocok') $$, '42501', 'auth:forbidden',
+                 'batal payout butuh admin_finance aal2');
+select pg_temp.jwt('33333333-0000-0000-0000-0000000000f1', '{"app_roles":["admin_finance"],"aal":"aal2"}');
+select throws_ok($$ select api.cancel_payout((select id from t_pay where k = 'i3'), 'salah') $$, 'P0001', 'invalid_state:requested',
+                 'instant yang mungkin sedang diproses penyedia tidak bisa dibatalkan');
+select lives_ok($$ select api.cancel_payout((select id from t_pay where k = 'b3'), 'nama rekening tidak cocok KYC') $$,
+                'payout on_hold dibatalkan admin_finance');
+select lives_ok($$ select api.cancel_payout((select id from t_pay where k = 'b3'), 'ulang') $$, 'batal payout idempoten');
+reset role;
+select is((select status::text from finance.payouts where id = (select id from t_pay where k = 'b3')), 'cancelled', 'S-05 on_hold → cancelled');
+select is(pg_temp.bal('11111111-0000-0000-0000-00000000000a', 'available'), 702502::numeric, 'payout dibatalkan: dana kembali ke Tersedia (sekali)');
+select is(pg_temp.bal('11111111-0000-0000-0000-00000000000a', 'withdrawn'), 295000::numeric, 'payout dibatalkan: Ditarik berkurang');
+select ok((select payload ->> 'amount' = '100000' and payload ->> 'unit_label' = 'Rp' and payload ->> 'payout_id' = (select id::text from t_pay where k = 'b3')
+           from ops.notifications where event = 'payout.cancelled'), 'notifikasi payout.cancelled dengan nominal');
 
 -- ========== D. Fulfillment non-tunai (S-06) ==========
 insert into vault.secrets (id, name, secret) values ('eeeeeeee-0000-0000-0000-00000000000f', 'webhook:gems', 'rahasia-hmac');
@@ -463,8 +479,8 @@ select throws_ok($$ select api.request_fulfillment('77777777-0000-0000-0000-0000
                  'P0001', 'recipient_incomplete', 'field penerima wajib (game_user_id) harus diisi');
 select throws_ok($$ select api.request_fulfillment('77777777-0000-0000-0000-000000000002', 101, '{"game_user_id":"123"}', gen_random_uuid(),
                     'ful-key-01') $$, 'P0001', 'insufficient_balance', 'klaim melebihi saldo Diamonds ditolak');
-select lives_ok($$ select api.request_fulfillment('77777777-0000-0000-0000-000000000002', 50, '{"game_user_id":"123"}', gen_random_uuid(),
-                   'ful-key-01') $$, 'klaim Diamonds dengan recipient_ref');
+insert into t_pay select 'fd', (api.request_fulfillment('77777777-0000-0000-0000-000000000002', 50, '{"game_user_id":"123"}', gen_random_uuid(),
+                                                         'ful-key-01')).id;
 select throws_ok($$ select api.request_fulfillment('77777777-0000-0000-0000-000000000003', 2, '{}', null, 'ful-key-02') $$,
                  'P0001', 'invalid:amount', 'code_pool: satu klaim = satu kode');
 insert into t_pay select 'f1', (api.request_fulfillment('77777777-0000-0000-0000-000000000003', 1, '{}', null, 'ful-key-03')).id;
@@ -491,8 +507,24 @@ select api.worker_fulfillment_result((select id from t_pay where k = 'f3'), fals
 select is((select status::text || ':' || attempts from finance.fulfillments where id = (select id from t_pay where k = 'f3')), 'on_hold:12',
           'gagal ke-12 → on_hold');
 select is((select count(*)::int from ops.alerts where kind = 'fulfillment.stuck'), 2, 'alert fulfillment macet');
+set local role authenticated;
+select pg_temp.jwt('33333333-0000-0000-0000-0000000000a0', '{"app_roles":["admin_ops"],"aal":"aal2"}');
+select throws_ok($$ select api.cancel_fulfillment((select id from t_pay where k = 'f1'), 'salah') $$, 'P0001', 'invalid_state:delivered',
+                 'reward yang sudah terkirim tidak bisa dibatalkan');
+select lives_ok($$ select api.cancel_fulfillment((select id from t_pay where k = 'f2'), 'stok kode habis') $$, 'klaim on_hold dibatalkan');
+select lives_ok($$ select api.cancel_fulfillment((select id from t_pay where k = 'fd'), 'ID game tidak valid') $$, 'klaim requested dibatalkan');
+select lives_ok($$ select api.cancel_fulfillment((select id from t_pay where k = 'fd'), 'ulang') $$, 'batal klaim idempoten');
+reset role;
+select is((select string_agg(status::text, ',' order by amount) from finance.fulfillments where id in (select id from t_pay where k in ('f2', 'fd'))),
+          'cancelled,cancelled', 'S-06 → cancelled');
+select is(pg_temp.bal('11111111-0000-0000-0000-00000000000a', 'available', '77777777-0000-0000-0000-000000000002'), 100::numeric,
+          'klaim Diamonds batal: saldo kembali ke Tersedia');
+select is(pg_temp.bal('11111111-0000-0000-0000-00000000000a', 'available', '77777777-0000-0000-0000-000000000003'), 1::numeric,
+          'klaim voucher batal: saldo kembali ke Tersedia (sekali)');
+select ok(exists (select 1 from ops.notifications where event = 'fulfillment.cancelled' and payload ->> 'unit_label' = 'Diamonds'
+                  and payload ->> 'amount' = '50'), 'notifikasi fulfillment.cancelled dengan nominal & satuan');
 
--- ========== E. Konfirmasi invoice (F-A08) ==========
+-- ========== E. Invoice (§5.2) & konfirmasi pembayaran (F-A08) ==========
 insert into market.campaigns (id, org_id, slug, title, type, platforms, start_at, submit_deadline, created_by)
 values ('55555555-0000-0000-0000-0000000000a8', '44444444-0000-0000-0000-000000000001', 'k8-invoice', 'Invoice', 'clipping', '{tiktok}',
         now() + interval '1 day', now() + interval '20 days', '22222222-0000-0000-0000-0000000000a1');
@@ -500,92 +532,109 @@ update market.campaigns set status = 'in_review' where id = '55555555-0000-0000-
 insert into finance.reward_pools (id, campaign_id, reward_type_id, total, max_per_clip) values
   ('66666666-0000-0000-0000-0000000000a8', '55555555-0000-0000-0000-0000000000a8', '77777777-0000-0000-0000-000000000001', 10000000, 1000000),
   ('66666666-0000-0000-0000-0000000000d8', '55555555-0000-0000-0000-0000000000a8', '77777777-0000-0000-0000-000000000002', 50000, 2000);
+insert into ops.settings (key, value) values ('public.billing.tax_pct', '11');
+insert into t_pay select 'inv_c1', (finance.issue_invoice('44444444-0000-0000-0000-000000000001', '55555555-0000-0000-0000-0000000000a8',
+                                                          'campaign', finance.campaign_budget_idr('55555555-0000-0000-0000-0000000000a8'))).id;
+select is((select array[subtotal, mgmt_fee, admin_fee, service_fee, tax, total] from finance.invoices where id = (select id from t_pay where k = 'inv_c1')),
+          array[10000000, 3750000, 1250000, 0, 550000, 15550000]::numeric[],
+          '§5.2 stok non-tunai: subtotal = pool Rupiah saja; fee 15% + 5% atas Rp10 jt + nilai deklarasi 50.000 Diamonds × Rp300');
+insert into t_pay select 'inv_t1', (finance.issue_invoice('44444444-0000-0000-0000-000000000001', '55555555-0000-0000-0000-0000000000a8',
+  'topup', 999, 0, null, '[{"pool_id":"66666666-0000-0000-0000-0000000000a8","amount":2000000},
+                           {"pool_id":"66666666-0000-0000-0000-0000000000d8","amount":1000}]')).id;
+select is((select array[subtotal, mgmt_fee, admin_fee, service_fee, tax, total] from finance.invoices where id = (select id from t_pay where k = 'inv_t1')),
+          array[2000000, 345000, 115000, 0, 50600, 2510600]::numeric[],
+          'top-up campuran: tagihan tunai Rp2 jt; fee atas Rp2 jt + 1.000 Diamonds × Rp300');
 insert into finance.invoices (id, number, org_id, campaign_id, kind, subtotal, mgmt_fee, admin_fee, tax, total) values
-  ('dddddddd-0000-0000-0000-0000000000c1', 'INV-C1', '44444444-0000-0000-0000-000000000001', '55555555-0000-0000-0000-0000000000a8',
-   'campaign', 25000000, 3750000, 1250000, 550000, 30550000),
   ('dddddddd-0000-0000-0000-0000000000c2', 'INV-C2', '44444444-0000-0000-0000-000000000001', '55555555-0000-0000-0000-0000000000a8',
-   'campaign', 25000000, 3750000, 1250000, 550000, 30550000);
+   'campaign', 10000000, 3750000, 1250000, 550000, 15550000);
 insert into finance.invoices (id, number, org_id, campaign_id, kind, subtotal, mgmt_fee, admin_fee, service_fee, tax, total, pin_until) values
   ('dddddddd-0000-0000-0000-0000000000c3', 'INV-P1', '44444444-0000-0000-0000-000000000001', '55555555-0000-0000-0000-0000000000a8',
    'pinned', 0, 0, 0, 1000000, 110000, 1110000, now() + interval '14 days');
 insert into finance.invoices (id, number, org_id, campaign_id, kind, subtotal, mgmt_fee, admin_fee, tax, total, pool_topups) values
-  ('dddddddd-0000-0000-0000-0000000000c4', 'INV-T1', '44444444-0000-0000-0000-000000000001', '55555555-0000-0000-0000-0000000000a8',
-   'topup', 2000000, 300000, 100000, 44000, 2444000, '[{"pool_id":"66666666-0000-0000-0000-0000000000a8","amount":2000000}]');
+  ('dddddddd-0000-0000-0000-0000000000c6', 'INV-T9', '44444444-0000-0000-0000-000000000001', '55555555-0000-0000-0000-0000000000a8',
+   'topup', 2000, 0, 0, 0, 2000, '[{"pool_id":"66666666-0000-0000-0000-0000000000a8","amount":1000}]');
 insert into finance.invoices (id, number, org_id, kind, subtotal, mgmt_fee, admin_fee, service_fee, total, status, payment_channel, payment_ref,
                               paid_amount, paid_at, confirmed_by) values
   ('dddddddd-0000-0000-0000-0000000000c5', 'INV-M1', '44444444-0000-0000-0000-000000000001', 'managed_service', 0, 0, 0, 2500000, 2500000,
    'paid', 'transfer', 'REF-USED', 2500000, now(), '33333333-0000-0000-0000-0000000000f1');
 set local role authenticated;
 select pg_temp.jwt('33333333-0000-0000-0000-0000000000f1', '{"app_roles":["admin_finance"]}');
-select throws_ok($$ select api.confirm_invoice_payment('dddddddd-0000-0000-0000-0000000000c1', 30550000, now(), 'REF-C1', 'transfer') $$,
+select throws_ok($$ select api.confirm_invoice_payment((select id from t_pay where k = 'inv_c1'), 15550000, now(), 'REF-C1', 'transfer') $$,
                  '42501', 'auth:forbidden', 'konfirmasi invoice butuh aal2');
 select pg_temp.jwt('33333333-0000-0000-0000-0000000000f1', '{"app_roles":["admin_finance"],"aal":"aal2"}');
-select throws_ok($$ select api.confirm_invoice_payment('dddddddd-0000-0000-0000-0000000000c1', 30000000, now(), 'REF-C1', 'transfer') $$,
+select throws_ok($$ select api.confirm_invoice_payment((select id from t_pay where k = 'inv_c1'), 15000000, now(), 'REF-C1', 'transfer') $$,
                  'P0001', 'amount_mismatch', 'nominal beda dari total invoice ditolak');
-select throws_ok($$ select api.confirm_invoice_payment('dddddddd-0000-0000-0000-0000000000c1', 30550000, now(), 'REF-USED', 'transfer') $$,
+select throws_ok($$ select api.confirm_invoice_payment((select id from t_pay where k = 'inv_c1'), 15550000, now(), 'REF-USED', 'transfer') $$,
                  '23505', 'duplicate_payment_ref', 'referensi pembayaran yang sudah dipakai ditolak');
-select lives_ok($$ select api.confirm_invoice_payment('dddddddd-0000-0000-0000-0000000000c1', 30550000, now(), 'REF-C1', 'transfer') $$,
+select lives_ok($$ select api.confirm_invoice_payment((select id from t_pay where k = 'inv_c1'), 15550000, now(), 'REF-C1', 'transfer') $$,
                 'invoice campaign dikonfirmasi');
-select lives_ok($$ select api.confirm_invoice_payment('dddddddd-0000-0000-0000-0000000000c1', 30550000, now(), 'REF-C1', 'transfer') $$,
+select lives_ok($$ select api.confirm_invoice_payment((select id from t_pay where k = 'inv_c1'), 15550000, now(), 'REF-C1', 'transfer') $$,
                 'konfirmasi yang sama diulang = no-op');
-select throws_ok($$ select api.confirm_invoice_payment('dddddddd-0000-0000-0000-0000000000c2', 30550000, now(), 'REF-C2', 'transfer') $$,
+select throws_ok($$ select api.confirm_invoice_payment('dddddddd-0000-0000-0000-0000000000c2', 15550000, now(), 'REF-C2', 'transfer') $$,
                  'P0001', 'campaign_already_funded', 'invoice campaign kedua untuk campaign yang sama ditolak');
 select lives_ok($$ select api.confirm_invoice_payment('dddddddd-0000-0000-0000-0000000000c3', 1110000, now(), 'REF-P1', 'qris') $$, 'invoice pinned');
-select lives_ok($$ select api.confirm_invoice_payment('dddddddd-0000-0000-0000-0000000000c4', 2444000, now(), 'REF-T1', 'transfer') $$, 'invoice top-up');
+select lives_ok($$ select api.confirm_invoice_payment((select id from t_pay where k = 'inv_t1'), 2510600, now(), 'REF-T1', 'transfer') $$,
+                'invoice top-up');
+select throws_ok($$ select api.confirm_invoice_payment('dddddddd-0000-0000-0000-0000000000c6', 2000, now(), 'REF-T9', 'transfer') $$,
+                 'P0001', 'invoice_pool_mismatch', 'subtotal ≠ dana pool Rupiah → ditolak (tidak diparkir di org_credit)');
 reset role;
-select is((select status || ':' || payment_ref || ':' || paid_amount from finance.invoices where id = 'dddddddd-0000-0000-0000-0000000000c1'),
-          'paid:REF-C1:30550000.00', 'invoice paid dengan referensi & nominal');
+select is((select status || ':' || payment_ref || ':' || paid_amount from finance.invoices where id = (select id from t_pay where k = 'inv_c1')),
+          'paid:REF-C1:15550000.00', 'invoice paid dengan referensi & nominal');
 select is((select jsonb_object_agg(a.owner_type || ':' || rt.code, s.amount) from
             (select e.account_id, sum(e.amount) as amount from finance.ledger_entries e
-              where e.ref_type = 'invoice_payment' and e.ref_id = 'dddddddd-0000-0000-0000-0000000000c1' group by e.account_id) s
+              where e.ref_type = 'invoice_payment' and e.ref_id = (select id::text from t_pay where k = 'inv_c1') group by e.account_id) s
             join finance.ledger_accounts a on a.id = s.account_id join market.reward_types rt on rt.id = a.reward_type_id),
-          '{"bank_clearing:IDR":-30550000, "campaign_pool:IDR":10000000, "platform_revenue:IDR":5000000, "tax_payable:IDR":550000,
-            "org_credit:IDR":15000000, "bank_clearing:DIAMOND":-50000, "campaign_pool:DIAMOND":50000}'::jsonb,
-          'jurnal invoice: kas → pool Rupiah, fee → revenue, pajak → tax_payable, nilai Rp pool non-tunai → org_credit; stok Diamonds → pool');
-select is((select count(*)::int from finance.ledger_entries where ref_id = 'dddddddd-0000-0000-0000-0000000000c1'), 7, 'replay tidak menjurnal ulang');
+          '{"bank_clearing:IDR":-15550000, "campaign_pool:IDR":10000000, "platform_revenue:IDR":5000000, "tax_payable:IDR":550000,
+            "bank_clearing:DIAMOND":-50000, "campaign_pool:DIAMOND":50000}'::jsonb,
+          'jurnal invoice: kas → pool Rupiah, fee → revenue, pajak → tax_payable; stok Diamonds brand → pool Diamonds');
+select is((select count(*)::int from finance.ledger_entries where ref_id = (select id::text from t_pay where k = 'inv_c1')), 6,
+          'replay tidak menjurnal ulang');
+select is((select count(*)::int from finance.ledger_entries e join finance.ledger_accounts a on a.id = e.account_id
+           where e.ref_type = 'invoice_payment' and a.owner_type = 'org_credit'), 0, 'tidak ada dana invoice yang diparkir di org_credit');
 select is((select pinned_until from market.campaigns where id = '55555555-0000-0000-0000-0000000000a8'),
           (select pin_until from finance.invoices where id = 'dddddddd-0000-0000-0000-0000000000c3'), 'invoice pinned lunas → pinned_until diset');
-select is((select total from finance.reward_pools where id = '66666666-0000-0000-0000-0000000000a8'), 12000000::numeric, 'top-up menambah total pool');
-select is(pg_temp.acct('campaign_pool', '66666666-0000-0000-0000-0000000000a8'), 12000000::numeric, 'top-up mengisi saldo akun pool');
+select is((select array[total, pg_temp.acct('campaign_pool', id)] from finance.reward_pools where id = '66666666-0000-0000-0000-0000000000a8'),
+          array[12000000, 12000000]::numeric[], 'top-up menambah total & saldo pool Rupiah');
+select is((select array[total, pg_temp.acct('campaign_pool', id, reward_type_id)] from finance.reward_pools
+            where id = '66666666-0000-0000-0000-0000000000d8'), array[51000, 51000]::numeric[], 'top-up stok Diamonds menambah pool Diamonds');
 select ok((select count(*) >= 2 from ops.notifications where event = 'invoice.paid' and user_id = '22222222-0000-0000-0000-0000000000c1'),
           'brand_finance dinotifikasi pembayaran diterima');
 select ok(exists (select 1 from ops.notifications where event = 'invoice.paid' and payload ->> 'campaign_title' = 'Invoice'
-                  and payload ->> 'org_id' = '44444444-0000-0000-0000-000000000001' and payload ->> 'amount' = '30550000'),
+                  and payload ->> 'org_id' = '44444444-0000-0000-0000-000000000001' and payload ->> 'amount' = '15550000'),
           'payload invoice.paid: judul campaign, org, nominal');
 
--- ========== F. Sisa budget: rollover vs refund (D-09) ==========
+-- ========== F. Batal sebelum live → refund penuh (D-09) ==========
 update market.campaigns set status = 'cancelled' where id = '55555555-0000-0000-0000-0000000000a8';
+insert into t_pay select 'cancel_refund', id from finance.org_refunds where idempotency_key = 'cancel:55555555-0000-0000-0000-0000000000a8';
+select is((select status || ':' || amount || ':' || transfer_fee from finance.org_refunds where id = (select id from t_pay where k = 'cancel_refund')),
+          'requested:19170600.00:0.00', 'batal sebelum live → refund E-35 = semua yang dibayar (budget + fee + pajak), tanpa potongan');
+select is((select jsonb_object_agg(a.owner_type || ':' || rt.code, e.amount) from finance.ledger_entries e
+            join finance.ledger_accounts a on a.id = e.account_id join market.reward_types rt on rt.id = a.reward_type_id
+           where e.ref_type = 'refund' and e.ref_id = (select id::text from t_pay where k = 'cancel_refund')),
+          '{"campaign_pool:IDR":-12000000, "platform_revenue:IDR":-6460000, "tax_payable:IDR":-710600, "org_credit:IDR":19170600,
+            "campaign_pool:DIAMOND":-51000, "bank_clearing:DIAMOND":51000}'::jsonb,
+          'jurnal batal: pool Rupiah dikuras + fee & pajak dibalik → org_credit; stok Diamonds kembali ke brand');
+select is(finance.refund_cancelled_campaign('55555555-0000-0000-0000-0000000000a8'), (select id from t_pay where k = 'cancel_refund'),
+          'refund batal idempoten');
+select is((select count(*)::int from finance.ledger_entries where ref_type = 'refund' and ref_id = (select id::text from t_pay where k = 'cancel_refund')),
+          6, 'idempoten: tidak ada jurnal kedua');
+select is((select string_agg(status, ',' order by number) from finance.invoices where id in ('dddddddd-0000-0000-0000-0000000000c2',
+                                                                                              'dddddddd-0000-0000-0000-0000000000c6')),
+          'void,void', 'invoice yang belum lunas di-void');
+select ok(exists (select 1 from ops.notifications where event = 'refund.requested' and user_id = '22222222-0000-0000-0000-0000000000c1'
+                  and payload ->> 'campaign_title' = 'Invoice' and payload ->> 'amount' = '19170600'), 'brand dikabari refund diajukan');
 set local role authenticated;
-select pg_temp.jwt('22222222-0000-0000-0000-0000000000c1');
-select throws_ok($$ select api.request_refund('44444444-0000-0000-0000-000000000001', '55555555-0000-0000-0000-0000000000a8', 'rollover',
-                    3000000, 'roll-key-1') $$, '42501', 'auth:forbidden', 'refund/rollover butuh aal2');
 select pg_temp.jwt('22222222-0000-0000-0000-0000000000c1', '{"aal":"aal2"}');
-select throws_ok($$ select api.request_refund('44444444-0000-0000-0000-000000000001', '55555555-0000-0000-0000-0000000000a1', 'refund',
-                    1000, 'refund-live-1') $$, 'P0001', 'invalid_state:live', 'campaign yang masih berjalan tidak bisa direfund');
-insert into t_pay select 'roll', api.request_refund('44444444-0000-0000-0000-000000000001', '55555555-0000-0000-0000-0000000000a8', 'rollover',
-                                                    3000000, 'roll-key-1');
-select is(api.request_refund('44444444-0000-0000-0000-000000000001', '55555555-0000-0000-0000-0000000000a8', 'rollover', 3000000, 'roll-key-1'),
-          (select id from t_pay where k = 'roll'), 'rollover diulang dengan key sama = transaksi yang sama');
-insert into t_pay select 'refund', api.request_refund('44444444-0000-0000-0000-000000000001', '55555555-0000-0000-0000-0000000000a8', 'refund',
-                                                      5000000, 'refund-key-1');
 select throws_ok($$ select api.request_refund('44444444-0000-0000-0000-000000000001', '55555555-0000-0000-0000-0000000000a8', 'refund',
-                    4000001, 'refund-key-2') $$, 'P0001', 'insufficient_balance', 'refund melebihi sisa budget ditolak');
+                    10000, 'refund-after-cancel') $$, 'P0001', 'insufficient_balance', 'pool sudah dikuras: tidak bisa refund dua kali');
+select pg_temp.jwt('33333333-0000-0000-0000-0000000000f2', '{"app_roles":["admin_finance"],"aal":"aal2"}');
+select lives_ok($$ select api.approve_refund((select id from t_pay where k = 'cancel_refund')) $$,
+                'admin_finance lain menyetujui refund batal (pembatal = pengaju, dua orang)');
 reset role;
-select is(pg_temp.acct('campaign_pool', '66666666-0000-0000-0000-0000000000a8'), 4000000::numeric, 'sisa pool berkurang rollover + refund');
-select is((select sum(e.amount) from finance.ledger_entries e where e.ref_type = 'rollover'), 0::numeric, 'jurnal rollover seimbang');
-select is((select e.amount from finance.ledger_entries e join finance.ledger_accounts a on a.id = e.account_id
-           where e.ref_type = 'rollover' and a.owner_type = 'org_credit'), 3000000::numeric, 'rollover → org_credit');
-select is((select status || ':' || transfer_fee from finance.org_refunds where id = (select id from t_pay where k = 'refund')), 'requested:2500.00',
-          'refund → E-35 requested dengan biaya transfer');
-set local role authenticated;
-select pg_temp.jwt('33333333-0000-0000-0000-0000000000f1', '{"app_roles":["admin_finance"],"aal":"aal2"}');
-select lives_ok($$ select api.approve_refund((select id from t_pay where k = 'refund')) $$, 'admin_finance menyetujui refund');
-reset role;
-select api.bridge_attach_proof('refund', (select id from t_pay where k = 'refund'), 'payout-proofs/refund-1.pdf');
-select is((select status from finance.org_refunds where id = (select id from t_pay where k = 'refund')), 'paid', 'bukti transfer → refund paid');
+select api.bridge_attach_proof('refund', (select id from t_pay where k = 'cancel_refund'), 'payout-proofs/refund-cancel.pdf');
 select is((select jsonb_object_agg(a.owner_type, e.amount) from finance.ledger_entries e join finance.ledger_accounts a on a.id = e.account_id
-           where e.ref_type = 'refund' and e.ref_id = (select id from t_pay where k = 'refund') || ':paid'),
-          '{"org_credit":-5000000, "bank_clearing":4997500, "platform_revenue":2500}'::jsonb, 'refund dibayar: kas keluar dikurangi biaya transfer');
+           where e.ref_type = 'refund' and e.ref_id = (select id from t_pay where k = 'cancel_refund') || ':paid'),
+          '{"org_credit":-19170600, "bank_clearing":19170600}'::jsonb, 'refund batal dibayar penuh ke brand');
 
 -- ========== G. Bonus referral (F-C16) ==========
 update tracking.submissions set locked_at = now() - interval '8 days' where id = (select v::uuid from t_ids where k = 's7b');
@@ -598,7 +647,7 @@ select is(pg_temp.bal('11111111-0000-0000-0000-00000000000d', 'available'), 125:
 select is(pg_temp.bal('11111111-0000-0000-0000-00000000000f', 'available'), 0::numeric, 'lewat bonus_until → tanpa bonus');
 select is((select sum(e.amount) from finance.ledger_entries e join finance.ledger_accounts a on a.id = e.account_id
            where e.ref_type = 'referral_bonus' and a.owner_type = 'platform_revenue'), -125::numeric, 'bonus dibayar dari akun platform');
-select is(pg_temp.bal('11111111-0000-0000-0000-00000000000a', 'available'), 602502::numeric, 'earning teman tidak dipotong');
+select is(pg_temp.bal('11111111-0000-0000-0000-00000000000a', 'available'), 702502::numeric, 'earning teman tidak dipotong');
 select finance.accrue_referral_bonus();
 select is(pg_temp.bal('11111111-0000-0000-0000-00000000000d', 'available'), 125::numeric, 'job referral diulang = no-op');
 
@@ -644,6 +693,8 @@ select ok((select status = 'suspended' and suspended_until > now() + interval '2
            where id = '11111111-0000-0000-0000-00000000000b'), 'suspend 30 hari');
 select is((select status::text from market.profiles where id = '11111111-0000-0000-0000-00000000000e'), 'banned', 'ban → profil banned');
 select is(pg_temp.bal('11111111-0000-0000-0000-00000000000e', 'pending'), 0::numeric, 'ban → semua pending hangus (kembali ke pool)');
+select ok(exists (select 1 from ops.notifications where event = 'account.banned' and user_id = '11111111-0000-0000-0000-00000000000e'),
+          'ban → notifikasi account.banned');
 select ok(exists (select 1 from net.http_request_queue q where q.body ->> 'action' = 'ban_user'
                   and q.body ->> 'user_id' = '11111111-0000-0000-0000-00000000000e'), 'ban → bridge identity admin-auth');
 select is((select count(*)::int from ops.audit_logs where action = 'fraud_flag.resolve'), 5, 'semua sanksi tercatat di audit log');
@@ -889,6 +940,14 @@ select is((select count(*)::int from net.http_request_queue q where q.body ->> '
 select is((select status::text from market.campaigns where id = '55555555-0000-0000-0000-0000000000b3'), 'live', 'scheduled → live saat start_at');
 select ok(exists (select 1 from ops.notifications where event = 'campaign.live' and payload ->> 'campaign_id' = '55555555-0000-0000-0000-0000000000b3'),
           'brand dinotifikasi campaign live');
+select is((select array_agg(p.username order by p.username) from ops.notifications n join market.profiles p on p.id = n.user_id
+            where n.event = 'campaign.new' and n.payload ->> 'campaign_id' = '55555555-0000-0000-0000-0000000000b3'), array['andi', 'dedi'],
+          'campaign.new ke clipper eligible (aktif, akun verified di platform campaign; bukan suspended/banned/closed/anggota org)');
+select is((select payload from ops.notifications where event = 'campaign.new' and user_id = '11111111-0000-0000-0000-00000000000a'),
+          '{"campaign_id":"55555555-0000-0000-0000-0000000000b3","campaign_title":"Terjadwal","campaign_slug":"k13-sched",
+            "org_name":"Studio Satu","platforms":["tiktok"]}'::jsonb, 'payload campaign.new');
+select is((select count(*)::int from pgmq.messages where queue_name = 'email' and message ->> 'event' = 'campaign.new'), 1,
+          'email promosi campaign.new dilewati untuk yang unsubscribe');
 select is((select status::text || ':' || (locked_at is not null)::text from tracking.submissions where id = (select v::uuid from t_ids where k = 's14')),
           'locked:true', 'akhir view window + snapshot final → locked');
 select is((select sum(amount) from finance.clip_earnings where submission_id = (select v::uuid from t_ids where k = 's14')), 5000::numeric,
@@ -905,9 +964,43 @@ update tracking.submissions set locked_at = now() - interval '8 days' where id =
 select finance.release_earnings();
 select market.run_lifecycle();
 select is((select status::text from market.campaigns where id = '55555555-0000-0000-0000-0000000000b4'), 'settled', 'settling → settled setelah semua submisi settled');
+select is((select count(*)::int from ops.notifications where event = 'campaign.new'), 2, 'campaign.new sekali per campaign');
 select ok(exists (select 1 from ops.notifications where event = 'campaign.settled' and user_id = '22222222-0000-0000-0000-0000000000a1'
                   and payload ->> 'campaign_title' = 'Selesai' and payload -> 'leftover' -> 0 ->> 'amount' = '995000'
                   and payload -> 'leftover' -> 0 ->> 'unit_label' = 'Rp'), 'campaign.settled ke org dengan judul & sisa budget');
+
+-- ========== N2. Sisa budget campaign settled: rollover vs refund (D-09) ==========
+set local role authenticated;
+select pg_temp.jwt('22222222-0000-0000-0000-0000000000c1');
+select throws_ok($$ select api.request_refund('44444444-0000-0000-0000-000000000001', '55555555-0000-0000-0000-0000000000b4', 'rollover',
+                    300000, 'roll-key-1') $$, '42501', 'auth:forbidden', 'refund/rollover butuh aal2');
+select pg_temp.jwt('22222222-0000-0000-0000-0000000000c1', '{"aal":"aal2"}');
+select throws_ok($$ select api.request_refund('44444444-0000-0000-0000-000000000001', '55555555-0000-0000-0000-0000000000a1', 'refund',
+                    1000, 'refund-live-1') $$, 'P0001', 'invalid_state:live', 'campaign yang masih berjalan tidak bisa direfund');
+insert into t_pay select 'roll', api.request_refund('44444444-0000-0000-0000-000000000001', '55555555-0000-0000-0000-0000000000b4', 'rollover',
+                                                    300000, 'roll-key-1');
+select is(api.request_refund('44444444-0000-0000-0000-000000000001', '55555555-0000-0000-0000-0000000000b4', 'rollover', 300000, 'roll-key-1'),
+          (select id from t_pay where k = 'roll'), 'rollover diulang dengan key sama = transaksi yang sama');
+insert into t_pay select 'refund', api.request_refund('44444444-0000-0000-0000-000000000001', '55555555-0000-0000-0000-0000000000b4', 'refund',
+                                                      500000, 'refund-key-1');
+select throws_ok($$ select api.request_refund('44444444-0000-0000-0000-000000000001', '55555555-0000-0000-0000-0000000000b4', 'refund',
+                    195001, 'refund-key-2') $$, 'P0001', 'insufficient_balance', 'refund melebihi sisa budget ditolak');
+reset role;
+select is(pg_temp.acct('campaign_pool', '66666666-0000-0000-0000-0000000000b4'), 195000::numeric, 'sisa pool berkurang rollover + refund');
+select is((select sum(e.amount) from finance.ledger_entries e where e.ref_type = 'rollover'), 0::numeric, 'jurnal rollover seimbang');
+select is((select e.amount from finance.ledger_entries e join finance.ledger_accounts a on a.id = e.account_id
+           where e.ref_type = 'rollover' and a.owner_type = 'org_credit'), 300000::numeric, 'rollover → org_credit');
+select is((select status || ':' || transfer_fee from finance.org_refunds where id = (select id from t_pay where k = 'refund')), 'requested:2500.00',
+          'refund sisa → E-35 requested dengan biaya transfer');
+set local role authenticated;
+select pg_temp.jwt('33333333-0000-0000-0000-0000000000f1', '{"app_roles":["admin_finance"],"aal":"aal2"}');
+select lives_ok($$ select api.approve_refund((select id from t_pay where k = 'refund')) $$, 'admin_finance menyetujui refund');
+reset role;
+select api.bridge_attach_proof('refund', (select id from t_pay where k = 'refund'), 'payout-proofs/refund-1.pdf');
+select is((select status from finance.org_refunds where id = (select id from t_pay where k = 'refund')), 'paid', 'bukti transfer → refund paid');
+select is((select jsonb_object_agg(a.owner_type, e.amount) from finance.ledger_entries e join finance.ledger_accounts a on a.id = e.account_id
+           where e.ref_type = 'refund' and e.ref_id = (select id from t_pay where k = 'refund') || ':paid'),
+          '{"org_credit":-500000, "bank_clearing":497500, "platform_revenue":2500}'::jsonb, 'refund dibayar: kas keluar dikurangi biaya transfer');
 
 -- ========== O. Alert & overview admin ==========
 set local role authenticated;
@@ -923,8 +1016,8 @@ select lives_ok($$ select api.resolve_alert((select min(id) from api.alerts)) $$
 select throws_ok($$ select api.resolve_alert((select min(id) from api.alerts)) $$, 'P0002', 'not_found:alert', 'alert yang sudah ditutup');
 create temp table t_ov on commit drop as select api.admin_overview() as v;
 reset role;
-select is((select v -> 'gmv' ->> 'all_time' from t_ov), '36604000.00', 'GMV = Σ invoice lunas');
-select is((select v -> 'payout_pending' from t_ov), '{"count": 2, "sum": 200000.00}'::jsonb, 'payout pending (on_hold + requested)');
+select is((select v -> 'gmv' ->> 'all_time' from t_ov), '21670600.00', 'GMV = Σ invoice lunas (tagihan tunai)');
+select is((select v -> 'payout_pending' from t_ov), '{"count": 1, "sum": 100000.00}'::jsonb, 'payout pending (b3 dibatalkan, i3 requested)');
 select ok((select (v ->> 'fraud_queue')::int > 0 and (v ->> 'active_campaigns')::int > 0 and v -> 'tracking' ? 'overdue'
                   and v -> 'tracking' ? 'last_snapshot_age_seconds' and v ? 'open_alerts' and v -> 'revenue' ? 'month' from t_ov),
           'overview: fraud queue, campaign aktif, kesehatan tracking, alert');

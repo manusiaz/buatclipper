@@ -17,7 +17,7 @@ export interface ProgressBarProps {
 }
 
 const FILL = {
-  primary: 'bg-[linear-gradient(90deg,#5f8bff,#1d5bff)]',
+  primary: '[background:var(--progress-fill)]',
   success: 'bg-success',
   warn: 'bg-warn',
   danger: 'bg-danger',

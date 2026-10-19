@@ -5,7 +5,7 @@
 --   snapshot final sudah ada → accrue (idempoten, termasuk koreksi turun) lalu locked; belum ada → next_poll_at = now() supaya
 --   track-due mengantrekan poll final (worker_submission_context.final = true, worker_record_snapshot mengunci); poll final tidak
 --   kunjung datang (token mati, API error) → setelah tracking.final_grace_hours dikunci dengan views terakhir + alert.
--- Juga: payout instant macet dikirim ulang ke bridge disburse (finance.retry_instant_payouts).
+-- Campaign baru live → campaign.new ke clipper eligible (market.announce_campaign). Juga: payout instant macet dikirim ulang ke bridge disburse (finance.retry_instant_payouts).
 -- locked → settled (release earning) dikerjakan job earning-release (finance.release_earnings) karena harus satu transaksi
 -- dengan jurnal pending → Tersedia.
 -- Identitas campaign untuk payload notifikasi (template email identity): {campaign_id, campaign_title, org_id}.
@@ -14,6 +14,32 @@ language plpgsql stable security definer set search_path = '' as $$
 begin
   return coalesce((select jsonb_build_object('campaign_id', c.id, 'campaign_title', c.title, 'org_id', c.org_id)
                      from market.campaigns c where c.id = p_campaign), '{}');
+end $$;
+
+-- campaign.new (promosi, F-X01; email ikut E-34 lewat enqueue_notification) ke clipper yang eligible saat campaign live:
+-- profil active, bukan anggota org pemilik, punya akun sosmed verified di platform campaign dengan follower & umur akun cukup,
+-- Trust Score ≥ ambang; visibility invite → hanya yang diundang. Satu set query per campaign; dipanggil tepat sekali dari
+-- transisi scheduled → live (S-01 tidak bisa kembali ke scheduled), jadi idempoten per campaign.
+create function market.announce_campaign(p_campaign uuid) returns int
+language plpgsql security definer set search_path = '' as $$
+declare
+  n int;
+begin
+  select count(ops.enqueue_notification(p.id, 'campaign.new', x.payload)) into n
+    from market.campaigns c
+    cross join lateral (select jsonb_build_object('campaign_id', c.id, 'campaign_title', c.title, 'campaign_slug', c.slug,
+                                                  'org_name', (select o.name from market.organizations o where o.id = c.org_id),
+                                                  'platforms', to_jsonb(c.platforms)) as payload) x
+    join market.profiles p on p.status = 'active' and p.trust_score >= c.min_trust_score
+   where c.id = p_campaign and not c.is_template
+     and not exists (select 1 from market.org_members m where m.org_id = c.org_id and m.user_id = p.id)
+     and (c.visibility <> 'invite' or exists (select 1 from market.campaign_invites i where i.campaign_id = c.id and i.user_id = p.id))
+     and exists (select 1 from tracking.social_accounts a
+                 where a.user_id = p.id and a.status = 'verified' and a.platform = any (c.platforms)
+                   and coalesce(a.followers, 0) >= c.min_followers
+                   and (c.min_account_age_days = 0
+                        or a.platform_created_at <= now() - make_interval(days => c.min_account_age_days)));
+  return n;
 end $$;
 
 create function market.run_lifecycle() returns void
@@ -28,6 +54,7 @@ begin
   for r in update market.campaigns set status = 'live' where status = 'scheduled' and start_at <= now() returning id, org_id loop
     perform market.notify_org(r.org_id, array['brand_owner', 'brand_manager']::market.org_role[], 'campaign.live',
                               market.campaign_ref(r.id));
+    perform market.announce_campaign(r.id);
   end loop;
   update market.campaigns set status = 'tracking' where status in ('live', 'paused') and submit_deadline <= now();
 
@@ -79,4 +106,4 @@ begin
   perform trust.auto_approve_overdue();
 end $$;
 
-revoke execute on function market.campaign_ref(uuid), market.run_lifecycle() from public;
+revoke execute on function market.campaign_ref(uuid), market.announce_campaign(uuid), market.run_lifecycle() from public;

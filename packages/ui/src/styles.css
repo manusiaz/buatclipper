@@ -252,6 +252,7 @@
     --scrim: rgb(10 18 38 / 0.48);
     --skeleton-base: #edf0f6;
     --skeleton-shine: #f8f9fc;
+    --progress-fill: linear-gradient(90deg, #5f8bff, #1d5bff);
     --safe-top: env(safe-area-inset-top, 0px);
     --safe-bottom: env(safe-area-inset-bottom, 0px);
     --safe-left: env(safe-area-inset-left, 0px);
@@ -366,6 +367,7 @@
     --color-primary-soft-hover: rgb(255 255 255 / 0.24);
     --color-primary-soft-fg: #ffffff;
     --color-primary-tint: rgb(255 255 255 / 0.12);
+    --progress-fill: #ffffff;
   }
 
   html {
@@ -502,9 +504,11 @@
   }
 }
 
-/* Extends the hit area of small controls to ≥ 44×44 px on touch devices without changing layout (DS 15 §8). */
+/*
+ * Extends the hit area of small controls to ≥ 44×44 px on touch devices without changing layout (DS 15 §8).
+ * The element must be positioned (relative/absolute) and able to host ::after (not <input>).
+ */
 @utility touch-target {
-  position: relative;
   @media (pointer: coarse) {
     &::after {
       content: "";

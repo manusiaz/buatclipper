@@ -4,7 +4,7 @@
 --   campaign_pool(IDR)  +pool.total / +topup            pool Rupiah terisi (kind campaign / topup)
 --   platform_revenue    +mgmt + admin + service fee     (+ subtotal untuk pinned/managed_service)
 --   tax_payable         +tax
---   org_credit(IDR)     +sisa subtotal yang bukan pool Rupiah (subtotal issue_invoice ikut menghitung nilai Rp pool non-tunai)
+-- subtotal campaign/topup = tepat dana pool Rupiah (issue_invoice); beda → invoice_pool_mismatch (invoice basi, terbitkan ulang).
 -- Pool non-tunai (Diamonds, voucher) = stok dari brand, bukan kas: bank_clearing(reward type itu) −total → campaign_pool +total.
 create function api.confirm_invoice_payment(p_invoice uuid, p_amount numeric, p_paid_at timestamptz, p_ref text, p_channel text)
 returns void
@@ -84,12 +84,10 @@ begin
              where rp.campaign_id = inv.campaign_id) then
       raise exception 'invalid:pool_topups' using errcode = 'P0001';  -- pool milik campaign lain / tidak ada
     end if;
-    if pool_idr > inv.subtotal then
+    if pool_idr <> inv.subtotal then
       raise exception 'invoice_pool_mismatch' using errcode = 'P0001',
-        detail = format('pool Rupiah %s melebihi subtotal %s', pool_idr, inv.subtotal);
+        detail = format('pool Rupiah %s ≠ subtotal %s', pool_idr, inv.subtotal);
     end if;
-    entries := entries || jsonb_build_array(finance.e(finance.account('org_credit', inv.org_id, idr), inv.subtotal - pool_idr,
-                                                      'invoice_payment', inv.id::text));
   else
     revenue := revenue + inv.subtotal;
   end if;

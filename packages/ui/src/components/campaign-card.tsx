@@ -272,7 +272,8 @@ export function CampaignCard({
       className={cn(
         'group/card surface-card relative isolate flex overflow-hidden rounded-card text-ink',
         'transition-[transform,box-shadow] duration-220 ease-out',
-        href && 'hover:shadow-card-hover motion-safe:hover:-translate-y-1 focus-ring-within',
+        href && 'hover:shadow-card-hover motion-safe:hover:-translate-y-1',
+        href && 'has-[[data-card-link]:focus-visible]:shadow-[0_0_0_2px_var(--color-surface),0_0_0_4px_var(--color-focus),0_0_0_8px_var(--color-focus-halo)]',
         horizontal ? 'flex-row' : 'flex-col',
         closed && 'opacity-[0.92]',
         className,
@@ -332,7 +333,7 @@ export function CampaignCard({
 
         <h3 className="line-clamp-2 min-h-[2.5em] text-[15px] leading-[1.25] font-extrabold tracking-[-0.01em]">
           {href ? (
-            <TitleLink href={href} className="outline-none after:absolute after:inset-0 after:z-0 after:content-['']">
+            <TitleLink href={href} data-card-link="" className="outline-none after:absolute after:inset-0 after:z-0 after:content-['']">
               {title}
             </TitleLink>
           ) : (

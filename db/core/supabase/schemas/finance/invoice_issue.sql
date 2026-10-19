@@ -20,12 +20,34 @@ language sql stable set search_path = '' as $$
                          (select g.id from finance.fee_rules g where g.scope = 'global'));
 $$;
 
--- Budget creator dalam Rupiah = Σ pool.total × nilai Rp per unit reward type (fee atas reward non-tunai, §5.2).
+-- Budget creator yang dibayar tunai = Σ total pool Rupiah (reward type IDR global). Pool non-tunai (Diamonds, voucher) = stok
+-- dari brand (§10.4), tidak ditagih; nilai Rp-nya hanya dasar fee (finance.noncash_value_idr, §5.2).
 create function finance.campaign_budget_idr(p_campaign uuid) returns numeric
 language sql stable set search_path = '' as $$
-  select coalesce(sum(pl.total * rt.idr_value_per_unit), 0)
+  select coalesce(sum(pl.total), 0)
     from finance.reward_pools pl join market.reward_types rt on rt.id = pl.reward_type_id
-   where pl.campaign_id = p_campaign;
+   where pl.campaign_id = p_campaign and rt.code = 'IDR' and rt.owner_org_id is null;
+$$;
+
+-- Nilai Rupiah yang dideklarasikan brand untuk pool non-tunai: dasar fee mgmt/admin (§5.2), bukan tagihan.
+-- p_items (top-up) = [{pool_id, amount}]; NULL = semua pool campaign.
+create function finance.noncash_value_idr(p_campaign uuid, p_items jsonb default null) returns numeric
+language sql stable set search_path = '' as $$
+  select coalesce(sum(coalesce((e ->> 'amount')::numeric, pl.total) * rt.idr_value_per_unit), 0)
+    from finance.reward_pools pl join market.reward_types rt on rt.id = pl.reward_type_id
+    left join lateral jsonb_array_elements(p_items) e on (e ->> 'pool_id')::uuid = pl.id
+   where pl.campaign_id = p_campaign and not (rt.code = 'IDR' and rt.owner_org_id is null)
+     and (p_items is null or e is not null);
+$$;
+
+-- Bagian Rupiah (tunai) dari item top-up [{pool_id, amount}].
+create function finance.topup_cash_idr(p_campaign uuid, p_items jsonb) returns numeric
+language sql stable set search_path = '' as $$
+  select coalesce(sum((e ->> 'amount')::numeric), 0)
+    from jsonb_array_elements(coalesce(p_items, '[]')) e
+    join finance.reward_pools pl on pl.id = (e ->> 'pool_id')::uuid and pl.campaign_id = p_campaign
+    join market.reward_types rt on rt.id = pl.reward_type_id
+   where rt.code = 'IDR' and rt.owner_org_id is null;
 $$;
 
 -- Fee rule override baru (scope org/campaign) dari JSON {mgmt_fee_pct, admin_fee_pct, clipper_fee_pct, instant_withdraw_fee};
@@ -49,7 +71,9 @@ begin
   return rid;
 end $$;
 
--- fn:issue_invoice — subtotal = budget creator (campaign/topup) atau 0 (pinned/managed_service: harga di service_fee).
+-- fn:issue_invoice — subtotal = budget creator tunai (pool Rupiah; campaign/topup) atau 0 (pinned/managed_service: harga di
+-- service_fee). Fee mgmt/admin = persen × (subtotal + nilai Rp deklarasi pool non-tunai) (§5.2). Top-up: subtotal & dasar fee
+-- dihitung dari p_pool_topups (p_subtotal pemanggil diabaikan); campaign: p_subtotal = finance.campaign_budget_idr.
 -- Notifikasi invoice.issued ke brand_owner + brand_finance (yang bisa membuka billing); payload: invoice_id, invoice_number, kind,
 -- total, due_at, campaign_id, campaign_title (+ org_id, org_name dari notify_org).
 create function finance.issue_invoice(p_org uuid, p_campaign uuid, p_kind text, p_subtotal numeric,
@@ -63,6 +87,7 @@ declare
   svc numeric := round(coalesce(p_service_fee, 0), 2);
   mgmt numeric := 0;
   adm numeric := 0;
+  base numeric;
   tx numeric;
   tax_pct numeric := coalesce((select (s.value #>> '{}')::numeric from ops.settings s where s.key = 'public.billing.tax_pct'), 11);
   due_days int := coalesce((select (s.value #>> '{}')::int from ops.settings s where s.key = 'public.billing.invoice_due_days'), 7);
@@ -73,8 +98,14 @@ begin
     if fr.id is null then
       perform market.fail('config:fee_rule_missing', 'fee rule global belum ada (seed)');
     end if;
-    mgmt := round(sub * fr.mgmt_fee_pct / 100, 2);
-    adm := round(sub * fr.admin_fee_pct / 100, 2);
+    if p_kind = 'topup' and p_pool_topups is not null then
+      sub := round(finance.topup_cash_idr(p_campaign, p_pool_topups), 2);
+      base := sub + finance.noncash_value_idr(p_campaign, p_pool_topups);
+    else
+      base := sub + case when p_kind = 'campaign' then finance.noncash_value_idr(p_campaign) else 0 end;
+    end if;
+    mgmt := round(base * fr.mgmt_fee_pct / 100, 2);
+    adm := round(base * fr.admin_fee_pct / 100, 2);
   elsif sub <> 0 then
     perform market.fail('invalid:subtotal', 'invoice pinned/managed_service tanpa subtotal');
   end if;
@@ -92,5 +123,6 @@ begin
 end $$;
 
 revoke execute on function finance.next_invoice_number(), finance.effective_fee_rule(uuid, uuid), finance.campaign_budget_idr(uuid),
+  finance.noncash_value_idr(uuid, jsonb), finance.topup_cash_idr(uuid, jsonb),
   finance.create_fee_rule(text, jsonb, finance.fee_rules, uuid),
   finance.issue_invoice(uuid, uuid, text, numeric, numeric, timestamptz, jsonb) from public;

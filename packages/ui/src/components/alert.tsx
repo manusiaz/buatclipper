@@ -67,7 +67,7 @@ export function Alert({ tone = 'info', title, children, icon, action, onDismiss,
           type="button"
           onClick={onDismiss}
           aria-label={dismissLabel}
-          className="touch-target -mt-0.5 -mr-1 grid size-7 shrink-0 place-items-center rounded-full text-muted hover:bg-black/5 hover:text-ink focus-ring dark:hover:bg-white/10"
+          className="touch-target relative -mt-0.5 -mr-1 grid size-7 shrink-0 place-items-center rounded-full text-muted hover:bg-black/5 hover:text-ink focus-ring dark:hover:bg-white/10"
         >
           <Icon name="close" size={18} />
         </button>

@@ -53,7 +53,7 @@ export function Toaster({
           cancelButton: 'shrink-0 rounded-chip px-2.5 py-1.5 text-sm font-semibold text-white/70 hover:bg-white/10',
           closeButton:
             'absolute -top-2 -right-2 grid size-6 place-items-center rounded-full bg-navy-2 text-white ring-2 ring-canvas hover:bg-navy-3',
-          error: 'bg-[#2A0F14] dark:bg-[#2A0F14]',
+          error: 'bg-[#2A0F14]! dark:bg-[#2A0F14]!',
         },
       }}
       {...rest}

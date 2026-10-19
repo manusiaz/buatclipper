@@ -38,6 +38,7 @@ export const EVENTS = [
   "org.suspended",
   "agency.link_requested",
   "agency.link_approved",
+  "refund.requested",
   "refund.paid",
   "managed.draft_ready",
 ] as const;
@@ -462,6 +463,18 @@ const DEFS: Record<NotificationEvent, Def> = {
     lines: () => ["Organisasi klien sekarang muncul di pemilih organisasi kamu."],
     cta: "Buka brand",
     url: (_p, l) => l.brand + "/",
+  },
+  "refund.requested": {
+    title: (p) =>
+      rupiah(p)
+        ? `Refund ${rupiah(p)} untuk campaign ${campaign(p)} sedang diproses`
+        : `Refund campaign ${campaign(p)} sedang diproses`,
+    lines: () => [
+      "Campaign dibatalkan sebelum tayang, jadi seluruh pembayaran dikembalikan.",
+      "Tim finance kami akan mentransfer dana dan mengunggah buktinya di halaman tagihan.",
+    ],
+    cta: "Lihat tagihan",
+    url: (p, l) => brandOrg(p, l, "billing"),
   },
   "refund.paid": {
     title: (p) => `Refund ${rupiah(p) || "kamu"} sudah ditransfer`,

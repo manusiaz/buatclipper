@@ -56,7 +56,7 @@ export function Checkbox({
       aria-label={aria['aria-label']}
       aria-describedby={[aria['aria-describedby'], descId].filter(Boolean).join(' ') || undefined}
       className={cn(
-        'peer touch-target grid size-[22px] shrink-0 place-items-center rounded-[7px] border-[1.5px] border-border-hover bg-surface text-white',
+        'peer touch-target relative grid size-[22px] shrink-0 place-items-center rounded-[7px] border-[1.5px] border-border-hover bg-surface text-white',
         'transition-[background-color,border-color,box-shadow] duration-120 ease-out',
         'hover:border-primary hover:bg-primary-tint focus-ring',
         'data-[state=checked]:border-0 data-[state=checked]:bg-cta data-[state=checked]:shadow-[0_4px_10px_-4px_rgb(29_91_255/0.6)]',

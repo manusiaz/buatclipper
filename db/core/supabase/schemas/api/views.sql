@@ -79,7 +79,7 @@ create view api.fulfillments with (security_invoker = true) as
   from finance.fulfillments;
 create view api.invoices with (security_invoker = true) as
   select id, number, org_id, campaign_id, kind, subtotal, mgmt_fee, admin_fee, service_fee, tax, total, status, payment_channel,
-         paid_amount, paid_at, faktur_no, issued_at, due_at, pin_until
+         paid_amount, paid_at, faktur_no, issued_at, due_at, pin_until, pool_topups
   from finance.invoices;
 create view api.org_refunds with (security_invoker = true) as
   select id, org_id, campaign_id, amount, transfer_fee, status, created_at, paid_at from finance.org_refunds;

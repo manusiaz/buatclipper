@@ -8,7 +8,21 @@ export type Database = {
             [_ in never]: never
           }
           Views: {
-            "audit_logs": {
+            "alerts": {
+                  Row: {
+                    "created_at": string | null,"id": number | null,"kind": string | null,"payload": Json | null,"resolved_at": string | null,"resolved_by": string | null,"severity": string | null
+                  }
+                  ComputedFields: never
+                  Insert: {
+                           "created_at"?: string | null,"id"?: number | null,"kind"?: string | null,"payload"?: Json | null,"resolved_at"?: string | null,"resolved_by"?: string | null,"severity"?: string | null
+                         }
+                        Update: {
+                           "created_at"?: string | null,"id"?: number | null,"kind"?: string | null,"payload"?: Json | null,"resolved_at"?: string | null,"resolved_by"?: string | null,"severity"?: string | null
+                         }
+                        Relationships: [
+                    
+                  ]
+                },"audit_logs": {
                   Row: {
                     "action": string | null,"actor_id": string | null,"after": Json | null,"at": string | null,"before": Json | null,"id": number | null,"target": string | null
                   }
@@ -32,6 +46,20 @@ export type Database = {
                          }
                         Update: {
                            "body"?: string | null,"channels"?: (string)[] | null,"created_by"?: string | null,"id"?: string | null,"recipient_count"?: number | null,"scheduled_at"?: string | null,"segment"?: Json | null,"sent_at"?: string | null,"title"?: string | null
+                         }
+                        Relationships: [
+                    
+                  ]
+                },"budget_alerts": {
+                  Row: {
+                    "campaign_id": string | null,"created_at": string | null,"kind": string | null,"utilization_pct": number | null
+                  }
+                  ComputedFields: never
+                  Insert: {
+                           "campaign_id"?: string | null,"created_at"?: string | null,"kind"?: string | null,"utilization_pct"?: number | null
+                         }
+                        Update: {
+                           "campaign_id"?: string | null,"created_at"?: string | null,"kind"?: string | null,"utilization_pct"?: number | null
                          }
                         Relationships: [
                     
@@ -106,6 +134,20 @@ export type Database = {
                         Relationships: [
                     
                   ]
+                },"clip_earnings": {
+                  Row: {
+                    "amount": number | null,"demand": number | null,"pool_id": string | null,"released_at": string | null,"rule_id": string | null,"submission_id": string | null,"updated_at": string | null
+                  }
+                  ComputedFields: never
+                  Insert: {
+                           "amount"?: number | null,"demand"?: number | null,"pool_id"?: string | null,"released_at"?: string | null,"rule_id"?: string | null,"submission_id"?: string | null,"updated_at"?: string | null
+                         }
+                        Update: {
+                           "amount"?: number | null,"demand"?: number | null,"pool_id"?: string | null,"released_at"?: string | null,"rule_id"?: string | null,"submission_id"?: string | null,"updated_at"?: string | null
+                         }
+                        Relationships: [
+                    
+                  ]
                 },"fee_rules": {
                   Row: {
                     "admin_fee_pct": number | null,"clipper_fee_pct": number | null,"id": string | null,"instant_withdraw_fee": number | null,"mgmt_fee_pct": number | null,"scope": string | null
@@ -150,14 +192,14 @@ export type Database = {
                   ]
                 },"invoices": {
                   Row: {
-                    "admin_fee": number | null,"campaign_id": string | null,"due_at": string | null,"faktur_no": string | null,"id": string | null,"issued_at": string | null,"kind": string | null,"mgmt_fee": number | null,"number": string | null,"org_id": string | null,"paid_amount": number | null,"paid_at": string | null,"payment_channel": string | null,"pin_until": string | null,"service_fee": number | null,"status": string | null,"subtotal": number | null,"tax": number | null,"total": number | null
+                    "admin_fee": number | null,"campaign_id": string | null,"due_at": string | null,"faktur_no": string | null,"id": string | null,"issued_at": string | null,"kind": string | null,"mgmt_fee": number | null,"number": string | null,"org_id": string | null,"paid_amount": number | null,"paid_at": string | null,"payment_channel": string | null,"pin_until": string | null,"pool_topups": Json | null,"service_fee": number | null,"status": string | null,"subtotal": number | null,"tax": number | null,"total": number | null
                   }
                   ComputedFields: never
                   Insert: {
-                           "admin_fee"?: number | null,"campaign_id"?: string | null,"due_at"?: string | null,"faktur_no"?: string | null,"id"?: string | null,"issued_at"?: string | null,"kind"?: string | null,"mgmt_fee"?: number | null,"number"?: string | null,"org_id"?: string | null,"paid_amount"?: number | null,"paid_at"?: string | null,"payment_channel"?: string | null,"pin_until"?: string | null,"service_fee"?: number | null,"status"?: string | null,"subtotal"?: number | null,"tax"?: number | null,"total"?: number | null
+                           "admin_fee"?: number | null,"campaign_id"?: string | null,"due_at"?: string | null,"faktur_no"?: string | null,"id"?: string | null,"issued_at"?: string | null,"kind"?: string | null,"mgmt_fee"?: number | null,"number"?: string | null,"org_id"?: string | null,"paid_amount"?: number | null,"paid_at"?: string | null,"payment_channel"?: string | null,"pin_until"?: string | null,"pool_topups"?: Json | null,"service_fee"?: number | null,"status"?: string | null,"subtotal"?: number | null,"tax"?: number | null,"total"?: number | null
                          }
                         Update: {
-                           "admin_fee"?: number | null,"campaign_id"?: string | null,"due_at"?: string | null,"faktur_no"?: string | null,"id"?: string | null,"issued_at"?: string | null,"kind"?: string | null,"mgmt_fee"?: number | null,"number"?: string | null,"org_id"?: string | null,"paid_amount"?: number | null,"paid_at"?: string | null,"payment_channel"?: string | null,"pin_until"?: string | null,"service_fee"?: number | null,"status"?: string | null,"subtotal"?: number | null,"tax"?: number | null,"total"?: number | null
+                           "admin_fee"?: number | null,"campaign_id"?: string | null,"due_at"?: string | null,"faktur_no"?: string | null,"id"?: string | null,"issued_at"?: string | null,"kind"?: string | null,"mgmt_fee"?: number | null,"number"?: string | null,"org_id"?: string | null,"paid_amount"?: number | null,"paid_at"?: string | null,"payment_channel"?: string | null,"pin_until"?: string | null,"pool_topups"?: Json | null,"service_fee"?: number | null,"status"?: string | null,"subtotal"?: number | null,"tax"?: number | null,"total"?: number | null
                          }
                         Relationships: [
                     
@@ -505,13 +547,123 @@ export type Database = {
                 }
           }
           Functions: {
-            "create_report_link":
+            "accept_org_invite":
+{ Args: { "p_token": string }; Returns: string
+                           },
+"admin_overview":
+{ Args: Record<PropertyKey, never>; Returns: Json
+                           },
+"appeal_submission":
+{ Args: { "p_message": string,"p_submission": string }; Returns: undefined
+                           },
+"approve_payout_batch":
+{ Args: { "p_batch": string }; Returns: undefined
+                           },
+"approve_refund":
+{ Args: { "p_refund": string }; Returns: undefined
+                           },
+"bridge_attach_export":
+{ Args: { "p_batch": string,"p_file_ref": string,"p_held": Json }; Returns: undefined
+                           },
+"bridge_attach_proof":
+{ Args: { "p_id": string,"p_proof_ref": string,"p_target": string }; Returns: undefined
+                           },
+"bridge_close_account":
+{ Args: { "p_user": string }; Returns: Json
+                           },
+"bridge_collect_ids":
+{ Args: Record<PropertyKey, never>; Returns: Json
+                           },
+"bridge_fulfillment_export":
+{ Args: { "p_reward_type": string }; Returns: {
+              "amount": number,"id": string,"recipient": Json,"recipient_ref": string,"user_id": string
+            }[]
+                           },
+"bridge_get_batch":
+{ Args: { "p_batch": string }; Returns: Json
+                           },
+"bridge_get_payout":
+{ Args: { "p_payout": string }; Returns: Json
+                           },
+"bridge_mark_instant":
+{ Args: { "p_error": string,"p_payout": string,"p_provider_ref": string,"p_status": string }; Returns: undefined
+                           },
+"bridge_pph21":
+{ Args: { "p_from": string,"p_to": string }; Returns: {
+              "gross": number,"user_id": string
+            }[]
+                           },
+"bridge_raise_fraud_flag":
+{ Args: { "p_details": Json,"p_score": number,"p_signal": string,"p_target_id": string,"p_target_type": string }; Returns: string
+                           },
+"bridge_report_orphans":
+{ Args: { "p_missing": Json }; Returns: undefined
+                           },
+"buy_pin":
+{ Args: { "p_campaign": string,"p_days": number }; Returns: string
+                           },
+"campaign_detail":
+{ Args: { "p_campaign": string }; Returns: Json
+                           },
+"campaign_stats":
+{ Args: { "p_campaign": string }; Returns: Json
+                           },
+"cancel_fulfillment":
+{ Args: { "p_fulfillment": string,"p_reason": string }; Returns: undefined
+                           },
+"cancel_payout":
+{ Args: { "p_payout": string,"p_reason": string }; Returns: undefined
+                           },
+"claim_campaign":
+{ Args: { "p_campaign": string }; Returns: Database["api"]['Views']["claims"]['Row']
+                          SetofOptions: {
+        from: "*"
+        to: "claims"
+        isOneToOne: true
+        isSetofReturn: false
+      } },
+"confirm_invoice_payment":
+{ Args: { "p_amount": number,"p_channel": string,"p_invoice": string,"p_paid_at": string,"p_ref": string }; Returns: undefined
+                           },
+"control_campaign":
+{ Args: { "p_action": string,"p_campaign": string,"p_params"?: Json }; Returns: undefined
+                           },
+"create_org":
+{ Args: { "p_address"?: string,"p_is_agency"?: boolean,"p_legal_name"?: string,"p_name": string,"p_npwp"?: string,"p_org_type": string }; Returns: string
+                           },
+"create_org_invite":
+{ Args: { "p_org": string,"p_role": "brand_owner"|"brand_manager"|"brand_finance"|"brand_viewer" }; Returns: string
+                           },
+"create_payout_batch":
+{ Args: { "p_cutoff": string }; Returns: string
+                           },
+"create_report_link":
 { Args: { "p_campaign": string,"p_days"?: number }; Returns: string
+                           },
+"duplicate_campaign":
+{ Args: { "p_as_template"?: boolean,"p_campaign": string }; Returns: string
                            },
 "ensure_profile":
 { Args: { "p_display_name": string,"p_referral_code"?: string,"p_username": string }; Returns: {
               "created": boolean,"display_name": string,"id": string,"username": string
             }[]
+                           },
+"invite_to_campaign":
+{ Args: { "p_campaign": string,"p_usernames": (string)[] }; Returns: number
+                           },
+"link_agency":
+{ Args: { "p_action": string,"p_agency": string,"p_client": string }; Returns: undefined
+                           },
+"list_campaigns":
+{ Args: { "p_cursor"?: string,"p_filters"?: Json }; Returns: {
+              "budget_idr": number,"category_id": string,"cover_path": string,"cta_reason": string,"cta_state": string,"est_remaining_views": Json,"id": string,"is_new": boolean,"is_pinned": boolean,"next_cursor": string,"pinned_rank": number,"platforms": ("tiktok"|"instagram"|"youtube"|"threads"|"facebook"|"x")[],"rates": Json,"remaining_idr": number,"slug": string,"start_at": string,"status": "draft"|"in_review"|"cancelled"|"scheduled"|"rejected"|"live"|"paused"|"tracking"|"exhausted"|"settling"|"settled","submit_deadline": string,"title": string,"type": string,"visibility": string
+            }[]
+                           },
+"manage_org":
+{ Args: { "p_action": string,"p_org": string,"p_params"?: Json }; Returns: undefined
+                           },
+"mark_batch_paid":
+{ Args: { "p_batch": string,"p_results": Json }; Returns: undefined
                            },
 "missing_brief_tags":
 { Args: { "p_campaign": string,"p_caption": string }; Returns: (string)[]
@@ -519,14 +671,114 @@ export type Database = {
 "my_referral_code":
 { Args: Record<PropertyKey, never>; Returns: string
                            },
+"my_stats":
+{ Args: Record<PropertyKey, never>; Returns: Json
+                           },
+"record_review":
+{ Args: { "p_decision": string,"p_message"?: string,"p_note"?: string,"p_reason"?: string,"p_target_id": string,"p_target_type": string }; Returns: undefined
+                           },
 "report_by_token":
 { Args: { "p_token": string }; Returns: Json
+                           },
+"request_fulfillment":
+{ Args: { "p_amount": number,"p_idempotency": string,"p_recipient": Json,"p_recipient_ref": string,"p_reward_type": string }; Returns: Database["api"]['Views']["fulfillments"]['Row']
+                          SetofOptions: {
+        from: "*"
+        to: "fulfillments"
+        isOneToOne: true
+        isSetofReturn: false
+      } },
+"request_payout":
+{ Args: { "p_amount": number,"p_channel": string,"p_idempotency": string,"p_method": string }; Returns: Database["api"]['Views']["payouts"]['Row']
+                          SetofOptions: {
+        from: "*"
+        to: "payouts"
+        isOneToOne: true
+        isSetofReturn: false
+      } },
+"request_refund":
+{ Args: { "p_amount": number,"p_campaign": string,"p_idempotency": string,"p_mode": string,"p_org": string }; Returns: string
+                           },
+"resolve_alert":
+{ Args: { "p_id": number }; Returns: undefined
+                           },
+"resolve_fraud_flag":
+{ Args: { "p_action": string,"p_flag": string,"p_note": string }; Returns: undefined
                            },
 "revoke_report_link":
 { Args: { "p_link": string }; Returns: undefined
                            },
+"save_campaign":
+{ Args: { "p_campaign": Json,"p_submit"?: boolean }; Returns: string
+                           },
+"save_reward_type":
+{ Args: { "p": Json }; Returns: string
+                           },
+"send_broadcast":
+{ Args: { "p_body": string,"p_channels"?: (string)[],"p_scheduled_at"?: string,"p_segment"?: Json,"p_title": string }; Returns: string
+                           },
 "store_social_token":
 { Args: { "p_account_id": string,"p_token": string }; Returns: string
+                           },
+"update_config":
+{ Args: { "p_key": string,"p_value": Json }; Returns: undefined
+                           },
+"upload_reward_codes":
+{ Args: { "p_codes": (string)[],"p_reward_type": string }; Returns: number
+                           },
+"worker_account_status":
+{ Args: { "p_account": string,"p_status": string }; Returns: undefined
+                           },
+"worker_account_token":
+{ Args: { "p_account": string }; Returns: Json
+                           },
+"worker_accounts_to_refresh":
+{ Args: { "p_within": string }; Returns: {
+              "account_id": string,"platform": "tiktok"|"instagram"|"youtube"|"threads"|"facebook"|"x","token": string
+            }[]
+                           },
+"worker_ack":
+{ Args: { "p_msg_id": number,"p_queue": string }; Returns: undefined
+                           },
+"worker_assign_code":
+{ Args: { "p_fulfillment": string }; Returns: string
+                           },
+"worker_create_submission":
+{ Args: { "p_account": string,"p_caption": string,"p_claim": string,"p_duration_sec": number,"p_post_id": string,"p_posted_at": string,"p_url": string,"p_user": string }; Returns: Json
+                           },
+"worker_defer":
+{ Args: { "p_submission": string,"p_until": string }; Returns: undefined
+                           },
+"worker_dequeue":
+{ Args: { "p_qty"?: number,"p_queue": string,"p_vt_seconds"?: number }; Returns: {
+              "message": Json,"msg_id": number
+            }[]
+                           },
+"worker_fulfillment_result":
+{ Args: { "p_error": string,"p_fulfillment": string,"p_ok": boolean,"p_ref": string }; Returns: undefined
+                           },
+"worker_fulfillments_due":
+{ Args: { "p_limit": number }; Returns: {
+              "amount": number,"attempts": number,"fulfillment": string,"id": string,"recipient": Json,"reward_type_id": string,"user_id": string,"webhook_secret": string,"webhook_url": string
+            }[]
+                           },
+"worker_notification":
+{ Args: { "p_id": number }; Returns: Json
+                           },
+"worker_post_gone":
+{ Args: { "p_reason": string,"p_submission": string }; Returns: undefined
+                           },
+"worker_record_snapshot":
+{ Args: { "p_caption": string,"p_comments": number,"p_extra"?: Json,"p_likes": number,"p_raw": Json,"p_shares": number,"p_submission": string,"p_views": number }; Returns: Json
+                           },
+"worker_submission_context":
+{ Args: { "p_submission": string }; Returns: Json
+                           },
+"worker_unsubscribe":
+{ Args: { "p_user": string }; Returns: undefined
+                           },
+"worker_upsert_social_account":
+{ Args: { "p_external_id": string,"p_followers": number,"p_handle": string,"p_platform": "tiktok"|"instagram"|"youtube"|"threads"|"facebook"|"x","p_platform_created_at": string,"p_token": string,"p_user": string }; Returns: string
                            }
           }
           Enums: {

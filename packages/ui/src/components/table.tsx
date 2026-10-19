@@ -42,7 +42,7 @@ export function Table({
       style={maxHeight ? { maxHeight } : undefined}
       tabIndex={0}
       role="region"
-      aria-label={typeof caption === 'string' ? caption : undefined}
+      aria-label={typeof caption === 'string' ? caption : 'Tabel'}
     >
       <table
         data-dense={dense || undefined}

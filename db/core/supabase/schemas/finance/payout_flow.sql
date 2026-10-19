@@ -95,6 +95,20 @@ begin
   return res;
 end $$;
 
+-- Jurnal kebalikan request_payout: withdrawn −(amount − fee), platform_revenue −fee, available +amount. ref_id = id payout,
+-- jadi unique ledger menjamin satu payout hanya dikembalikan sekali (returned atau cancelled, dua-duanya final).
+create function finance.unwind_payout_journal(po finance.payouts) returns void
+language plpgsql security definer set search_path = '' as $$
+declare
+  idr uuid := finance.idr();
+  wallet uuid := finance.account('user_wallet', po.user_id, idr);
+begin
+  perform finance.post(gen_random_uuid(), jsonb_build_array(
+    finance.e(wallet, -(po.amount - po.fee), 'payout_return', po.id::text, 'withdrawn'),
+    finance.e(finance.account('platform_revenue', null, idr), -po.fee, 'payout_return', po.id::text),
+    finance.e(wallet, po.amount, 'payout_return', po.id::text, 'available')));
+end $$;
+
 -- Kembalikan dana payout gagal ke Tersedia, termasuk fee instant: S-05 processing/paid → failed → returned. paid → failed =
 -- transfer dibalik setelah sukses (REVERSED penyedia / retur bank). Idempoten: payout returned tidak dijurnal lagi.
 create function finance.return_payout(p_payout uuid, p_error text default null) returns void
@@ -102,7 +116,6 @@ language plpgsql security definer set search_path = '' as $$
 declare
   po finance.payouts;
   idr uuid := finance.idr();
-  wallet uuid;
 begin
   select * into po from finance.payouts p where p.id = p_payout for update;
   if po.status = 'returned' then
@@ -112,11 +125,7 @@ begin
     update finance.payouts set status = 'failed' where id = po.id;
   end if;
   update finance.payouts set status = 'returned' where id = po.id;  -- trigger S-05 menolak kalau bukan dari failed
-  wallet := finance.account('user_wallet', po.user_id, idr);
-  perform finance.post(gen_random_uuid(), jsonb_build_array(
-    finance.e(wallet, -(po.amount - po.fee), 'payout_return', po.id::text, 'withdrawn'),
-    finance.e(finance.account('platform_revenue', null, idr), -po.fee, 'payout_return', po.id::text),
-    finance.e(wallet, po.amount, 'payout_return', po.id::text, 'available')));
+  perform finance.unwind_payout_journal(po);
   perform ops.enqueue_notification(po.user_id, 'payout.failed', finance.amount_ref(idr, po.amount)
                                    || jsonb_build_object('payout_id', po.id, 'channel', po.channel, 'reason', left(p_error, 200)));
   perform ops.raise_alert('payout.failed', 'warning', jsonb_build_object('payout_id', po.id, 'channel', po.channel,
@@ -265,6 +274,90 @@ begin
   return res;
 end $$;
 
+-- Batalkan payout yang ditahan (S-05 on_hold → cancelled; batch yang belum diekspor: requested → on_hold → cancelled) oleh
+-- admin_finance (aal2): dana + fee kembali ke Tersedia. Instant requested tidak bisa dibatalkan (mungkin sedang diproses
+-- penyedia) — tahan dulu lewat fraud queue. Idempoten.
+create function api.cancel_payout(p_payout uuid, p_reason text) returns void
+language plpgsql security definer set search_path = '' as $$
+declare
+  po finance.payouts;
+begin
+  if not ops.has_admin('admin_finance') then
+    raise exception 'auth:forbidden' using errcode = '42501';
+  end if;
+  if nullif(btrim(p_reason), '') is null then
+    raise exception 'invalid:reason' using errcode = 'P0001';
+  end if;
+  select * into po from finance.payouts p where p.id = p_payout for update;
+  if not found then
+    raise exception 'not_found:payout' using errcode = 'P0002';
+  end if;
+  if po.status = 'cancelled' then
+    return;
+  end if;
+  if not (po.status = 'on_hold' or (po.status = 'requested' and po.channel = 'batch')) then
+    raise exception 'invalid_state:%', po.status using errcode = 'P0001';
+  end if;
+  if po.status = 'requested' then
+    update finance.payouts set status = 'on_hold', hold_reason = p_reason where id = po.id;
+  end if;
+  update finance.payouts set status = 'cancelled', hold_reason = p_reason where id = po.id;
+  perform finance.unwind_payout_journal(po);
+  perform ops.enqueue_notification(po.user_id, 'payout.cancelled', finance.amount_ref(finance.idr(), po.amount)
+                                   || jsonb_build_object('payout_id', po.id, 'channel', po.channel, 'reason', p_reason));
+  insert into ops.audit_logs (actor_id, action, target, before, after)
+  values ((select auth.uid()), 'payout.cancel', 'payout:' || po.id, jsonb_build_object('status', po.status),
+          jsonb_build_object('status', 'cancelled', 'reason', p_reason));
+end $$;
+
+-- Batalkan/kembalikan klaim reward non-tunai (S-06): requested → on_hold → cancelled, on_hold → cancelled,
+-- processing → failed → returned, failed → returned. Saldo kembali ke Tersedia (ref_type fulfillment, ref_id '<id>:return').
+-- Kode voucher yang sudah terpasang = sudah terlihat clipper → tidak bisa dibatalkan. admin_ops/admin_finance (aal2).
+create function api.cancel_fulfillment(p_fulfillment uuid, p_reason text) returns void
+language plpgsql security definer set search_path = '' as $$
+declare
+  f finance.fulfillments;
+  wallet uuid;
+begin
+  if not ops.has_admin('admin_ops', 'admin_finance') then
+    raise exception 'auth:forbidden' using errcode = '42501';
+  end if;
+  if nullif(btrim(p_reason), '') is null then
+    raise exception 'invalid:reason' using errcode = 'P0001';
+  end if;
+  select * into f from finance.fulfillments x where x.id = p_fulfillment for update;
+  if not found then
+    raise exception 'not_found:fulfillment' using errcode = 'P0002';
+  end if;
+  if f.status in ('cancelled', 'returned') then
+    return;
+  end if;
+  if f.status = 'delivered' then
+    raise exception 'invalid_state:delivered' using errcode = 'P0001';
+  end if;
+  if exists (select 1 from finance.reward_codes rc where rc.fulfillment_id = f.id) then
+    raise exception 'code_assigned' using errcode = 'P0001';
+  end if;
+  if f.status = 'requested' then
+    update finance.fulfillments set status = 'on_hold' where id = f.id;
+  elsif f.status = 'processing' then
+    update finance.fulfillments set status = 'failed' where id = f.id;
+  end if;
+  update finance.fulfillments set status = case when f.status in ('requested', 'on_hold') then 'cancelled' else 'returned' end
+                                           ::finance.fulfillment_status,
+         last_error = p_reason, next_retry_at = null
+   where id = f.id;
+  wallet := finance.account('user_wallet', f.user_id, f.reward_type_id);
+  perform finance.post(gen_random_uuid(), jsonb_build_array(
+    finance.e(wallet, -f.amount, 'fulfillment', f.id || ':return', 'withdrawn'),
+    finance.e(wallet, f.amount, 'fulfillment', f.id || ':return', 'available')));
+  perform ops.enqueue_notification(f.user_id, 'fulfillment.cancelled', finance.amount_ref(f.reward_type_id, f.amount)
+                                   || jsonb_build_object('fulfillment_id', f.id, 'reason', p_reason));
+  insert into ops.audit_logs (actor_id, action, target, before, after)
+  values ((select auth.uid()), 'fulfillment.cancel', 'fulfillment:' || f.id, jsonb_build_object('status', f.status),
+          jsonb_build_object('reason', p_reason));
+end $$;
+
 -- Instant yang macet (alur 11): requested/processing tanpa provider_ref > 15 menit → bridge disburse dipanggil ulang (aman: idempotency
 -- key penyedia = id payout). Macet > 1 jam → alert. Dipanggil job lifecycle.
 create function finance.retry_instant_payouts() returns int
@@ -291,8 +384,10 @@ begin
 end $$;
 
 revoke execute on function finance.require_active_clipper(), finance.return_payout(uuid, text), finance.retry_instant_payouts(),
+  finance.unwind_payout_journal(finance.payouts), api.cancel_payout(uuid, text), api.cancel_fulfillment(uuid, text),
   api.request_payout(uuid, numeric, text, text), api.create_payout_batch(timestamptz), api.approve_payout_batch(uuid),
   api.mark_batch_paid(uuid, jsonb), api.request_fulfillment(uuid, numeric, jsonb, uuid, text) from public;
 grant execute on function api.request_payout(uuid, numeric, text, text), api.create_payout_batch(timestamptz),
+  api.cancel_payout(uuid, text), api.cancel_fulfillment(uuid, text),
   api.approve_payout_batch(uuid), api.mark_batch_paid(uuid, jsonb), api.request_fulfillment(uuid, numeric, jsonb, uuid, text)
   to authenticated;
