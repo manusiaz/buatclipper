@@ -18,6 +18,8 @@ export const EVENTS = [
   "payout.paid",
   "payout.failed",
   "fulfillment.delivered",
+  "fulfillment.cancelled",
+  "payout.cancelled",
   "kyc.approved",
   "kyc.rejected",
   "broadcast.sent",
@@ -28,13 +30,14 @@ export const EVENTS = [
   "campaign.approved",
   "campaign.rejected",
   "campaign.live",
-  "campaign.budget_50",
-  "campaign.budget_80",
-  "campaign.budget_100",
-  "campaign.projection_low",
+  "budget.used",
+  "budget.projection_low",
   "campaign.settled",
   "org.verified",
   "org.rejected",
+  "org.suspended",
+  "agency.link_requested",
+  "agency.link_approved",
   "refund.paid",
   "managed.draft_ready",
 ] as const;
@@ -194,26 +197,28 @@ function brandCampaign(p: Payload, l: Links): string {
   return id ? join(l.brand, org, "campaigns", id) : join(l.brand, org, "campaigns");
 }
 
-function budget(pct: number): Def {
-  return {
-    title: (p) =>
-      pct >= 100 ? `Budget campaign ${campaign(p)} habis` : `Budget campaign ${campaign(p)} terpakai ${pct}%`,
-    lines: (p) =>
-      pct >= 100
-        ? [
-          `Seluruh budget campaign ${campaign(p)} sudah terpakai, jadi campaign berhenti menghitung views baru.`,
-          "Top-up kalau ingin campaign berjalan lagi.",
-        ]
-        : [
-          `${pct}% budget campaign ${campaign(p)} sudah terpakai.`,
-          pct >= 80
-            ? "Pertimbangkan top-up supaya campaign tidak berhenti mendadak."
-            : "Pantau performanya di dashboard.",
-        ],
-    cta: "Buka dashboard campaign",
-    url: brandCampaign,
-  };
-}
+const budgetPct = (p: Payload): number => Number(p.pct) >= 100 ? 100 : Number(p.pct) >= 80 ? 80 : 50;
+
+const budgetUsed: Def = {
+  title: (p) =>
+    budgetPct(p) >= 100
+      ? `Budget campaign ${campaign(p)} habis`
+      : `Budget campaign ${campaign(p)} terpakai ${budgetPct(p)}%`,
+  lines: (p) =>
+    budgetPct(p) >= 100
+      ? [
+        `Seluruh budget campaign ${campaign(p)} sudah terpakai, jadi campaign berhenti menghitung views baru.`,
+        "Top-up kalau ingin campaign berjalan lagi.",
+      ]
+      : [
+        `${budgetPct(p)}% budget campaign ${campaign(p)} sudah terpakai.`,
+        budgetPct(p) >= 80
+          ? "Pertimbangkan top-up supaya campaign tidak berhenti mendadak."
+          : "Pantau performanya di dashboard.",
+      ],
+  cta: "Buka dashboard campaign",
+  url: brandCampaign,
+};
 
 const DEFS: Record<NotificationEvent, Def> = {
   "campaign.new": {
@@ -320,6 +325,18 @@ const DEFS: Record<NotificationEvent, Def> = {
     cta: "Lihat reward",
     url: (_p, l) => join(l.app, "wallet"),
   },
+  "payout.cancelled": {
+    title: (p) => `Penarikan ${rupiah(p) || "kamu"} dibatalkan`,
+    lines: (p) => [reason(p), "Saldonya sudah kembali ke Tersedia dan bisa kamu tarik lagi."],
+    cta: "Buka wallet",
+    url: (_p, l) => join(l.app, "wallet"),
+  },
+  "fulfillment.cancelled": {
+    title: () => "Klaim reward dibatalkan",
+    lines: (p) => [reason(p), "Saldo reward sudah kembali dan bisa kamu klaim lagi."],
+    cta: "Buka wallet",
+    url: (_p, l) => join(l.app, "wallet"),
+  },
   "kyc.approved": {
     title: () => "KYC kamu disetujui",
     lines: () => ["Data identitas kamu sudah diverifikasi. Sekarang kamu bisa menarik saldo."],
@@ -397,10 +414,8 @@ const DEFS: Record<NotificationEvent, Def> = {
     cta: "Buka dashboard campaign",
     url: brandCampaign,
   },
-  "campaign.budget_50": budget(50),
-  "campaign.budget_80": budget(80),
-  "campaign.budget_100": budget(100),
-  "campaign.projection_low": {
+  "budget.used": budgetUsed,
+  "budget.projection_low": {
     title: (p) => `Proyeksi campaign ${campaign(p)} di bawah target`,
     lines: () => [
       "Dengan laju sekarang, kurang dari separuh budget diperkirakan terpakai sampai campaign berakhir.",
@@ -429,6 +444,24 @@ const DEFS: Record<NotificationEvent, Def> = {
     lines: (p) => [reason(p), "Perbaiki data organisasi lalu ajukan ulang dari pengaturan."],
     cta: "Buka pengaturan",
     url: (p, l) => brandOrg(p, l, "settings"),
+  },
+  "org.suspended": {
+    title: (p) => `Organisasi ${txt(p, "org_name") || "kamu"} ditangguhkan`,
+    lines: (p) => [reason(p), "Campaign baru tidak bisa diajukan sampai penangguhan dicabut. Hubungi tim kami."],
+    cta: "Buka pengaturan",
+    url: (p, l) => brandOrg(p, l, "settings"),
+  },
+  "agency.link_requested": {
+    title: (p) => `${txt(p, "agency_org_name") || "Agency"} minta akses ke ${txt(p, "org_name") || "organisasi kamu"}`,
+    lines: () => ["Setujui hanya kalau kamu memang bekerja sama dengan agency ini. Akses bisa dicabut kapan saja."],
+    cta: "Tinjau permintaan",
+    url: (p, l) => brandOrg(p, l, "settings"),
+  },
+  "agency.link_approved": {
+    title: (p) => `${txt(p, "client_org_name") || "Klien"} menyetujui tautan agency`,
+    lines: () => ["Organisasi klien sekarang muncul di pemilih organisasi kamu."],
+    cta: "Buka brand",
+    url: (_p, l) => l.brand + "/",
   },
   "refund.paid": {
     title: (p) => `Refund ${rupiah(p) || "kamu"} sudah ditransfer`,
@@ -483,21 +516,21 @@ export function render(
     .map((l) => `<p style="font-size:15px;line-height:1.6;margin:0 0 12px">${e(l).replace(/\n/g, "<br>")}</p>`)
     .join("");
   const footer = unsub
-    ? `<p style="font-size:12px;line-height:1.5;color:#78716c;margin:16px 0 0">Kamu menerima email ini karena email promosi aktif. <a href="${
+    ? `<p style="font-size:12px;line-height:1.5;color:#5B6479;margin:16px 0 0">Kamu menerima email ini karena email promosi aktif. <a href="${
       e(unsub)
-    }" style="color:#78716c">Berhenti berlangganan</a>.</p>`
+    }" style="color:#5B6479">Berhenti berlangganan</a>.</p>`
     : "";
   const html = `<!doctype html><html lang="id"><head><meta charset="utf-8">` +
     `<meta name="viewport" content="width=device-width,initial-scale=1"><title>${e(title)}</title></head>` +
-    `<body style="margin:0;padding:24px;background:#f5f5f4;font-family:-apple-system,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;color:#1c1917">` +
+    `<body style="margin:0;padding:24px;background:#F6F8FC;font-family:-apple-system,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;color:#0A1226">` +
     `<div style="max-width:560px;margin:0 auto;background:#ffffff;border-radius:12px;padding:24px">` +
     `<h1 style="font-size:20px;line-height:1.3;margin:0 0 16px">${e(title)}</h1>${htmlLines}` +
     `<p style="margin:24px 0 0"><a href="${
       e(url)
-    }" style="display:inline-block;background:#1c1917;color:#ffffff;text-decoration:none;padding:12px 20px;border-radius:8px;font-weight:600">${
+    }" style="display:inline-block;background:#1D5BFF;color:#ffffff;text-decoration:none;padding:12px 20px;border-radius:8px;font-weight:600">${
       e(def.cta)
     }</a></p>` +
-    `<p style="font-size:12px;line-height:1.5;color:#78716c;margin:24px 0 0">Kalau tombol tidak berfungsi, buka ${
+    `<p style="font-size:12px;line-height:1.5;color:#5B6479;margin:24px 0 0">Kalau tombol tidak berfungsi, buka ${
       e(url)
     }</p>` +
     `${footer}</div></body></html>`;

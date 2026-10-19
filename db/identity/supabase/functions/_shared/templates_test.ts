@@ -10,8 +10,8 @@ const ORG = "00000000-0000-0000-0000-0000000000aa";
 const CAMP = "00000000-0000-0000-0000-0000000000cc";
 
 Deno.test("templates: one template per F-X01 event (31), all render with an empty payload", () => {
-  assertEquals(EVENTS.length, 31);
-  assertEquals(new Set(EVENTS).size, 31);
+  assertEquals(EVENTS.length, 34);
+  assertEquals(new Set(EVENTS).size, 34);
   for (const e of EVENTS) {
     const r = render(e, {}, L, { unsubscribeUrl: PROMO_EVENTS.has(e) ? "https://app.clipper.test/u/1" : null });
     assert(r.subject.length > 0 && r.text.length > 0 && r.html.startsWith("<!doctype html>"), e);
@@ -30,9 +30,11 @@ Deno.test("templates: deep links per event", () => {
   assertEquals(render("kyc.rejected", {}, L).push.url, "https://accounts.clipper.test/kyc");
   assertEquals(render("social.token_expired", {}, L).push.url, "https://app.clipper.test/social");
   assertEquals(
-    render("campaign.budget_80", { org_id: ORG, campaign_id: CAMP }, L).push.url,
+    render("budget.used", { org_id: ORG, campaign_id: CAMP, pct: 80 }, L).push.url,
     `https://brand.clipper.test/${ORG}/campaigns/${CAMP}`,
   );
+  assertEquals(render("budget.used", { pct: 100, campaign_title: "MPL" }, L).subject, "Budget campaign MPL habis");
+  assertEquals(render("budget.used", { pct: 80, campaign_title: "MPL" }, L).subject, "Budget campaign MPL terpakai 80%");
   assertEquals(render("invoice.issued", { org_id: ORG }, L).push.url, `https://brand.clipper.test/${ORG}/billing`);
   assertEquals(
     render("submission.pending_review", { org_id: ORG }, L).push.url,
