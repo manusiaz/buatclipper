@@ -1,4 +1,4 @@
-import type { ReactNode, JSX } from 'react';
+import type { ReactNode } from 'react';
 
 /** market.platform enum. */
 export type Platform = 'tiktok' | 'instagram' | 'youtube' | 'threads' | 'facebook' | 'x';
@@ -194,8 +194,6 @@ export interface CampaignBuilderProps {
   /** Admin: brand's raw brief + internal files, shown next to the wizard. */
   sidePanel?: ReactNode;
 }
-
-export type CampaignBuilderComponent = (props: CampaignBuilderProps) => JSX.Element;
 
 /** Wizard steps (7, §8 F-B02) + the summary screen. */
 export type StepId = 'basics' | 'brief' | 'platforms' | 'rewards' | 'budget' | 'eligibility' | 'schedule' | 'summary';

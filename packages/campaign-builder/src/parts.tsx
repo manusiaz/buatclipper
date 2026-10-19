@@ -198,7 +198,7 @@ export function ChipsField({ label, kind, values, onChange, t, placeholder, help
                       disabled={disabled}
                       onClick={() => onChange(values.filter((x) => x !== v))}
                       aria-label={t('chips.remove', { value: displayItem(kind, v) })}
-                      className="touch-target grid size-6 shrink-0 place-items-center rounded-full hover:bg-primary-soft-hover focus-ring disabled:hidden"
+                      className="touch-target relative grid size-6 shrink-0 place-items-center rounded-full hover:bg-primary-soft-hover focus-ring disabled:hidden"
                     >
                       <Icon name="close" size={16} />
                     </button>
