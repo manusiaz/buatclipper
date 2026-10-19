@@ -189,10 +189,10 @@ export class MockProvider implements DisbursementProvider {
   }
 }
 
-function isLocalUrl(raw: string | undefined): boolean {
+export function isLocalUrl(raw: string | undefined): boolean {
   try {
     const h = new URL(raw ?? "").hostname;
-    return ["localhost", "127.0.0.1", "kong", "host.docker.internal"].includes(h);
+    return ["localhost", "127.0.0.1", "kong", "host.docker.internal"].includes(h) || h.startsWith("supabase_kong_");
   } catch {
     return false;
   }

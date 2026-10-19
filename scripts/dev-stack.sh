@@ -1,0 +1,76 @@
+#!/usr/bin/env bash
+# Stack lokal penuh: dua project Supabase (identity :54321, core :55321) di satu docker network, secret dev Edge Function,
+# Vault untuk pg_cron, dan apps/*/.env.local untuk 5 app. Idempoten. Host dev: *.clipper.localhost.
+# Pakai: scripts/dev-stack.sh [--reset]   (--reset = supabase db reset kedua project, data lokal hilang)
+set -euo pipefail
+cd "$(dirname "$0")/.."
+export SUPABASE_INTERNAL_IMAGE_REGISTRY="${SUPABASE_INTERNAL_IMAGE_REGISTRY:-docker.io}"
+SECRETS=db/.dev-secrets.env
+DOMAIN=clipper.localhost
+WEB="http://$DOMAIN:3000" ACC="http://accounts.$DOMAIN:3001" APP="http://app.$DOMAIN:3002" BRAND="http://brand.$DOMAIN:3003" ADMIN="http://admin.$DOMAIN:3004"
+
+rand() { openssl rand -base64 32 | tr -d '\n'; }
+if [ ! -f "$SECRETS" ]; then
+  vapid=$(deno run -A npm:web-push@3.6.7 generate-vapid-keys --json)
+  cat > "$SECRETS" <<EOF
+BRIDGE_SECRET_CORE_TO_IDENTITY=$(rand)
+BRIDGE_SECRET_IDENTITY_TO_CORE=$(rand)
+PII_HMAC_KEY=$(rand)
+PII_ENC_KEYS={"1":"$(rand)"}
+PII_ENC_KEY_VERSION=1
+UNSUBSCRIBE_SECRET=$(rand)
+DISBURSE_CALLBACK_TOKEN=$(rand)
+VAPID_PUBLIC_KEY=$(echo "$vapid" | python3 -c 'import json,sys;print(json.load(sys.stdin)["publicKey"])')
+VAPID_PRIVATE_KEY=$(echo "$vapid" | python3 -c 'import json,sys;print(json.load(sys.stdin)["privateKey"])')
+EOF
+fi
+set -a; . "$SECRETS"; set +a
+
+# Nilai non-rahasia (host di dalam network docker "clipper": supabase_kong_<project_id>:8000).
+export IDENTITY_ISSUER="http://127.0.0.1:54321/auth/v1"
+export IDENTITY_JWKS_URL="http://supabase_kong_clipper-identity:8000/auth/v1/.well-known/jwks.json"
+export IDENTITY_FUNCTIONS_URL="http://supabase_kong_clipper-identity:8000/functions/v1"
+export CORE_FUNCTIONS_URL="http://supabase_kong_clipper-core:8000/functions/v1"
+export APP_ORIGINS="$ACC,$APP,$BRAND,$ADMIN"
+export SOCIAL_REDIRECT_ALLOWLIST=$(for p in tiktok instagram youtube threads facebook x; do printf '%s/api/oauth/%s/callback,' "$APP" "$p"; done | sed 's/,$//')
+export UNSUBSCRIBE_BASE_URL="http://127.0.0.1:55321/functions/v1/notify/unsubscribe"
+export EMAIL_FROM="Clipper <no-reply@notif.$DOMAIN>" RESEND_API_KEY="" MAILPIT_URL="http://supabase_inbucket_clipper-identity:8025"
+export APP_URL="$APP" BRAND_URL="$BRAND" ACCOUNTS_URL="$ACC" VAPID_SUBJECT="mailto:dev@$DOMAIN"
+export DISBURSE_PROVIDER=mock XENDIT_SECRET_KEY=""
+for v in TIKTOK_CLIENT_KEY TIKTOK_CLIENT_SECRET META_APP_ID META_APP_SECRET GOOGLE_CLIENT_ID GOOGLE_CLIENT_SECRET \
+         THREADS_APP_ID THREADS_APP_SECRET FACEBOOK_APP_ID FACEBOOK_APP_SECRET X_CLIENT_ID X_CLIENT_SECRET; do
+  export "$v=${!v:-}"
+done
+
+docker network inspect clipper >/dev/null 2>&1 || docker network create clipper >/dev/null
+for p in identity core; do
+  supabase start --workdir "db/$p" --network-id clipper -x vector,logflare,studio,imgproxy >/dev/null
+  [ "${1:-}" = "--reset" ] && supabase db reset --workdir "db/$p" >/dev/null
+done
+
+status() { supabase status --workdir "db/$1" -o env 2>/dev/null | grep "^$2=" | cut -d= -f2- | tr -d '"'; }
+ID_PUB=$(status identity PUBLISHABLE_KEY); CORE_PUB=$(status core PUBLISHABLE_KEY)
+ID_SVC=$(status identity SERVICE_ROLE_KEY); CORE_SVC=$(status core SERVICE_ROLE_KEY)
+
+# Vault: URL + kunci yang dipakai pg_cron/pg_net memanggil Edge Function project sendiri (policy:fn-cron-key).
+vault() { # port name value
+  psql "postgresql://postgres:postgres@127.0.0.1:$1/postgres" -qtAX -v ON_ERROR_STOP=1 -c \
+    "select coalesce((select vault.update_secret(id, '$3') from vault.secrets where name = '$2'), vault.create_secret('$3', '$2'))" >/dev/null
+}
+vault 54322 identity_url "http://supabase_kong_clipper-identity:8000"
+vault 54322 identity_secret_key "$ID_SVC"
+vault 55322 core_url "http://supabase_kong_clipper-core:8000"
+vault 55322 core_secret_key "$CORE_SVC"
+
+for a in web accounts clipper brand admin; do
+  {
+    echo "NEXT_PUBLIC_CORE_URL=http://127.0.0.1:55321"
+    echo "NEXT_PUBLIC_CORE_PUBLISHABLE_KEY=$CORE_PUB"
+    [ "$a" != web ] && echo "NEXT_PUBLIC_IDENTITY_URL=http://127.0.0.1:54321" && echo "NEXT_PUBLIC_IDENTITY_PUBLISHABLE_KEY=$ID_PUB"
+    echo "NEXT_PUBLIC_COOKIE_DOMAIN=.$DOMAIN"
+    echo "NEXT_PUBLIC_WEB_URL=$WEB"; echo "NEXT_PUBLIC_ACCOUNTS_URL=$ACC"; echo "NEXT_PUBLIC_APP_URL=$APP"
+    echo "NEXT_PUBLIC_BRAND_URL=$BRAND"; echo "NEXT_PUBLIC_ADMIN_URL=$ADMIN"
+    [ "$a" = clipper ] && echo "NEXT_PUBLIC_VAPID_PUBLIC_KEY=$VAPID_PUBLIC_KEY"
+  } > "apps/$a/.env.local"
+done
+echo "stack lokal siap: identity http://127.0.0.1:54321 (email: http://127.0.0.1:54324), core http://127.0.0.1:55321"

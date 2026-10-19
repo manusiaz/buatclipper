@@ -6,8 +6,8 @@
 import { coreBridge } from "../_shared/bridge.ts";
 import { piiCrypto } from "../_shared/crypto.ts";
 import { lazyAuthAdmin, lazyServiceRpc } from "../_shared/db.ts";
-import { providerFromEnv } from "../_shared/disburse.ts";
-import { type EmailSender, resendSender } from "../_shared/email.ts";
+import { isLocalUrl, providerFromEnv } from "../_shared/disburse.ts";
+import { type EmailSender, mailpitSender, resendSender } from "../_shared/email.ts";
 import { env } from "../_shared/http.ts";
 import { type PushSender, webPushSender } from "../_shared/push.ts";
 import { type Links, linksFromEnv } from "../_shared/templates.ts";
@@ -23,7 +23,10 @@ Deno.serve(createBridgeHandler({
   core: coreBridge,
   authAdmin: lazyAuthAdmin(),
   crypto: piiCrypto,
-  email: () => (email ??= resendSender({ apiKey: env("RESEND_API_KEY"), from: env("EMAIL_FROM") })),
+  email: () =>
+    (email ??= Deno.env.get("MAILPIT_URL") && isLocalUrl(Deno.env.get("SUPABASE_URL"))
+      ? mailpitSender({ baseUrl: Deno.env.get("MAILPIT_URL")!, from: env("EMAIL_FROM") })
+      : resendSender({ apiKey: env("RESEND_API_KEY"), from: env("EMAIL_FROM") })),
   push: () => (push ??= webPushSender()),
   provider: providerFromEnv,
   links: () => (links ??= linksFromEnv()),

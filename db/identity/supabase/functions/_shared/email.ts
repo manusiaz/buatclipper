@@ -53,3 +53,22 @@ export function resendSender(opts: { apiKey: string; from: string; fetchFn?: typ
     },
   };
 }
+
+/** Stack lokal saja: kirim ke Mailpit (HTTP API /api/v1/send) supaya email notifikasi bisa dilihat & dites E2E. */
+export function mailpitSender(opts: { baseUrl: string; from: string; fetchFn?: typeof fetch }): EmailSender {
+  const fetchFn = opts.fetchFn ?? fetch;
+  const m = /^(.*?)\s*<(.+)>$/.exec(opts.from);
+  const from = m ? { Name: m[1], Email: m[2] } : { Email: opts.from };
+  return {
+    async send(msg) {
+      const res = await fetchFn(`${opts.baseUrl.replace(/\/$/, "")}/api/v1/send`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ From: from, To: [{ Email: msg.to }], Subject: msg.subject, Text: msg.text, HTML: msg.html }),
+      }).catch(() => null);
+      const body = await res?.json().catch(() => ({})) as { ID?: string } | undefined;
+      if (!res?.ok || !body?.ID) throw new HttpError(503, "email_unavailable", "mailpit tidak bisa dihubungi");
+      return { id: body.ID };
+    },
+  };
+}

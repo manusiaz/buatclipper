@@ -15,3 +15,4 @@ supabase/.temp/
 **/supabase/dev-keys/
 playwright-report/
 test-results/
+db/.dev-secrets.env
