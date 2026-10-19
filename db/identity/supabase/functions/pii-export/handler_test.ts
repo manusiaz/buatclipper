@@ -1,5 +1,6 @@
 import { assert, assertEquals } from "@std/assert";
 import { toPgBytea } from "../_shared/crypto.ts";
+import { HttpError } from "../_shared/http.ts";
 import { claims, FakeCore, FakeRpc, FakeStorage, json, post, testCrypto } from "../_shared/testing.ts";
 import { createPiiExportHandler, type PiiExportDeps } from "./handler.ts";
 
@@ -27,7 +28,12 @@ async function method(n: number, user: string | null, over: Record<string, unkno
   };
 }
 
-async function setup(batch: Record<string, unknown> = {}, roles = ["admin_finance"], aal = "aal2") {
+async function setup(
+  batch: Record<string, unknown> = {},
+  roles = ["admin_finance"],
+  aal = "aal2",
+  attach: () => unknown = () => ({ ok: true }),
+) {
   const methods = [
     await method(1, u(1), { account_name: "  user   1 " }), // ok (spacing/case differ from KYC)
     await method(2, u(99)), // belongs to another user
@@ -69,7 +75,7 @@ async function setup(batch: Record<string, unknown> = {}, roles = ["admin_financ
         { id: p(9), user_id: u(9), method_id: m(9), amount: "120000.00" },
       ],
     }),
-    attach_export: () => ({ ok: true }),
+    attach_export: attach,
   });
   const storage = new FakeStorage();
   const deps: PiiExportDeps = {
@@ -110,9 +116,19 @@ Deno.test("payout_csv: hold rules, decrypted CSV, attach_export with held list, 
     batch_id: BATCH,
     file_ref: `pii-exports/payouts/${BATCH}.csv`,
     held,
+    exported: [p(1), p(9)],
   });
   const audit = s.rpc.named("svc_audit")[0].args;
   assertEquals([audit.p_actor, audit.p_action, audit.p_target], [FIN, "pii.export_payouts", `batch:${BATCH}`]);
+});
+
+Deno.test("payout_csv: core rejects the handoff (export_stale) → CSV removed, error surfaced", async () => {
+  const s = await setup({}, ["admin_finance"], "aal2", () => {
+    throw new HttpError(422, "export_stale", "batch berubah");
+  });
+  const res = await json(await s.handler(post({ action: "payout_csv", batch_id: BATCH })));
+  assertEquals([res.status, res.body.error.code], [422, "export_stale"]);
+  assertEquals(s.storage.files.size, 0);
 });
 
 Deno.test("payout_csv: only batches approved by a second person", async () => {
@@ -176,6 +192,7 @@ Deno.test("recipients_csv: only users with share_with_brand consent; owner/rewar
     svc_audit: () => null,
   });
   const core = new FakeCore({
+    attach_fulfillment_export: () => ({ ok: true }),
     fulfillment_export: () => [
       { id: p(61), user_id: u(61), amount: 1, recipient: { game_id: "123", zone_id: "45" }, recipient_ref: m(61) },
       { id: p(62), user_id: u(62), amount: 1, recipient: { game_id: "9" }, recipient_ref: null },
@@ -203,6 +220,11 @@ Deno.test("recipients_csv: only users with share_with_brand consent; owner/rewar
     storage.text(`pii-exports/recipients/${RT}/20261019T030405Z.csv`),
     `fulfillment_id,amount,address,game_id,phone,zone_id\r\n${p(61)},1,"Jl. Mawar 1, Jakarta",123,'+62812,45\r\n`,
   );
+  assertEquals(core.named("attach_fulfillment_export")[0].payload, {
+    reward_type_id: RT,
+    file_ref: `pii-exports/recipients/${RT}/20261019T030405Z.csv`,
+    exported: [p(61)],
+  });
 });
 
 Deno.test("upload_proof: type sniffed from content, stored in payout-proofs, attach_proof called", async () => {

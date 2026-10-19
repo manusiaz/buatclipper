@@ -417,8 +417,17 @@ select is((select jsonb_agg(x - 'id' - 'user_id' order by x ->> 'amount') from j
             {"method_id":"aaaaaaaa-0000-0000-0000-0000000000b1","amount":150000.00,"fee":0.00},
             {"method_id":"aaaaaaaa-0000-0000-0000-0000000000b1","amount":200000.00,"fee":0.00}]'::jsonb,
           'bridge_get_batch: amount bruto + fee (transfer = amount − fee)');
+-- Regresi review 2026-10-19 (R3): CSV yang tidak cocok dengan isi batch saat ini tidak diserahkan.
+select throws_ok($$ select api.bridge_attach_export((select id from t_pay where k = 'batch'), 'pii-exports/batch-1.csv',
+                      jsonb_build_array(jsonb_build_object('payout_id', (select id from t_pay where k = 'b3'), 'reason', 'nama_tidak_cocok')),
+                      array[(select id from t_pay where k = 'b1')]) $$, 'P0001', 'export_stale',
+                 'CSV tanpa payout requested yang tidak ditahan → export_stale');
+select throws_ok($$ select api.bridge_attach_export((select id from t_pay where k = 'batch'), 'pii-exports/batch-1.csv', '[]'::jsonb,
+                      array[(select id from t_pay where k = 'b1'), (select id from t_pay where k = 'b2'), (select id from t_pay where k = 'b3'),
+                            gen_random_uuid()]) $$, 'P0001', 'export_stale', 'CSV berisi payout di luar batch → export_stale');
 select api.bridge_attach_export((select id from t_pay where k = 'batch'), 'pii-exports/batch-1.csv',
-                                jsonb_build_array(jsonb_build_object('payout_id', (select id from t_pay where k = 'b3'), 'reason', 'nama_tidak_cocok')));
+                                jsonb_build_array(jsonb_build_object('payout_id', (select id from t_pay where k = 'b3'), 'reason', 'nama_tidak_cocok')),
+                                array[(select id from t_pay where k = 'b1'), (select id from t_pay where k = 'b2')]);
 select is((select status::text from finance.payouts where id = (select id from t_pay where k = 'b3')), 'on_hold', 'gagal cek export → on_hold');
 select is((select count from finance.payout_batches where id = (select id from t_pay where k = 'batch')), 2, 'batch: 2 payout masuk CSV');
 set local role authenticated;
@@ -525,6 +534,42 @@ select api.worker_fulfillment_result((select id from t_pay where k = 'f3'), fals
 select is((select status::text || ':' || attempts from finance.fulfillments where id = (select id from t_pay where k = 'f3')), 'on_hold:12',
           'gagal ke-12 → on_hold');
 select is((select count(*)::int from ops.alerts where kind = 'fulfillment.stuck'), 2, 'alert fulfillment macet');
+-- Regresi review 2026-10-19 (R3): timeout ≠ pasti gagal → refund butuh konfirmasi brand; serah-terima CSV manual mengunci klaim.
+select ok((select delivery_uncertain from finance.fulfillments where id = (select id from t_pay where k = 'f3')), 'timeout → hasil tidak pasti');
+insert into finance.fulfillments (id, user_id, reward_type_id, amount, recipient, idempotency_key) values
+  ('99999999-0000-0000-0000-0000000000e1', '11111111-0000-0000-0000-00000000000a', '77777777-0000-0000-0000-000000000002', 5,
+   '{"game_user_id":"123"}', 'ful-export-test');
+select finance.post(gen_random_uuid(), jsonb_build_array(  -- setara request_fulfillment: Tersedia → Ditarik
+  finance.e(finance.account('user_wallet', '11111111-0000-0000-0000-00000000000a', '77777777-0000-0000-0000-000000000002'), -5,
+            'fulfillment', '99999999-0000-0000-0000-0000000000e1', 'available'),
+  finance.e(finance.account('user_wallet', '11111111-0000-0000-0000-00000000000a', '77777777-0000-0000-0000-000000000002'), 5,
+            'fulfillment', '99999999-0000-0000-0000-0000000000e1', 'withdrawn')));
+select api.bridge_attach_fulfillment_export('77777777-0000-0000-0000-000000000002', 'pii-exports/recipients/x.csv',
+                                            array['99999999-0000-0000-0000-0000000000e1'::uuid]);
+select is((select status::text || ':' || export_ref from finance.fulfillments where id = '99999999-0000-0000-0000-0000000000e1'),
+          'processing:pii-exports/recipients/x.csv', 'CSV diserahkan → klaim processing + export_ref');
+select ok(not exists (select 1 from api.bridge_fulfillment_export('77777777-0000-0000-0000-000000000002')
+                       where id = '99999999-0000-0000-0000-0000000000e1'), 'klaim yang sudah diserahkan tidak terekspor ulang');
+select throws_ok($$ select api.bridge_attach_fulfillment_export('77777777-0000-0000-0000-000000000002', 'pii-exports/recipients/y.csv',
+                      array['99999999-0000-0000-0000-0000000000e1'::uuid]) $$, 'P0001', 'export_stale', 'serah-terima ulang klaim yang sama ditolak');
+set local role authenticated;
+select pg_temp.jwt('33333333-0000-0000-0000-0000000000a0', '{"app_roles":["admin_ops"],"aal":"aal2"}');
+select throws_ok($$ select api.cancel_fulfillment((select id from t_pay where k = 'f3'), 'batal') $$, 'P0001', 'delivery_unconfirmed',
+                 'webhook tidak pasti: refund butuh konfirmasi brand');
+select throws_ok($$ select api.cancel_fulfillment('99999999-0000-0000-0000-0000000000e1', 'batal') $$, 'P0001', 'delivery_unconfirmed',
+                 'CSV sudah di brand: refund butuh konfirmasi brand');
+select lives_ok($$ select api.cancel_fulfillment((select id from t_pay where k = 'f3'), 'brand konfirmasi tidak terkirim', true) $$,
+                'refund setelah konfirmasi brand');
+select lives_ok($$ select api.cancel_fulfillment('99999999-0000-0000-0000-0000000000e1', 'brand belum kirim', true) $$,
+                'refund klaim manual setelah konfirmasi brand');
+reset role;
+select is((select string_agg(status::text, ',' order by id) from finance.fulfillments
+            where id in ((select id from t_pay where k = 'f3'), '99999999-0000-0000-0000-0000000000e1')),
+          (select string_agg(x, ',' order by i) from (values (1, case when (select id from t_pay where k = 'f3') < '99999999-0000-0000-0000-0000000000e1'::uuid
+                                                              then 'cancelled' else 'returned' end),
+                                                        (2, case when (select id from t_pay where k = 'f3') < '99999999-0000-0000-0000-0000000000e1'::uuid
+                                                              then 'returned' else 'cancelled' end)) v(i, x)),
+          'on_hold → cancelled, processing → returned');
 set local role authenticated;
 select pg_temp.jwt('33333333-0000-0000-0000-0000000000a0', '{"app_roles":["admin_ops"],"aal":"aal2"}');
 select throws_ok($$ select api.cancel_fulfillment((select id from t_pay where k = 'f1'), 'salah') $$, 'P0001', 'invalid_state:delivered',
@@ -924,8 +969,8 @@ select is((select status::text from tracking.submissions where user_id = '111111
           'submisi yang menunggu review dihentikan');
 
 -- ========== M. Hak akses RPC service_role ==========
-select is((select count(*)::int from pg_proc p where p.pronamespace = 'api'::regnamespace and p.proname ~ '^(worker|bridge)_'), 27,
-          '27 RPC worker/bridge');
+select is((select count(*)::int from pg_proc p where p.pronamespace = 'api'::regnamespace and p.proname ~ '^(worker|bridge)_'), 28,
+          '28 RPC worker/bridge');
 select is((select count(*)::int from pg_proc p where p.pronamespace = 'api'::regnamespace and p.proname ~ '^(worker|bridge)_'
             and (has_function_privilege('authenticated', p.oid, 'execute') or has_function_privilege('anon', p.oid, 'execute'))), 0,
           'authenticated/anon tidak bisa EXECUTE RPC worker/bridge');

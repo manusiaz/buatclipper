@@ -23,7 +23,9 @@ begin
 end $$;
 
 -- Alur 3: CSV jadi. Payout yang gagal cek (pemilik/nama rekening) → on_hold dengan alasan; sisanya processing (masuk CSV).
-create function api.bridge_attach_export(p_batch uuid, p_file_ref text, p_held jsonb) returns void
+-- p_exported = payout yang benar-benar ada di CSV. Isi DB bisa berubah sejak get_batch (batal, tahan fraud): kalau tidak
+-- cocok → export_stale, CSV tidak diserahkan (identity menghapus berkasnya) dan admin mengekspor ulang.
+create function api.bridge_attach_export(p_batch uuid, p_file_ref text, p_held jsonb, p_exported uuid[]) returns void
 language plpgsql security definer set search_path = '' as $$
 declare
   b finance.payout_batches;
@@ -41,6 +43,14 @@ begin
   end if;
   if p_file_ref is null or btrim(p_file_ref) = '' then
     raise exception 'invalid:file_ref' using errcode = 'P0001';
+  end if;
+  perform 1 from finance.payouts p where p.batch_id = b.id order by p.id for update;
+  if exists (select 1 from unnest(coalesce(p_exported, '{}')) e(id)
+              where not exists (select 1 from finance.payouts p where p.id = e.id and p.batch_id = b.id and p.status = 'requested'))
+     or exists (select 1 from finance.payouts p where p.batch_id = b.id and p.status = 'requested'
+                   and p.id <> all (coalesce(p_exported, '{}'))
+                   and p.id not in (select h.payout_id from jsonb_to_recordset(coalesce(p_held, '[]')) h(payout_id uuid))) then
+    raise exception 'export_stale' using errcode = 'P0001', detail = 'isi batch berubah sejak dibaca; ekspor ulang';
   end if;
   for x in select * from jsonb_to_recordset(coalesce(p_held, '[]')) h(payout_id uuid, reason text) loop
     update finance.payouts set status = 'on_hold', hold_reason = coalesce(nullif(btrim(x.reason), ''), 'export_check_failed')
@@ -208,6 +218,24 @@ begin
    order by f.created_at, f.id;
 end $$;
 
+-- Serah-terima CSV penerima ke brand: klaim yang ada di berkas → processing + export_ref (tidak terekspor ulang; refund butuh
+-- konfirmasi brand). Klaim yang berubah sejak dibaca → export_stale, berkas tidak diserahkan.
+create function api.bridge_attach_fulfillment_export(p_reward_type uuid, p_file_ref text, p_exported uuid[]) returns void
+language plpgsql security definer set search_path = '' as $$
+begin
+  if p_file_ref is null or btrim(p_file_ref) = '' then
+    raise exception 'invalid:file_ref' using errcode = 'P0001';
+  end if;
+  perform 1 from finance.fulfillments f where f.id = any (coalesce(p_exported, '{}')) order by f.id for update;
+  if exists (select 1 from unnest(coalesce(p_exported, '{}')) e(id)
+              where not exists (select 1 from finance.fulfillments f join market.reward_types rt on rt.id = f.reward_type_id
+                                 where f.id = e.id and f.reward_type_id = p_reward_type and f.status = 'requested'
+                                   and rt.fulfillment = 'manual_export')) then
+    raise exception 'export_stale' using errcode = 'P0001', detail = 'klaim berubah sejak dibaca; ekspor ulang';
+  end if;
+  update finance.fulfillments set status = 'processing', export_ref = p_file_ref where id = any (p_exported);
+end $$;
+
 -- Alur 10: ID lintas DB yang dirujuk core (profil belum ditutup, rekening & penerima milik mereka).
 create function api.bridge_collect_ids() returns jsonb
 language plpgsql stable security definer set search_path = '' as $$
@@ -231,12 +259,14 @@ begin
   end if;
 end $$;
 
-revoke execute on function api.bridge_get_batch(uuid), api.bridge_attach_export(uuid, text, jsonb),
+revoke execute on function api.bridge_get_batch(uuid), api.bridge_attach_export(uuid, text, jsonb, uuid[]),
+  api.bridge_attach_fulfillment_export(uuid, text, uuid[]),
   api.bridge_attach_proof(text, uuid, text), api.bridge_raise_fraud_flag(text, uuid, text, numeric, jsonb),
   api.bridge_close_account(uuid), api.bridge_get_payout(uuid), api.bridge_mark_instant(uuid, text, text, text),
   api.bridge_pph21(date, date), api.bridge_fulfillment_export(uuid), api.bridge_collect_ids(), api.bridge_report_orphans(jsonb)
   from public, anon, authenticated;
-grant execute on function api.bridge_get_batch(uuid), api.bridge_attach_export(uuid, text, jsonb),
+grant execute on function api.bridge_get_batch(uuid), api.bridge_attach_export(uuid, text, jsonb, uuid[]),
+  api.bridge_attach_fulfillment_export(uuid, text, uuid[]),
   api.bridge_attach_proof(text, uuid, text), api.bridge_raise_fraud_flag(text, uuid, text, numeric, jsonb),
   api.bridge_close_account(uuid), api.bridge_get_payout(uuid), api.bridge_mark_instant(uuid, text, text, text),
   api.bridge_pph21(date, date), api.bridge_fulfillment_export(uuid), api.bridge_collect_ids(), api.bridge_report_orphans(jsonb)

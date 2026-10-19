@@ -769,6 +769,8 @@
     "cancel": "Batalkan",
     "cancelBody": "Saldo kembali ke clipper. Kode voucher yang sudah terpasang tidak bisa dibatalkan.",
     "cancelled": "Klaim dibatalkan",
+    "notDelivered": "Saya sudah memastikan reward tidak terkirim",
+    "notDeliveredHelp": "Wajib bila sudah ada percobaan kirim atau export — pembatalan mengembalikan saldo, jadi reward yang ternyata terkirim akan terbayar dua kali.",
     "uploadCodes": "Unggah kode",
     "uploadCodesBody": "Maks 10.000 kode per unggahan; kode yang sudah ada diabaikan.",
     "upload": "Unggah",

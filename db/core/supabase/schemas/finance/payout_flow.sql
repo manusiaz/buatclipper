@@ -328,7 +328,9 @@ end $$;
 -- Batalkan/kembalikan klaim reward non-tunai (S-06): requested → on_hold → cancelled, on_hold → cancelled,
 -- processing → failed → returned, failed → returned. Saldo kembali ke Tersedia (ref_type fulfillment, ref_id '<id>:return').
 -- Kode voucher yang sudah terpasang = sudah terlihat clipper → tidak bisa dibatalkan. admin_ops/admin_finance (aal2).
-create function api.cancel_fulfillment(p_fulfillment uuid, p_reason text) returns void
+-- p_confirmed_not_delivered: admin sudah memastikan ke brand bahwa reward tidak sampai/tidak dikirim. Wajib kalau hasil
+-- pengiriman tidak pasti (webhook timeout/5xx, lease habis tanpa hasil) atau CSV manual sudah diserahkan ke brand.
+create function api.cancel_fulfillment(p_fulfillment uuid, p_reason text, p_confirmed_not_delivered boolean default false) returns void
 language plpgsql security definer set search_path = '' as $$
 declare
   f finance.fulfillments;
@@ -357,6 +359,9 @@ begin
   if f.leased_until > now() then
     raise exception 'delivery_in_flight' using errcode = 'P0001', detail = 'tunggu hasil pengiriman (maks 5 menit)';
   end if;
+  if (f.delivery_uncertain or f.leased_until is not null or f.export_ref is not null) and not coalesce(p_confirmed_not_delivered, false) then
+    raise exception 'delivery_unconfirmed' using errcode = 'P0001', detail = 'pastikan ke brand reward tidak terkirim, lalu konfirmasi';
+  end if;
   if f.status = 'requested' then
     update finance.fulfillments set status = 'on_hold' where id = f.id;
   elsif f.status = 'processing' then
@@ -374,7 +379,8 @@ begin
                                    || jsonb_build_object('fulfillment_id', f.id, 'reason', p_reason));
   insert into ops.audit_logs (actor_id, action, target, before, after)
   values ((select auth.uid()), 'fulfillment.cancel', 'fulfillment:' || f.id, jsonb_build_object('status', f.status),
-          jsonb_build_object('reason', p_reason));
+          jsonb_build_object('reason', p_reason, 'confirmed_not_delivered', coalesce(p_confirmed_not_delivered, false),
+                             'delivery_uncertain', f.delivery_uncertain, 'export_ref', f.export_ref));
 end $$;
 
 -- Instant yang macet (alur 11): requested/processing tanpa provider_ref > 15 menit → bridge disburse dipanggil ulang (aman: idempotency
@@ -403,10 +409,10 @@ begin
 end $$;
 
 revoke execute on function finance.require_active_clipper(), finance.return_payout(uuid, text), finance.retry_instant_payouts(),
-  finance.unwind_payout_journal(finance.payouts), api.cancel_payout(uuid, text), api.cancel_fulfillment(uuid, text),
+  finance.unwind_payout_journal(finance.payouts), api.cancel_payout(uuid, text), api.cancel_fulfillment(uuid, text, boolean),
   api.request_payout(uuid, numeric, text, text), api.create_payout_batch(timestamptz), api.approve_payout_batch(uuid),
   api.mark_batch_paid(uuid, jsonb), api.request_fulfillment(uuid, numeric, jsonb, uuid, text) from public;
 grant execute on function api.request_payout(uuid, numeric, text, text), api.create_payout_batch(timestamptz),
-  api.cancel_payout(uuid, text), api.cancel_fulfillment(uuid, text),
+  api.cancel_payout(uuid, text), api.cancel_fulfillment(uuid, text, boolean),
   api.approve_payout_batch(uuid), api.mark_batch_paid(uuid, jsonb), api.request_fulfillment(uuid, numeric, jsonb, uuid, text)
   to authenticated;

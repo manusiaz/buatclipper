@@ -245,7 +245,10 @@ async function TypeQueue({
                       submitLabel={t('fulfillment.cancel')}
                       success={t('fulfillment.cancelled')}
                       action={cancelFulfillment.bind(null, f.id!)}
-                      fields={[{ kind: 'textarea', name: 'reason', label: t('form.reason'), required: true, maxLength: 500 }]}
+                      fields={[
+                        { kind: 'textarea', name: 'reason', label: t('form.reason'), required: true, maxLength: 500 },
+                        { kind: 'checkbox', name: 'not_delivered', label: t('fulfillment.notDelivered'), helper: t('fulfillment.notDeliveredHelp') },
+                      ]}
                     />
                   </div>
                 </TD>

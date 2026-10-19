@@ -98,5 +98,7 @@
   "name_mismatch": "The account holder name must match the name on your ID.",
   "account_taken": "This bank account is used by another account.",
   "batch_locked": "This payout is already in an approved batch. Mark it failed after export if needed.",
-  "delivery_in_flight": "This reward is being delivered. Wait for the result (up to 5 minutes) before cancelling."
+  "delivery_in_flight": "This reward is being delivered. Wait for the result (up to 5 minutes) before cancelling.",
+  "delivery_unconfirmed": "A delivery attempt or export already happened. Confirm with the provider that the reward was not delivered, then tick the confirmation.",
+  "export_stale": "The data changed since the export started. Export again."
 }

@@ -14,6 +14,10 @@ create table finance.fulfillments (
   next_retry_at timestamptz,
   -- Worker fulfill sedang mengirim (code_pool/webhook): selama lease aktif klaim tidak bisa dibatalkan (hasil eksternal belum pasti).
   leased_until timestamptz,
+  -- Hasil pengiriman tidak pasti (timeout/putus koneksi/5xx, atau lease habis tanpa hasil): reward mungkin sudah sampai.
+  delivery_uncertain boolean not null default false,
+  -- manual_export: berkas CSV penerima yang sudah diserahkan ke brand (status processing sejak serah-terima).
+  export_ref text,
   idempotency_key text not null,
   created_at timestamptz not null default now(),
   delivered_at timestamptz,

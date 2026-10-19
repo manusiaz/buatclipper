@@ -39,21 +39,28 @@ Deno.test("bridge: aksi identity → RPC bridge_* 1:1", async () => {
   const { h, calls } = handler({
     bridge_get_batch: () => ({ id: "b1", payouts: [] }),
     bridge_mark_instant: () => null,
+    bridge_attach_fulfillment_export: () => null,
     bridge_close_account: () => ({ ok: false, reason: "pending_balance" }),
   });
   let r = await h(await inbound("get_batch", { batch_id: "b1" }));
   assert.deepEqual(await r.json(), { ok: true, data: { id: "b1", payouts: [] } });
   r = await h(await inbound("mark_instant", { payout_id: "p1", status: "paid", provider_ref: "DISB-1" }));
   assert.equal(r.status, 200);
+  r = await h(await inbound("attach_export", { batch_id: "b1", file_ref: "f", held: [] }));
+  assert.equal(r.status, 400); // daftar exported wajib: tanpa itu core tak bisa menolak export basi
+  r = await h(await inbound("attach_fulfillment_export", { reward_type_id: "rt", file_ref: "f", exported: ["x"] }));
+  assert.equal(r.status, 200);
   r = await h(await inbound("close_account", { user_id: "u1" }));
   assert.deepEqual(await r.json(), { ok: true, data: { ok: false, reason: "pending_balance" } });
   assert.deepEqual(calls.map((c) => [c.fn, c.args]), [
     ["bridge_get_batch", { p_batch: "b1" }],
     ["bridge_mark_instant", { p_payout: "p1", p_status: "paid", p_provider_ref: "DISB-1", p_error: null }],
+    ["bridge_attach_fulfillment_export", { p_reward_type: "rt", p_file_ref: "f", p_exported: ["x"] }],
     ["bridge_close_account", { p_user: "u1" }],
   ]);
   assert.deepEqual(Object.keys(INBOUND).sort(), [
     "attach_export",
+    "attach_fulfillment_export",
     "attach_proof",
     "close_account",
     "fulfillment_export",

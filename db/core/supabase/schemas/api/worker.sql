@@ -543,8 +543,9 @@ begin
                                      || jsonb_build_object('fulfillment_id', f.id, 'reward_type_id', f.reward_type_id,
                                                            'reward_name', (select rt.name from market.reward_types rt where rt.id = f.reward_type_id)));
   else
+    -- 4xx = brand menolak dengan jelas; selain itu (timeout, network_error, 5xx) reward mungkin sudah diproses brand.
     update finance.fulfillments set attempts = attempts + 1, last_error = left(p_error, 500), next_retry_at = now() + interval '5 minutes',
-           leased_until = null
+           leased_until = null, delivery_uncertain = delivery_uncertain or coalesce(p_error, '') !~ '^http_4[0-9][0-9]$'
      where id = f.id;
     if f.attempts + 1 >= 12 and f.status = 'requested' then
       update finance.fulfillments set status = 'on_hold', next_retry_at = null where id = f.id;

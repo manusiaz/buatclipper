@@ -591,7 +591,10 @@ export type Database = {
 { Args: { "p_refund": string }; Returns: undefined
                            },
 "bridge_attach_export":
-{ Args: { "p_batch": string,"p_file_ref": string,"p_held": Json }; Returns: undefined
+{ Args: { "p_batch": string,"p_exported": (string)[],"p_file_ref": string,"p_held": Json }; Returns: undefined
+                           },
+"bridge_attach_fulfillment_export":
+{ Args: { "p_exported": (string)[],"p_file_ref": string,"p_reward_type": string }; Returns: undefined
                            },
 "bridge_attach_proof":
 { Args: { "p_id": string,"p_proof_ref": string,"p_target": string }; Returns: undefined
@@ -637,7 +640,7 @@ export type Database = {
 { Args: { "p_campaign": string }; Returns: Json
                            },
 "cancel_fulfillment":
-{ Args: { "p_fulfillment": string,"p_reason": string }; Returns: undefined
+{ Args: { "p_confirmed_not_delivered"?: boolean,"p_fulfillment": string,"p_reason": string }; Returns: undefined
                            },
 "cancel_payout":
 { Args: { "p_payout": string,"p_reason": string }; Returns: undefined

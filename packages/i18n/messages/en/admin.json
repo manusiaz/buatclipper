@@ -769,6 +769,8 @@
     "cancel": "Cancel",
     "cancelBody": "The balance returns to the clipper. Voucher codes already assigned cannot be cancelled.",
     "cancelled": "Claim cancelled",
+    "notDelivered": "I've confirmed the reward was not delivered",
+    "notDeliveredHelp": "Required when a send attempt or export already happened — cancelling returns the balance, so a delivered reward would be paid twice.",
     "uploadCodes": "Upload codes",
     "uploadCodesBody": "Up to 10,000 codes per upload; existing codes are ignored.",
     "upload": "Upload",

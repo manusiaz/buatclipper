@@ -19,7 +19,11 @@ export async function exportRecipients(rewardTypeId: string): Promise<ActionResu
 export async function cancelFulfillment(id: string, fd: FormData): Promise<ActionResult> {
   await requireAdmin('admin_ops', 'admin_finance');
   const db = await coreServer('admin');
-  const { error } = await db.rpc('cancel_fulfillment', { p_fulfillment: id, p_reason: text(fd, 'reason') });
+  const { error } = await db.rpc('cancel_fulfillment', {
+    p_fulfillment: id,
+    p_reason: text(fd, 'reason'),
+    p_confirmed_not_delivered: fd.get('not_delivered') === 'on',
+  });
   return settle(error, '/fulfillment');
 }
 

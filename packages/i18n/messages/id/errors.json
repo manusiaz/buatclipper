@@ -83,5 +83,7 @@
   "name_mismatch": "Nama pemilik rekening harus sama dengan nama di KTP.",
   "account_taken": "Rekening ini sudah dipakai akun lain.",
   "batch_locked": "Payout ini sudah masuk batch yang disetujui. Tandai gagal setelah export bila perlu.",
-  "delivery_in_flight": "Reward sedang dikirim. Tunggu hasilnya (maks 5 menit) sebelum membatalkan."
+  "delivery_in_flight": "Reward sedang dikirim. Tunggu hasilnya (maks 5 menit) sebelum membatalkan.",
+  "delivery_unconfirmed": "Sudah ada percobaan kirim atau export. Pastikan ke penyedia bahwa reward tidak terkirim, lalu centang konfirmasi.",
+  "export_stale": "Data berubah sejak export dimulai. Export ulang."
 }

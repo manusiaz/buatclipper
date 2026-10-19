@@ -48,6 +48,16 @@ async function publish(deps: PiiExportDeps, path: string, csv: string): Promise<
   return { file_ref: `${EXPORT_BUCKET}/${path}`, url };
 }
 
+/** Serah-terima ke core; bila core menolak (mis. export_stale), berkas tidak boleh tertinggal sebagai export sah. */
+async function handoff(deps: PiiExportDeps, path: string, action: string, payload: Record<string, unknown>) {
+  try {
+    await deps.core().invoke(action, payload);
+  } catch (e) {
+    await deps.storage.remove(EXPORT_BUCKET, [path]).catch(() => {});
+    throw e;
+  }
+}
+
 // ---- payout_csv (alur 3, A3.3) --------------------------------------------------------------------------------------
 
 export async function exportPayouts(deps: PiiExportDeps, actor: Actor, batchId: string) {
@@ -107,13 +117,14 @@ export async function exportPayouts(deps: PiiExportDeps, actor: Actor, batchId: 
   }
 
   const csv = toCsv(["payout_id", "bank_code", "account_no", "account_name", "amount"], rows);
-  const { file_ref, url } = await publish(deps, `payouts/${batchId}.csv`, csv);
+  const path = `payouts/${batchId}.csv`;
+  const { file_ref, url } = await publish(deps, path, csv);
   await audit(deps, actor, "pii.export_payouts", `batch:${batchId}`, {
     rows: rows.length,
     held: held.length,
     file_ref,
   });
-  await core.invoke("attach_export", { batch_id: batchId, file_ref, held });
+  await handoff(deps, path, "attach_export", { batch_id: batchId, file_ref, held, exported: rows.map((r) => r[0]) });
   return { url, expires_in: SIGNED_URL_TTL_S, file_ref, rows: rows.length, held };
 }
 
@@ -295,11 +306,17 @@ export async function exportRecipients(deps: PiiExportDeps, actor: Actor, reward
     records.map((r) => [r.id, r.amount, ...keys.map((k) => r.fields[k] ?? "")]),
   );
   const stamp = (deps.now ?? (() => new Date()))().toISOString().replace(/[-:]/g, "").replace(/\.\d+Z$/, "Z");
-  const { file_ref, url } = await publish(deps, `recipients/${rewardTypeId}/${stamp}.csv`, csv);
+  const path = `recipients/${rewardTypeId}/${stamp}.csv`;
+  const { file_ref, url } = await publish(deps, path, csv);
   await audit(deps, actor, "pii.export_recipients", `reward_type:${rewardTypeId}`, {
     rows: records.length,
     skipped: skipped.length,
     file_ref,
+  });
+  await handoff(deps, path, "attach_fulfillment_export", {
+    reward_type_id: rewardTypeId,
+    file_ref,
+    exported: records.map((r) => r.id),
   });
   return { url, expires_in: SIGNED_URL_TTL_S, file_ref, rows: records.length, skipped };
 }
