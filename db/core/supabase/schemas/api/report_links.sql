@@ -54,7 +54,7 @@ begin
       'by_platform', coalesce((select jsonb_object_agg(x.platform, x.views)
                                from (select s.platform, sum(s.counted_views) as views from tracking.submissions s
                                      where s.campaign_id = c.id and s.status = any (counted) group by s.platform) x), '{}'::jsonb),
-      'budget', coalesce((select jsonb_agg(jsonb_build_object('reward_type', rt.code, 'unit', rt.unit_label,
+      'budget', coalesce((select jsonb_agg(jsonb_build_object('reward_type', rt.code, 'unit', rt.unit_label, 'decimals', rt.decimals,
                                                               'total', p.total, 'spent', p.allocated))
                           from finance.reward_pools p join market.reward_types rt on rt.id = p.reward_type_id
                           where p.campaign_id = c.id), '[]'::jsonb),

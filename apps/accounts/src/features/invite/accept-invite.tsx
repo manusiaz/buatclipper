@@ -6,7 +6,8 @@ import { Alert, Button } from '@clipper/ui';
 import { useErrorText } from '@/lib/use-error-text';
 import { acceptInvite } from './actions';
 
-const NEED_NEW_LINK = ['invite_expired', 'invite_used', 'not_found:invite'];
+// Token tidak bisa dipakai lagi: tombol Terima disembunyikan, user diarahkan minta link baru.
+const DEAD = ['invite_expired', 'invite_used', 'not_found:invite'];
 
 export function AcceptInvite({ token }: { token: string }) {
   const t = useTranslations('accounts.invite');
@@ -28,12 +29,14 @@ export function AcceptInvite({ token }: { token: string }) {
     <div className="flex flex-col gap-4">
       {error && (
         <Alert tone="danger" title={errText(error)}>
-          {NEED_NEW_LINK.includes(error) ? t('askNewLink') : null}
+          {DEAD.includes(error) && error !== 'invite_expired' ? t('askNewLink') : null}
         </Alert>
       )}
-      <Button size="lg" fullWidth iconLeft="group_add" loading={pending || leaving} onClick={accept}>
-        {t('accept')}
-      </Button>
+      {!(error && DEAD.includes(error)) && (
+        <Button size="lg" fullWidth iconLeft="group_add" loading={pending || leaving} onClick={accept}>
+          {t('accept')}
+        </Button>
+      )}
     </div>
   );
 }

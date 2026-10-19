@@ -81,6 +81,5 @@
   "invalid_nik": "NIK harus 16 digit yang valid.",
   "kyc_required": "Lengkapi KYC dulu.",
   "name_mismatch": "Nama pemilik rekening harus sama dengan nama di KTP.",
-  "account_taken": "Rekening ini sudah dipakai akun lain.",
-  "has_balance": "Masih ada saldo atau penarikan berjalan. Tarik atau tunggu dulu."
+  "account_taken": "Rekening ini sudah dipakai akun lain."
 }

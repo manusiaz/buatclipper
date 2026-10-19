@@ -6,6 +6,7 @@ import { refreshSession } from '@clipper/auth/actions';
 import { coreServer, getAuth } from '@clipper/auth/server';
 import { dbCode } from '@/lib/errors';
 import { identityDb } from '@/lib/identity';
+import { extOf, IMAGE_TYPES } from '@/lib/upload';
 import { DISPLAY_NAME_MAX, normalizeUsername, USERNAME_RE, usernameCandidates, type Role } from './rules';
 
 export type UsernameCheck = { status: 'ok' | 'taken' | 'invalid'; suggestions: string[] };
@@ -22,6 +23,16 @@ export async function checkUsername(raw: string): Promise<UsernameCheck> {
   return { status: 'taken', suggestions: candidates.filter((c) => !taken.has(c)).slice(0, 3) };
 }
 
+/** Signed upload URL foto profil: bucket core avatars (publik, ≤ 1 MB), folder milik user (policy avatars_own_write). */
+export async function avatarUploadUrl(type: string): Promise<{ ok: true; path: string; signedUrl: string } | { ok: false; error: string }> {
+  if (!IMAGE_TYPES.includes(type)) return { ok: false, error: 'file_type' };
+  const [{ claims }, core] = await Promise.all([getAuth('sso'), coreServer()]);
+  if (!claims) return { ok: false, error: 'auth:no_session' };
+  const { data, error } = await core.storage.from('avatars').createSignedUploadUrl(`${claims.sub}/${crypto.randomUUID()}.${extOf(type)}`);
+  if (error || !data) return { ok: false, error: 'upload_failed' };
+  return { ok: true, path: data.path, signedUrl: data.signedUrl };
+}
+
 export interface OnboardingInput {
   role: Role;
   username: string;
@@ -29,6 +40,8 @@ export interface OnboardingInput {
   tosVersion: string;
   privacyVersion: string;
   adult: boolean;
+  /** Path objek avatars yang sudah diunggah (avatarUploadUrl); kosong = avatar lama dipertahankan. */
+  avatarPath?: string;
   /** Tujuan setelah selesai (sudah dihitung halaman; divalidasi ulang safeNext). */
   dest: string;
 }
@@ -55,16 +68,9 @@ export async function completeOnboarding(input: OnboardingInput): Promise<Onboar
     p_username: username,
     p_display_name: displayName,
     p_referral_code: ref && /^[a-z0-9]{8}$/.test(ref) ? ref : undefined,
+    p_avatar_path: input.avatarPath,
   });
-  if (profileError) {
-    const inactive = profileError.code === '42501' && /aktif/.test(profileError.message);
-    return {
-      ok: false,
-      error: inactive
-        ? 'not_eligible:profile_inactive'
-        : dbCode(profileError, { '23505': 'username_taken', '23514': 'username_invalid' }),
-    };
-  }
+  if (profileError) return { ok: false, error: dbCode(profileError, { '23514': 'username_invalid' }) };
 
   const id = await identityDb();
   const consents =

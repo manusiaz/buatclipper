@@ -10,6 +10,8 @@ export const contentType = 'image/png';
 export const alt = 'Clipper';
 
 const TYPES = ['image/jpeg', 'image/png', 'image/webp'];
+// Ikon "send" Material Symbols (sama dengan LogoMark DS).
+const PLANE = 'M162-178q-15 6-28.5-2.5T120-205v-200l302-75-302-77v-198q0-16 13.5-24.5T162-782l652 274q18 8 18 28t-18 28L162-178Z';
 
 /** Cover diambil sendiri (bukan URL langsung ke satori): batas ukuran, tipe, dan waktu; gagal → tanpa cover. */
 async function coverData(path: string | null): Promise<string | null> {
@@ -59,12 +61,18 @@ export default async function Image({ params }: { params: Promise<{ slug: string
             <div
               style={{
                 display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
                 width: 52,
                 height: 52,
                 borderRadius: 16,
                 backgroundImage: 'linear-gradient(160deg, #4d7dff, #1d5bff 55%, #0f47e0)',
               }}
-            />
+            >
+              <svg width="30" height="30" viewBox="0 -960 960 960" style={{ transform: 'rotate(-32deg)' }}>
+                <path fill="#ffffff" d={PLANE} />
+              </svg>
+            </div>
             Clipper
           </div>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>

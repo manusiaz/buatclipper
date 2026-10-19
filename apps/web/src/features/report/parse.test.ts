@@ -9,7 +9,7 @@ const sample = {
   by_platform: { tiktok: 900000, youtube: '350000', myspace: 5 },
   budget: [
     { reward_type: 'IDR', unit: 'Rp', total: 10000000, spent: '2500000.5' },
-    { reward_type: 'DIAMOND', unit: 'Diamonds', total: 5000, spent: 1200 },
+    { reward_type: 'DIAMOND', unit: 'Diamonds', decimals: 0, total: 5000, spent: 1200 },
   ],
   top_clips: [
     { url: 'https://www.tiktok.com/@a/video/1234567890', platform: 'tiktok', views: 400000 },
@@ -30,8 +30,8 @@ describe('parseReport', () => {
         { platform: 'youtube', views: 350000 },
       ],
       budget: [
-        { code: 'IDR', unit: 'Rp', total: 10000000, spent: 2500000.5 },
-        { code: 'DIAMOND', unit: 'Diamonds', total: 5000, spent: 1200 },
+        { code: 'IDR', unit: 'Rp', decimals: 0, total: 10000000, spent: 2500000.5 },
+        { code: 'DIAMOND', unit: 'Diamonds', decimals: 0, total: 5000, spent: 1200 },
       ],
       topClips: [
         { url: 'https://www.tiktok.com/@a/video/1234567890', platform: 'tiktok', views: 400000 },

@@ -1,7 +1,10 @@
 -- test:rls.access-matrix (core) + invarian uang & state machine. Jalankan: supabase test db --workdir db/core
 begin;
 -- Fixture tes tidak bergantung seed.sql (supabase db reset memuatnya sebelum supabase test db); di-rollback di akhir.
-truncate ops.settings, market.categories, finance.fee_rules, market.reward_types cascade;
+-- Stack lokal bisa berisi data uji manual: semua tabel domain + antrean pgmq dikosongkan dulu.
+do $$ begin execute (select 'truncate ' || string_agg(format('%I.%I', schemaname, tablename), ', ') || ' cascade'
+  from pg_tables where schemaname in ('market', 'tracking', 'finance', 'trust', 'ops')
+     or (schemaname = 'pgmq' and tablename like 'q\_%')); end $$;
 select no_plan();
 
 -- ---------- data uji (sebagai postgres) ----------
@@ -41,8 +44,8 @@ insert into market.campaigns (id, org_id, slug, title, type, category_id, platfo
 select is((select count(*)::int from pg_class c where c.relnamespace = 'api'::regnamespace and c.relkind = 'v'
             and not coalesce(c.reloptions @> array['security_invoker=true'], false)), 0, 'semua view api security_invoker');
 select is((select array_agg(p.proname::text order by p.proname) from pg_proc p where p.pronamespace = 'api'::regnamespace
-            and has_function_privilege('anon', p.oid, 'execute')), array['list_campaigns', 'report_by_token'],
-          'anon hanya bisa EXECUTE list_campaigns (landing) & report_by_token');
+            and has_function_privilege('anon', p.oid, 'execute')), array['invite_preview', 'list_campaigns', 'report_by_token'],
+          'anon hanya bisa EXECUTE invite_preview, list_campaigns (landing) & report_by_token');
 select is((select count(*)::int from pg_class c where c.relnamespace in ('market'::regnamespace, 'tracking'::regnamespace,
             'finance'::regnamespace, 'trust'::regnamespace, 'ops'::regnamespace) and c.relkind = 'r' and not c.relrowsecurity),
           0, 'RLS aktif di semua tabel core');
@@ -185,8 +188,15 @@ select is((select count(*)::int from api.invoices), 0, 'clipper tidak melihat in
 select throws_ok($$ select token_ref from tracking.social_accounts $$, '42501', null, 'token_ref tidak bisa dibaca browser');
 select throws_ok($$ select note from trust.review_decisions $$, '42501', null, 'catatan internal moderator tidak bisa dibaca browser');
 select is((select count(*)::int from api.review_decisions), 1, 'clipper melihat banding miliknya');
-select throws_ok($$ select api.ensure_profile('budi', 'Andi') $$, '23505', null, 'username milik orang lain ditolak');
+select throws_ok($$ select api.ensure_profile('budi', 'Andi') $$, '23505', 'username_taken', 'username milik orang lain ditolak');
 select is((select created from api.ensure_profile('andi_baru', 'Andi B')), false, 'ensure_profile memperbarui profil yang sudah ada');
+select throws_ok($$ select api.ensure_profile('andi_baru', 'Andi B', null, '11111111-0000-0000-0000-00000000000b/a.webp') $$,
+                 '22023', 'invalid:avatar_path', 'avatar di folder user lain ditolak');
+select lives_ok($$ select api.ensure_profile('andi_baru', 'Andi B', null, '11111111-0000-0000-0000-00000000000a/a.webp') $$,
+                'avatar milik sendiri diterima');
+select lives_ok($$ select api.ensure_profile('andi_baru', 'Andi B') $$, 'update tanpa p_avatar_path');
+select is((select avatar_path from api.profiles where id = '11111111-0000-0000-0000-00000000000a'),
+          '11111111-0000-0000-0000-00000000000a/a.webp', 'avatar tersimpan & dipertahankan saat update tanpa avatar');
 set local request.jwt.claims = '{"sub":"11111111-0000-0000-0000-00000000000b","role":"authenticated","aal":"aal1","iss":"https://auth.contoh.id/auth/v1"}';
 select is((select count(*)::int from api.claims), 0, 'clipper B tidak melihat claim A');
 select is((select count(*)::int from api.wallet_balances), 0, 'clipper B tidak melihat saldo A');
@@ -264,13 +274,9 @@ select market.run_claim_expiry();
 select is((select status::text from market.claims where id = '88888888-0000-0000-0000-000000000003'), 'expired',
           'claim lewat 48 jam jadi expired');
 select is((select count(*)::int from cron.job), 14, '14 job pg_cron core terdaftar');
--- Job yang memanggil fungsi kontrak (PRD Lampiran A.3) gagal tiap jalan sampai fungsinya ditulis. TODO pgTAP: tidak
--- menggagalkan suite, tapi tercetak terus; lulus sendiri ("TODO passed") begitu semua fungsinya ada.
-select todo_start('fungsi kontrak Lampiran A.3 belum ditulis');
 select is(array(select distinct m[1] from cron.job, regexp_matches(command, '([a-z_]+\.[a-z_]+)\(', 'g') m
                 where to_regproc(m[1]) is null order by 1),
           '{}'::text[], 'semua fungsi yang dipanggil job pg_cron sudah ada');
-select todo_end();
 
 -- Regresi 2026-10-19: enum internal di parameter RPC → 42501 lewat REST walau pgTAP (literal) lulus.
 select is((select array_agg(p.proname::text order by p.proname) from pg_proc p join pg_namespace n on n.oid = p.pronamespace

@@ -56,6 +56,8 @@ export function AccountNav({ variant }: { variant: 'sidebar' | 'tabs' }) {
 export function BackToApp() {
   const t = useTranslations('accounts.nav');
   const next = useSearchParams().get('next');
+  // Ringkasan sudah punya tombol utama "Kembali ke app".
+  if (usePathname() === '/') return null;
   return (
     <Button href={safeNext(next)} variant="secondary" size="sm" iconLeft="arrow_back">
       <span className="sm:hidden">{t('backShort')}</span>

@@ -12,4 +12,9 @@
   .bg-page {
     background: none !important;
   }
+  [role="progressbar"],
+  [role="progressbar"] * {
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
 }

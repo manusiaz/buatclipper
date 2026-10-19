@@ -63,7 +63,7 @@ export function AddMethodForm({ kycName, next }: { kycName: string; next?: strin
       />
       <Field label={kind === 'bank' ? t('bank') : t('ewallet')} required>
         <Select
-          value={bankCode || undefined}
+          value={bankCode}
           onValueChange={setBankCode}
           placeholder={t('choose')}
           options={(kind === 'bank' ? BANKS : EWALLETS).map((b) => ({ value: b.code, label: b.name }))}

@@ -20,7 +20,7 @@ export default createNextIntlPlugin('./src/i18n/request.ts')(
         // Stack Supabase lokal di 127.0.0.1; produksi selalu host publik.
         dangerouslyAllowLocalIP: local,
       },
-      outputFileTracingIncludes: { '/legal/[doc]': ['./content/legal/**'] },
+      outputFileTracingIncludes: { '/legal/*': ['./content/legal/**'] },
     },
   }),
 );

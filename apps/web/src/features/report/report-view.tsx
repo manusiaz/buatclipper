@@ -41,7 +41,7 @@ export async function ReportView({ report: r }: { report: Report }) {
   const [t, ts, locale] = await Promise.all([getTranslations('web.report'), getTranslations('web.status'), getLocale() as Promise<UiLocale>]);
   const n = (v: number) => formatNumber(v, locale);
   const amount = (v: number, b: Report['budget'][number]) =>
-    b.code === 'IDR' ? formatIDR(v, { locale }) : `${formatNumber(v, locale, { maximumFractionDigits: 2 })} ${b.unit || b.code}`;
+    b.code === 'IDR' ? formatIDR(v, { locale }) : `${formatNumber(v, locale, { maximumFractionDigits: b.decimals })} ${b.unit || b.code}`;
   const totalViews = r.byPlatform.reduce((a, b) => a + b.views, 0);
   const idrSpent = r.budget.find((b) => b.code === 'IDR')?.spent ?? 0;
   const c = r.campaign;
@@ -117,7 +117,7 @@ export async function ReportView({ report: r }: { report: Report }) {
                     <li key={b.code} className="flex flex-col gap-1.5">
                       <ProgressBar
                         value={b.total > 0 ? Math.min(100, (b.spent / b.total) * 100) : 0}
-                        label={b.unit || b.code}
+                        label={b.code === 'IDR' ? 'Rupiah' : b.unit || b.code}
                         showLabel
                         tone="auto"
                       />

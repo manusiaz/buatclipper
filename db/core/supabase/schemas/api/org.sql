@@ -200,6 +200,18 @@ begin
   return inv.org_id;
 end $$;
 
+-- Halaman undangan accounts (sebelum & sesudah login): token = kapabilitas, jadi pemegang link boleh melihat org + peran.
+-- Token tidak dikenal = 0 baris.
+create function api.invite_preview(p_token text)
+returns table (org_name text, is_agency boolean, role text, expired boolean, used boolean)
+language sql stable security definer set search_path = '' as $$
+  select o.name, o.is_agency, i.role::text, i.expires_at <= now(), i.accepted_at is not null
+    from market.org_invites i join market.organizations o on o.id = i.org_id
+   where i.token_hash = sha256(convert_to(coalesce(p_token, ''), 'UTF8'));
+$$;
+revoke execute on function api.invite_preview(text) from public;
+grant execute on function api.invite_preview(text) to anon, authenticated;
+
 -- F-A07 admin (admin_ops aal2): verify | reject {reason, message, note} | suspend {reason} | set_fee {mgmt_fee_pct, admin_fee_pct,
 -- clipper_fee_pct, instant_withdraw_fee} atau null untuk kembali ke global | add_member {user_id, role, username?, display_name?}
 -- (paket managed: user diundang dulu lewat Edge Function identity admin-auth, lalu ditulis di sini). Semua tercatat audit log.

@@ -7,6 +7,9 @@ describe('plainExcerpt', () => {
       'Judul Potong momen terbaik dari film. satu dua x',
     );
   });
+  it('drops script bodies and links with parentheses', () => {
+    expect(plainExcerpt('a <script>alert(1)</script> [jahat](javascript:alert(1)) b')).toBe('a jahat b');
+  });
   it('cuts on a word boundary with an ellipsis', () => {
     const out = plainExcerpt('kata '.repeat(60), 40);
     expect(out.length).toBeLessThanOrEqual(40);

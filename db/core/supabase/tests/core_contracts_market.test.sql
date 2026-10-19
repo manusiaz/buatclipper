@@ -3,7 +3,10 @@
 -- Jalankan: supabase test db --workdir db/core
 begin;
 -- Fixture tes tidak bergantung seed.sql (supabase db reset memuatnya sebelum supabase test db); di-rollback di akhir.
-truncate ops.settings, market.categories, finance.fee_rules, market.reward_types cascade;
+-- Stack lokal bisa berisi data uji manual: semua tabel domain + antrean pgmq dikosongkan dulu.
+do $$ begin execute (select 'truncate ' || string_agg(format('%I.%I', schemaname, tablename), ', ') || ' cascade'
+  from pg_tables where schemaname in ('market', 'tracking', 'finance', 'trust', 'ops')
+     or (schemaname = 'pgmq' and tablename like 'q\_%')); end $$;
 select no_plan();
 
 -- ---------- helper sesi (JWT identity) ----------
@@ -188,7 +191,7 @@ select is((select array_agg(p.proname::text order by p.proname) from pg_proc p
             where p.pronamespace = 'api'::regnamespace
               and p.proname in ('list_campaigns', 'claim_campaign', 'appeal_submission', 'save_campaign', 'control_campaign',
                                 'duplicate_campaign', 'invite_to_campaign', 'create_org', 'link_agency', 'create_org_invite',
-                                'accept_org_invite', 'manage_org', 'save_reward_type', 'upload_reward_codes', 'buy_pin',
+                                'accept_org_invite', 'invite_preview', 'manage_org', 'save_reward_type', 'upload_reward_codes', 'buy_pin',
                                 'record_review', 'update_config', 'send_broadcast', 'campaign_detail', 'campaign_stats', 'my_stats')
               and not (p.prosecdef and p.proconfig @> array['search_path=""'])), null,
           'semua fungsi kontrak marketplace: security definer + search_path kosong');
@@ -269,11 +272,15 @@ select is((select count(*)::int from market.org_invites where token_hash = sha25
 set local role authenticated;
 select pg_temp.jwt('11111111-0000-0000-0000-0000000000f2');
 select throws_ok($$ select api.accept_org_invite('salah') $$, 'P0002', 'not_found:invite', 'token tidak dikenal ditolak');
+select is((select count(*)::int from api.invite_preview('salah')), 0, 'preview token tidak dikenal kosong');
+select is((select row(role, expired, used)::text from api.invite_preview((select tok from t_ids where k = 'invite'))),
+          '(brand_viewer,f,f)', 'preview undangan: role, belum kedaluwarsa, belum dipakai');
 select is(api.accept_org_invite((select tok from t_ids where k = 'invite')), '44444444-0000-0000-0000-000000000001'::uuid,
           'penerima tanpa profil menerima undangan');
 select pg_temp.jwt('11111111-0000-0000-0000-0000000000f3');
 select throws_ok($$ select api.accept_org_invite((select tok from t_ids where k = 'invite')) $$, 'P0001', 'invite_used',
                  'token yang sudah dipakai ditolak');
+select is((select used from api.invite_preview((select tok from t_ids where k = 'invite'))), true, 'preview: sudah dipakai');
 reset role;
 select is((select m.role::text from market.org_members m join market.profiles p on p.id = m.user_id
             where m.user_id = '11111111-0000-0000-0000-0000000000f2' and p.username = 'm_111111110000'), 'brand_viewer',
@@ -284,6 +291,9 @@ set local role authenticated;
 select pg_temp.jwt('11111111-0000-0000-0000-0000000000f3');
 select throws_ok($$ select api.accept_org_invite((select tok from t_ids where k = 'invite')) $$, 'P0001', 'invite_expired',
                  'token kedaluwarsa ditolak');
+set local role anon;
+select is((select expired from api.invite_preview((select tok from t_ids where k = 'invite'))), true, 'anon: preview kedaluwarsa');
+set local role authenticated;
 reset role;
 
 -- Agency: request → approve (brand_owner klien) → akses → revoke

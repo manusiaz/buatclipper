@@ -40,8 +40,9 @@ end $$;
 create trigger ledger_entries_bucket before insert on finance.ledger_entries
   for each row execute function finance.check_entry_bucket();
 
+-- Deferred: jalan saat COMMIT di luar konteks RPC security definer (role = authenticated), jadi wajib security definer.
 create function finance.check_txn_balanced() returns trigger
-language plpgsql set search_path = '' as $$
+language plpgsql security definer set search_path = '' as $$
 begin
   if exists (select 1 from finance.ledger_entries e where e.txn_id = new.txn_id
              group by e.reward_type_id having sum(e.amount) <> 0) then

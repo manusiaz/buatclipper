@@ -12,7 +12,7 @@ export interface Report {
   clips: number;
   clippers: number;
   byPlatform: Array<{ platform: Platform; views: number }>;
-  budget: Array<{ code: string; unit: string; total: number; spent: number }>;
+  budget: Array<{ code: string; unit: string; decimals: number; total: number; spent: number }>;
   topClips: Array<{ url: string; platform: Platform | null; views: number }>;
 }
 
@@ -40,6 +40,7 @@ export function parseReport(json: unknown): Report | null {
     budget: (Array.isArray(r.budget) ? r.budget : []).map(obj).map((b) => ({
       code: str(b.reward_type) ?? '',
       unit: str(b.unit) ?? '',
+      decimals: num(b.decimals) ?? 0,
       total: num(b.total) ?? 0,
       spent: num(b.spent) ?? 0,
     })),

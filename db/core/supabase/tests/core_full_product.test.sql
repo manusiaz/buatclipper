@@ -2,7 +2,10 @@
 -- top-up/pinned/managed, instant withdraw, riwayat Trust Score, brief terstruktur & berkas internal brand. Jalankan: supabase test db --workdir db/core
 begin;
 -- Fixture tes tidak bergantung seed.sql (supabase db reset memuatnya sebelum supabase test db); di-rollback di akhir.
-truncate ops.settings, market.categories, finance.fee_rules, market.reward_types cascade;
+-- Stack lokal bisa berisi data uji manual: semua tabel domain + antrean pgmq dikosongkan dulu.
+do $$ begin execute (select 'truncate ' || string_agg(format('%I.%I', schemaname, tablename), ', ') || ' cascade'
+  from pg_tables where schemaname in ('market', 'tracking', 'finance', 'trust', 'ops')
+     or (schemaname = 'pgmq' and tablename like 'q\_%')); end $$;
 select no_plan();
 
 insert into ops.settings (key, value) values ('auth.identity_issuer', '"https://auth.contoh.id/auth/v1"');

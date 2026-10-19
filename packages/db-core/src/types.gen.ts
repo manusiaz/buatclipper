@@ -644,8 +644,13 @@ export type Database = {
 { Args: { "p_as_template"?: boolean,"p_campaign": string }; Returns: string
                            },
 "ensure_profile":
-{ Args: { "p_display_name": string,"p_referral_code"?: string,"p_username": string }; Returns: {
+{ Args: { "p_avatar_path"?: string,"p_display_name": string,"p_referral_code"?: string,"p_username": string }; Returns: {
               "created": boolean,"display_name": string,"id": string,"username": string
+            }[]
+                           },
+"invite_preview":
+{ Args: { "p_token": string }; Returns: {
+              "expired": boolean,"is_agency": boolean,"org_name": string,"role": string,"used": boolean
             }[]
                            },
 "invite_to_campaign":

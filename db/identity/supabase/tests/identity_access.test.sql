@@ -1,7 +1,12 @@
 -- test:rls.access-matrix (identity) + test:member-data.integrity. Jalankan: supabase test db --workdir db/identity
 begin;
 -- Fixture tes tidak bergantung seed.sql (supabase db reset memuatnya sebelum supabase test db); di-rollback di akhir.
-truncate member.legal_versions cascade;
+-- Stack lokal bisa berisi data uji manual: tabel member + objek bucket identity dikosongkan dulu (di-rollback).
+do $$ begin execute (select 'truncate ' || string_agg(format('%I.%I', schemaname, tablename), ', ') || ' cascade'
+  from pg_tables where schemaname = 'member'); end $$;
+set local storage.allow_delete_query = 'true';
+delete from storage.objects where bucket_id in ('kyc-docs', 'pii-exports', 'payout-proofs');
+reset storage.allow_delete_query;
 select no_plan();
 
 insert into auth.users (id, email) values

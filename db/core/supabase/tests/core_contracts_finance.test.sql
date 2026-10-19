@@ -2,7 +2,10 @@
 -- RPC worker/bridge (service_role), alert & overview admin. Jalankan: supabase test db --workdir db/core
 begin;
 -- Fixture tes tidak bergantung seed.sql; di-rollback di akhir.
-truncate ops.settings, market.categories, finance.fee_rules, market.reward_types, ops.alerts cascade;
+-- Stack lokal bisa berisi data uji manual: semua tabel domain + antrean pgmq dikosongkan dulu.
+do $$ begin execute (select 'truncate ' || string_agg(format('%I.%I', schemaname, tablename), ', ') || ' cascade'
+  from pg_tables where schemaname in ('market', 'tracking', 'finance', 'trust', 'ops')
+     or (schemaname = 'pgmq' and tablename like 'q\_%')); end $$;
 select no_plan();
 
 insert into ops.settings (key, value) values
@@ -347,6 +350,9 @@ select is(pg_temp.bal('11111111-0000-0000-0000-00000000000a', 'withdrawn'), 2000
 select is((api.request_payout('aaaaaaaa-0000-0000-0000-0000000000b1', 200000, 'batch', 'idem-batch-1')).id, (select id from t_pay where k = 'b1'),
           'idempotency key sama → payout yang sama');
 select is(pg_temp.bal('11111111-0000-0000-0000-00000000000a', 'available'), 802502::numeric, 'replay tidak memotong saldo dua kali');
+-- Regresi 2026-10-19: trigger deferred jalan saat COMMIT sebagai authenticated (rollback pgTAP menyembunyikannya).
+select lives_ok($$ set constraints all immediate $$, 'trigger saldo seimbang (deferred) lolos sebagai authenticated');
+set constraints all deferred;
 reset role;
 select ok((select qualified_at is not null and bonus_until > now() + interval '89 days' from market.referrals
            where referred_id = '11111111-0000-0000-0000-00000000000a'), 'withdraw pertama dengan KYC → referral qualified');

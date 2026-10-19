@@ -1,11 +1,14 @@
 'use client';
 
-import { useEffect, useRef, useState, useTransition, type ReactNode } from 'react';
+import { useEffect, useMemo, useRef, useState, useTransition, type ReactNode } from 'react';
 import { useTranslations } from 'next-intl';
-import { Alert, Button, Checkbox, Field, Fieldset, Input } from '@clipper/ui';
+import { Alert, Avatar, Button, Checkbox, Field, Fieldset, Input } from '@clipper/ui';
+import { fitImage, putSigned } from '@/lib/upload';
 import { useErrorText } from '@/lib/use-error-text';
-import { checkUsername, completeOnboarding, type UsernameCheck } from './actions';
+import { avatarUploadUrl, checkUsername, completeOnboarding, type UsernameCheck } from './actions';
 import { DISPLAY_NAME_MAX, normalizeUsername, USERNAME_RE, type LegalDoc, type Role } from './rules';
+
+const AVATAR_MAX = 1024 * 1024; // = file_size_limit bucket avatars
 
 export interface OnboardingFormProps {
   role: Role;
@@ -29,6 +32,12 @@ export function OnboardingForm({ role, dest, defaultUsername, defaultDisplayName
   const [leaving, setLeaving] = useState(false);
   const [pending, start] = useTransition();
   const seq = useRef(0);
+  const [avatar, setAvatar] = useState<File | null>(null);
+  const preview = useMemo(() => (avatar ? URL.createObjectURL(avatar) : null), [avatar]);
+  useEffect(() => () => void (preview && URL.revokeObjectURL(preview)), [preview]);
+  const fileRef = useRef<HTMLInputElement>(null);
+  // Onboarding gagal setelah unggah (mis. username diambil orang) → kirim ulang tanpa unggah ulang.
+  const uploaded = useRef<{ file: File; path: string } | null>(null);
 
   useEffect(() => {
     const u = normalizeUsername(username);
@@ -50,6 +59,19 @@ export function OnboardingForm({ role, dest, defaultUsername, defaultDisplayName
   const submit = () =>
     start(async () => {
       setError(null);
+      let avatarPath = avatar && uploaded.current?.file === avatar ? uploaded.current.path : undefined;
+      if (avatar && !avatarPath) {
+        try {
+          const blob = await fitImage(avatar, AVATAR_MAX, 512);
+          const up = await avatarUploadUrl(blob.type);
+          if (!up.ok) return setError(up.error);
+          await putSigned(up.signedUrl, blob, process.env.NEXT_PUBLIC_CORE_PUBLISHABLE_KEY!);
+          uploaded.current = { file: avatar, path: up.path };
+          avatarPath = up.path;
+        } catch (e) {
+          return setError(e instanceof Error && /^(file_type|file_too_large)$/.test(e.message) ? e.message : 'upload_failed');
+        }
+      }
       const r = await completeOnboarding({
         role,
         username,
@@ -57,6 +79,7 @@ export function OnboardingForm({ role, dest, defaultUsername, defaultDisplayName
         tosVersion: tos.version,
         privacyVersion: privacy.version,
         adult,
+        avatarPath,
         dest,
       });
       if (!r.ok) {
@@ -85,6 +108,35 @@ export function OnboardingForm({ role, dest, defaultUsername, defaultDisplayName
       }}
     >
       {error && <Alert tone="danger">{errText(error)}</Alert>}
+
+      <div className="flex items-center gap-4">
+        <Avatar name={displayName.trim() || username || '?'} src={preview} size={64} />
+        <div className="flex min-w-0 flex-col gap-1.5">
+          <span className="text-label text-ink">
+            {t('avatar')} <span className="font-medium text-muted">{t('avatarOptional')}</span>
+          </span>
+          <div className="flex flex-wrap gap-2">
+            <Button type="button" variant="secondary" size="sm" iconLeft="photo_camera" onClick={() => fileRef.current?.click()}>
+              {avatar ? t('avatarChange') : t('avatarPick')}
+            </Button>
+            {avatar && (
+              <Button type="button" variant="ghost" size="sm" onClick={() => setAvatar(null)}>
+                {t('avatarRemove')}
+              </Button>
+            )}
+          </div>
+        </div>
+        <input
+          ref={fileRef}
+          type="file"
+          accept="image/*"
+          hidden
+          onChange={(e) => {
+            setAvatar(e.target.files?.[0] ?? null);
+            e.target.value = '';
+          }}
+        />
+      </div>
 
       <div className="flex flex-col gap-2">
         <Field

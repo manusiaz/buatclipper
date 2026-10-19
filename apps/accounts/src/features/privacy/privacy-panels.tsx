@@ -8,6 +8,7 @@ import { deleteAccount, setConsent } from './actions';
 import type { ConsentKind, ConsentState } from './consents';
 
 const GRANTABLE: ConsentKind[] = ['share_with_brand', 'kyc'];
+const LEGAL: ConsentKind[] = ['tos_clipper', 'tos_brand', 'privacy'];
 
 /** Consent aktif + cabut; ToS/privasi/umur yang dicabut diberikan lagi lewat onboarding (reconsentHref). */
 export function ConsentList({ items, reconsentHref }: { items: ConsentState[]; reconsentHref: Record<'clipper' | 'brand', string> }) {
@@ -38,7 +39,9 @@ export function ConsentList({ items, reconsentHref }: { items: ConsentState[]; r
               </div>
               <p className="mt-0.5 text-caption text-muted">
                 {c.active && c.grantedAt
-                  ? t('since', { date: formatDate(c.grantedAt), version: c.version ?? '—' })
+                  ? LEGAL.includes(c.kind)
+                    ? t('since', { date: formatDate(c.grantedAt), version: c.version ?? '—' })
+                    : t('sinceDate', { date: formatDate(c.grantedAt) })
                   : c.revokedAt
                     ? t('revokedOn', { date: formatDate(c.revokedAt) })
                     : t(`hints.${c.kind}`)}
