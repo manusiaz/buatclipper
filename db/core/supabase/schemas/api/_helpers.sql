@@ -296,7 +296,9 @@ begin
       if market.jnum(t -> 'from') is null or coalesce(market.jnum(t -> 'rate'), 0) <= 0
          or market.jnum(t -> 'from') <> (case when i = 0 then 0 else prev end)
          or (i < n - 1 and coalesce(market.jnum(t -> 'to'), 0) <= market.jnum(t -> 'from'))
-         or (i = n - 1 and jsonb_typeof(t -> 'to') = 'number' and market.jnum(t -> 'to') <= market.jnum(t -> 'from')) then
+         or (i = n - 1 and jsonb_typeof(t -> 'to') = 'number' and market.jnum(t -> 'to') <= market.jnum(t -> 'from'))
+         -- `to` selain angka/null (mis. "1e4") lolos jnum sebagai null tapi dibaca accrual sebagai batas → tolak
+         or (t ? 'to' and jsonb_typeof(t -> 'to') <> 'null' and market.jnum(t -> 'to') is null) then
         perform market.fail('invalid:rule_params', 'tier harus kontigu mulai 0 (from = to tier sebelumnya), rate > 0, hanya tier terakhir terbuka');
       end if;
       prev := market.jnum(t -> 'to');

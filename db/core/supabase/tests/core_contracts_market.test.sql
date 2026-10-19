@@ -892,10 +892,18 @@ select is((select array[s.status::text, d.decision, coalesce(d.actor_id::text, '
           array['tracking', 'auto_approve', 'null', 'auto'], 'auto_approve tanpa pelaku, catatan auto');
 select is((select status::text from tracking.submissions where id = 'aaaaaaaa-0000-0000-0000-000000000077'), 'in_review',
           'submisi review manual tidak di-auto-approve');
+insert into market.referrals (referred_id, referrer_id, code) values
+  ('11111111-0000-0000-0000-00000000000b', '11111111-0000-0000-0000-00000000000a', 'ANDI');
 set local role authenticated;
 select pg_temp.jwt('33333333-0000-0000-0000-0000000000ad', '{admin_moderator}', 'aal2');
 select lives_ok($$ select api.record_review('kyc', '11111111-0000-0000-0000-00000000000b', 'approve') $$,
                 'keputusan KYC dicatat core (tanpa PII)');
+reset role;
+select ok((select qualified_at is not null and bonus_until > now() + interval '89 days' from market.referrals
+            where referred_id = '11111111-0000-0000-0000-00000000000b'),
+          'regresi R8: referral berlaku sejak KYC disetujui (earning sebelum withdraw pertama ikut bonus)');
+set local role authenticated;
+select pg_temp.jwt('33333333-0000-0000-0000-0000000000ad', '{admin_moderator}', 'aal2');
 select throws_ok($$ select api.record_review('org', (select id from t_ids where k = 'org_new'), 'approve') $$, '42501', 'auth:forbidden',
                  'verifikasi org = admin_ops');
 select pg_temp.jwt('33333333-0000-0000-0000-0000000000ad', '{admin_ops}', 'aal2');
@@ -1063,6 +1071,8 @@ reset role;
 -- Tier tiered_cpm wajib kontigu: tumpang tindih membuat views yang sama dibayar dua kali (finance.rule_amount).
 select lives_ok($$ select market.check_rule_params('tiered_cpm', '{"tiers":[{"from":0,"to":50000,"rate":2000},{"from":50000,"rate":1500}]}') $$,
                 'tier kontigu, tier terakhir terbuka: diterima');
+select throws_ok($$ select market.check_rule_params('tiered_cpm', '{"tiers":[{"from":0,"to":"1e4","rate":2000}]}') $$,
+                 'P0001', 'invalid:rule_params', 'regresi R8: batas tier bukan angka (dibaca accrual sebagai plafon) ditolak');
 select throws_ok($$ select market.check_rule_params('tiered_cpm', '{"tiers":[{"from":0,"to":60000,"rate":2000},{"from":50000,"rate":1500}]}') $$,
                  'P0001', 'invalid:rule_params', 'tier tumpang tindih ditolak');
 select throws_ok($$ select market.check_rule_params('tiered_cpm', '{"tiers":[{"from":0,"rate":2000},{"from":50000,"rate":1500}]}') $$,

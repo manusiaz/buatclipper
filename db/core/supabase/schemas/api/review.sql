@@ -115,6 +115,12 @@ begin
     end if;
     insert into trust.review_decisions (target_type, target_id, actor_id, decision, reason_code, message, note)
     values ('kyc', p_target_id, uid, p_decision, p_reason, p_message, p_note);
+    -- Referral (F-C16) berlaku sejak KYC disetujui, bukan sejak withdraw pertama (earning di antaranya ikut dihitung).
+    if p_decision = 'approve' then
+      update market.referrals set qualified_at = now(),
+             bonus_until = now() + make_interval(days => (ops.cfg('finance.referral_bonus_days', '90'))::int)
+       where referred_id = p_target_id and qualified_at is null;
+    end if;
     perform ops.enqueue_notification(p_target_id, case p_decision when 'approve' then 'kyc.approved' else 'kyc.rejected' end,
                                      jsonb_build_object('decision', p_decision, 'reason', p_reason, 'message', p_message));
     insert into ops.audit_logs (actor_id, action, target, before, after)

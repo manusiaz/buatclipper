@@ -171,7 +171,7 @@ Wajib tetap benar setiap perubahan (dicek otomatis saat graph ini dibuat; cek ul
 | `api:rpc core.my_referral_code` | api | db/core/supabase/schemas/market/referrals.sql | Kode referral 8 karakter milik sendiri, dibuat saat pertama diminta (F-C16) |  |
 | `api:rpc core.org_credit` | api | db/core/supabase/schemas/finance/invoice_confirm.sql | Kredit org (rollover): saldo, tersedia, riwayat, sisa per campaign dari ledger — brand_owner/brand_finance (F-B04) |  |
 | `api:rpc core.pay_invoice_with_credit` | api | db/core/supabase/schemas/finance/invoice_confirm.sql | Bayar invoice penuh dari kredit org (aal2); jurnal sama dengan transfer lewat finance.settle_invoice |  |
-| `api:rpc core.record_review` | api | db/core/supabase/schemas/api/review.sql | Keputusan review campaign/submisi (F-A02, F-A05, F-B07) |  |
+| `api:rpc core.record_review` | api | db/core/supabase/schemas/api/review.sql | Keputusan review campaign/submisi/KYC (F-A02, F-A05, F-B07); KYC approve memulai bonus referral |  |
 | `api:rpc core.report_by_token` | api | db/core/supabase/schemas/api/report_links.sql | Angka agregat campaign untuk {domain}/r/[token] (anon, tanpa data clipper selain URL posting) |  |
 | `api:rpc core.request_fulfillment` | api | db/core/supabase/schemas/finance/payout_flow.sql | Klaim reward non-tunai → antre fulfillment (F-C09) |  |
 | `api:rpc core.request_payout` | api | db/core/supabase/schemas/finance/payout_flow.sql | Tarik saldo tersedia → payout requested (F-C09) |  |
@@ -956,6 +956,7 @@ Arah: `A --tipe--> B` = A bergantung pada B. `?` = belum terverifikasi.
 | `api:rpc core.record_review` | guarded-by | `policy:core.admin-aal2` | db/core/supabase/schemas/api/review.sql:49 |
 | `api:rpc core.record_review` | guarded-by | `policy:core.org-role` | db/core/supabase/schemas/api/review.sql:92 |
 | `api:rpc core.record_review` | writes | `table:market.campaigns` | db/core/supabase/schemas/api/review.sql:63 |
+| `api:rpc core.record_review` | writes | `table:market.referrals` | db/core/supabase/schemas/api/review.sql:120 (KYC approve → referral berlaku) |
 | `api:rpc core.record_review` | writes | `table:ops.audit_logs` | db/core/supabase/schemas/api/review.sql:77 |
 | `api:rpc core.record_review` | writes | `table:tracking.submissions` | db/core/supabase/schemas/trust/decisions.sql:41 (trust.apply_submission_decision) |
 | `api:rpc core.record_review` | writes | `table:trust.review_decisions` | db/core/supabase/schemas/api/review.sql:72 |
@@ -2141,6 +2142,9 @@ Masalah sistem yang ditemukan saat menyusun PRD v0.2 dan saat dicek ulang (v0.2.
 | 2026-10-19 | `api:fn identity/pii-export` | Review Claudex R6: recipients_resign bisa melepas CSV yang tidak pernah diterima core; replay serah-terima ditolak bila klaim sudah delivered | diperbaiki: re-sign wajib bridge fulfillment_export_accepted; replay mengenali berkas dari export_ref apa pun statusnya |
 | 2026-10-19 | `api:rpc core.control_campaign` | Review Claudex R7: raise_rate tiered_cpm hanya membandingkan rate & from → tier terakhir terbuka bisa diberi plafon `to` → views di atasnya tidak dibayar di campaign live | diperbaiki: batas `to` tiap tier wajib sama |
 | 2026-10-19 | `fn:accrue_earnings` | Review Claudex R7: migrasi lineage_id tidak mengisi revisi raise_rate yang sudah ada → flat dibayar ulang di DB yang sudah berjalan | diperbaiki: migrasi backfill_rate_rule_lineage menyambung rule yang mulai tepat saat versi sebelumnya ditutup (pool/kind/platform sama); rule independen tidak tersambung (diuji di transaksi rollback) |
+| 2026-10-19 | `api:rpc core.control_campaign` | Review Claudex R8: batas tier berupa string non-angka ("1e4") lolos market.check_rule_params (jnum = null) tapi dibaca finance.rule_amount sebagai plafon | diperbaiki: `to` selain angka/null ditolak |
+| 2026-10-19 | `fn:accrue_earnings` | Review Claudex R8: backfill lineage melewati versi yang sudah ber-lineage_id (raise pasca-R6 di atas rantai pra-R6) → root beda → flat dibayar ulang | diperbaiki: backfill menelusuri seluruh rantai dari rule pertama dan menyeragamkan semua versi |
+| 2026-10-19 | `table:market.referrals` | Review Claudex R8: referral baru berlaku saat withdraw pertama (core baru melihat claim kyc di request_payout) → earning teman antara KYC disetujui dan withdraw pertama tidak dihitung | diperbaiki: record_review('kyc','approve') di core mengisi qualified_at/bonus_until; request_payout tetap cadangan |
 ## Keputusan
 
 Keputusan yang sudah diambil — jangan dibahas ulang tanpa alasan baru.

@@ -85,7 +85,7 @@ begin
     finance.e(wallet, p_amount - fee, 'payout', res.id::text, 'withdrawn'),
     finance.e(finance.account('platform_revenue', null, idr), fee, 'fee', res.id::text)));
 
-  -- Referral (F-C16) mulai berlaku saat core pertama kali melihat KYC approved user ini.
+  -- Referral (F-C16): biasanya sudah berlaku sejak record_review KYC; cadangan bila keputusan itu tidak tercatat di core.
   update market.referrals set qualified_at = now(), bonus_until = now() + make_interval(days => bonus_days)
    where referred_id = pr.id and qualified_at is null;
 
