@@ -387,6 +387,9 @@ declare
   avail numeric;
   entries jsonb;
   released jsonb;
+  idr uuid := finance.idr();
+  fee_pct numeric;
+  fee numeric;
 begin
   for s in select t.id, t.user_id, t.campaign_id from tracking.submissions t
             where t.status = 'locked' and t.locked_at <= now() - make_interval(days => hold)
@@ -399,6 +402,10 @@ begin
             for update of t skip locked loop
     entries := '[]';
     released := '{}';
+    -- Potongan earning clipper (E-21 clipper_fee_pct, default 0%): hanya Rupiah, dipotong saat Tertunda → Tersedia supaya
+    -- reversal/koreksi (yang hanya menyentuh Tertunda) tidak perlu mengembalikan fee.
+    fee_pct := coalesce((finance.effective_fee_rule((select c.org_id from market.campaigns c where c.id = s.campaign_id),
+                                                    s.campaign_id)).clipper_fee_pct, 0);
     perform 1 from finance.reward_pools fp where fp.campaign_id = s.campaign_id order by fp.id for update;
     for g in select ce.pool_id, rp.reward_type_id, rt.code, rt.decimals, sum(ce.amount) as amount
                from finance.clip_earnings ce join finance.reward_pools rp on rp.id = ce.pool_id
@@ -408,13 +415,19 @@ begin
               order by ce.pool_id loop
       wallet := finance.account('user_wallet', s.user_id, g.reward_type_id);
       avail := trunc(g.amount, g.decimals);
+      fee := case when g.reward_type_id = idr and fee_pct > 0 then trunc(avail * fee_pct / 100, g.decimals) else 0 end;
       entries := entries || jsonb_build_array(
         finance.e(wallet, -g.amount, 'release', s.id || ':' || g.pool_id, 'pending'),
-        finance.e(wallet, avail, 'release', s.id || ':' || g.pool_id, 'available'),
+        finance.e(wallet, avail - fee, 'release', s.id || ':' || g.pool_id, 'available'),
         finance.e(finance.account('campaign_pool', g.pool_id, g.reward_type_id), g.amount - avail, 'release', s.id || ':' || g.pool_id));
+      if fee > 0 then
+        entries := entries || jsonb_build_array(
+          finance.e(finance.account('platform_revenue', null, idr), fee, 'fee', s.id || ':' || g.pool_id));
+      end if;
       if g.amount > avail then
         update finance.reward_pools set allocated = allocated - (g.amount - avail) where id = g.pool_id;
       end if;
+      avail := avail - fee;
       if avail > 0 then
         released := released || jsonb_build_object(g.reward_type_id::text,
                                                     coalesce((released ->> g.reward_type_id::text)::numeric, 0) + avail);

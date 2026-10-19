@@ -1069,8 +1069,9 @@ Arah: `A --tipe--> B` = A bergantung pada B. `?` = belum terverifikasi.
 | `job:budget-alerts` | writes | `table:ops.notifications` | db/core/supabase/schemas/api/_helpers.sql:58 (market.notify_org → ops.enqueue_notification) |
 | `job:claim-expiry` | calls | `fn:enqueue_notification` | db/core/supabase/schemas/market/claims.sql:37 |
 | `job:claim-expiry` | writes | `table:market.claims` | db/core/supabase/schemas/market/claims.sql:40 |
-| `job:earning-release` | calls | `fn:enqueue_notification` | db/core/supabase/schemas/finance/earnings.sql:427 |
-| `job:earning-release` | writes | `table:finance.ledger_entries` | db/core/supabase/schemas/finance/earnings.sql:425 (finance.post) |
+| `job:earning-release` | calls | `fn:enqueue_notification` | db/core/supabase/schemas/finance/earnings.sql:440 |
+| `job:earning-release` | writes | `table:finance.ledger_entries` | db/core/supabase/schemas/finance/earnings.sql:438 (finance.post) |
+| `job:earning-release` | reads | `table:finance.fee_rules` | db/core/supabase/schemas/finance/earnings.sql:407 (fee rule efektif campaign → clipper_fee_pct dipotong saat rilis) |
 | `job:fraud-device-scan` | calls | `api:fn core/bridge` | db/identity/supabase/functions/bridge/handler.ts:127 |
 | `job:fraud-device-scan` | calls | `api:fn identity/bridge` | db/identity/supabase/schemas/member/cron.sql:15 |
 | `job:fraud-device-scan` | configured-by | `env:BRIDGE_SECRET_IDENTITY_TO_CORE` | db/identity/supabase/functions/_shared/bridge.ts:136 |
@@ -2145,6 +2146,7 @@ Masalah sistem yang ditemukan saat menyusun PRD v0.2 dan saat dicek ulang (v0.2.
 | 2026-10-19 | `api:rpc core.control_campaign` | Review Claudex R8: batas tier berupa string non-angka ("1e4") lolos market.check_rule_params (jnum = null) tapi dibaca finance.rule_amount sebagai plafon | diperbaiki: `to` selain angka/null ditolak |
 | 2026-10-19 | `fn:accrue_earnings` | Review Claudex R8: backfill lineage melewati versi yang sudah ber-lineage_id (raise pasca-R6 di atas rantai pra-R6) → root beda → flat dibayar ulang | diperbaiki: backfill menelusuri seluruh rantai dari rule pertama dan menyeragamkan semua versi; R9: sebagai migrasi baru (backfill_rate_rule_lineage_full_chain), migrasi R7 dikembalikan ke isi asli supaya DB yang sudah menjalankannya ikut terperbaiki |
 | 2026-10-19 | `table:market.referrals` | Review Claudex R8: referral baru berlaku saat withdraw pertama (core baru melihat claim kyc di request_payout) → earning teman antara KYC disetujui dan withdraw pertama tidak dihitung | diperbaiki: record_review('kyc','approve') di core mengisi qualified_at/bonus_until; request_payout tetap cadangan |
+| 2026-10-19 | `table:finance.fee_rules` | Review Claudex R10: clipper_fee_pct bisa diatur admin (config global, override org/campaign) tapi tidak pernah dipotong → setting diam-diam tidak berlaku. PRD: potongan earning clipper ada di config (default 0%) untuk dinyalakan kelak | diperbaiki: finance.release_earnings memotong fee rule efektif campaign saat Rupiah Tertunda → Tersedia, ke platform_revenue (ref fee); non-tunai tidak dipotong. Catatan: app clipper belum menampilkan potongan ini |
 ## Keputusan
 
 Keputusan yang sudah diambil — jangan dibahas ulang tanpa alasan baru.

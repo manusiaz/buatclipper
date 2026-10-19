@@ -1231,6 +1231,24 @@ select is(array[pg_temp.rule_amt((select v::uuid from t_ids where k = 'rc_sub'),
                 pg_temp.rule_amt((select v::uuid from t_ids where k = 'rc_sub'), (select v::uuid from t_ids where k = 'rc_new'))],
           array[3000, 0]::numeric[], 'rule lama dikoreksi ke 1.500 views, rule baru hangus');
 
+-- Regresi review R10: clipper_fee_pct (E-21) dipotong saat earning Rupiah dirilis → platform_revenue.
+select pg_temp.mk_campaign('55555555-0000-0000-0000-0000000000fe', 'fee-clipper');
+select pg_temp.mk_pool('55555555-0000-0000-0000-0000000000fe', '66666666-0000-0000-0000-0000000000fe', 1000000, 1000000);
+select pg_temp.mk_rule('55555555-0000-0000-0000-0000000000fe', '66666666-0000-0000-0000-0000000000fe', 'per_1k_views', '{"rate":1000}');
+update market.campaigns set fee_rule_id = finance.create_fee_rule('campaign', '{"clipper_fee_pct":10}',
+                                                                   finance.effective_fee_rule('44444444-0000-0000-0000-000000000001', null),
+                                                                   '33333333-0000-0000-0000-0000000000f1')
+ where id = '55555555-0000-0000-0000-0000000000fe';
+insert into t_ids select 'sfee', pg_temp.mk_sub('55555555-0000-0000-0000-0000000000fe', '11111111-0000-0000-0000-0000000000c9', 'vfee');
+select pg_temp.snap((select v::uuid from t_ids where k = 'sfee'), 10000);
+update tracking.submissions set status = 'locked', locked_at = now() - interval '8 days' where id = (select v::uuid from t_ids where k = 'sfee');
+select finance.release_earnings();
+select is((select array[sum(e.amount) filter (where e.ref_type = 'release' and e.state = 'available'),
+                        sum(e.amount) filter (where e.ref_type = 'fee' and a.owner_type = 'platform_revenue')]
+             from finance.ledger_entries e join finance.ledger_accounts a on a.id = e.account_id
+            where e.ref_id like (select v from t_ids where k = 'sfee') || ':%'),
+          array[9000, 1000]::numeric[], 'regresi R10: fee clipper 10% dipotong saat rilis (Rp10.000 → Rp9.000 Tersedia + Rp1.000 platform)');
+
 -- job:reconcile-daily bagian ledger: bersih, lalu selisih cache pool terdeteksi + alert
 -- Fixture memakai jalan pintas: pool didanai jurnal ref 'fixture:<pool>' tanpa invoice, invoice c5 di-insert langsung lunas.
 create temp table t_reconcile on commit drop as select finance.reconcile_ledger() as v;
