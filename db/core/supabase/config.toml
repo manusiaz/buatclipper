@@ -1,0 +1,40 @@
+# Project core (campaign, tracking, uang; tanpa PII). Hanya kunci yang sudah dicek ke docs CLI. Third-Party Auth → Custom OIDC
+# (issuer identity) tidak tersedia di CLI: didaftarkan lewat Dashboard/Management API (PRD §15.6).
+project_id = "clipper-core"
+
+[api]
+schemas = ["api"]
+extra_search_path = ["extensions"]
+
+[storage.buckets.campaign-covers]
+public = true
+file_size_limit = "2MiB"
+allowed_mime_types = ["image/jpeg", "image/png", "image/webp"]
+
+[storage.buckets.campaign-assets]
+public = false
+file_size_limit = "500MiB"
+allowed_mime_types = ["video/mp4", "video/quicktime", "image/jpeg", "image/png", "image/webp", "audio/mpeg", "audio/wav", "application/pdf"]
+
+[storage.buckets.avatars]
+public = true
+file_size_limit = "1MiB"
+allowed_mime_types = ["image/jpeg", "image/png", "image/webp"]
+
+# Diff schema deklaratif memakai pg-delta. Engine lama (migra) membuang security_invoker dari view: view schema api jadi
+# melewati RLS. Jangan matikan.
+[experimental.pgdelta]
+enabled = true
+
+[functions.social]
+verify_jwt = false
+[functions.track-worker]
+verify_jwt = false
+[functions.refresh-tokens]
+verify_jwt = false
+[functions.notify]
+verify_jwt = false
+[functions.bridge]
+verify_jwt = false
+[functions.fulfill]
+verify_jwt = false

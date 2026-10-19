@@ -1,0 +1,148 @@
+# structure.yaml — sumber tunggal struktur domain → URL → folder → fitur (PRD §15.2–15.3 + Lampiran B, bagian Struktur di
+# KNOWLEDGE_GRAPH.md). Kolom DB tidak ditulis di sini: sumbernya file SQL di db/ (Lampiran A dibangkitkan dari katalognya).
+hosts:
+  - host: "{domain}"
+    app: web
+    dns: "A @ → IP dari kartu domain project Vercel web (umumnya 76.76.21.21; project baru bisa dapat IP anycast lain)"
+    role: "Landing, legal, campaign publik, laporan read-only, link referral (?ref=)"
+    index: "diindeks (sitemap.xml, robots.txt)"
+  - host: "www.{domain}"
+    app: web
+    dns: "CNAME www → target CNAME unik project web (dari Vercel)"
+    role: "Redirect 308 ke {domain} (domain kanonik)"
+    index: "tidak (redirect)"
+  - host: "accounts.{domain}"
+    app: accounts
+    dns: "CNAME accounts → target CNAME unik project accounts"
+    role: "Login, onboarding, hub akun, KYC, rekening, MFA, privasi, terima undangan; menulis cookie SSO .{domain}"
+    index: "noindex (header X-Robots-Tag)"
+  - host: "app.{domain}"
+    app: clipper
+    dns: "CNAME app → target CNAME unik project clipper"
+    role: "App clipper (PWA), redirect URI OAuth sosmed"
+    index: "noindex"
+  - host: "brand.{domain}"
+    app: brand
+    dns: "CNAME brand → target CNAME unik project brand"
+    role: "App brand & agency per org"
+    index: "noindex"
+  - host: "admin.{domain}"
+    app: admin
+    dns: "CNAME admin → target CNAME unik project admin"
+    role: "Back-office; cookie host-only; halaman di balik IP allowlist/zero-trust"
+    index: "noindex"
+  - host: "auth.{domain}"
+    app: "Supabase identity"
+    dns: "CNAME auth → <ref-identity>.supabase.co; TXT _acme-challenge.auth (nilai dari Supabase)"
+    role: "Custom domain Auth identity: consent screen Google, issuer JWT; callback Google https://auth.{domain}/auth/v1/callback"
+    index: "tidak (API)"
+  - host: "notif.{domain}"
+    app: "Resend (email)"
+    dns: "MX send.notif → feedback-smtp.<region>.amazonses.com (prio 10); TXT send.notif v=spf1 include:amazonses.com ~all; TXT resend._domainkey.notif (DKIM dari Resend)"
+    role: "Subdomain pengirim: OTP login (SMTP Auth identity) + notifikasi; From no-reply@notif.{domain}"
+    index: "tidak (email)"
+  - host: "_dmarc.{domain}"
+    app: "DNS"
+    dns: "TXT v=DMARC1; p=none; rua=mailto:dmarc@{domain} → naik ke quarantine setelah laporan bersih"
+    role: "Kebijakan DMARC domain utama (berlaku juga untuk subdomain pengirim)"
+    index: "tidak"
+
+pages:  # id: [file route, tanggung jawab]
+  "page:www/": ["apps/web/src/app/page.tsx", "Landing clipper & brand; ?ref=<kode> disimpan ke cookie referral"]
+  "page:www/c/[slug]": ["apps/web/src/app/c/[slug]/page.tsx", "Campaign publik + OG image (F-X02)"]
+  "page:www/r/[token]": ["apps/web/src/app/r/[token]/page.tsx", "Laporan campaign read-only tanpa login; versi cetak = PDF (F-B09)"]
+  "page:www/legal/[doc]": ["apps/web/src/app/legal/[doc]/page.tsx", "ToS clipper, ToS brand, kebijakan privasi (§16)"]
+  "page:accounts/": ["apps/accounts/src/app/page.tsx", "Hub akun: status KYC, rekening, MFA, consent; kembali ke app/brand"]
+  "page:accounts/login": ["apps/accounts/src/app/login/page.tsx", "Login Google / email OTP (F-C01)"]
+  "page:accounts/onboarding": ["apps/accounts/src/app/onboarding/page.tsx", "Profil publik, umur 18+, ToS sesuai peran (F-C01, F-B01)"]
+  "page:accounts/kyc": ["apps/accounts/src/app/kyc/page.tsx", "KYC: nama KTP, NIK, foto KTP (F-C10; juga pemilik brand perorangan)"]
+  "page:accounts/payout-methods": ["apps/accounts/src/app/payout-methods/page.tsx", "Rekening & data penerima reward (F-C09)"]
+  "page:accounts/security": ["apps/accounts/src/app/security/page.tsx", "MFA TOTP (wajib untuk aksi uang brand; admin di admin.{domain}/login)"]
+  "page:accounts/privacy": ["apps/accounts/src/app/privacy/page.tsx", "Consent, unduh data saya, hapus akun (§16)"]
+  "page:accounts/invite/[token]": ["apps/accounts/src/app/invite/[token]/page.tsx", "Terima undangan anggota org (F-B01)"]
+  "page:app/login": ["apps/clipper/src/app/login/page.tsx", "Login di dalam scope PWA: kode OTP & Google (F-C01, R-17)"]
+  "page:app/campaigns": ["apps/clipper/src/app/campaigns/page.tsx", "Daftar campaign + CTA 6 state (F-C03)"]
+  "page:app/campaigns/[id]": ["apps/clipper/src/app/campaigns/[id]/page.tsx", "Detail, claim, submit (F-C04–C06)"]
+  "page:app/tasks": ["apps/clipper/src/app/tasks/page.tsx", "Tugas Saya + banding (F-C07)"]
+  "page:app/wallet": ["apps/clipper/src/app/wallet/page.tsx", "Wallet per unit + kode voucher (F-C08)"]
+  "page:app/wallet/withdraw": ["apps/clipper/src/app/wallet/withdraw/page.tsx", "Withdraw batch/instant & klaim reward (F-C09, F-C15)"]
+  "page:app/social": ["apps/clipper/src/app/social/page.tsx", "Connect akun sosmed (F-C02)"]
+  "page:app/notifications": ["apps/clipper/src/app/notifications/page.tsx", "Notifikasi in-app (F-C11)"]
+  "page:app/settings": ["apps/clipper/src/app/settings/page.tsx", "Bahasa, tema, notifikasi email promosi, push (F-C11, F-C14, F-C18)"]
+  "page:app/profile": ["apps/clipper/src/app/profile/page.tsx", "Statistik + Trust Score & riwayatnya (F-C12)"]
+  "page:app/leaderboard": ["apps/clipper/src/app/leaderboard/page.tsx", "Leaderboard mingguan & per campaign (F-C13)"]
+  "page:app/referral": ["apps/clipper/src/app/referral/page.tsx", "Kode & link referral, teman, bonus (F-C16)"]
+  "page:brand/": ["apps/brand/src/app/page.tsx", "Pemilih org (termasuk org klien agency); kosong → Buat organisasi"]
+  "page:brand/new": ["apps/brand/src/app/new/page.tsx", "Buat organisasi brand/agency (F-B01)"]
+  "page:brand/[org]/campaigns": ["apps/brand/src/app/[org]/campaigns/page.tsx", "Daftar campaign + template (F-B05, F-B10)"]
+  "page:brand/[org]/campaigns/new": ["apps/brand/src/app/[org]/campaigns/new/page.tsx", "Builder campaign 7 langkah (F-B02)"]
+  "page:brand/[org]/campaigns/[id]": ["apps/brand/src/app/[org]/campaigns/[id]/page.tsx", "Dashboard, kontrol, utilisasi, undangan, pin, laporan (F-B05, F-B06, F-B08, F-B09, F-B11)"]
+  "page:brand/[org]/review": ["apps/brand/src/app/[org]/review/page.tsx", "Review queue brand (F-B07)"]
+  "page:brand/[org]/billing": ["apps/brand/src/app/[org]/billing/page.tsx", "Invoice, bayar, faktur, refund/rollover (F-B04)"]
+  "page:brand/[org]/reward-types": ["apps/brand/src/app/[org]/reward-types/page.tsx", "Reward type custom, pool kode, webhook (F-B03)"]
+  "page:brand/[org]/team": ["apps/brand/src/app/[org]/team/page.tsx", "Anggota & undangan (F-B01)"]
+  "page:brand/[org]/settings": ["apps/brand/src/app/[org]/settings/page.tsx", "Profil org, data faktur, agency (F-B01, F-B12)"]
+  "page:admin/login": ["apps/admin/src/app/login/page.tsx", "Login admin terpisah: kode OTP + TOTP"]
+  "page:admin/": ["apps/admin/src/app/page.tsx", "Overview + alert (F-A01)"]
+  "page:admin/campaigns": ["apps/admin/src/app/campaigns/page.tsx", "Review campaign (F-A02) + tab Paket managed (F-A03)"]
+  "page:admin/campaigns/new": ["apps/admin/src/app/campaigns/new/page.tsx", "Builder admin / paket managed (F-A03)"]
+  "page:admin/pinned": ["apps/admin/src/app/pinned/page.tsx", "Pinned, kategori, banner (F-A04)"]
+  "page:admin/review": ["apps/admin/src/app/review/page.tsx", "Moderasi submisi & banding (F-A05)"]
+  "page:admin/fraud": ["apps/admin/src/app/fraud/page.tsx", "Fraud queue (F-A06)"]
+  "page:admin/users": ["apps/admin/src/app/users/page.tsx", "Clipper (KYC, Trust Score, suspend), org brand (verifikasi), role admin (F-A07)"]
+  "page:admin/finance": ["apps/admin/src/app/finance/page.tsx", "Pembayaran masuk, batch & instant payout, refund, rekonsiliasi, PPh 21 (F-A08)"]
+  "page:admin/config": ["apps/admin/src/app/config/page.tsx", "Config & feature flag (F-A09)"]
+  "page:admin/fulfillment": ["apps/admin/src/app/fulfillment/page.tsx", "Fulfillment non-tunai (F-A10)"]
+  "page:admin/audit": ["apps/admin/src/app/audit/page.tsx", "Audit log (F-A11)"]
+  "page:admin/broadcast": ["apps/admin/src/app/broadcast/page.tsx", "Broadcast ke segmen clipper (F-A12)"]
+
+features:  # folder relatif ke apps/<app>/src/features/ kecuali disebut lain
+  F-C01: {name: "Auth & onboarding", folders: [accounts/auth, accounts/onboarding, clipper/auth, packages/auth], pages: ["page:accounts/login", "page:accounts/onboarding", "page:app/login"], db: [market.profiles, member.consents, member.legal_versions, bucket.avatars], fn: [api.ensure_profile, api.record_consent, member.custom_access_token_hook]}
+  F-C02: {name: "Connect akun sosmed", folders: [clipper/social], pages: ["page:app/social"], db: [tracking.social_accounts, vault.social-tokens], fn: [core/social, api.store_social_token]}
+  F-C03: {name: "Campaign list", folders: [clipper/campaigns], pages: ["page:app/campaigns"], db: [market.campaigns, finance.reward_pools, market.categories], fn: [api.list_campaigns]}
+  F-C04: {name: "Detail & instruksi", folders: [clipper/campaigns], pages: ["page:app/campaigns/[id]"], db: [market.campaigns, market.rate_rules, market.campaign_assets, bucket.campaign-assets], fn: []}
+  F-C05: {name: "Claim", folders: [clipper/claim], pages: ["page:app/campaigns/[id]"], db: [market.claims], fn: [api.claim_campaign]}
+  F-C06: {name: "Submit link", folders: [clipper/submit], pages: ["page:app/campaigns/[id]"], db: [tracking.submissions, market.campaigns], fn: [core/social, api.missing_brief_tags]}
+  F-C07: {name: "Tugas Saya", folders: [clipper/tasks], pages: ["page:app/tasks"], db: [market.claims, tracking.submissions, tracking.view_snapshots, trust.review_decisions], fn: [api.appeal_submission]}
+  F-C08: {name: "Wallet", folders: [clipper/wallet], pages: ["page:app/wallet"], db: [finance.ledger_accounts, finance.ledger_entries, finance.reward_codes], fn: []}
+  F-C09: {name: "Withdraw & klaim reward", folders: [clipper/withdraw, accounts/payout-methods], pages: ["page:app/wallet/withdraw", "page:accounts/payout-methods"], db: [finance.payouts, finance.fulfillments, member.payout_methods, member.recipient_details], fn: [api.request_payout, api.request_fulfillment, api.my_payout_methods, identity/member-data]}
+  F-C10: {name: "KYC", folders: [accounts/kyc], pages: ["page:accounts/kyc"], db: [member.kyc_records, bucket.kyc-docs, member.consents], fn: [identity/member-data, api.store_kyc]}
+  F-C11: {name: "Notifikasi", folders: [clipper/notifications], pages: ["page:app/notifications", "page:app/settings"], db: [ops.notifications, ops.notification_prefs], fn: [ops.enqueue_notification, core/notify, identity/bridge]}
+  F-C12: {name: "Profil & Trust Score", folders: [clipper/profile], pages: ["page:app/profile"], db: [market.profiles, trust.score_events], fn: [trust.recalc_scores]}
+  F-C13: {name: "Leaderboard", folders: [clipper/leaderboard], pages: ["page:app/leaderboard"], db: [market.leaderboard_weekly, market.leaderboard_campaign], fn: [market.refresh_leaderboard]}
+  F-C14: {name: "PWA + web push", folders: [clipper/pwa, "apps/clipper/src/app/manifest.ts", "apps/clipper/public/sw.js"], pages: ["page:app/settings"], db: [member.push_subscriptions], fn: [api.save_push_subscription, identity/bridge]}
+  F-C15: {name: "Instant withdraw", folders: [clipper/withdraw], pages: ["page:app/wallet/withdraw"], db: [finance.payouts, finance.fee_rules], fn: [api.request_payout, identity/disburse], dependency: "Penyedia disbursement otomatis (API transfer + callback); D-02 dibuka ulang"}
+  F-C16: {name: "Referral", folders: [clipper/referral, web/landing], pages: ["page:app/referral", "page:www/"], db: [market.referrals, market.profiles], fn: [api.my_referral_code, api.ensure_profile, finance.accrue_referral_bonus]}
+  F-C17: {name: "AI Clip", folders: [], pages: [], db: [], fn: [], dependency: "Produk terpisah (GPU, transkripsi): link keluar dari menu app ke tool AI Clip; tidak ada data di DB platform ini"}
+  F-C18: {name: "i18n & tema", folders: [packages/i18n, clipper/settings], pages: ["page:app/settings"], db: [], fn: []}
+  F-C19: {name: "Komunitas", folders: [clipper/community], pages: ["page:app/campaigns"], db: [ops.settings], fn: []}
+  F-B01: {name: "Org & tim", folders: [brand/org, accounts/invite], pages: ["page:brand/new", "page:brand/[org]/team", "page:brand/[org]/settings", "page:accounts/invite/[token]"], db: [market.organizations, market.org_members, market.org_invites], fn: [api.create_org, api.create_org_invite, api.accept_org_invite, api.manage_org]}
+  F-B02: {name: "Campaign builder", folders: [packages/campaign-builder, brand/campaigns], pages: ["page:brand/[org]/campaigns/new", "page:admin/campaigns/new"], db: [market.campaigns, market.rate_rules, finance.reward_pools, market.campaign_assets, finance.invoices, bucket.campaign-covers, bucket.campaign-assets], fn: [api.save_campaign]}
+  F-B03: {name: "Reward type custom", folders: [brand/reward-types], pages: ["page:brand/[org]/reward-types"], db: [market.reward_types, finance.reward_codes], fn: [api.save_reward_type, api.upload_reward_codes, core/fulfill]}
+  F-B04: {name: "Billing", folders: [brand/billing], pages: ["page:brand/[org]/billing"], db: [finance.invoices, finance.org_refunds, finance.ledger_accounts], fn: [api.request_refund, api.confirm_invoice_payment]}
+  F-B05: {name: "Dashboard campaign", folders: [brand/dashboard], pages: ["page:brand/[org]/campaigns/[id]", "page:brand/[org]/campaigns"], db: [tracking.submissions, tracking.view_snapshots, finance.reward_pools], fn: []}
+  F-B06: {name: "Kontrol campaign", folders: [brand/controls], pages: ["page:brand/[org]/campaigns/[id]"], db: [market.campaigns, market.rate_rules, finance.invoices], fn: [api.control_campaign]}
+  F-B07: {name: "Review queue brand", folders: [brand/review], pages: ["page:brand/[org]/review"], db: [tracking.submissions, trust.review_decisions], fn: [api.record_review]}
+  F-B08: {name: "Budget utilization", folders: [brand/dashboard], pages: ["page:brand/[org]/campaigns/[id]"], db: [finance.reward_pools, tracking.view_snapshots], fn: [market.run_budget_alerts]}
+  F-B09: {name: "Laporan", folders: [brand/reports, web/report], pages: ["page:brand/[org]/campaigns/[id]", "page:www/r/[token]"], db: [market.report_links], fn: [api.create_report_link, api.revoke_report_link, api.report_by_token]}
+  F-B10: {name: "Template & duplikat", folders: [brand/campaigns], pages: ["page:brand/[org]/campaigns", "page:brand/[org]/campaigns/new"], db: [market.campaigns], fn: [api.duplicate_campaign]}
+  F-B11: {name: "Campaign privat", folders: [brand/invites], pages: ["page:brand/[org]/campaigns/[id]"], db: [market.campaign_invites, market.campaigns], fn: [api.invite_to_campaign]}
+  F-B12: {name: "Akun agency", folders: [brand/org], pages: ["page:brand/", "page:brand/[org]/settings"], db: [market.org_links], fn: [api.link_agency]}
+  F-A01: {name: "Overview", folders: [admin/overview], pages: ["page:admin/"], db: [finance.ledger_entries, finance.payouts, trust.fraud_flags], fn: []}
+  F-A02: {name: "Review campaign", folders: [admin/campaign-review], pages: ["page:admin/campaigns"], db: [market.campaigns, trust.review_decisions], fn: [api.record_review]}
+  F-A03: {name: "Builder admin & paket managed", folders: [admin/builder], pages: ["page:admin/campaigns", "page:admin/campaigns/new"], db: [market.campaigns, market.campaign_assets, bucket.campaign-assets, finance.fee_rules, finance.invoices], fn: [api.save_campaign]}
+  F-A04: {name: "Pinned & kategori", folders: [admin/pinned], pages: ["page:admin/pinned"], db: [market.campaigns, market.categories, ops.settings, finance.invoices], fn: [api.update_config, api.buy_pin]}
+  F-A05: {name: "Moderasi submisi", folders: [admin/moderation], pages: ["page:admin/review"], db: [tracking.submissions, trust.review_decisions], fn: [api.record_review]}
+  F-A06: {name: "Fraud queue", folders: [admin/fraud], pages: ["page:admin/fraud"], db: [trust.fraud_flags, market.profiles, trust.score_events], fn: [api.resolve_fraud_flag, identity/admin-auth]}
+  F-A07: {name: "Manajemen user & org", folders: [admin/users], pages: ["page:admin/users"], db: [market.profiles, market.organizations, member.kyc_records, member.platform_roles], fn: [api.admin_read, api.admin_kyc_decision, api.admin_set_role, api.manage_org, identity/admin-auth]}
+  F-A08: {name: "Finance", folders: [admin/finance], pages: ["page:admin/finance"], db: [finance.invoices, finance.payouts, finance.payout_batches, finance.org_refunds, finance.ledger_entries], fn: [api.confirm_invoice_payment, api.create_payout_batch, api.approve_payout_batch, api.mark_batch_paid, identity/pii-export]}
+  F-A09: {name: "Config", folders: [admin/config], pages: ["page:admin/config"], db: [ops.settings, finance.fee_rules], fn: [api.update_config]}
+  F-A10: {name: "Fulfillment non-tunai", folders: [admin/fulfillment], pages: ["page:admin/fulfillment"], db: [finance.fulfillments, finance.reward_codes, member.recipient_details], fn: [identity/pii-export, core/fulfill]}
+  F-A11: {name: "Audit log", folders: [admin/audit], pages: ["page:admin/audit"], db: [ops.audit_logs, member.audit_logs], fn: []}
+  F-A12: {name: "Broadcast", folders: [admin/broadcast], pages: ["page:admin/broadcast"], db: [ops.broadcasts], fn: [api.send_broadcast, ops.dispatch_broadcasts]}
+  F-X01: {name: "Event notifikasi", folders: [clipper/notifications, brand/notifications, admin/overview], pages: ["page:app/notifications"], db: [ops.notifications, ops.notification_prefs, member.push_subscriptions], fn: [ops.enqueue_notification, core/notify, identity/bridge]}
+  F-X02: {name: "Halaman campaign publik", folders: [web/campaign-public], pages: ["page:www/c/[slug]"], db: [market.campaigns, bucket.campaign-covers], fn: []}
+
+platform:  # halaman dari persyaratan lintas fitur (PRD §4, §15.6, §16) — bukan bagian 45 fitur, tapi wajib ada
+  "§4/§15.6 Akun & MFA": {folders: [accounts/hub, accounts/security, admin/auth, packages/auth], pages: ["page:accounts/", "page:accounts/security", "page:admin/login"], db: [member.kyc_records, member.payout_methods, member.platform_roles], fn: [api.my_payout_methods, member.custom_access_token_hook, identity/admin-auth]}
+  "§16 Legal & hak data pribadi": {folders: [web/legal, accounts/privacy], pages: ["page:www/legal/[doc]", "page:accounts/privacy"], db: [member.legal_versions, member.consents], fn: [api.record_consent, identity/member-data, identity/delete-account]}
