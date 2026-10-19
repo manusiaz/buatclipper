@@ -17,10 +17,11 @@ export async function ManagedQueue({ loc }: { loc: UiLocale }) {
 
   const ids = uniq(drafts.map((d) => d.id));
   const orgIds = uniq(drafts.map((d) => d.org_id));
-  const [orgs, members, assets] = await Promise.all([
+  const [orgs, members, assets, briefs] = await Promise.all([
     db.from('organizations').select('id, name').in('id', orgIds),
     db.from('org_members').select('org_id, user_id').in('org_id', orgIds).eq('role', 'brand_owner'),
     db.from('campaign_assets').select('id, campaign_id, kind, storage_path, url, size_bytes, audience').in('campaign_id', ids).eq('audience', 'internal'),
+    db.from('managed_briefs').select('campaign_id, managed_brief').in('campaign_id', ids),
   ]);
   const owners = rows(members);
   const profiles = rows(await db.from('profiles').select('id, username, display_name').in('id', uniq(owners.map((m) => m.user_id))));
@@ -28,6 +29,8 @@ export async function ManagedQueue({ loc }: { loc: UiLocale }) {
   const hrefs = await assetHrefs(db, files);
   const orgName = new Map(rows(orgs).map((o) => [o.id, o.name]));
   const profile = new Map(profiles.map((p) => [p.id, p]));
+  // Brief mentah brand (api.managed_briefs, staf saja); kosong → brief draft.
+  const raw = new Map(rows(briefs).map((b) => [b.campaign_id, b.managed_brief]));
 
   return (
     <ul className="flex flex-col gap-4">
@@ -58,7 +61,7 @@ export async function ManagedQueue({ loc }: { loc: UiLocale }) {
             </div>
             <details className="group rounded-card-sm bg-subtle p-3">
               <summary className="cursor-pointer text-label text-ink focus-ring">{t('campaigns.rawBrief')}</summary>
-              <Brief text={d.brief} className="mt-2" />
+              <Brief text={raw.get(d.id)?.trim() ? raw.get(d.id) : d.brief} className="mt-2" />
             </details>
             <div className="flex flex-wrap gap-2">
               {own.length === 0 ? <span className="text-body-s text-muted">{t('campaigns.noInternalFiles')}</span> : null}

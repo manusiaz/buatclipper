@@ -11,7 +11,10 @@ const str = (v: unknown): string => (typeof v === 'string' ? v : '');
 
 export interface OrgCredit {
   balance: number;
+  /** Saldo − refund berjalan − kredit yang dicadangkan di invoice belum lunas. */
   available: number;
+  /** Kredit yang dicadangkan di invoice issued (credit_applied). */
+  reserved: number;
   history: { amount: number; refType: string; refId: string; createdAt: string }[];
   leftovers: { campaignId: string; title: string; amount: number }[];
 }
@@ -21,6 +24,7 @@ export function parseCredit(raw: unknown): OrgCredit {
   return {
     balance: n(c.balance),
     available: n(c.available),
+    reserved: n(c.reserved),
     history: arr(c.history).map((h) => ({ amount: n(h.amount), refType: str(h.ref_type), refId: str(h.ref_id), createdAt: str(h.created_at) })),
     leftovers: arr(c.leftovers).flatMap((l) =>
       str(l.campaign_id) && n(l.amount) > 0 ? [{ campaignId: str(l.campaign_id), title: str(l.title), amount: n(l.amount) }] : [],
@@ -28,6 +32,11 @@ export function parseCredit(raw: unknown): OrgCredit {
   };
 }
 
-/** Bayar pakai kredit hanya untuk invoice terbit yang totalnya tertutup kredit tersedia (DB mengecek ulang). */
-export const canPayWithCredit = (credit: Pick<OrgCredit, 'available'> | null, inv: { status: string; total: number }) =>
-  !!credit && inv.status === 'issued' && inv.total > 0 && credit.available >= inv.total;
+/**
+ * Kredit maksimal yang boleh dipakai untuk satu invoice issued (sama dengan api.pay_invoice_with_credit):
+ * kredit tersedia + cadangan invoice ini sendiri, dibatasi total invoice. 0 kalau invoice bukan issued.
+ */
+export function creditCap(credit: Pick<OrgCredit, 'available'> | null, inv: { status: string; total: number; credit_applied: number }): number {
+  if (!credit || inv.status !== 'issued' || inv.total <= 0) return 0;
+  return Math.max(0, Math.min(inv.total, credit.available + inv.credit_applied));
+}

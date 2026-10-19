@@ -161,7 +161,8 @@
     "config_missing": "Server function is not configured.",
     "corrupt_ciphertext": "Encrypted data cannot be opened (key mismatch). Contact engineering.",
     "db_error": "Identity database error. Try again or contact engineering.",
-    "too_many_codes": "At most 10,000 codes per upload."
+    "too_many_codes": "At most 10,000 codes per upload.",
+    "file_missing": "The CSV file is no longer available. Contact engineering."
   },
   "export": {
     "download": "Download CSV ({rows} rows)",
@@ -634,7 +635,7 @@
     "confirmBody": "Invoice total {total}.",
     "confirmed": "Payment confirmed",
     "amount": "Amount",
-    "amountHelp": "Amount short → do not confirm, contact the brand.",
+    "amountHelp": "Must equal the amount billed after org credit. Amount short → do not confirm, contact the brand.",
     "paidAt": "Paid at",
     "ref": "Reference number",
     "refHelp": "From the bank statement / QRIS",
@@ -710,7 +711,7 @@
     "cancelPayout": "Cancel",
     "cancelPayoutBody": "Funds + fee return to the clipper's Available balance.",
     "payoutCancelled": "Payout cancelled",
-    "instantHint": "Hanging instant payouts are retried automatically every 15 minutes; provider responses are not exposed to admins yet.",
+    "instantHint": "Hanging instant payouts are retried automatically every 15 minutes. The provider's failure reason shows in the status column.",
     "noInstant": "No hanging instant payouts",
     "age": "Age",
     "refundHint": "Approved by a finance admin other than the requester. After transferring, upload the proof to mark it paid.",
@@ -730,7 +731,16 @@
     "exportPph21": "Export recap",
     "missingKyc": "No NIK",
     "from": "From",
-    "to": "To"
+    "to": "To",
+    "creditSplit": "Total {total} · org credit −{credit}",
+    "creditDue": "org credit {credit} · billed {due}",
+    "confirmBodyCredit": "Total {total}, org credit {credit} → billed {due}.",
+    "amountDue": "Billed",
+    "downloadAgain": "Download again",
+    "failReason": "Failure reason (from the bank)",
+    "providerRef": "Provider ref.",
+    "noProviderRef": "None yet",
+    "refundOwn": "You requested this refund — another finance admin must approve."
   },
   "fulfillment": {
     "title": "Non-cash fulfillment",

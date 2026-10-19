@@ -17,8 +17,8 @@ export function BatchResults({ batchId, payouts }: { batchId: string; payouts: P
   const t = useTranslations('admin.finance');
   const loc = useLocale() as UiLocale;
   const errorText = useErrorText();
-  const [state, setState] = useState<Record<string, { status: 'paid' | 'failed'; bank_ref: string }>>(() =>
-    Object.fromEntries(payouts.map((p) => [p.id, { status: 'paid', bank_ref: '' }])),
+  const [state, setState] = useState<Record<string, { status: 'paid' | 'failed'; bank_ref: string; reason: string }>>(() =>
+    Object.fromEntries(payouts.map((p) => [p.id, { status: 'paid', bank_ref: '', reason: '' }])),
   );
   const [error, setError] = useState<string | null>(null);
   const [pending, start] = useTransition();
@@ -66,13 +66,25 @@ export function BatchResults({ batchId, payouts }: { batchId: string; payouts: P
                 />
               </TD>
               <TD>
-                <Input
-                  inputSize="sm"
-                  aria-label={t('bankRef')}
-                  value={state[p.id]!.bank_ref}
-                  maxLength={100}
-                  onChange={(e) => setState((s) => ({ ...s, [p.id]: { ...s[p.id]!, bank_ref: e.target.value } }))}
-                />
+                <div className="flex flex-col gap-2">
+                  <Input
+                    inputSize="sm"
+                    aria-label={t('bankRef')}
+                    value={state[p.id]!.bank_ref}
+                    maxLength={100}
+                    onChange={(e) => setState((s) => ({ ...s, [p.id]: { ...s[p.id]!, bank_ref: e.target.value } }))}
+                  />
+                  {state[p.id]!.status === 'failed' ? (
+                    <Input
+                      inputSize="sm"
+                      aria-label={t('failReason')}
+                      placeholder={t('failReason')}
+                      value={state[p.id]!.reason}
+                      maxLength={500}
+                      onChange={(e) => setState((s) => ({ ...s, [p.id]: { ...s[p.id]!, reason: e.target.value } }))}
+                    />
+                  ) : null}
+                </div>
               </TD>
             </TR>
           ))}

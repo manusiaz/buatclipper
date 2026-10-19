@@ -29,6 +29,10 @@ export interface InvoiceRow {
   service_fee: number;
   tax: number;
   total: number;
+  /** Kredit org yang dicadangkan/dipakai (D-09). */
+  credit_applied: number;
+  /** total − credit_applied: yang dibayar lewat transfer/QRIS dan dikonfirmasi finance. */
+  amount_due: number;
   status: string;
   payment_channel: string | null;
   paid_amount: number | null;
@@ -69,8 +73,9 @@ export async function InvoiceDetail({
   const loc = locale === 'en' ? 'en' : 'id';
   const idr = (v: number) => formatIDR(v, { locale: loc, fractionDigits: Number.isInteger(v) ? 0 : 2 });
   const st = invoiceTone(inv);
-  const useQris = inv.total <= pay.qrisMax;
-  const qris = useQris && pay.qrisPayload ? toDynamicQris(pay.qrisPayload, inv.total) : null;
+  const due = inv.amount_due;
+  const useQris = due <= pay.qrisMax;
+  const qris = useQris && pay.qrisPayload ? toDynamicQris(pay.qrisPayload, due) : null;
   const bankReady = !!(pay.bank.bank && pay.bank.number && pay.bank.name);
   const lines: [string, number][] = [
     [t('subtotal'), inv.subtotal],
@@ -86,7 +91,7 @@ export async function InvoiceDetail({
       <CopyField label={t('bankNumber')} value={pay.bank.number} copyLabel={t('copy')} copiedLabel={t('copied')} mono />
       <CopyField label={t('bankHolder')} value={pay.bank.name} copyLabel={t('copy')} copiedLabel={t('copied')} />
       <CopyField label={t('reference')} value={inv.number} copyLabel={t('copy')} copiedLabel={t('copied')} mono />
-      <Alert tone="warn">{t('referenceNote', { number: inv.number, total: idr(inv.total) })}</Alert>
+      <Alert tone="warn">{t('referenceNote', { number: inv.number, total: idr(due) })}</Alert>
     </div>
   ) : (
     <Alert tone="warn" title={t('bankMissingTitle')}>{t('bankMissingBody')}</Alert>
@@ -132,6 +137,20 @@ export async function InvoiceDetail({
                 <th scope="row" className="pt-3 text-left text-h6 text-ink">{t('total')}</th>
                 <td className="pt-3 text-right text-h5 text-ink tnum">{idr(inv.total)}</td>
               </tr>
+              {inv.credit_applied > 0 ? (
+                <>
+                  <tr>
+                    <th scope="row" className="pt-2 text-left font-normal text-muted">{t('creditApplied')}</th>
+                    <td className="pt-2 text-right text-success-fg tnum">{idr(-inv.credit_applied)}</td>
+                  </tr>
+                  {inv.status === 'issued' ? (
+                    <tr>
+                      <th scope="row" className="pt-2 text-left text-h6 text-ink">{t('amountDue')}</th>
+                      <td className="pt-2 text-right text-h5 text-ink tnum">{idr(due)}</td>
+                    </tr>
+                  ) : null}
+                </>
+              ) : null}
             </tbody>
           </table>
           {inv.status === 'paid' ? (
@@ -163,12 +182,12 @@ export async function InvoiceDetail({
                 {creditAction}
               </div>
             ) : null}
-            <p className="text-h6 text-ink">{useQris ? t('payQris') : t('payTransfer')}</p>
+            {due > 0 ? <p className="text-h6 text-ink">{useQris ? t('payQris') : t('payTransfer')}</p> : null}
             {useQris ? (
               qris ? (
                 <div className="flex flex-col items-center gap-3">
-                  <QrCode value={qris} label={t('qrisLabel', { number: inv.number, total: idr(inv.total) })} />
-                  <p className="text-center text-body-s text-text-2">{t('qrisHint', { total: idr(inv.total) })}</p>
+                  <QrCode value={qris} label={t('qrisLabel', { number: inv.number, total: idr(due) })} />
+                  <p className="text-center text-body-s text-text-2">{t('qrisHint', { total: idr(due) })}</p>
                 </div>
               ) : (
                 <>

@@ -161,7 +161,8 @@
     "config_missing": "Fungsi server belum dikonfigurasi.",
     "corrupt_ciphertext": "Data terenkripsi tidak bisa dibuka (kunci tidak cocok). Hubungi engineering.",
     "db_error": "Kesalahan database di identity. Coba lagi atau hubungi engineering.",
-    "too_many_codes": "Maksimal 10.000 kode per unggahan."
+    "too_many_codes": "Maksimal 10.000 kode per unggahan.",
+    "file_missing": "Berkas CSV tidak ditemukan lagi. Hubungi engineering."
   },
   "export": {
     "download": "Unduh CSV ({rows} baris)",
@@ -634,7 +635,7 @@
     "confirmBody": "Total invoice {total}.",
     "confirmed": "Pembayaran dikonfirmasi",
     "amount": "Nominal",
-    "amountHelp": "Nominal kurang → jangan konfirmasi, hubungi brand.",
+    "amountHelp": "Harus sama dengan tagihan setelah kredit org. Nominal kurang → jangan konfirmasi, hubungi brand.",
     "paidAt": "Waktu bayar",
     "ref": "Nomor referensi",
     "refHelp": "Dari mutasi bank / QRIS",
@@ -710,7 +711,7 @@
     "cancelPayout": "Batalkan",
     "cancelPayoutBody": "Dana + biaya kembali ke saldo Tersedia clipper.",
     "payoutCancelled": "Payout dibatalkan",
-    "instantHint": "Instant yang menggantung dicoba ulang otomatis tiap 15 menit; respons penyedia belum diekspos ke admin.",
+    "instantHint": "Instant yang menggantung dicoba ulang otomatis tiap 15 menit. Alasan gagal dari penyedia tampil di kolom status.",
     "noInstant": "Tidak ada instant yang menggantung",
     "age": "Umur",
     "refundHint": "Disetujui admin finance selain peminta. Setelah transfer, unggah bukti untuk menandai dibayar.",
@@ -730,7 +731,16 @@
     "exportPph21": "Export rekap",
     "missingKyc": "Tanpa NIK",
     "from": "Dari",
-    "to": "Sampai"
+    "to": "Sampai",
+    "creditSplit": "Total {total} · kredit org −{credit}",
+    "creditDue": "kredit org {credit} · ditagih {due}",
+    "confirmBodyCredit": "Total {total}, kredit org {credit} → ditagih {due}.",
+    "amountDue": "Ditagih",
+    "downloadAgain": "Unduh lagi",
+    "failReason": "Alasan gagal (dari bank)",
+    "providerRef": "Ref. penyedia",
+    "noProviderRef": "Belum ada",
+    "refundOwn": "Kamu yang meminta refund ini — butuh admin finance lain."
   },
   "fulfillment": {
     "title": "Fulfillment non-tunai",

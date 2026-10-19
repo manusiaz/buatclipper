@@ -31,7 +31,7 @@ export async function ReviewDetail({ id, loc }: { id: string; loc: UiLocale }) {
   const c = d.campaign;
   const [org, invoices, hrefs] = await Promise.all([
     db.from('organizations').select('id, name, status, org_type').eq('id', c.org_id).maybeSingle(),
-    db.from('invoices').select('id, number, status, total, kind').eq('campaign_id', id).eq('kind', 'campaign').neq('status', 'void'),
+    db.from('invoices').select('id, number, status, total, credit_applied, amount_due, kind').eq('campaign_id', id).eq('kind', 'campaign').neq('status', 'void'),
     assetHrefs(db, d.assets),
   ]);
   const o = must(org);
@@ -168,6 +168,11 @@ export async function ReviewDetail({ id, loc }: { id: string; loc: UiLocale }) {
                   <span className="font-mono text-caption">{i.number}</span>
                   <span className="tnum font-semibold">{formatIDR(Number(i.total), { locale: loc })}</span>
                   <Badge tone={i.status === 'paid' ? 'success' : 'warn'}>{t(`finance.invoiceStatus.${i.status}`)}</Badge>
+                  {Number(i.credit_applied) > 0 ? (
+                    <span className="w-full text-caption text-muted">
+                      {t('finance.creditDue', { credit: formatIDR(Number(i.credit_applied), { locale: loc }), due: formatIDR(Number(i.amount_due), { locale: loc }) })}
+                    </span>
+                  ) : null}
                 </div>
               ))
             )}

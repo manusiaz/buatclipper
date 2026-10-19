@@ -3,7 +3,7 @@ import Link from 'next/link';
 import { getLocale, getTranslations } from 'next-intl/server';
 import { coreServer, requireAdmin } from '@clipper/auth/server';
 import {
-  Alert, Badge, Card, CardDescription, CardHeader, CardTitle, EmptyState, Field, formatDateTime, formatIDR, Input, PageHeader, RelativeTime,
+  Alert, Badge, Button, Card, CardDescription, CardHeader, CardTitle, EmptyState, Field, formatDateTime, formatIDR, Input, PageHeader, RelativeTime,
   StatCard, StatusBadge, Table, TBody, TD, TH, THead, TR, type UiLocale,
 } from '@clipper/ui';
 import type { Claims } from '@clipper/auth';
@@ -46,7 +46,7 @@ export default async function FinancePage({ searchParams }: { searchParams: Prom
       {tab === 'incoming' ? <Incoming loc={loc} /> : null}
       {tab === 'payout' ? <Payouts loc={loc} claims={claims} batch={param(sp, 'batch')} /> : null}
       {tab === 'instant' ? <Instant loc={loc} /> : null}
-      {tab === 'refund' ? <Refunds loc={loc} /> : null}
+      {tab === 'refund' ? <Refunds loc={loc} me={claims.sub} /> : null}
       {tab === 'pph21' ? <Pph21 /> : null}
     </>
   );
@@ -61,7 +61,7 @@ async function names(db: Awaited<ReturnType<typeof coreServer>>, userIds: (strin
 async function Incoming({ loc }: { loc: UiLocale }) {
   const [t, db] = await Promise.all([getTranslations('admin'), coreServer('admin')]);
   const [openRes, paidRes] = await Promise.all([
-    db.from('invoices').select('id, number, org_id, campaign_id, kind, total, issued_at, due_at').eq('status', 'issued').order('issued_at').limit(100),
+    db.from('invoices').select('id, number, org_id, campaign_id, kind, total, credit_applied, amount_due, issued_at, due_at').eq('status', 'issued').order('issued_at').limit(100),
     db.from('invoices').select('id, number, org_id, kind, paid_amount, paid_at, payment_channel').eq('status', 'paid').order('paid_at', { ascending: false }).limit(10),
   ]);
   const open = rows(openRes);
@@ -85,7 +85,7 @@ async function Incoming({ loc }: { loc: UiLocale }) {
             <TR>
               <TH>{t('finance.invoice')}</TH>
               <TH>{t('finance.org')}</TH>
-              <TH align="right">{t('finance.total')}</TH>
+              <TH align="right">{t('finance.amountDue')}</TH>
               <TH>{t('finance.due')}</TH>
               <TH align="right">{t('form.actions')}</TH>
             </TR>
@@ -101,19 +101,26 @@ async function Incoming({ loc }: { loc: UiLocale }) {
                   </span>
                 </TD>
                 <TD muted>{org.get(i.org_id) ?? '—'}</TD>
-                <TD numeric className="font-semibold">{idr(i.total, loc)}</TD>
+                <TD numeric>
+                  <span className="font-semibold">{idr(i.amount_due ?? i.total, loc)}</span>
+                  {Number(i.credit_applied) > 0 ? (
+                    <span className="block text-caption text-muted">
+                      {t('finance.creditSplit', { total: idr(i.total, loc), credit: idr(i.credit_applied, loc) })}
+                    </span>
+                  ) : null}
+                </TD>
                 <TD muted>{i.due_at ? <RelativeTime value={i.due_at} locale={loc} /> : '—'}</TD>
                 <TD align="right">
                   <ActionDialog
                     trigger={{ label: t('finance.confirm'), variant: 'ink', icon: 'payments' }}
                     title={t('finance.confirmTitle', { number: i.number ?? '' })}
-                    description={t('finance.confirmBody', { total: idr(i.total, loc) })}
+                    description={Number(i.credit_applied) > 0 ? t('finance.confirmBodyCredit', { total: idr(i.total, loc), credit: idr(i.credit_applied, loc), due: idr(i.amount_due, loc) }) : t('finance.confirmBody', { total: idr(i.total, loc) })}
                     tone="ink"
                     submitLabel={t('finance.confirm')}
                     success={t('finance.confirmed')}
                     action={confirmInvoice.bind(null, i.id!)}
                     fields={[
-                      { kind: 'text', name: 'amount', label: t('finance.amount'), required: true, defaultValue: String(i.total ?? ''), prefix: 'Rp', helper: t('finance.amountHelp') },
+                      { kind: 'text', name: 'amount', label: t('finance.amount'), required: true, defaultValue: String(i.amount_due ?? i.total ?? ''), prefix: 'Rp', helper: t('finance.amountHelp') },
                       { kind: 'datetime', name: 'paid_at', label: t('finance.paidAt'), required: true, defaultValue: now, helper: t('form.wib') },
                       { kind: 'text', name: 'ref', label: t('finance.ref'), required: true, maxLength: 100, helper: t('finance.refHelp') },
                       { kind: 'select', name: 'channel', label: t('finance.channel'), required: true, options: [{ value: 'transfer', label: t('finance.channels.transfer') }, { value: 'qris', label: t('finance.channels.qris') }] },
@@ -297,7 +304,7 @@ function CancelPayout({ id, t }: { id: string; t: Awaited<ReturnType<typeof getT
 
 async function BatchDetail({ b, loc, me }: { b: { id: string | null; status: string | null; created_by: string | null; approved_by: string | null; count: number | null; total: number | null }; loc: UiLocale; me: string }) {
   const [t, db] = await Promise.all([getTranslations('admin'), coreServer('admin')]);
-  const payouts = rows(await db.from('payouts').select('id, user_id, amount, fee, status, hold_reason').eq('batch_id', b.id!).order('created_at'));
+  const payouts = rows(await db.from('payouts').select('id, user_id, amount, fee, status, hold_reason, bank_ref, last_error').eq('batch_id', b.id!).order('created_at'));
   const user = await names(db, payouts.map((p) => p.user_id));
   const id = b.id!;
   return (
@@ -318,7 +325,10 @@ async function BatchDetail({ b, loc, me }: { b: { id: string | null; status: str
         )
       ) : null}
       {b.status === 'approved' ? (
-        <ExportPanel label={t('finance.exportCsv')} itemsTitle={t('finance.heldInExport')} action={exportPayoutCsv.bind(null, id)} />
+        <ExportPanel label={t('finance.exportCsv')} itemsTitle={t('finance.heldInExport')} action={exportPayoutCsv.bind(null, id, 0)} />
+      ) : null}
+      {b.status === 'exported' ? (
+        <ExportPanel label={t('finance.downloadAgain')} icon="download" itemsTitle={t('finance.heldInExport')} action={exportPayoutCsv.bind(null, id, b.count ?? 0)} />
       ) : null}
       {b.status === 'exported' ? (
         <BatchResults
@@ -345,6 +355,7 @@ async function BatchDetail({ b, loc, me }: { b: { id: string | null; status: str
             <TH>{t('finance.payout')}</TH>
             <TH align="right">{t('finance.net')}</TH>
             <TH>{t('finance.status')}</TH>
+            <TH>{t('finance.bankRef')}</TH>
             {b.status === 'draft' ? <TH align="right">{t('form.actions')}</TH> : null}
           </TR>
         </THead>
@@ -356,7 +367,9 @@ async function BatchDetail({ b, loc, me }: { b: { id: string | null; status: str
               <TD>
                 <StatusBadge kind="payout" status={p.status!} label={t(`status.payout.${p.status}`)} />
                 {p.hold_reason ? <span className="ml-2 text-caption text-muted">{p.hold_reason}</span> : null}
+                {p.last_error ? <span className="block text-caption text-danger-fg">{p.last_error}</span> : null}
               </TD>
+              <TD muted className="font-mono text-caption">{p.bank_ref ?? '—'}</TD>
               {b.status === 'draft' ? (
                 <TD align="right">
                   {p.status === 'requested' ? <CancelPayout id={p.id!} t={t} /> : null}
@@ -372,7 +385,7 @@ async function BatchDetail({ b, loc, me }: { b: { id: string | null; status: str
 
 async function Instant({ loc }: { loc: UiLocale }) {
   const [t, db] = await Promise.all([getTranslations('admin'), coreServer('admin')]);
-  const list = rows(await db.from('payouts').select('id, user_id, amount, fee, status, created_at, paid_at').eq('channel', 'instant').in('status', ['requested', 'processing', 'failed']).order('created_at').limit(200));
+  const list = rows(await db.from('payouts').select('id, user_id, amount, fee, status, provider_ref, last_error, created_at, paid_at').eq('channel', 'instant').in('status', ['requested', 'processing', 'failed']).order('created_at').limit(200));
   const user = await names(db, list.map((p) => p.user_id));
   return (
     <div className="flex flex-col gap-4">
@@ -386,6 +399,7 @@ async function Instant({ loc }: { loc: UiLocale }) {
               <TH>{t('finance.payout')}</TH>
               <TH align="right">{t('finance.net')}</TH>
               <TH>{t('finance.status')}</TH>
+              <TH>{t('finance.providerRef')}</TH>
               <TH align="right">{t('finance.age')}</TH>
             </TR>
           </THead>
@@ -401,7 +415,9 @@ async function Instant({ loc }: { loc: UiLocale }) {
                 <TD numeric>{idr(Number(p.amount) - Number(p.fee), loc)}</TD>
                 <TD>
                   <StatusBadge kind="payout" status={p.status!} label={t(`status.payout.${p.status}`)} />
+                  {p.last_error ? <span className="block max-w-xs text-caption break-words text-danger-fg">{p.last_error}</span> : null}
                 </TD>
+                <TD muted className="font-mono text-caption break-all">{p.provider_ref ?? t('finance.noProviderRef')}</TD>
                 <TD align="right" muted>
                   <RelativeTime value={p.created_at!} locale={loc} />
                 </TD>
@@ -414,9 +430,9 @@ async function Instant({ loc }: { loc: UiLocale }) {
   );
 }
 
-async function Refunds({ loc }: { loc: UiLocale }) {
+async function Refunds({ loc, me }: { loc: UiLocale; me: string }) {
   const [t, db] = await Promise.all([getTranslations('admin'), coreServer('admin')]);
-  const list = rows(await db.from('org_refunds').select('id, org_id, campaign_id, amount, transfer_fee, status, created_at, paid_at').in('status', ['requested', 'approved', 'paid']).order('created_at', { ascending: false }).limit(100));
+  const list = rows(await db.from('org_refunds').select('id, org_id, campaign_id, amount, transfer_fee, status, requested_by, created_at, paid_at').in('status', ['requested', 'approved', 'paid']).order('created_at', { ascending: false }).limit(100));
   const [orgs, camps] = await Promise.all([
     db.from('organizations').select('id, name').in('id', uniq(list.map((r) => r.org_id))),
     db.from('campaigns').select('id, title').in('id', uniq(list.map((r) => r.campaign_id))),
@@ -452,7 +468,14 @@ async function Refunds({ loc }: { loc: UiLocale }) {
                   <Badge tone={r.status === 'paid' ? 'success' : r.status === 'approved' ? 'primary' : 'warn'}>{t(`finance.refundStatus.${r.status}`)}</Badge>
                 </TD>
                 <TD align="right">
-                  {r.status === 'requested' ? (
+                  {r.status === 'requested' && r.requested_by === me ? (
+                    <span className="inline-flex flex-col items-end gap-1">
+                      <Button size="sm" iconLeft="verified" disabled>
+                        {t('finance.approveRefund')}
+                      </Button>
+                      <span className="text-caption text-muted">{t('finance.refundOwn')}</span>
+                    </span>
+                  ) : r.status === 'requested' ? (
                     <ActionButton label={t('finance.approveRefund')} icon="verified" variant="primary" success={t('finance.refundApproved')} action={approveRefund.bind(null, r.id!)} />
                   ) : r.status === 'approved' ? (
                     <ActionDialog

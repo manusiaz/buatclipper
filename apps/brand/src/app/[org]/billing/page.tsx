@@ -19,13 +19,13 @@ import {
 } from '@clipper/ui';
 import { InvoiceDetail, invoiceTone, type InvoiceRow, type PaymentConfig } from '@/features/billing/invoice-detail';
 import { CreditCard } from '@/features/billing/credit-card';
-import { canPayWithCredit, parseCredit } from '@/features/billing/credit';
+import { creditCap, parseCredit } from '@/features/billing/credit';
 import { LeftoverPanel, type LeftoverRow } from '@/features/billing/leftover-panel';
-import { PayWithCredit } from '@/features/billing/pay-credit';
+import { InvoiceCredit } from '@/features/billing/pay-credit';
 import { can, getOrgContext, isUuid, num, publicSettings } from '@/lib/org';
 
 const PAGE = 25;
-const INVOICE_COLS = 'id, number, kind, campaign_id, subtotal, mgmt_fee, admin_fee, service_fee, tax, total, status, payment_channel, paid_amount, paid_at, faktur_no, issued_at, due_at, pin_until';
+const INVOICE_COLS = 'id, number, kind, campaign_id, subtotal, mgmt_fee, admin_fee, service_fee, tax, total, credit_applied, amount_due, status, payment_channel, paid_amount, paid_at, faktur_no, issued_at, due_at, pin_until';
 
 export async function generateMetadata(): Promise<Metadata> {
   return { title: (await getTranslations('brand.nav'))('billing') };
@@ -42,6 +42,8 @@ const asInvoice = (r: Record<string, unknown>): InvoiceRow => ({
   service_fee: num(r.service_fee),
   tax: num(r.tax),
   total: num(r.total),
+  credit_applied: num(r.credit_applied),
+  amount_due: r.amount_due == null ? num(r.total) - num(r.credit_applied) : num(r.amount_due),
   status: String(r.status ?? 'issued'),
   payment_channel: (r.payment_channel as string | null) ?? null,
   paid_amount: r.paid_amount == null ? null : num(r.paid_amount),
@@ -104,13 +106,15 @@ export default async function BillingPage({ params, searchParams }: { params: Pr
             orgId={orgId}
             pay={pay}
             creditAction={
-              canPayWithCredit(credit, selected) ? (
-                <PayWithCredit
+              selected.status === 'issued' && (creditCap(credit, selected) > 0 || selected.credit_applied > 0) ? (
+                <InvoiceCredit
+                  key={`${selected.id}:${selected.credit_applied}:${creditCap(credit, selected)}`}
                   orgId={orgId}
                   invoiceId={selected.id}
                   number={selected.number}
                   total={selected.total}
-                  available={credit!.available}
+                  applied={selected.credit_applied}
+                  cap={creditCap(credit, selected)}
                   aal2={aal2}
                   securityHref={securityUrl(`${hosts.brand}${base}?invoice=${selected.id}`)}
                 />
@@ -119,7 +123,7 @@ export default async function BillingPage({ params, searchParams }: { params: Pr
           />
         ) : null}
 
-        {credit && (credit.balance > 0 || credit.history.length) ? <CreditCard credit={credit} /> : null}
+        {credit && (credit.balance > 0 || credit.reserved > 0 || credit.history.length) ? <CreditCard credit={credit} /> : null}
 
         {leftover.length ? (
           <LeftoverPanel
@@ -172,7 +176,14 @@ export default async function BillingPage({ params, searchParams }: { params: Pr
                         {i.campaign_id ? <span className="truncate text-caption text-muted">{titleOf.get(i.campaign_id)}</span> : null}
                       </span>
                     </TD>
-                    <TD numeric className="font-semibold">{formatIDR(i.total, { locale: loc, fractionDigits: Number.isInteger(i.total) ? 0 : 2 })}</TD>
+                    <TD numeric className="font-semibold">
+                      {formatIDR(i.total, { locale: loc, fractionDigits: Number.isInteger(i.total) ? 0 : 2 })}
+                      {i.status === 'issued' && i.credit_applied > 0 ? (
+                        <span className="block text-caption font-normal text-muted">
+                          {t('billing.dueShort', { amount: formatIDR(i.amount_due, { locale: loc, fractionDigits: Number.isInteger(i.amount_due) ? 0 : 2 }) })}
+                        </span>
+                      ) : null}
+                    </TD>
                     <TD><Badge tone={st.tone}>{t(`billing.status.${st.key}`)}</Badge></TD>
                     <TD muted>{i.due_at ? formatDate(i.due_at, loc) : '—'}</TD>
                   </TR>

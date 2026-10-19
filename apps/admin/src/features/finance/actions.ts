@@ -43,23 +43,31 @@ export async function approveBatch(batchId: string): Promise<ActionResult> {
   return settle(error, '/finance');
 }
 
-/** A3.3: CSV transfer dibuat identity pii-export (satu-satunya tempat nomor rekening didekripsi). */
-export async function exportPayoutCsv(batchId: string): Promise<ActionResult<ExportResult>> {
+/**
+ * A3.3: CSV transfer dibuat identity pii-export (satu-satunya tempat nomor rekening didekripsi). Batch yang sudah exported
+ * hanya ditandatangani ulang (tanpa dekripsi, rows 0) → jumlah baris diambil dari batch (`rowsHint`).
+ */
+export async function exportPayoutCsv(batchId: string, rowsHint: number): Promise<ActionResult<ExportResult>> {
   await requireAdmin('admin_finance');
   const r = await invokeFunction<{ url: string; expires_in: number; rows: number; held: { payout_id: string; reason: string }[] }>(
     'identity', 'pii-export', { action: 'payout_csv', batch_id: batchId }, 'admin',
   );
   if (!r.ok) return { ok: false, error: r.error };
   revalidatePath('/finance');
-  return { ok: true, data: { url: r.data.url, expires_in: r.data.expires_in, rows: r.data.rows, items: r.data.held.map((h) => ({ id: h.payout_id, reason: h.reason })) } };
+  return { ok: true, data: { url: r.data.url, expires_in: r.data.expires_in, rows: r.data.rows || rowsHint, items: r.data.held.map((h) => ({ id: h.payout_id, reason: h.reason })) } };
 }
 
 /** A3.4: hasil transfer per payout (hanya yang masuk CSV = processing). failed → saldo kembali ke clipper (S-05). */
-export async function markBatch(batchId: string, results: { payout_id: string; status: 'paid' | 'failed'; bank_ref: string }[]): Promise<ActionResult> {
+export async function markBatch(batchId: string, results: { payout_id: string; status: 'paid' | 'failed'; bank_ref: string; reason?: string }[]): Promise<ActionResult> {
   const db = await finance();
   const { error } = await db.rpc('mark_batch_paid', {
     p_batch: batchId,
-    p_results: results.map((r) => ({ payout_id: r.payout_id, status: r.status, bank_ref: r.bank_ref.trim() || null })),
+    p_results: results.map((r) => ({
+      payout_id: r.payout_id,
+      status: r.status,
+      bank_ref: r.bank_ref.trim() || null,
+      ...(r.status === 'failed' && r.reason?.trim() ? { reason: r.reason.trim().slice(0, 500) } : {}),
+    })),
   });
   return settle(error, '/finance');
 }
