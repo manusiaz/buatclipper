@@ -157,6 +157,7 @@
     "ratesTitle": "Rates & caps per platform",
     "allPlatforms": "All platforms",
     "noRates": "No rates set yet.",
+    "clipperFee": "A {pct}% platform fee is taken from Rupiah earnings when they become Available.",
     "cap": "Max per clip: {amount}",
     "rate": {
       "per1k": "{amount} / 1,000 views",

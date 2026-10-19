@@ -805,6 +805,8 @@ select pg_temp.jwt('11111111-0000-0000-0000-00000000000a');
 insert into t_json (k, j) select 'detail_a', api.campaign_detail('55555555-0000-0000-0000-000000000001');
 select is((select j -> 'brand' from t_json where k = 'detail_a'), '{"name": "Studio Satu", "verified": true}'::jsonb,
           'detail campaign membawa nama brand untuk clipper');
+select is((select j ->> 'clipper_fee_pct' from t_json where k = 'detail_a')::numeric,
+          0::numeric, 'detail campaign membawa potongan clipper yang berlaku (fixture 0%; app menampilkan bila > 0)');
 select pg_temp.jwt('22222222-0000-0000-0000-0000000000a1');
 insert into t_json (k, j) select 'detail_o', api.campaign_detail('55555555-0000-0000-0000-000000000001');
 select pg_temp.jwt('11111111-0000-0000-0000-00000000000b');

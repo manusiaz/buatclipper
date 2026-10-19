@@ -157,6 +157,7 @@
     "ratesTitle": "Rate & cap per platform",
     "allPlatforms": "Semua platform",
     "noRates": "Rate belum diatur.",
+    "clipperFee": "Potongan platform {pct}% dari earning Rupiah saat saldo jadi Tersedia.",
     "cap": "Maks per klip: {amount}",
     "rate": {
       "per1k": "{amount} / 1.000 views",

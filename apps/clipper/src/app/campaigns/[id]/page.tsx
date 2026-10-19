@@ -203,6 +203,9 @@ export default async function CampaignDetailPage({ params, searchParams }: Props
         ) : (
           <p className="text-body-s text-muted">{t('detail.noRates')}</p>
         )}
+        {d.clipper_fee_pct > 0 ? (
+          <p className="text-body-s text-muted">{t('detail.clipperFee', { pct: formatNumber(d.clipper_fee_pct, locale) })}</p>
+        ) : null}
         {d.pools.some((p) => p.max_per_clip) ? (
           <ul className="mt-3 flex flex-col gap-1 rounded-card-sm bg-subtle p-3 text-caption text-text-2">
             {d.pools

@@ -75,6 +75,7 @@ export interface CampaignDetail {
   budget_idr: number;
   remaining_idr: number;
   est_remaining_views: Record<string, number>;
+  clipper_fee_pct: number;
   assets: DetailAsset[];
   my: {
     claim: { id: string; status: string; expires_at: string; created_at: string } | null;
@@ -144,6 +145,7 @@ export function parseDetail(raw: unknown): CampaignDetail {
     est_remaining_views: Object.fromEntries(
       Object.entries((d.est_remaining_views ?? {}) as O).map(([k, v]) => [k, num(v)]),
     ),
+    clipper_fee_pct: num(d.clipper_fee_pct),
     assets: arr<O>(d.assets).map((a) => ({
       id: str(a.id),
       kind: str(a.kind),

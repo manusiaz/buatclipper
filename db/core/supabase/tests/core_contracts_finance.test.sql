@@ -671,6 +671,17 @@ select is(api.worker_assign_code('99999999-0000-0000-0000-0000000000e2'), 'VC-AD
 select api.worker_fulfillment_result('99999999-0000-0000-0000-0000000000e2', true, 'VC-ADM', null);
 select is((select status::text from finance.fulfillments where id = '99999999-0000-0000-0000-0000000000e2'), 'delivered',
           'on_hold → processing → delivered');
+-- Regresi review R12: kode sudah terpasang (worker mati sebelum hasil tercatat) dan pool habis lagi → tetap diambil ulang.
+insert into finance.fulfillments (id, user_id, reward_type_id, amount, recipient, idempotency_key) values
+  ('99999999-0000-0000-0000-0000000000e3', '11111111-0000-0000-0000-00000000000a', '77777777-0000-0000-0000-000000000003', 1, '{}',
+   'ful-restock-crash');
+update finance.fulfillments set status = 'on_hold', last_error = 'code_pool_empty', next_retry_at = now() - interval '1 minute'
+ where id = '99999999-0000-0000-0000-0000000000e3';
+insert into finance.reward_codes (reward_type_id, code, uploaded_by, fulfillment_id, assigned_at)
+values ('77777777-0000-0000-0000-000000000003', 'VC-E3', '22222222-0000-0000-0000-0000000000a1', '99999999-0000-0000-0000-0000000000e3', now());
+select ok(exists (select 1 from api.worker_fulfillments_due(10) d where d.id = '99999999-0000-0000-0000-0000000000e3'),
+          'regresi R12: klaim yang kodenya sudah terpasang diambil ulang walau pool kosong');
+select is(api.worker_assign_code('99999999-0000-0000-0000-0000000000e3'), 'VC-E3', 'assign ulang = kode yang sama');
 
 -- ========== E. Invoice (§5.2) & konfirmasi pembayaran (F-A08) ==========
 insert into market.campaigns (id, org_id, slug, title, type, platforms, start_at, submit_deadline, created_by)

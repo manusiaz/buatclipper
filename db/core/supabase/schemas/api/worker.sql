@@ -472,8 +472,10 @@ begin
     select f.id as fid from finance.fulfillments f join market.reward_types rt on rt.id = f.reward_type_id
      where (f.status = 'requested'
             -- pool kode sempat kosong: lanjut otomatis begitu ada kode bebas lagi (S-06 on_hold → processing)
+            -- (atau kodenya sudah terpasang tapi hasil kirim belum tercatat: worker mati di tengah jalan)
             or (f.status = 'on_hold' and f.last_error = 'code_pool_empty' and rt.fulfillment = 'code_pool'
-                and exists (select 1 from finance.reward_codes rc where rc.reward_type_id = f.reward_type_id and rc.fulfillment_id is null)))
+                and exists (select 1 from finance.reward_codes rc where rc.reward_type_id = f.reward_type_id
+                             and (rc.fulfillment_id is null or rc.fulfillment_id = f.id))))
        and rt.fulfillment in ('code_pool', 'webhook')
        and (f.next_retry_at is null or f.next_retry_at <= now())
      order by coalesce(f.next_retry_at, f.created_at), f.id

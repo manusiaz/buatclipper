@@ -34,6 +34,8 @@ begin
     'budget_idr', bud -> 'budget_idr',
     'remaining_idr', bud -> 'remaining_idr',
     'est_remaining_views', bud -> 'est_remaining_views',
+    -- Potongan earning clipper (E-21) yang berlaku untuk campaign ini; dipotong saat Rupiah Tertunda → Tersedia.
+    'clipper_fee_pct', coalesce((finance.effective_fee_rule(c.org_id, c.id)).clipper_fee_pct, 0),
     'assets', coalesce((select jsonb_agg(jsonb_build_object(
                   'id', a.id, 'kind', a.kind, 'audience', a.audience, 'url', a.url, 'size_bytes', a.size_bytes,
                   'storage_path', a.storage_path,
