@@ -95,7 +95,8 @@ begin
   return res;
 end $$;
 
--- Kembalikan dana payout gagal (S-05 processing → failed → returned) ke Tersedia, termasuk fee instant.
+-- Kembalikan dana payout gagal ke Tersedia, termasuk fee instant: S-05 processing/paid → failed → returned. paid → failed =
+-- transfer dibalik setelah sukses (REVERSED penyedia / retur bank). Idempoten: payout returned tidak dijurnal lagi.
 create function finance.return_payout(p_payout uuid, p_error text default null) returns void
 language plpgsql security definer set search_path = '' as $$
 declare
@@ -107,7 +108,7 @@ begin
   if po.status = 'returned' then
     return;
   end if;
-  if po.status = 'processing' then
+  if po.status in ('processing', 'paid') then
     update finance.payouts set status = 'failed' where id = po.id;
   end if;
   update finance.payouts set status = 'returned' where id = po.id;  -- trigger S-05 menolak kalau bukan dari failed
@@ -116,8 +117,8 @@ begin
     finance.e(wallet, -(po.amount - po.fee), 'payout_return', po.id::text, 'withdrawn'),
     finance.e(finance.account('platform_revenue', null, idr), -po.fee, 'payout_return', po.id::text),
     finance.e(wallet, po.amount, 'payout_return', po.id::text, 'available')));
-  perform ops.enqueue_notification(po.user_id, 'payout.failed',
-                                   jsonb_build_object('payout_id', po.id, 'amount', po.amount, 'channel', po.channel));
+  perform ops.enqueue_notification(po.user_id, 'payout.failed', finance.amount_ref(idr, po.amount)
+                                   || jsonb_build_object('payout_id', po.id, 'channel', po.channel, 'reason', left(p_error, 200)));
   perform ops.raise_alert('payout.failed', 'warning', jsonb_build_object('payout_id', po.id, 'channel', po.channel,
                                                                            'amount', po.amount, 'error', left(p_error, 500)));
 end $$;
@@ -184,12 +185,13 @@ begin
       raise exception 'payout_not_in_batch' using errcode = 'P0001';
     end if;
     continue when (po.status = 'paid' and x.status = 'paid') or (po.status = 'returned' and x.status = 'failed');
-    if po.status <> 'processing' then
+    if po.status <> 'processing' and not (po.status = 'paid' and x.status = 'failed') then  -- paid → failed = retur bank
       raise exception 'payout_not_in_export' using errcode = 'P0001';
     end if;
     if x.status = 'paid' then
       update finance.payouts set status = 'paid', paid_at = now(), bank_ref = x.bank_ref where id = po.id;
-      perform ops.enqueue_notification(po.user_id, 'payout.paid', jsonb_build_object('payout_id', po.id, 'amount', po.amount - po.fee));
+      perform ops.enqueue_notification(po.user_id, 'payout.paid', finance.amount_ref(finance.idr(), po.amount - po.fee)
+                                       || jsonb_build_object('payout_id', po.id, 'channel', po.channel));
     elsif x.status = 'failed' then
       update finance.payouts set bank_ref = x.bank_ref where id = po.id;
       perform finance.return_payout(po.id);
@@ -263,7 +265,32 @@ begin
   return res;
 end $$;
 
-revoke execute on function finance.require_active_clipper(), finance.return_payout(uuid, text),
+-- Instant yang macet (alur 11): requested/processing tanpa provider_ref > 15 menit → bridge disburse dipanggil ulang (aman: idempotency
+-- key penyedia = id payout). Macet > 1 jam → alert. Dipanggil job lifecycle.
+create function finance.retry_instant_payouts() returns int
+language plpgsql security definer set search_path = '' as $$
+declare
+  r record;
+  n int := 0;
+  old int := 0;
+begin
+  for r in select p.id, p.created_at from finance.payouts p
+            where p.channel = 'instant' and p.status in ('requested', 'processing') and p.provider_ref is null
+              and p.created_at <= now() - interval '15 minutes'
+            order by p.created_at limit 200 loop
+    perform ops.invoke_function('bridge', jsonb_build_object('action', 'disburse', 'payout_id', r.id));
+    n := n + 1;
+    if r.created_at <= now() - interval '1 hour' then
+      old := old + 1;
+    end if;
+  end loop;
+  if old > 0 then
+    perform ops.raise_alert('payout.instant_stuck', 'warning', jsonb_build_object('count', old), interval '6 hours');
+  end if;
+  return n;
+end $$;
+
+revoke execute on function finance.require_active_clipper(), finance.return_payout(uuid, text), finance.retry_instant_payouts(),
   api.request_payout(uuid, numeric, text, text), api.create_payout_batch(timestamptz), api.approve_payout_batch(uuid),
   api.mark_batch_paid(uuid, jsonb), api.request_fulfillment(uuid, numeric, jsonb, uuid, text) from public;
 grant execute on function api.request_payout(uuid, numeric, text, text), api.create_payout_batch(timestamptz),

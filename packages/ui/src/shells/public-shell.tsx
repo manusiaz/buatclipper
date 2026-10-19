@@ -1,14 +1,9 @@
-'use client';
-
-import * as DialogPrimitive from '@radix-ui/react-dialog';
-import { useState, type ElementType, type ReactNode } from 'react';
+import type { ElementType, ReactNode } from 'react';
 import { cn } from '../lib/cn';
-import { IconButton } from '../components/button';
 import { Container } from '../components/layout';
-import { DialogOverlay } from '../components/dialog';
 import { Icon } from '../components/icon';
 import { Logo } from '../components/logo';
-import { useLinkComponent } from './link-context';
+import { NavDrawer } from './nav-drawer';
 import type { FooterColumn, NavItem } from './types';
 
 export interface PublicShellProps {
@@ -37,7 +32,7 @@ export interface PublicShellProps {
   className?: string;
 }
 
-/** Marketing site shell: sticky glass header (64 px), mobile drawer, ink footer with 4 link columns. */
+/** Marketing site shell: sticky glass header (64 px), mobile drawer, ink footer with 4 link columns. Server-compatible. */
 export function PublicShell({
   nav,
   children,
@@ -51,8 +46,7 @@ export function PublicShell({
   labels,
   className,
 }: PublicShellProps) {
-  const L = useLinkComponent(linkAs);
-  const [open, setOpen] = useState(false);
+  const L = linkAs ?? 'a';
   const t = { openMenu: 'Buka menu', closeMenu: 'Tutup menu', nav: 'Navigasi utama', footer: 'Footer', ...labels };
   const brand = logo ?? <Logo size={30} href="/" linkAs={L} />;
 
@@ -84,55 +78,44 @@ export function PublicShell({
             {headerExtras ? <div className="hidden items-center gap-1 sm:flex">{headerExtras}</div> : null}
             {secondaryAction ? <div className="hidden sm:block">{secondaryAction}</div> : null}
             {cta}
-            <IconButton icon="menu" label={t.openMenu} onClick={() => setOpen(true)} className="md:hidden" />
+            <NavDrawer
+              side="right"
+              title={t.nav}
+              header={logo ?? <Logo size={28} />}
+              openLabel={t.openMenu}
+              closeLabel={t.closeMenu}
+              triggerClassName="md:hidden"
+              hideFrom="md:hidden"
+              footer={
+                secondaryAction || headerExtras ? (
+                  <div className="flex flex-col gap-3">
+                    {headerExtras ? <div className="flex items-center gap-2">{headerExtras}</div> : null}
+                    {secondaryAction ? <div className="[&>*]:w-full">{secondaryAction}</div> : null}
+                  </div>
+                ) : undefined
+              }
+            >
+              <nav aria-label={t.nav} className="flex-1 overflow-y-auto px-3 py-2">
+                <ul className="flex flex-col gap-1">
+                  {nav.map((item) => (
+                    <li key={item.href}>
+                      <L
+                        href={item.href}
+                        aria-current={item.active ? 'page' : undefined}
+                        className="flex h-12 items-center gap-3 rounded-control px-3 text-body font-semibold text-text-2 hover:bg-subtle hover:text-ink focus-ring aria-[current=page]:bg-primary-soft aria-[current=page]:font-bold aria-[current=page]:text-ink"
+                      >
+                        {item.icon ? <Icon name={item.icon} size={22} className="text-muted" /> : null}
+                        <span className="flex-1">{item.label}</span>
+                        <Icon name="chevron_right" size={20} className="text-faint" />
+                      </L>
+                    </li>
+                  ))}
+                </ul>
+              </nav>
+            </NavDrawer>
           </div>
         </Container>
       </header>
-
-      <DialogPrimitive.Root open={open} onOpenChange={setOpen}>
-        <DialogPrimitive.Portal>
-          <DialogOverlay className="md:hidden" />
-          <DialogPrimitive.Content
-            className={cn(
-              'fixed inset-y-0 right-0 z-50 flex w-[min(88vw,340px)] flex-col rounded-l-modal bg-surface pt-[var(--safe-top)] pb-[var(--safe-bottom)] shadow-modal outline-none md:hidden',
-              'data-[state=open]:animate-sheet-in-right data-[state=closed]:animate-sheet-out-right',
-            )}
-          >
-            <DialogPrimitive.Title className="sr-only">{t.nav}</DialogPrimitive.Title>
-            <DialogPrimitive.Description className="sr-only">{t.nav}</DialogPrimitive.Description>
-            <div className="flex h-16 shrink-0 items-center justify-between pr-3 pl-5">
-              {logo ?? <Logo size={28} />}
-              <DialogPrimitive.Close asChild>
-                <IconButton icon="close" label={t.closeMenu} />
-              </DialogPrimitive.Close>
-            </div>
-            <nav aria-label={t.nav} className="flex-1 overflow-y-auto px-3 py-2">
-              <ul className="flex flex-col gap-1">
-                {nav.map((item) => (
-                  <li key={item.href}>
-                    <L
-                      href={item.href}
-                      onClick={() => setOpen(false)}
-                      aria-current={item.active ? 'page' : undefined}
-                      className="flex h-12 items-center gap-3 rounded-control px-3 text-body font-semibold text-text-2 hover:bg-subtle hover:text-ink focus-ring aria-[current=page]:bg-primary-soft aria-[current=page]:font-bold aria-[current=page]:text-ink"
-                    >
-                      {item.icon ? <Icon name={item.icon} size={22} className="text-muted" /> : null}
-                      <span className="flex-1">{item.label}</span>
-                      <Icon name="chevron_right" size={20} className="text-faint" />
-                    </L>
-                  </li>
-                ))}
-              </ul>
-            </nav>
-            {secondaryAction || headerExtras ? (
-              <div className="flex flex-col gap-3 border-t border-border px-5 py-4">
-                {headerExtras ? <div className="flex items-center gap-2">{headerExtras}</div> : null}
-                {secondaryAction ? <div className="[&>*]:w-full">{secondaryAction}</div> : null}
-              </div>
-            ) : null}
-          </DialogPrimitive.Content>
-        </DialogPrimitive.Portal>
-      </DialogPrimitive.Root>
 
       <main id="main" className="flex-1">
         {children}

@@ -54,7 +54,7 @@ begin
   return jsonb_build_object(
     'submission', jsonb_build_object('id', s.id, 'platform', s.platform, 'post_id', s.post_id, 'url', s.url, 'posted_at', s.posted_at,
                                      'status', s.status, 'user_id', s.user_id, 'campaign_id', s.campaign_id,
-                                     'counted_views', s.counted_views),
+                                     'counted_views', s.counted_views, 'last_snapshot_at', s.last_snapshot_at),
     'account', jsonb_build_object('id', a.id, 'external_id', a.external_id, 'handle', a.handle, 'status', a.status),
     'token', tok,
     'campaign', jsonb_build_object('required_hashtags', c.required_hashtags, 'required_mentions', c.required_mentions,
@@ -64,10 +64,42 @@ begin
     'final', tracking.final_due(s.id));
 end $$;
 
--- Satu snapshot dari worker (API sukses; error/rate limit tidak pernah dipanggil ke sini, §11). Urutan: simpan snapshot →
--- sinyal fraud (FR-06 caption, FR-01 engagement, FR-02 lonjakan vs median akun, FR-03 akun baru, FR-10 views/reach,
--- FR-08 turun saat lock) → accrue_earnings → lock kalau final → jadwal poll berikutnya (tracking.poll_schedule per umur posting,
--- tidak melewati akhir view window supaya poll final tepat waktu).
+-- Akun sosmed + token Vault (core/social: daftar video & submit atas nama akun itu).
+create function api.worker_account_token(p_account uuid) returns jsonb
+language plpgsql stable security definer set search_path = '' as $$
+declare
+  a tracking.social_accounts;
+begin
+  select * into a from tracking.social_accounts x where x.id = p_account;
+  if not found then
+    raise exception 'not_found:social_account' using errcode = 'P0002';
+  end if;
+  return jsonb_build_object('id', a.id, 'user_id', a.user_id, 'platform', a.platform, 'external_id', a.external_id, 'handle', a.handle,
+                            'status', a.status,
+                            'token', (select ds.decrypted_secret from vault.decrypted_secrets ds where ds.id = a.token_ref));
+end $$;
+
+-- Poll dilewati (mis. X hanya dicek di 24 jam, 7 hari, dan lock): jadwal berikutnya = p_until, tidak melewati akhir view window.
+create function api.worker_defer(p_submission uuid, p_until timestamptz) returns void
+language plpgsql security definer set search_path = '' as $$
+begin
+  if p_until is null then
+    raise exception 'invalid:until' using errcode = 'P0001';
+  end if;
+  update tracking.submissions t
+     set next_poll_at = least(p_until, t.posted_at + make_interval(days => (select c.view_window_days from market.campaigns c
+                                                                            where c.id = t.campaign_id)))
+   where t.id = p_submission and t.status in ('tracking', 'flagged');
+  if not found and not exists (select 1 from tracking.submissions t where t.id = p_submission) then
+    raise exception 'not_found:submission' using errcode = 'P0002';
+  end if;
+end $$;
+
+-- Satu snapshot dari worker (API sukses; error/rate limit tidak pernah dipanggil ke sini, §11). Urutan: simpan snapshot
+-- (p_extra ikut di raw.extra) → sinyal fraud (FR-06 caption, FR-01 engagement, FR-02 lonjakan vs median akun, FR-03 akun baru,
+-- FR-09 durasi tonton/skip rate, FR-10 views/reach, FR-11 negara penonton, FR-08 turun saat lock; FR-09/11 hanya kalau ambangnya
+-- ada di config) → accrue_earnings → lock kalau final → jadwal poll berikutnya (tracking.poll_schedule per umur posting, tidak
+-- melewati akhir view window supaya poll final tepat waktu). avg_watch_time Instagram dalam milidetik, platform lain detik.
 create function api.worker_record_snapshot(p_submission uuid, p_views bigint, p_likes bigint, p_comments bigint, p_shares bigint,
                                            p_caption text, p_raw jsonb, p_extra jsonb default '{}')
 returns jsonb
@@ -85,6 +117,10 @@ declare
   med numeric;
   peers int;
   reach numeric;
+  watch numeric;
+  skip numeric;
+  id_views numeric;
+  all_views numeric;
   window_end timestamptz;
   every_h numeric;
   nxt timestamptz;
@@ -106,7 +142,10 @@ begin
   window_end := s.posted_at + make_interval(days => c.view_window_days);
   fin := tracking.final_due(s.id);
   insert into tracking.view_snapshots (submission_id, taken_at, views, likes, comments, shares, is_final, raw)
-  values (s.id, clock_timestamp(), p_views, p_likes, p_comments, p_shares, fin, p_raw)
+  values (s.id, clock_timestamp(), p_views, p_likes, p_comments, p_shares, fin,
+          nullif(case when jsonb_typeof(p_raw) = 'object' then p_raw when p_raw is null then '{}' else jsonb_build_object('response', p_raw) end
+                 || case when jsonb_typeof(p_extra) = 'object' and p_extra <> '{}' then jsonb_build_object('extra', p_extra) else '{}' end,
+                 '{}'))
   returning id, taken_at into sid, taken;
 
   if p_caption is not null then
@@ -142,6 +181,25 @@ begin
   if reach > 0 and p_views / reach > (ops.cfg('trust.fraud.views_over_reach', '3'))::numeric then
     raised := trust.raise_flag('submission', s.id, 'FR-10', 60, jsonb_build_object('views', p_views, 'reach', reach))
               is not null or raised;
+  end if;
+  watch := case when jsonb_typeof(p_extra -> 'avg_watch_time') = 'number'
+                then (p_extra ->> 'avg_watch_time')::numeric / case when s.platform = 'instagram' then 1000 else 1 end end;
+  skip := case when jsonb_typeof(p_extra -> 'skip_rate') = 'number' then (p_extra ->> 'skip_rate')::numeric end;
+  if p_views >= greatest(c.min_views, 1000)
+     and (watch < (ops.cfg('trust.fraud.min_avg_watch_sec'))::numeric or skip > (ops.cfg('trust.fraud.max_skip_rate'))::numeric) then
+    raised := trust.raise_flag('submission', s.id, 'FR-09', 50, jsonb_build_object('avg_watch_sec', watch, 'skip_rate', skip, 'snapshot_id', sid))
+              is not null or raised;
+  end if;
+  if jsonb_typeof(p_extra -> 'countries') = 'object' then
+    select coalesce(sum(x.value::numeric) filter (where upper(x.key) = 'ID'), 0), sum(x.value::numeric) into id_views, all_views
+      from jsonb_each_text(p_extra -> 'countries') x where x.value ~ '^[0-9]+(\.[0-9]+)?$';
+    if all_views > 0 and p_views >= greatest(c.min_views, 1000)
+       and id_views / all_views < (ops.cfg('trust.fraud.min_id_country_share'))::numeric then
+      raised := trust.raise_flag('submission', s.id, 'FR-11', 60,
+                                 jsonb_build_object('id_share', round(id_views / all_views, 4), 'countries', p_extra -> 'countries',
+                                                    'traffic_sources', p_extra -> 'traffic_sources', 'snapshot_id', sid)) is not null or raised;
+      hold := true;  -- FR-11: tahan earning
+    end if;
   end if;
   if fin and p_views < s.counted_views
      and (s.counted_views - p_views) * 100 >= s.counted_views * (ops.cfg('trust.fraud.lock_drop_pct', '20'))::numeric then
@@ -190,9 +248,8 @@ begin
   perform trust.raise_flag('submission', s.id, 'FR-06', 100, jsonb_build_object('post_gone', true, 'reason', p_reason), 'actioned');
   update tracking.submissions set status = 'forfeited', next_poll_at = null where id = s.id;
   perform finance.reverse_earning(s.id, 'post_gone');
-  perform ops.enqueue_notification(s.user_id, 'submission.forfeited',
-                                   jsonb_build_object('submission_id', s.id, 'campaign_id', s.campaign_id,
-                                                      'reason', coalesce(p_reason, 'post_gone')));
+  perform ops.enqueue_notification(s.user_id, 'submission.forfeited', market.campaign_ref(s.campaign_id)
+                                   || jsonb_build_object('submission_id', s.id, 'reason', coalesce(p_reason, 'post_gone')));
 end $$;
 
 -- Status token akun sosmed: expired/revoked → tracking submisinya di-pause (next_poll_at NULL) + notifikasi sekali;
@@ -371,7 +428,7 @@ begin
   update market.claims set status = 'submitted' where id = cl.id;
   if c.review_mode = 'brand' and st = 'in_review' then
     perform market.notify_org(c.org_id, array['brand_owner', 'brand_manager']::market.org_role[], 'submission.pending_review',
-                              jsonb_build_object('submission_id', sid, 'campaign_id', c.id));
+                              market.campaign_ref(c.id) || jsonb_build_object('submission_id', sid));
   end if;
   return jsonb_build_object('submission_id', sid, 'status', st);
 end $$;
@@ -478,8 +535,9 @@ begin
     update finance.fulfillments set status = 'delivered', delivered_ref = p_ref, delivered_at = now(), last_error = null,
            next_retry_at = null
      where id = f.id;
-    perform ops.enqueue_notification(f.user_id, 'fulfillment.delivered',
-                                     jsonb_build_object('fulfillment_id', f.id, 'reward_type_id', f.reward_type_id, 'amount', f.amount));
+    perform ops.enqueue_notification(f.user_id, 'fulfillment.delivered', finance.amount_ref(f.reward_type_id, f.amount)
+                                     || jsonb_build_object('fulfillment_id', f.id, 'reward_type_id', f.reward_type_id,
+                                                           'reward_name', (select rt.name from market.reward_types rt where rt.id = f.reward_type_id)));
   else
     update finance.fulfillments set attempts = attempts + 1, last_error = left(p_error, 500), next_retry_at = now() + interval '5 minutes'
      where id = f.id;
@@ -492,6 +550,7 @@ begin
 end $$;
 
 revoke execute on function api.worker_dequeue(text, int, int), api.worker_ack(text, bigint), tracking.final_due(uuid),
+  api.worker_account_token(uuid), api.worker_defer(uuid, timestamptz),
   api.worker_submission_context(uuid), api.worker_record_snapshot(uuid, bigint, bigint, bigint, bigint, text, jsonb, jsonb),
   api.worker_post_gone(uuid, text), api.worker_account_status(uuid, text), api.worker_accounts_to_refresh(interval),
   api.worker_upsert_social_account(uuid, market.platform, text, text, int, timestamptz, text),
@@ -500,6 +559,7 @@ revoke execute on function api.worker_dequeue(text, int, int), api.worker_ack(te
   api.worker_fulfillment_result(uuid, boolean, text, text)
   from public, anon, authenticated;
 grant execute on function api.worker_dequeue(text, int, int), api.worker_ack(text, bigint),
+  api.worker_account_token(uuid), api.worker_defer(uuid, timestamptz),
   api.worker_submission_context(uuid), api.worker_record_snapshot(uuid, bigint, bigint, bigint, bigint, text, jsonb, jsonb),
   api.worker_post_gone(uuid, text), api.worker_account_status(uuid, text), api.worker_accounts_to_refresh(interval),
   api.worker_upsert_social_account(uuid, market.platform, text, text, int, timestamptz, text),

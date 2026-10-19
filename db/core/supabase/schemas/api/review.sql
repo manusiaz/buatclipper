@@ -73,7 +73,7 @@ begin
     values ('campaign', c.id, uid, p_decision, p_reason, p_message, p_note);
     perform market.notify_org(c.org_id, array['brand_owner', 'brand_manager']::market.org_role[],
                               case p_decision when 'approve' then 'campaign.approved' else 'campaign.rejected' end,
-                              jsonb_build_object('campaign_id', c.id, 'title', c.title, 'reason', p_reason, 'message', p_message));
+                              jsonb_build_object('campaign_id', c.id, 'campaign_title', c.title, 'reason', p_reason, 'message', p_message));
     insert into ops.audit_logs (actor_id, action, target, before, after)
     values (uid, 'review.campaign.' || p_decision, 'campaign:' || c.id, jsonb_build_object('status', c.status),
             jsonb_build_object('status', case p_decision when 'approve' then 'scheduled' else 'rejected' end, 'reason', p_reason));
@@ -116,7 +116,7 @@ begin
     insert into trust.review_decisions (target_type, target_id, actor_id, decision, reason_code, message, note)
     values ('kyc', p_target_id, uid, p_decision, p_reason, p_message, p_note);
     perform ops.enqueue_notification(p_target_id, case p_decision when 'approve' then 'kyc.approved' else 'kyc.rejected' end,
-                                     jsonb_build_object('reason', p_reason, 'message', p_message));
+                                     jsonb_build_object('decision', p_decision, 'reason', p_reason, 'message', p_message));
     insert into ops.audit_logs (actor_id, action, target, before, after)
     values (uid, 'review.kyc.' || p_decision, 'profile:' || p_target_id, null, jsonb_build_object('reason', p_reason));
 

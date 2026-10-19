@@ -410,14 +410,17 @@ begin
         update finance.reward_pools set allocated = allocated - (g.amount - avail) where id = g.pool_id;
       end if;
       if avail > 0 then
-        released := released || jsonb_build_object(g.code, coalesce((released ->> g.code)::numeric, 0) + avail);
+        released := released || jsonb_build_object(g.reward_type_id::text,
+                                                    coalesce((released ->> g.reward_type_id::text)::numeric, 0) + avail);
       end if;
     end loop;
     update finance.clip_earnings set released_at = now() where submission_id = s.id and released_at is null;
     update tracking.submissions set status = 'settled' where id = s.id;
     perform finance.post(gen_random_uuid(), entries);
     if released <> '{}' then
-      perform ops.enqueue_notification(s.user_id, 'earning.available', jsonb_build_object('submission_id', s.id, 'amounts', released));
+      perform ops.enqueue_notification(s.user_id, 'earning.available', market.campaign_ref(s.campaign_id) || jsonb_build_object(
+        'submission_id', s.id,
+        'amounts', (select jsonb_agg(finance.amount_ref(x.key::uuid, x.value::numeric)) from jsonb_each_text(released) x)));
     end if;
   end loop;
 end $$;

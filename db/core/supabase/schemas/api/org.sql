@@ -47,7 +47,7 @@ begin
   insert into trust.review_decisions (target_type, target_id, actor_id, decision, reason_code, message, note)
   values ('org', o.id, p_actor, p_decision, p_reason, p_message, p_note);
   perform market.notify_org(o.id, null, case p_decision when 'approve' then 'org.verified' else 'org.rejected' end,
-                            jsonb_build_object('name', o.name, 'reason', p_reason, 'message', p_message));
+                            jsonb_build_object('reason', p_reason, 'message', p_message));
   insert into ops.audit_logs (actor_id, action, target, before, after)
   values (p_actor, case p_decision when 'approve' then 'org.verify' else 'org.reject' end, 'org:' || o.id,
           jsonb_build_object('status', o.status),
@@ -122,7 +122,7 @@ begin
       set approved_by = null, approved_at = null, revoked_at = null, created_at = now();
     perform market.notify_org(p_client, array['brand_owner']::market.org_role[], 'agency.link_requested',
                               jsonb_build_object('agency_org_id', p_agency,
-                                                 'agency_name', (select o.name from market.organizations o where o.id = p_agency)));
+                                                 'agency_org_name', (select o.name from market.organizations o where o.id = p_agency)));
   elsif p_action = 'approve' then
     if not market.is_direct_member(p_client, uid, 'brand_owner') then
       perform market.fail('auth:forbidden', 'butuh brand_owner org klien', '42501');
@@ -133,7 +133,8 @@ begin
     update market.org_links set approved_by = uid, approved_at = now()
      where agency_org_id = p_agency and client_org_id = p_client;
     perform market.notify_org(p_agency, array['brand_owner', 'brand_manager']::market.org_role[], 'agency.link_approved',
-                              jsonb_build_object('client_org_id', p_client));
+                              jsonb_build_object('client_org_id', p_client,
+                                                 'client_org_name', (select o.name from market.organizations o where o.id = p_client)));
   elsif p_action in ('revoke', 'reject') then
     if not (market.is_direct_member(p_client, uid, 'brand_owner') or market.is_direct_member(p_agency, uid, 'brand_owner')) then
       perform market.fail('auth:forbidden', 'butuh brand_owner klien atau agency', '42501');
@@ -226,7 +227,7 @@ begin
       perform market.fail('invalid:reason', 'suspend wajib alasan');
     end if;
     update market.organizations set status = 'suspended' where id = o.id;
-    perform market.notify_org(o.id, null, 'org.suspended', jsonb_build_object('name', o.name, 'reason', prm ->> 'reason'));
+    perform market.notify_org(o.id, null, 'org.suspended', jsonb_build_object('reason', prm ->> 'reason', 'message', prm ->> 'message'));
     insert into ops.audit_logs (actor_id, action, target, before, after)
     values (uid, 'org.suspend', 'org:' || o.id, jsonb_build_object('status', o.status),
             jsonb_build_object('status', 'suspended', 'reason', prm ->> 'reason'));

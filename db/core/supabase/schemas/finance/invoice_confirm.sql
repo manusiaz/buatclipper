@@ -102,8 +102,8 @@ begin
      where id = inv.campaign_id;
   end if;
   perform market.notify_org(inv.org_id, array['brand_owner', 'brand_finance']::market.org_role[], 'invoice.paid',
-                            jsonb_build_object('invoice_id', inv.id, 'number', inv.number, 'kind', inv.kind,
-                                               'campaign_id', inv.campaign_id, 'amount', p_amount));
+                            market.campaign_ref(inv.campaign_id) || finance.amount_ref(idr, p_amount)
+                            || jsonb_build_object('invoice_id', inv.id, 'number', inv.number, 'kind', inv.kind));
 end $$;
 
 revoke execute on function api.confirm_invoice_payment(uuid, numeric, timestamptz, text, text) from public;

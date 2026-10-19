@@ -122,7 +122,8 @@ begin
     finance.e(finance.account('bank_clearing', null, idr), r.amount - r.transfer_fee, 'refund', r.id || ':paid'),
     finance.e(finance.account('platform_revenue', null, idr), r.transfer_fee, 'refund', r.id || ':paid')));
   perform market.notify_org(r.org_id, array['brand_owner', 'brand_finance']::market.org_role[], 'refund.paid',
-                            jsonb_build_object('refund_id', r.id, 'campaign_id', r.campaign_id, 'amount', r.amount - r.transfer_fee));
+                            market.campaign_ref(r.campaign_id) || finance.amount_ref(idr, r.amount - r.transfer_fee)
+                            || jsonb_build_object('refund_id', r.id, 'transfer_fee', r.transfer_fee));
 end $$;
 
 revoke execute on function api.request_refund(uuid, uuid, text, numeric, text), api.approve_refund(uuid),

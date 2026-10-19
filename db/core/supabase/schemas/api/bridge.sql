@@ -2,6 +2,7 @@
 -- tanda tangan HMAC-nya di Edge Function. EXECUTE hanya untuk service_role.
 
 -- Alur 3: isi batch yang sudah disetujui dua orang (approved_by ≠ created_by) untuk dibuat CSV di identity.
+-- amount = bruto yang dipotong dari Tersedia; yang ditransfer = amount − fee.
 create function api.bridge_get_batch(p_batch uuid) returns jsonb
 language plpgsql stable security definer set search_path = '' as $$
 declare
@@ -17,7 +18,7 @@ begin
   return jsonb_build_object(
     'batch', jsonb_build_object('id', b.id, 'status', b.status, 'created_by', b.created_by, 'approved_by', b.approved_by),
     'payouts', coalesce((select jsonb_agg(jsonb_build_object('id', p.id, 'user_id', p.user_id, 'method_id', p.method_id,
-                                                             'amount', p.amount - p.fee) order by p.id)
+                                                             'amount', p.amount, 'fee', p.fee) order by p.id)
                          from finance.payouts p where p.batch_id = b.id and p.status = 'requested'), '[]'));
 end $$;
 
@@ -177,7 +178,8 @@ begin
   end;
   if p_status = 'paid' then
     update finance.payouts set status = 'paid', paid_at = now() where id = p.id;
-    perform ops.enqueue_notification(p.user_id, 'payout.paid', jsonb_build_object('payout_id', p.id, 'amount', p.amount - p.fee));
+    perform ops.enqueue_notification(p.user_id, 'payout.paid', finance.amount_ref(finance.idr(), p.amount - p.fee)
+                                     || jsonb_build_object('payout_id', p.id, 'channel', p.channel));
   elsif p_status = 'failed' then
     perform finance.return_payout(p.id, p_error);
   end if;

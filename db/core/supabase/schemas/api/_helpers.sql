@@ -38,11 +38,14 @@ end $$;
 
 -- fn:notify_org — notifikasi ke anggota org (langsung + agency tertaut) dengan role tertentu (NULL/kosong = semua).
 -- Dipakai invoice.issued, campaign.approved/rejected, managed.draft_ready, org.verified/rejected, budget.*, submission.pending_review.
+-- Payload selalu ditambah org_id + org_name (template email identity & deep link brand.{domain}/[org]/…).
 create function market.notify_org(p_org uuid, p_roles market.org_role[], p_event text, p_payload jsonb default '{}') returns int
 language plpgsql security definer set search_path = '' as $$
 declare
   r record;
   n int := 0;
+  body jsonb := coalesce(p_payload, '{}')
+                || jsonb_build_object('org_id', p_org, 'org_name', (select o.name from market.organizations o where o.id = p_org));
 begin
   for r in
     select m.user_id from market.org_members m
@@ -52,7 +55,7 @@ begin
      where l.client_org_id = p_org and l.approved_at is not null and l.revoked_at is null
        and (coalesce(cardinality(p_roles), 0) = 0 or m.role = any (p_roles))
   loop
-    perform ops.enqueue_notification(r.user_id, p_event, coalesce(p_payload, '{}') || jsonb_build_object('org_id', p_org));
+    perform ops.enqueue_notification(r.user_id, p_event, body);
     n := n + 1;
   end loop;
   return n;

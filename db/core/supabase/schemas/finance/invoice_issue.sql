@@ -50,7 +50,8 @@ begin
 end $$;
 
 -- fn:issue_invoice — subtotal = budget creator (campaign/topup) atau 0 (pinned/managed_service: harga di service_fee).
--- Notifikasi invoice.issued ke brand_owner + brand_finance (yang bisa membuka billing).
+-- Notifikasi invoice.issued ke brand_owner + brand_finance (yang bisa membuka billing); payload: invoice_id, invoice_number, kind,
+-- total, due_at, campaign_id, campaign_title (+ org_id, org_name dari notify_org).
 create function finance.issue_invoice(p_org uuid, p_campaign uuid, p_kind text, p_subtotal numeric,
                                       p_service_fee numeric default 0, p_pin_until timestamptz default null,
                                       p_pool_topups jsonb default null)
@@ -84,8 +85,9 @@ begin
           now() + make_interval(days => due_days), p_pin_until, p_pool_topups)
   returning * into inv;
   perform market.notify_org(p_org, array['brand_owner', 'brand_finance']::market.org_role[], 'invoice.issued',
-                            jsonb_build_object('invoice_id', inv.id, 'number', inv.number, 'kind', inv.kind,
-                                               'campaign_id', inv.campaign_id, 'total', inv.total));
+                            jsonb_build_object('invoice_id', inv.id, 'invoice_number', inv.number, 'kind', inv.kind,
+                                               'total', inv.total, 'due_at', inv.due_at, 'campaign_id', inv.campaign_id,
+                                               'campaign_title', (select c.title from market.campaigns c where c.id = inv.campaign_id)));
   return inv;
 end $$;
 

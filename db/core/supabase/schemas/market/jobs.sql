@@ -90,14 +90,14 @@ begin
     end loop;
     if top is not null then
       n := n + market.notify_org(c.org_id, roles, 'budget.used',
-                                 jsonb_build_object('campaign_id', c.id, 'title', c.title, 'pct', top, 'utilization_pct', util));
+                                 jsonb_build_object('campaign_id', c.id, 'campaign_title', c.title, 'pct', top, 'utilization_pct', util));
     end if;
     if c.status = 'live' and (pj ->> 'elapsed_days')::numeric >= 2 and (pj ->> 'projected_utilization_pct')::numeric < 50 then
       insert into market.budget_alerts (campaign_id, kind, utilization_pct) values (c.id, 'projection_low', util)
       on conflict do nothing;
       if found then
         n := n + market.notify_org(c.org_id, roles, 'budget.projection_low',
-                                   jsonb_build_object('campaign_id', c.id, 'title', c.title,
+                                   jsonb_build_object('campaign_id', c.id, 'campaign_title', c.title,
                                                       'projected_utilization_pct', pj -> 'projected_utilization_pct',
                                                       'suggestions', jsonb_build_array('raise_rate', 'extend', 'invite', 'pin')));
       end if;

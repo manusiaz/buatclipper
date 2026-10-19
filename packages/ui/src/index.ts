@@ -100,5 +100,5 @@ export { MobileAppShell, type MobileAppShellProps } from './shells/mobile-app-sh
 export { SidebarShell, type SidebarShellProps } from './shells/sidebar-shell';
 export { PublicShell, type PublicShellProps } from './shells/public-shell';
 export { AuthShell, type AuthShellProps } from './shells/auth-shell';
-export { LinkProvider, useLinkComponent } from './shells/link-context';
+export { NavDrawer, type NavDrawerProps } from './shells/nav-drawer';
 export type { NavItem, NavSection, FooterColumn } from './shells/types';

@@ -1,14 +1,9 @@
-'use client';
-
-import * as DialogPrimitive from '@radix-ui/react-dialog';
-import { useState, type ElementType, type ReactNode } from 'react';
+import type { ElementType, ReactNode } from 'react';
 import { cn } from '../lib/cn';
-import { IconButton } from '../components/button';
-import { DialogOverlay } from '../components/dialog';
 import { Icon } from '../components/icon';
 import { Logo } from '../components/logo';
-import { useLinkComponent } from './link-context';
 import { badgeText, NavBadge } from './nav-badge';
+import { NavDrawer } from './nav-drawer';
 import type { NavItem, NavSection } from './types';
 
 export interface SidebarShellProps {
@@ -39,7 +34,7 @@ export interface SidebarShellProps {
 
 const isSections = (n: NavItem[] | NavSection[]): n is NavSection[] => n.length > 0 && 'items' in (n[0] as object);
 
-function NavList({ sections, L, onNavigate }: { sections: NavSection[]; L: ElementType; onNavigate?: () => void }) {
+function NavList({ sections, L }: { sections: NavSection[]; L: ElementType }) {
   return (
     <div className="flex flex-col gap-5">
       {sections.map((s, si) => (
@@ -50,7 +45,6 @@ function NavList({ sections, L, onNavigate }: { sections: NavSection[]; L: Eleme
               <li key={item.href}>
                 <L
                   href={item.href}
-                  onClick={onNavigate}
                   aria-current={item.active ? 'page' : undefined}
                   target={item.external ? '_blank' : undefined}
                   rel={item.external ? 'noopener noreferrer' : undefined}
@@ -80,7 +74,8 @@ function NavList({ sections, L, onNavigate }: { sections: NavSection[]; L: Eleme
 
 /**
  * Brand/admin shell: fixed sidebar ≥ 1024 px, drawer below; sticky glass header with org switcher,
- * actions and user menu. No routing logic — `active` comes from the app.
+ * actions and user menu. No routing logic — `active` comes from the app. Server-compatible
+ * (the drawer is a client island), so `linkAs={Link}` works from server layouts.
  */
 export function SidebarShell({
   nav,
@@ -98,17 +93,16 @@ export function SidebarShell({
   className,
   mainClassName,
 }: SidebarShellProps) {
-  const L = useLinkComponent(linkAs);
-  const [open, setOpen] = useState(false);
+  const L = linkAs ?? 'a';
   const sections: NavSection[] = isSections(nav) ? nav : [{ items: nav as NavItem[] }];
   const t = { openMenu: 'Buka menu', closeMenu: 'Tutup menu', nav: 'Navigasi utama', ...labels };
   const brand = logo ?? <Logo size={28} product={product} />;
 
-  const sidebarBody = (onNavigate?: () => void) => (
+  const sidebarBody = (
     <>
       {orgSwitcher ? <div className="px-3 pb-3">{orgSwitcher}</div> : null}
       <nav aria-label={t.nav} className="min-h-0 flex-1 overflow-y-auto px-3 pb-4">
-        <NavList sections={sections} L={L} onNavigate={onNavigate} />
+        <NavList sections={sections} L={L} />
       </nav>
       {sidebarFooter ? <div className="border-t border-border px-3 py-3">{sidebarFooter}</div> : null}
     </>
@@ -119,36 +113,15 @@ export function SidebarShell({
       {/* Desktop sidebar */}
       <aside className="fixed inset-y-0 left-0 z-30 hidden w-[264px] flex-col border-r border-border bg-surface/90 backdrop-blur-[14px] lg:flex">
         <div className="flex h-16 shrink-0 items-center px-5">{brand}</div>
-        {sidebarBody()}
+        {sidebarBody}
       </aside>
-
-      {/* Mobile drawer */}
-      <DialogPrimitive.Root open={open} onOpenChange={setOpen}>
-        <DialogPrimitive.Portal>
-          <DialogOverlay className="lg:hidden" />
-          <DialogPrimitive.Content
-            className={cn(
-              'fixed inset-y-0 left-0 z-50 flex w-[min(86vw,300px)] flex-col rounded-r-modal bg-surface pt-[var(--safe-top)] pb-[var(--safe-bottom)] shadow-modal outline-none lg:hidden',
-              'data-[state=open]:animate-sheet-in-left data-[state=closed]:animate-sheet-out-left',
-            )}
-          >
-            <DialogPrimitive.Title className="sr-only">{t.nav}</DialogPrimitive.Title>
-            <DialogPrimitive.Description className="sr-only">{t.nav}</DialogPrimitive.Description>
-            <div className="flex h-16 shrink-0 items-center justify-between pr-3 pl-5">
-              {brand}
-              <DialogPrimitive.Close asChild>
-                <IconButton icon="close" label={t.closeMenu} />
-              </DialogPrimitive.Close>
-            </div>
-            {sidebarBody(() => setOpen(false))}
-          </DialogPrimitive.Content>
-        </DialogPrimitive.Portal>
-      </DialogPrimitive.Root>
 
       <div className="flex min-h-dvh flex-col lg:pl-[264px]">
         <header className="sticky top-0 z-20 border-b border-border/70 bg-surface/85 pt-[var(--safe-top)] backdrop-blur-[14px] backdrop-saturate-150">
           <div className="flex h-16 items-center gap-2 px-4 md:px-6 lg:px-8">
-            <IconButton icon="menu" label={t.openMenu} onClick={() => setOpen(true)} className="-ml-1 lg:hidden" />
+            <NavDrawer title={t.nav} header={brand} openLabel={t.openMenu} closeLabel={t.closeMenu} triggerClassName="-ml-1 lg:hidden" hideFrom="lg:hidden">
+              {sidebarBody}
+            </NavDrawer>
             <div className="flex min-w-0 items-center lg:hidden">{brand}</div>
             <div className="hidden min-w-0 flex-1 items-center lg:flex">{headerStart}</div>
             <div className="ml-auto flex items-center gap-1">

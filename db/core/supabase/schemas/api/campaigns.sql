@@ -429,7 +429,7 @@ begin
         coalesce((select (s.value #>> '{}')::numeric from ops.settings s where s.key = 'public.billing.managed_service_idr'), 2500000));
     end if;
     perform market.notify_org(org.id, array['brand_owner', 'brand_manager']::market.org_role[], 'managed.draft_ready',
-                              jsonb_build_object('campaign_id', c.id, 'title', c.title));
+                              jsonb_build_object('campaign_id', c.id, 'campaign_title', c.title));
     return c.id;
   end if;
 
@@ -628,7 +628,9 @@ begin
     if k > 0 then
       n := n + 1;
       perform ops.enqueue_notification(pr.id, 'campaign.invited',
-                                       jsonb_build_object('campaign_id', c.id, 'slug', c.slug, 'title', c.title));
+                                       jsonb_build_object('campaign_id', c.id, 'campaign_title', c.title, 'campaign_slug', c.slug,
+                                                          'org_id', c.org_id,
+                                                          'org_name', (select o.name from market.organizations o where o.id = c.org_id)));
     end if;
   end loop;
   return n;

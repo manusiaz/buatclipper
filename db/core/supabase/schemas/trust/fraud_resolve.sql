@@ -90,7 +90,8 @@ begin
         if x.status in ('tracking', 'flagged') then
           update tracking.submissions set status = 'forfeited', next_poll_at = null where id = x.id;
           perform ops.enqueue_notification(target_user, 'submission.forfeited',
-                                           jsonb_build_object('submission_id', x.id, 'reason', 'fraud:' || f.signal));
+                                           market.campaign_ref((select s.campaign_id from tracking.submissions s where s.id = x.id))
+                                           || jsonb_build_object('submission_id', x.id, 'reason', 'fraud:' || f.signal));
         end if;
       end loop;
     elsif p_action = 'suspend' then

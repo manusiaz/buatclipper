@@ -72,5 +72,13 @@ begin
   return rid;
 end $$;
 
+-- Nominal untuk payload notifikasi (template email identity): {amount, reward_type (kode), unit_label}.
+create function finance.amount_ref(p_reward_type uuid, p_amount numeric) returns jsonb
+language plpgsql stable security definer set search_path = '' as $$
+begin
+  return (select jsonb_build_object('amount', trim_scale(p_amount), 'reward_type', rt.code, 'unit_label', rt.unit_label)
+            from market.reward_types rt where rt.id = p_reward_type);
+end $$;
+
 revoke execute on function finance.account(text, uuid, uuid), finance.e(uuid, numeric, text, text, text),
-  finance.post(uuid, jsonb), finance.balance(uuid, finance.earning_state), finance.idr() from public;
+  finance.post(uuid, jsonb), finance.balance(uuid, finance.earning_state), finance.idr(), finance.amount_ref(uuid, numeric) from public;

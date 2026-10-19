@@ -5,8 +5,17 @@
 --   snapshot final sudah ada → accrue (idempoten, termasuk koreksi turun) lalu locked; belum ada → next_poll_at = now() supaya
 --   track-due mengantrekan poll final (worker_submission_context.final = true, worker_record_snapshot mengunci); poll final tidak
 --   kunjung datang (token mati, API error) → setelah tracking.final_grace_hours dikunci dengan views terakhir + alert.
+-- Juga: payout instant macet dikirim ulang ke bridge disburse (finance.retry_instant_payouts).
 -- locked → settled (release earning) dikerjakan job earning-release (finance.release_earnings) karena harus satu transaksi
 -- dengan jurnal pending → Tersedia.
+-- Identitas campaign untuk payload notifikasi (template email identity): {campaign_id, campaign_title, org_id}.
+create function market.campaign_ref(p_campaign uuid) returns jsonb
+language plpgsql stable security definer set search_path = '' as $$
+begin
+  return coalesce((select jsonb_build_object('campaign_id', c.id, 'campaign_title', c.title, 'org_id', c.org_id)
+                     from market.campaigns c where c.id = p_campaign), '{}');
+end $$;
+
 create function market.run_lifecycle() returns void
 language plpgsql security definer set search_path = '' as $$
 declare
@@ -18,7 +27,7 @@ declare
 begin
   for r in update market.campaigns set status = 'live' where status = 'scheduled' and start_at <= now() returning id, org_id loop
     perform market.notify_org(r.org_id, array['brand_owner', 'brand_manager']::market.org_role[], 'campaign.live',
-                              jsonb_build_object('campaign_id', r.id));
+                              market.campaign_ref(r.id));
   end loop;
   update market.campaigns set status = 'tracking' where status in ('live', 'paused') and submit_deadline <= now();
 
@@ -53,9 +62,9 @@ begin
                               and (s.status = any (active) or s.status = 'locked'))
             returning c.id, c.org_id loop
     perform market.notify_org(r.org_id, array['brand_owner', 'brand_manager', 'brand_finance']::market.org_role[], 'campaign.settled',
-      jsonb_build_object('campaign_id', r.id, 'leftover',
-        coalesce((select jsonb_agg(jsonb_build_object('pool_id', rp.id, 'reward_type_id', rp.reward_type_id,
-                                                     'amount', finance.balance(finance.account('campaign_pool', rp.id, rp.reward_type_id))))
+      market.campaign_ref(r.id) || jsonb_build_object('leftover',
+        coalesce((select jsonb_agg(finance.amount_ref(rp.reward_type_id, finance.balance(finance.account('campaign_pool', rp.id, rp.reward_type_id)))
+                                   || jsonb_build_object('pool_id', rp.id) order by rp.id)
                   from finance.reward_pools rp where rp.campaign_id = r.id), '[]')));
   end loop;
 
@@ -66,7 +75,8 @@ begin
     perform ops.raise_alert('tracking.lag', 'warning', jsonb_build_object('overdue', n), interval '6 hours');
   end if;
 
+  perform finance.retry_instant_payouts();
   perform trust.auto_approve_overdue();
 end $$;
 
-revoke execute on function market.run_lifecycle() from public;
+revoke execute on function market.campaign_ref(uuid), market.run_lifecycle() from public;

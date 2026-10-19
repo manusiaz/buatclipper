@@ -242,6 +242,9 @@ select is((select status::text from market.organizations where id = '44444444-00
           'org2 verified (verified_by, verified_at)');
 select is((select count(*)::int from ops.notifications where event = 'org.verified' and user_id = '22222222-0000-0000-0000-0000000000a2'), 1,
           'notifikasi org.verified ke brand_owner');
+select is((select payload - 'reason' - 'message' from ops.notifications where event = 'org.verified'
+             and user_id = '22222222-0000-0000-0000-0000000000a2'),
+          '{"org_id":"44444444-0000-0000-0000-000000000002","org_name":"Toko Dua"}'::jsonb, 'payload org.*: org_id + org_name');
 select is((select count(*)::int from ops.notifications where event = 'org.rejected' and user_id = '22222222-0000-0000-0000-0000000000a2'
              and payload ->> 'reason' = 'npwp_invalid'), 1, 'notifikasi org.rejected + alasan');
 select is((select array_agg(action order by id) from ops.audit_logs where target = 'org:44444444-0000-0000-0000-000000000002'),
@@ -425,6 +428,15 @@ select ok((select number ~ '^INV-[0-9]{6}-[0-9]{6}$' and status = 'issued' and d
 select is((select array_agg(p.username order by p.username) from ops.notifications n join market.profiles p on p.id = n.user_id
             where n.event = 'invoice.issued' and n.payload ->> 'campaign_id' = (select id from t_ids where k = 'c_new')::text),
           array['finance1', 'owner1'], 'invoice.issued ke brand_owner + brand_finance (bukan brand_manager)');
+select is((select payload - 'invoice_id' - 'due_at' from ops.notifications where event = 'invoice.issued'
+             and user_id = '22222222-0000-0000-0000-0000000000a1' and payload ->> 'campaign_id' = (select id from t_ids where k = 'c_new')::text),
+          jsonb_build_object('invoice_number', (select number from finance.invoices where campaign_id = (select id from t_ids where k = 'c_new')),
+                             'kind', 'campaign', 'total', 12220000.00, 'campaign_id', (select id from t_ids where k = 'c_new'),
+                             'campaign_title', 'Film Baru Rilis', 'org_id', '44444444-0000-0000-0000-000000000001', 'org_name', 'Studio Satu'),
+          'payload invoice.issued: invoice_number, total, campaign_title, org_name (template email & deep link /[org]/billing)');
+select ok((select payload ?& array['invoice_id', 'due_at'] from ops.notifications where event = 'invoice.issued'
+             and user_id = '22222222-0000-0000-0000-0000000000a1' and payload ->> 'campaign_id' = (select id from t_ids where k = 'c_new')::text),
+          'payload invoice.issued memuat invoice_id + due_at');
 select is((select array[mgmt_fee, admin_fee, tax, total] from finance.invoices where campaign_id = (select id from t_ids where k = 'c_org2')),
           array[200000, 100000, 33000, 2333000]::numeric[], 'fee rule org (10%) dipakai untuk campaign org itu');
 
@@ -454,6 +466,9 @@ select is((select status::text from market.campaigns where id = (select id from 
 select is((select count(*)::int from ops.notifications where event = 'campaign.approved'
              and payload ->> 'campaign_id' = (select id from t_ids where k = 'c_new')::text), 2,
           'campaign.approved ke brand_owner + brand_manager');
+select ok((select bool_and(payload ->> 'campaign_title' = 'Film Baru Rilis' and payload ->> 'org_name' = 'Studio Satu'
+                           and payload ? 'org_id' and payload ? 'campaign_id')
+             from ops.notifications where event = 'campaign.approved'), 'payload campaign.approved: campaign_id/title + org_id/name');
 select is((select count(*)::int from ops.audit_logs where action = 'review.campaign.approve'), 1, 'review campaign tercatat audit log');
 set local role authenticated;
 select pg_temp.jwt('22222222-0000-0000-0000-0000000000a2');
@@ -587,6 +602,9 @@ insert into t_ids (k, id) select 'inv_pin', api.buy_pin('55555555-0000-0000-0000
 reset role;
 select is((select count(*)::int from ops.notifications where event = 'campaign.invited' and user_id = '11111111-0000-0000-0000-00000000000a'), 1,
           'notifikasi campaign.invited sekali');
+select is((select payload from ops.notifications where event = 'campaign.invited' and user_id = '11111111-0000-0000-0000-00000000000a'),
+          '{"campaign_id":"55555555-0000-0000-0000-000000000008","campaign_title":"Khusus Undangan","campaign_slug":"undangan",
+            "org_id":"44444444-0000-0000-0000-000000000001","org_name":"Studio Satu"}'::jsonb, 'payload campaign.invited');
 select is((select array[subtotal, service_fee, tax, total] from finance.invoices where id = (select id from t_ids where k = 'inv_pin')),
           array[0, 1000000, 110000, 1110000]::numeric[], 'pin 10 hari = 2 minggu × Rp500.000 + PPN');
 select ok((select kind = 'pinned' and pin_until between now() + interval '10 days' - interval '1 minute' and now() + interval '10 days'
@@ -813,6 +831,11 @@ select is((select array_agg(event || ':' || coalesce(payload ->> 'final', '') or
             where user_id = '11111111-0000-0000-0000-00000000000e' and event like 'submission.%'),
           array['submission.rejected:false', 'submission.approved:false', 'submission.rejected:true'],
           'notifikasi submisi approved/rejected ke clipper');
+select is((select payload - 'submission_id' from ops.notifications where user_id = '11111111-0000-0000-0000-00000000000e'
+             and event = 'submission.rejected' and payload ->> 'final' = 'false'),
+          '{"campaign_id":"55555555-0000-0000-0000-000000000007","campaign_title":"Review Brand","url":"https://tiktok.com/v/72",
+            "reason":"missing_hashtag","message":"Hashtag #mplid tidak ada","final":false}'::jsonb,
+          'payload submission.rejected: campaign_title, url, reason, message');
 select is((select array_agg(reason || ':' || delta order by id) from trust.score_events where user_id = '11111111-0000-0000-0000-00000000000e'),
           array['submission_rejected:-2', 'submission_approved:1', 'appeal_failed:-3'], 'Trust Score: delta dari trust.score_deltas');
 select is((select count(*)::int from ops.audit_logs where action like 'review.submission.%'), 2, 'keputusan admin tercatat audit log');
@@ -932,6 +955,9 @@ select is(market.run_budget_alerts(), 2, '100% terpakai → 2 penerima');
 select is((select array_agg(payload ->> 'pct' order by id) from ops.notifications where event = 'budget.used'
              and user_id = '22222222-0000-0000-0000-0000000000a1' and payload ->> 'campaign_id' = '55555555-0000-0000-0000-000000000001'),
           array['50', '80', '100'], '50/80/100% masing-masing sekali');
+select ok((select bool_and(payload ->> 'campaign_title' = 'Film Satu' and payload ->> 'org_name' = 'Studio Satu') from ops.notifications
+             where event = 'budget.used' and payload ->> 'campaign_id' = '55555555-0000-0000-0000-000000000001'),
+          'payload budget.used: campaign_title + org_name');
 select is((select count(*)::int from ops.notifications where event = 'budget.used'
              and payload ->> 'campaign_id' = '55555555-0000-0000-0000-000000000001'), 6, 'penerima: brand_owner + brand_manager');
 select is((select array_agg(payload ->> 'pct') from ops.notifications where event = 'budget.used'

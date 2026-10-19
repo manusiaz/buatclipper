@@ -48,7 +48,9 @@ begin
     values (s.user_id, greatest(least(delta, 100), -100), score_reason, s.id::text, p_actor);
   end if;
   perform ops.enqueue_notification(s.user_id, case when to_status = 'tracking' then 'submission.approved' else 'submission.rejected' end,
-                                   jsonb_build_object('submission_id', s.id, 'campaign_id', s.campaign_id, 'reason', p_reason,
+                                   jsonb_build_object('submission_id', s.id, 'campaign_id', s.campaign_id,
+                                                      'campaign_title', (select c.title from market.campaigns c where c.id = s.campaign_id),
+                                                      'url', s.url, 'reason', p_reason,
                                                       'message', p_message, 'final', to_status = 'rejected_final'));
 end $$;
 
