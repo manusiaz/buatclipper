@@ -306,6 +306,13 @@ begin
   if not (po.status = 'on_hold' or (po.status = 'requested' and po.channel = 'batch')) then
     raise exception 'invalid_state:%', po.status using errcode = 'P0001';
   end if;
+  -- Batch approved = isi CSV transfer sedang/akan dibaca identity (get_batch → attach_export): payout requested di dalamnya
+  -- tidak boleh dibatalkan, kalau tidak dananya kembali ke Tersedia sekaligus ikut ditransfer. FOR SHARE: serial dengan approve.
+  if po.status = 'requested'
+     and exists (select 1 from finance.payout_batches b where b.id = po.batch_id and b.status <> 'draft' for share) then
+    raise exception 'invalid_state:batch_locked' using errcode = 'P0001',
+      detail = 'batch sudah disetujui; tandai gagal setelah export bila perlu';
+  end if;
   if po.status = 'requested' then
     update finance.payouts set status = 'on_hold', hold_reason = p_reason where id = po.id;
   end if;

@@ -407,6 +407,9 @@ select throws_ok($$ select api.approve_payout_batch((select id from t_pay where 
                  'pembuat batch tidak bisa menyetujui sendiri (dua orang)');
 select pg_temp.jwt('33333333-0000-0000-0000-0000000000f2', '{"app_roles":["admin_finance"],"aal":"aal2"}');
 select lives_ok($$ select api.approve_payout_batch((select id from t_pay where k = 'batch')) $$, 'admin_finance lain menyetujui batch');
+-- Regresi review 2026-10-19: payout di batch approved tidak bisa dibatalkan (sudah/akan masuk CSV transfer).
+select throws_ok($$ select api.cancel_payout((select id from t_pay where k = 'b1'), 'batal') $$, 'P0001', 'invalid_state:batch_locked',
+                 'payout requested di batch approved terkunci');
 reset role;
 select is(jsonb_array_length(api.bridge_get_batch((select id from t_pay where k = 'batch')) -> 'payouts'), 3, 'bridge_get_batch: isi batch approved');
 select is((select jsonb_agg(x - 'id' - 'user_id' order by x ->> 'amount') from jsonb_array_elements(api.bridge_get_batch((select id from t_pay where k = 'batch')) -> 'payouts') x),
@@ -1112,6 +1115,27 @@ select is((select array_agg(distinct action order by action) from ops.audit_logs
             where action in ('invoice.confirm_payment', 'payout_batch.create', 'payout_batch.approve', 'payout_batch.mark_paid', 'refund.approve')),
           array['invoice.confirm_payment', 'payout_batch.approve', 'payout_batch.create', 'payout_batch.mark_paid', 'refund.approve'],
           'aksi finance admin tercatat audit log (F-A11)');
+
+reset role;
+-- Regresi review 2026-10-19: views final turun di bawah awal rule baru (rate naik di 2.000 views) → rule baru hangus, bukan error
+insert into market.profiles (id, username, display_name) values ('11111111-0000-0000-0000-0000000000c9', 'koreksi_c9', 'Koreksi');
+insert into tracking.social_accounts (user_id, platform, external_id, handle, followers, platform_created_at)
+values ('11111111-0000-0000-0000-0000000000c9', 'tiktok', 'tt-c9', '@koreksi', 5000, now() - interval '400 days');
+select pg_temp.mk_campaign('55555555-0000-0000-0000-0000000000c9', 'koreksi-rule-baru', 1000);
+select pg_temp.mk_pool('55555555-0000-0000-0000-0000000000c9', '66666666-0000-0000-0000-0000000000c9', 1000000, 1000000);
+insert into t_ids values ('rc_old', pg_temp.mk_rule('55555555-0000-0000-0000-0000000000c9', '66666666-0000-0000-0000-0000000000c9',
+  'per_1k_views', '{"rate":2000}', now() - interval '30 days', now() - interval '1 hour'));
+insert into t_ids values ('rc_new', pg_temp.mk_rule('55555555-0000-0000-0000-0000000000c9', '66666666-0000-0000-0000-0000000000c9',
+  'per_1k_views', '{"rate":3000}', now() - interval '1 hour'));
+insert into t_ids values ('rc_sub', pg_temp.mk_sub('55555555-0000-0000-0000-0000000000c9', '11111111-0000-0000-0000-0000000000c9', 'rc1',
+  now() - interval '3 hours'));
+select pg_temp.snap((select v::uuid from t_ids where k = 'rc_sub'), 2000, now() - interval '2 hours');
+select pg_temp.snap((select v::uuid from t_ids where k = 'rc_sub'), 5000, now() - interval '30 minutes');
+select lives_ok($$ select pg_temp.snap((select v::uuid from t_ids where k = 'rc_sub'), 1500, now(), true) $$,
+                'snapshot final di bawah awal rule baru tidak menggagalkan finalisasi');
+select is(array[pg_temp.rule_amt((select v::uuid from t_ids where k = 'rc_sub'), (select v::uuid from t_ids where k = 'rc_old')),
+                pg_temp.rule_amt((select v::uuid from t_ids where k = 'rc_sub'), (select v::uuid from t_ids where k = 'rc_new'))],
+          array[3000, 0]::numeric[], 'rule lama dikoreksi ke 1.500 views, rule baru hangus');
 
 -- job:reconcile-daily bagian ledger: bersih, lalu selisih cache pool terdeteksi + alert
 -- Fixture memakai jalan pintas: pool didanai jurnal ref 'fixture:<pool>' tanpa invoice, invoice c5 di-insert langsung lunas.

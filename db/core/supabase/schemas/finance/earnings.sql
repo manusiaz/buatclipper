@@ -250,7 +250,8 @@ begin
     from_demand := least(x.demand, diff);
     from_amount := diff - from_demand;
     update finance.clip_earnings ce set demand = ce.demand - from_demand, amount = ce.amount - from_amount,
-           views_to = least(ce.views_to, p_views), updated_at = now()
+           -- views turun di bawah awal rule (rule baru berlaku sejak views_from): earning rule itu hangus seluruhnya
+           views_to = greatest(ce.views_from, least(ce.views_to, p_views)), updated_at = now()
      where ce.submission_id = x.submission_id and ce.rule_id = x.rule_id;
     if from_amount > 0 then
       entries := entries || jsonb_build_array(

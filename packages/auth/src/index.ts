@@ -32,7 +32,16 @@ export const hasRole = (c: Pick<Claims, 'app_roles'> | null | undefined, ...role
 /** next hanya boleh ke {domain}, app, brand, accounts — bukan admin, bukan domain luar (anti open redirect). */
 export function safeNext(next: string | null | undefined, fallback = `${hosts.app}/campaigns`): string {
   if (!next) return fallback;
-  if (next.startsWith('/') && !next.startsWith('//') && !next.startsWith('/\\')) return next;
+  if (next.startsWith('/')) {
+    // Path relatif dinormalkan parser URL (tab/newline dibuang, \ = /): "/\t/evil.com" jadi "//evil.com" → tolak kalau origin pindah.
+    const base = 'https://next.invalid';
+    try {
+      const u = new URL(next, base);
+      return u.origin === base ? `${u.pathname}${u.search}${u.hash}` : fallback;
+    } catch {
+      return fallback;
+    }
+  }
   try {
     const url = new URL(next);
     const allowed = [hosts.web, hosts.app, hosts.brand, hosts.accounts].map((h) => new URL(h).origin);

@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { safeNext } from '@clipper/auth';
 import { dbCode, errorKeys } from './errors';
 import { one, withParams } from './url';
 
@@ -40,5 +41,19 @@ describe('url helpers', () => {
   it('one() takes the first repeated value', () => {
     expect(one(['a', 'b'])).toBe('a');
     expect(one(undefined)).toBeUndefined();
+  });
+});
+
+// Regresi review 2026-10-19: karakter kontrol & backslash di path relatif tidak boleh jadi open redirect.
+describe('safeNext', () => {
+  it('menolak path yang dinormalkan parser URL menjadi host lain', () => {
+    for (const evil of ['/\t/evil.example', '/\n/evil.example', '/\r/evil.example', '/\\evil.example', '//evil.example', '\t//evil.example']) {
+      expect(safeNext(evil, 'FALLBACK')).toBe('FALLBACK');
+    }
+  });
+  it('mempertahankan path relatif & host terdaftar', () => {
+    expect(safeNext('/campaigns?x=1#a', 'F')).toBe('/campaigns?x=1#a');
+    expect(safeNext('https://evil.example/x', 'F')).toBe('F');
+    expect(safeNext('javascript:alert(1)', 'F')).toBe('F');
   });
 });
