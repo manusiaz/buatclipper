@@ -874,7 +874,7 @@ Arah: `A --tipe--> B` = A bergantung pada B. `?` = belum terverifikasi.
 | `api:rpc core.appeal_submission` | writes | `table:tracking.submissions` | db/core/supabase/schemas/api/review.sql:32 |
 | `api:rpc core.appeal_submission` | writes | `table:trust.review_decisions` | db/core/supabase/schemas/api/review.sql:27 |
 | `api:rpc core.approve_payout_batch` | writes | `table:finance.payout_batches` | db/core/supabase/schemas/finance/payout_flow.sql:168 |
-| `api:rpc core.buy_pin` | writes | `table:finance.invoices` | db/core/supabase/schemas/api/campaigns.sql:684 (finance.issue_invoice) |
+| `api:rpc core.buy_pin` | writes | `table:finance.invoices` | db/core/supabase/schemas/api/campaigns.sql:685 (finance.issue_invoice) |
 | `api:rpc core.claim_campaign` | reads | `table:market.campaigns` | db/core/supabase/schemas/api/campaigns.sql:136 |
 | `api:rpc core.claim_campaign` | reads | `table:market.profiles` | db/core/supabase/schemas/api/_helpers.sql:182 (market.claim_check) |
 | `api:rpc core.claim_campaign` | writes | `table:market.claims` | db/core/supabase/schemas/api/campaigns.sql:150 |
@@ -884,9 +884,9 @@ Arah: `A --tipe--> B` = A bergantung pada B. `?` = belum terverifikasi.
 | `api:rpc core.confirm_invoice_payment` | writes | `table:finance.ledger_entries` | db/core/supabase/schemas/finance/invoice_confirm.sql:118 (finance.settle_invoice → finance.post) |
 | `api:rpc core.confirm_invoice_payment` | writes | `table:finance.reward_pools` | db/core/supabase/schemas/finance/invoice_confirm.sql:45 (finance.settle_invoice) |
 | `api:rpc core.confirm_invoice_payment` | writes | `table:ops.audit_logs` | PRD v0.3.1 §9 F-A11 semua aksi admin/finance (belum di kode: fungsi ini tidak menulis ops.audit_logs) |
-| `api:rpc core.control_campaign` | writes | `table:finance.invoices` | db/core/supabase/schemas/api/campaigns.sql:565 (topup → finance.issue_invoice) |
+| `api:rpc core.control_campaign` | writes | `table:finance.invoices` | db/core/supabase/schemas/api/campaigns.sql:566 (topup → finance.issue_invoice) |
 | `api:rpc core.control_campaign` | writes | `table:market.campaigns` | db/core/supabase/schemas/api/campaigns.sql:503 |
-| `api:rpc core.control_campaign` | writes | `table:market.rate_rules` | db/core/supabase/schemas/api/campaigns.sql:546 |
+| `api:rpc core.control_campaign` | writes | `table:market.rate_rules` | db/core/supabase/schemas/api/campaigns.sql:547 |
 | `api:rpc core.create_org` | writes | `table:market.org_members` | db/core/supabase/schemas/api/org.sql:94 |
 | `api:rpc core.create_org` | writes | `table:market.organizations` | db/core/supabase/schemas/api/org.sql:90 |
 | `api:rpc core.create_org_invite` | guarded-by | `policy:core.org-role` | db/core/supabase/schemas/api/org.sql:162 |
@@ -899,14 +899,14 @@ Arah: `A --tipe--> B` = A bergantung pada B. `?` = belum terverifikasi.
 | `api:rpc core.create_report_link` | guarded-by | `policy:core.org-role` | db/core/supabase/schemas/api/report_links.sql:13 |
 | `api:rpc core.create_report_link` | reads | `table:market.campaigns` | db/core/supabase/schemas/api/report_links.sql:12 |
 | `api:rpc core.create_report_link` | writes | `table:market.report_links` | db/core/supabase/schemas/api/report_links.sql:17 |
-| `api:rpc core.duplicate_campaign` | writes | `table:finance.reward_pools` | db/core/supabase/schemas/api/campaigns.sql:610 |
-| `api:rpc core.duplicate_campaign` | writes | `table:market.campaigns` | db/core/supabase/schemas/api/campaigns.sql:598 |
-| `api:rpc core.duplicate_campaign` | writes | `table:market.rate_rules` | db/core/supabase/schemas/api/campaigns.sql:613 |
+| `api:rpc core.duplicate_campaign` | writes | `table:finance.reward_pools` | db/core/supabase/schemas/api/campaigns.sql:611 |
+| `api:rpc core.duplicate_campaign` | writes | `table:market.campaigns` | db/core/supabase/schemas/api/campaigns.sql:599 |
+| `api:rpc core.duplicate_campaign` | writes | `table:market.rate_rules` | db/core/supabase/schemas/api/campaigns.sql:614 |
 | `api:rpc core.ensure_profile` | writes | `table:market.profiles` | db/core/supabase/schemas/api/ensure_profile.sql:21 |
 | `api:rpc core.ensure_profile` | writes | `table:market.referrals` | db/core/supabase/schemas/api/ensure_profile.sql:35 |
 | `api:rpc core.invite_preview` | reads | `table:market.org_invites` | db/core/supabase/schemas/api/org.sql:209 |
 | `api:rpc core.invite_preview` | reads | `table:market.organizations` | db/core/supabase/schemas/api/org.sql:209 |
-| `api:rpc core.invite_to_campaign` | writes | `table:market.campaign_invites` | db/core/supabase/schemas/api/campaigns.sql:647 |
+| `api:rpc core.invite_to_campaign` | writes | `table:market.campaign_invites` | db/core/supabase/schemas/api/campaigns.sql:648 |
 | `api:rpc core.link_agency` | writes | `table:market.org_links` | db/core/supabase/schemas/api/org.sql:120 |
 | `api:rpc core.list_campaigns` | reads | `table:finance.reward_pools` | db/core/supabase/schemas/api/campaigns.sql:82 |
 | `api:rpc core.list_campaigns` | reads | `table:market.campaigns` | db/core/supabase/schemas/api/campaigns.sql:90 |
@@ -2139,6 +2139,8 @@ Masalah sistem yang ditemukan saat menyusun PRD v0.2 dan saat dicek ulang (v0.2.
 | 2026-10-19 | `fn:accrue_earnings` | Review Claudex R6: perbaikan R5 menganggap flat lain di pool+platform yang sama (bukan revisi) sudah dibayar → bayaran yang dijanjikan hilang | diperbaiki: market.rate_rules.lineage_id diisi raise_rate (rule pertama yang digantikan); flat dicek per lineage |
 | 2026-10-19 | `api:rpc core.save_campaign` | Review Claudex R6: invoice lunas saat in_review lalu campaign ditolak → brand bisa mengganti pool (total IDR sama) → saldo ledger pool lama yatim, pool baru kosong | diperbaiki: setelah lunas, set pool (id, reward type, total) wajib sama (pools_locked_after_payment); max_per_clip tetap boleh |
 | 2026-10-19 | `api:fn identity/pii-export` | Review Claudex R6: recipients_resign bisa melepas CSV yang tidak pernah diterima core; replay serah-terima ditolak bila klaim sudah delivered | diperbaiki: re-sign wajib bridge fulfillment_export_accepted; replay mengenali berkas dari export_ref apa pun statusnya |
+| 2026-10-19 | `api:rpc core.control_campaign` | Review Claudex R7: raise_rate tiered_cpm hanya membandingkan rate & from → tier terakhir terbuka bisa diberi plafon `to` → views di atasnya tidak dibayar di campaign live | diperbaiki: batas `to` tiap tier wajib sama |
+| 2026-10-19 | `fn:accrue_earnings` | Review Claudex R7: migrasi lineage_id tidak mengisi revisi raise_rate yang sudah ada → flat dibayar ulang di DB yang sudah berjalan | diperbaiki: migrasi backfill_rate_rule_lineage menyambung rule yang mulai tepat saat versi sebelumnya ditutup (pool/kind/platform sama); rule independen tidak tersambung (diuji di transaksi rollback) |
 ## Keputusan
 
 Keputusan yang sudah diambil — jangan dibahas ulang tanpa alasan baru.

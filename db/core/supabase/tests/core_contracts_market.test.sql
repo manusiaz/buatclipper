@@ -578,6 +578,15 @@ reset role;
 select is((select count(*)::int from market.rate_rules
             where lineage_id = '67676767-0000-0000-0000-000000000001' and effective_to is null), 1,
           'raise_rate: rule baru = versi rule lama (lineage_id)');
+insert into market.rate_rules (id, campaign_id, kind, reward_type_id, pool_id, params)
+select '67676767-0000-0000-0000-0000000000f7', pl.campaign_id, 'tiered_cpm', pl.reward_type_id, pl.id, '{"tiers":[{"from":0,"rate":1000}]}'
+  from finance.reward_pools pl where pl.id = '66666666-0000-0000-0000-000000000001';
+set local role authenticated;
+select throws_ok($$ select api.control_campaign('55555555-0000-0000-0000-000000000001', 'raise_rate',
+                    '{"rule_id":"67676767-0000-0000-0000-0000000000f7","params":{"tiers":[{"from":0,"to":10000,"rate":1001}]}}') $$,
+                 'P0001', 'invalid:rate_not_higher', 'regresi R7: raise_rate tiered tidak bisa memasang plafon views (tier terbuka → to)');
+reset role;
+delete from market.rate_rules where id = '67676767-0000-0000-0000-0000000000f7';
 set local role authenticated;
 select throws_ok($$ select api.control_campaign('55555555-0000-0000-0000-000000000001', 'topup',
                     '{"pools":[{"pool_id":"66666666-0000-0000-0000-000000000002","amount":500000}]}') $$, 'P0001', 'invalid:pool',
@@ -596,7 +605,8 @@ reset role;
 select is((select array[(select submit_deadline > now() + interval '20 days' from market.campaigns where id = '55555555-0000-0000-0000-000000000001'),
                         (select effective_to is not null from market.rate_rules where id = '67676767-0000-0000-0000-000000000001'),
                         (select effective_to is null and params ->> 'rate' = '3000' from market.rate_rules
-                          where campaign_id = '55555555-0000-0000-0000-000000000001' and id <> '67676767-0000-0000-0000-000000000001')]),
+                          where campaign_id = '55555555-0000-0000-0000-000000000001'
+                            and lineage_id = '67676767-0000-0000-0000-000000000001')]),
           array[true, true, true], 'extend tersimpan; raise_rate = rule lama ditutup + rule baru');
 select is((select array[subtotal, mgmt_fee, admin_fee, tax, total] from finance.invoices
             where campaign_id = '55555555-0000-0000-0000-000000000001' and kind = 'topup'),

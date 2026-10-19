@@ -538,7 +538,8 @@ begin
              else jsonb_array_length(newp -> 'tiers') = jsonb_array_length(r.params -> 'tiers') and newp <> r.params
                   and not exists (select 1 from generate_series(0, jsonb_array_length(newp -> 'tiers') - 1) i
                                   where market.jnum(newp -> 'tiers' -> i -> 'rate') < market.jnum(r.params -> 'tiers' -> i -> 'rate')
-                                     or market.jnum(newp -> 'tiers' -> i -> 'from') <> market.jnum(r.params -> 'tiers' -> i -> 'from'))
+                                     or market.jnum(newp -> 'tiers' -> i -> 'from') <> market.jnum(r.params -> 'tiers' -> i -> 'from')
+                                     or market.jnum(newp -> 'tiers' -> i -> 'to') is distinct from market.jnum(r.params -> 'tiers' -> i -> 'to'))
            end) then
       perform market.fail('invalid:rate_not_higher', 'rate baru harus lebih tinggi dari rate lama');
     end if;
