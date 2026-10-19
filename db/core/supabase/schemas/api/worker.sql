@@ -476,7 +476,8 @@ begin
      limit greatest(coalesce(p_limit, 20), 1)
      for update of f skip locked),
   upd as (
-    update finance.fulfillments f set next_retry_at = now() + interval '5 minutes' from due where f.id = due.fid
+    update finance.fulfillments f set next_retry_at = now() + interval '5 minutes', leased_until = now() + interval '5 minutes'
+      from due where f.id = due.fid
     returning f.id as fid, f.user_id as uid, f.reward_type_id as rtid, f.amount as amt, f.recipient as rcp, f.attempts as att)
   select upd.fid, upd.uid, upd.rtid, upd.amt::numeric, upd.rcp, rt.fulfillment, rt.webhook_url,
          (select ds.decrypted_secret from vault.decrypted_secrets ds where ds.id = rt.webhook_secret_ref), upd.att
@@ -509,7 +510,7 @@ begin
    where rc.reward_type_id = f.reward_type_id and rc.fulfillment_id is null
    order by rc.created_at, rc.id limit 1 for update skip locked;
   if cid is null then
-    update finance.fulfillments set status = 'on_hold', last_error = 'code_pool_empty' where id = f.id;
+    update finance.fulfillments set status = 'on_hold', last_error = 'code_pool_empty', leased_until = null where id = f.id;
     perform ops.raise_alert('fulfillment.stuck', 'warning',
                             jsonb_build_object('fulfillment_id', f.id, 'reward_type_id', f.reward_type_id, 'reason', 'code_pool_empty'));
     return null;
@@ -536,13 +537,14 @@ begin
       update finance.fulfillments set status = 'processing' where id = f.id;
     end if;
     update finance.fulfillments set status = 'delivered', delivered_ref = p_ref, delivered_at = now(), last_error = null,
-           next_retry_at = null
+           next_retry_at = null, leased_until = null
      where id = f.id;
     perform ops.enqueue_notification(f.user_id, 'fulfillment.delivered', finance.amount_ref(f.reward_type_id, f.amount)
                                      || jsonb_build_object('fulfillment_id', f.id, 'reward_type_id', f.reward_type_id,
                                                            'reward_name', (select rt.name from market.reward_types rt where rt.id = f.reward_type_id)));
   else
-    update finance.fulfillments set attempts = attempts + 1, last_error = left(p_error, 500), next_retry_at = now() + interval '5 minutes'
+    update finance.fulfillments set attempts = attempts + 1, last_error = left(p_error, 500), next_retry_at = now() + interval '5 minutes',
+           leased_until = null
      where id = f.id;
     if f.attempts + 1 >= 12 and f.status = 'requested' then
       update finance.fulfillments set status = 'on_hold', next_retry_at = null where id = f.id;

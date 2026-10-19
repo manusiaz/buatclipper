@@ -96,5 +96,7 @@
   "invalid_nik": "NIK must be a valid 16-digit number.",
   "kyc_required": "Complete KYC first.",
   "name_mismatch": "The account holder name must match the name on your ID.",
-  "account_taken": "This bank account is used by another account."
+  "account_taken": "This bank account is used by another account.",
+  "batch_locked": "This payout is already in an approved batch. Mark it failed after export if needed.",
+  "delivery_in_flight": "This reward is being delivered. Wait for the result (up to 5 minutes) before cancelling."
 }

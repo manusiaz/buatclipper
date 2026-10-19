@@ -12,6 +12,8 @@ create table finance.fulfillments (
   attempts smallint not null default 0 check (attempts >= 0),
   last_error text,
   next_retry_at timestamptz,
+  -- Worker fulfill sedang mengirim (code_pool/webhook): selama lease aktif klaim tidak bisa dibatalkan (hasil eksternal belum pasti).
+  leased_until timestamptz,
   idempotency_key text not null,
   created_at timestamptz not null default now(),
   delivered_at timestamptz,

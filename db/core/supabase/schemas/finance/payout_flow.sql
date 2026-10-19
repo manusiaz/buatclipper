@@ -310,7 +310,7 @@ begin
   -- tidak boleh dibatalkan, kalau tidak dananya kembali ke Tersedia sekaligus ikut ditransfer. FOR SHARE: serial dengan approve.
   if po.status = 'requested'
      and exists (select 1 from finance.payout_batches b where b.id = po.batch_id and b.status <> 'draft' for share) then
-    raise exception 'invalid_state:batch_locked' using errcode = 'P0001',
+    raise exception 'batch_locked' using errcode = 'P0001',
       detail = 'batch sudah disetujui; tandai gagal setelah export bila perlu';
   end if;
   if po.status = 'requested' then
@@ -352,6 +352,10 @@ begin
   end if;
   if exists (select 1 from finance.reward_codes rc where rc.fulfillment_id = f.id) then
     raise exception 'code_assigned' using errcode = 'P0001';
+  end if;
+  -- Worker sedang mengirim (webhook/kode): dana tidak dikembalikan sebelum hasil pengiriman tercatat.
+  if f.leased_until > now() then
+    raise exception 'delivery_in_flight' using errcode = 'P0001', detail = 'tunggu hasil pengiriman (maks 5 menit)';
   end if;
   if f.status = 'requested' then
     update finance.fulfillments set status = 'on_hold' where id = f.id;

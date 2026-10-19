@@ -47,7 +47,8 @@ describe('url helpers', () => {
 // Regresi review 2026-10-19: karakter kontrol & backslash di path relatif tidak boleh jadi open redirect.
 describe('safeNext', () => {
   it('menolak path yang dinormalkan parser URL menjadi host lain', () => {
-    for (const evil of ['/\t/evil.example', '/\n/evil.example', '/\r/evil.example', '/\\evil.example', '//evil.example', '\t//evil.example']) {
+    for (const evil of ['/\t/evil.example', '/\n/evil.example', '/\r/evil.example', '/\\evil.example', '//evil.example', '\t//evil.example',
+                        '/a/..//evil.example', '/./%2e%2e//evil.example', '/x/../\\evil.example']) {
       expect(safeNext(evil, 'FALLBACK')).toBe('FALLBACK');
     }
   });

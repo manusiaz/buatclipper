@@ -37,7 +37,9 @@ export function safeNext(next: string | null | undefined, fallback = `${hosts.ap
     const base = 'https://next.invalid';
     try {
       const u = new URL(next, base);
-      return u.origin === base ? `${u.pathname}${u.search}${u.hash}` : fallback;
+      const path = `${u.pathname}${u.search}${u.hash}`;
+      // hasil normalisasi juga dicek: "/a/..//evil.com" → pathname "//evil.com" (protocol-relative saat di-resolve ulang)
+      return u.origin === base && !path.startsWith('//') ? path : fallback;
     } catch {
       return fallback;
     }

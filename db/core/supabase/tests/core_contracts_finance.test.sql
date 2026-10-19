@@ -408,7 +408,7 @@ select throws_ok($$ select api.approve_payout_batch((select id from t_pay where 
 select pg_temp.jwt('33333333-0000-0000-0000-0000000000f2', '{"app_roles":["admin_finance"],"aal":"aal2"}');
 select lives_ok($$ select api.approve_payout_batch((select id from t_pay where k = 'batch')) $$, 'admin_finance lain menyetujui batch');
 -- Regresi review 2026-10-19: payout di batch approved tidak bisa dibatalkan (sudah/akan masuk CSV transfer).
-select throws_ok($$ select api.cancel_payout((select id from t_pay where k = 'b1'), 'batal') $$, 'P0001', 'invalid_state:batch_locked',
+select throws_ok($$ select api.cancel_payout((select id from t_pay where k = 'b1'), 'batal') $$, 'P0001', 'batch_locked',
                  'payout requested di batch approved terkunci');
 reset role;
 select is(jsonb_array_length(api.bridge_get_batch((select id from t_pay where k = 'batch')) -> 'payouts'), 3, 'bridge_get_batch: isi batch approved');
@@ -505,6 +505,12 @@ select is((select count(*)::int from api.bridge_fulfillment_export('77777777-000
 insert into finance.reward_codes (reward_type_id, code, uploaded_by) values ('77777777-0000-0000-0000-000000000003', 'VC-1', '22222222-0000-0000-0000-0000000000a1');
 select is((select count(*)::int from api.worker_fulfillments_due(10)), 3, 'worker fulfill: 2 code_pool + 1 webhook jatuh tempo');
 select is((select count(*)::int from api.worker_fulfillments_due(10)), 0, 'lease 5 menit: tidak diambil dua kali');
+-- Regresi review 2026-10-19: klaim yang sedang dikirim worker tidak bisa dibatalkan (reward terkirim + saldo kembali).
+set local role authenticated;
+select pg_temp.jwt('33333333-0000-0000-0000-0000000000a0', '{"app_roles":["admin_ops"],"aal":"aal2"}');
+select throws_ok($$ select api.cancel_fulfillment((select id from t_pay where k = 'f3'), 'batal') $$, 'P0001', 'delivery_in_flight',
+                 'webhook sedang dikirim: batal ditolak sampai hasil tercatat');
+reset role;
 select is(api.worker_assign_code((select id from t_pay where k = 'f1')), 'VC-1', 'kode dipasang dari pool');
 select is(api.worker_assign_code((select id from t_pay where k = 'f1')), 'VC-1', 'assign diulang = kode yang sama');
 select api.worker_fulfillment_result((select id from t_pay where k = 'f1'), true, 'VC-1', null);
