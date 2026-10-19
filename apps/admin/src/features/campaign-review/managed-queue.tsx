@@ -1,6 +1,6 @@
 import { getTranslations } from 'next-intl/server';
 import { coreServer } from '@clipper/auth/server';
-import { Avatar, Badge, Card, EmptyState, Icon, RelativeTime, type UiLocale } from '@clipper/ui';
+import { Avatar, Badge, Card, EmptyState, RelativeTime, type UiLocale } from '@clipper/ui';
 import { rows, uniq } from '@/lib/data';
 import { Brief } from '@/features/shared/brief';
 import { assetHrefs, fileName } from './assets';
@@ -77,4 +77,3 @@ export async function ManagedQueue({ loc }: { loc: UiLocale }) {
   );
 }
 
-export { Icon };

@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState, useTransition } from 'react';
 import { useRouter } from 'next/navigation';
 import { useTranslations } from 'next-intl';
-import { Button, SearchInput, Select, Spinner, platformLabels, type Platform } from '@clipper/ui';
+import { Button, SearchInput, Select, platformLabels, type Platform } from '@clipper/ui';
 import { filtersToQuery, SORTS, STATUSES, type CampaignFilters } from './filters';
 
 const ANY = 'any';
@@ -53,7 +53,6 @@ export function FilterBar({
         aria-label={t('search')}
         clearLabel={t('clearSearch')}
         enterKeyHint="search"
-        trailing={pending ? <Spinner size={16} /> : undefined}
       />
       <div className="no-scrollbar -mx-4 flex gap-2 overflow-x-auto px-4 pb-1">
         <Select

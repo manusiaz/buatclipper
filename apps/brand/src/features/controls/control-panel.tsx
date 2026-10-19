@@ -131,7 +131,7 @@ export function ControlPanel({
         <Card>
           <CardHeader>
             <CardTitle>{t('statusTitle')}</CardTitle>
-            <CardDescription>{t(`statusHint.${status}`, { fallback: '' })}</CardDescription>
+            {t.has(`statusHint.${status}`) ? <CardDescription>{t(`statusHint.${status}`)}</CardDescription> : null}
           </CardHeader>
           <CardContent className="flex flex-wrap gap-2">
             {status === 'live' ? (

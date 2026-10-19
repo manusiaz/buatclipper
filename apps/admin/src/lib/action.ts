@@ -18,8 +18,8 @@ export function settle(error: DbErrorLike, ...paths: string[]): ActionResult {
   return { ok: true };
 }
 
-export function settleFn<T>(r: FnResult<T>, ...paths: string[]): ActionResult<T> {
+export function settleFn(r: FnResult<unknown>, ...paths: string[]): ActionResult {
   if (!r.ok) return { ok: false, error: r.error };
   paths.forEach((p) => revalidatePath(p));
-  return { ok: true, data: r.data };
+  return { ok: true };
 }

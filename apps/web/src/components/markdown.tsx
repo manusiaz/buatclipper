@@ -35,7 +35,7 @@ function A({ href, children }: ComponentProps<'a'>) {
 }
 
 /**
- * Markdown aman (R-16): react-markdown tanpa rehype-raw, HTML mentah dibuang (skipHtml), URL disaring urlTransform
+ * Markdown aman (R-16): react-markdown tanpa plugin HTML, HTML mentah dibuang (skipHtml), URL disaring urlTransform
  * bawaan, gambar luar tidak dimuat (cuma alt) supaya brief tidak bisa memasang pixel pelacak di {domain}.
  */
 export function Markdown({ children, headingOffset = 0, className }: { children: string; headingOffset?: number; className?: string }) {
