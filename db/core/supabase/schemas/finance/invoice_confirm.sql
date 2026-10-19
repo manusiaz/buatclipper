@@ -113,7 +113,8 @@ end $$;
 -- di org_credit sejak diajukan, keluar saat dibayar). Sisa per campaign = saldo campaign_pool Rupiah (ledger, bukan cache).
 create function finance.org_credit_available(p_org uuid) returns numeric
 language sql stable security definer set search_path = '' as $$
-  select finance.balance(finance.account('org_credit', p_org, finance.idr()))
+  select coalesce((select sum(e.amount) from finance.ledger_entries e join finance.ledger_accounts a on a.id = e.account_id
+                     where a.owner_type = 'org_credit' and a.owner_id = p_org and a.reward_type_id = finance.idr()), 0)
          - coalesce((select sum(r.amount) from finance.org_refunds r where r.org_id = p_org and r.status in ('requested', 'approved')), 0);
 $$;
 
@@ -130,7 +131,7 @@ begin
    where a.owner_type = 'org_credit' and a.owner_id = p_org and a.reward_type_id = finance.idr();
   return jsonb_build_object(
     'balance', trim_scale(coalesce(finance.balance(acc), 0)),
-    'available', trim_scale(case when acc is null then 0 else finance.org_credit_available(p_org) end),
+    'available', trim_scale(finance.org_credit_available(p_org)),
     'history', coalesce((select jsonb_agg(jsonb_build_object('amount', trim_scale(e.amount), 'ref_type', e.ref_type, 'ref_id', e.ref_id,
                                                              'created_at', e.created_at) order by e.created_at desc)
                            from (select * from finance.ledger_entries x where x.account_id = acc
