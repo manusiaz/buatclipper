@@ -1,0 +1,10 @@
+{
+  "data": [
+    { "name": "views", "period": "lifetime", "values": [{ "value": 1200 }], "title": "views", "description": "Number of times the media object was viewed.", "id": "18050206876707110/insights/views/lifetime" },
+    { "name": "likes", "period": "lifetime", "values": [{ "value": 80 }], "title": "likes", "description": "", "id": "18050206876707110/insights/likes/lifetime" },
+    { "name": "replies", "period": "lifetime", "values": [{ "value": 7 }], "title": "replies", "description": "", "id": "18050206876707110/insights/replies/lifetime" },
+    { "name": "reposts", "period": "lifetime", "values": [{ "value": 3 }], "title": "reposts", "description": "", "id": "18050206876707110/insights/reposts/lifetime" },
+    { "name": "quotes", "period": "lifetime", "values": [{ "value": 1 }], "title": "quotes", "description": "", "id": "18050206876707110/insights/quotes/lifetime" },
+    { "name": "shares", "period": "lifetime", "values": [{ "value": 5 }], "title": "shares", "description": "", "id": "18050206876707110/insights/shares/lifetime" }
+  ]
+}

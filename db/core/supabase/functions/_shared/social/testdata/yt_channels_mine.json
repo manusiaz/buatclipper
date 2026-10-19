@@ -1,0 +1,15 @@
+{
+  "kind": "youtube#channelListResponse",
+  "etag": "e1",
+  "pageInfo": { "totalResults": 1, "resultsPerPage": 5 },
+  "items": [
+    {
+      "kind": "youtube#channel",
+      "etag": "e2",
+      "id": "UCclipperSatu00000000000",
+      "snippet": { "title": "Clipper Satu", "customUrl": "@clippersatu", "publishedAt": "2021-03-04T05:06:07Z" },
+      "statistics": { "viewCount": "100000", "subscriberCount": "3400", "hiddenSubscriberCount": false, "videoCount": "51" },
+      "contentDetails": { "relatedPlaylists": { "likes": "", "uploads": "UUclipperSatu00000000000" } }
+    }
+  ]
+}

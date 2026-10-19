@@ -62,7 +62,7 @@ export interface FetchOptions {
 
 export interface PlatformAdapter {
   readonly platform: Platform;
-  /** PKCE: required (X), optional (Google, TikTok), none (Meta). */
+  /** PKCE: required (X), optional (Google), none (Meta, TikTok web). */
   readonly pkce: "required" | "optional" | "none";
   /** Jumlah post per panggilan metrik (YouTube 50, TikTok 20, X 100, Meta 1). */
   readonly maxBatch: number;

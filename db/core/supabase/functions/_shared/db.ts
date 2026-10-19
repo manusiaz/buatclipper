@@ -37,23 +37,26 @@ function publishableKey(): string {
 
 const opts = { auth: { persistSession: false, autoRefreshToken: false }, db: { schema: "api" } } as const;
 
-let service: SupabaseClient | null = null;
+// deno-lint-ignore no-explicit-any
+export type Db = SupabaseClient<any, any, "api", any, any>;
 
-export function serviceClient(): SupabaseClient {
+let service: Db | null = null;
+
+export function serviceClient(): Db {
   return service ??= createClient(env("SUPABASE_URL"), serviceKey(), opts);
 }
 
 /** Client anon: view publik (mis. api.settings key public.*). */
-export function publicClient(): SupabaseClient {
+export function publicClient(): Db {
   return createClient(env("SUPABASE_URL"), publishableKey(), opts);
 }
 
 /** Client atas nama user (JWT identity lewat Third-Party Auth): RLS core membatasi baris ke milik user. */
-export function userClient(jwt: string): SupabaseClient {
+export function userClient(jwt: string): Db {
   return createClient(env("SUPABASE_URL"), publishableKey(), { ...opts, accessToken: () => Promise.resolve(jwt) });
 }
 
-export function rpcFrom(client: SupabaseClient): Rpc {
+export function rpcFrom(client: Db): Rpc {
   return async <T>(fn: string, args: Record<string, unknown> = {}) => {
     const { data, error } = await client.rpc(fn, args);
     if (error) throw new RpcError(fn, error.code ?? "", error.message, error.details ?? undefined);

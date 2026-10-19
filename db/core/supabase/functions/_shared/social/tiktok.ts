@@ -114,7 +114,7 @@ export function createTikTok(cfg: { clientKey: string; clientSecret: string; fet
 
   return {
     platform: "tiktok",
-    pkce: "optional",
+    pkce: "none", // Login Kit web: PKCE hanya untuk desktop/mobile
     maxBatch: TIKTOK.queryMax,
 
     authorizeUrl(redirectUri, state, codeChallenge) {
