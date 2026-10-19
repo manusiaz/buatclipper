@@ -43,7 +43,7 @@ export default async function InvitePage({ params }: { params: Promise<{ token: 
           <>
             <AcceptInvite token={token} />
             <form action={switchAccount.bind(null, token)} className="flex flex-wrap items-center justify-center gap-x-1 text-body-s text-muted">
-              <span className="min-w-0 truncate">{t('signedInAs', { email: claims.email ?? '' })}</span>
+              <span className="min-w-0 max-w-full truncate">{t('signedInAs', { email: claims.email ?? '' })}</span>
               <Button type="submit" variant="link" size="sm">
                 {t('notYou')}
               </Button>

@@ -26,11 +26,11 @@ export function AuthShell({ children, title, description, logo, footer, aside, s
   return (
     <div className={cn('bg-page relative flex min-h-dvh', className)}>
       {aside ? <aside className="surface-dark hidden w-[44%] max-w-[640px] shrink-0 rounded-none shadow-none lg:flex lg:flex-col">{aside}</aside> : null}
-      <div className="flex min-h-dvh flex-1 flex-col px-4 pt-[calc(var(--safe-top)+24px)] pb-[calc(var(--safe-bottom)+24px)]">
+      <div className="flex min-h-dvh min-w-0 flex-1 flex-col px-4 pt-[calc(var(--safe-top)+24px)] pb-[calc(var(--safe-bottom)+24px)]">
         {topRight ? <div className="absolute top-[calc(var(--safe-top)+12px)] right-4 flex items-center gap-1">{topRight}</div> : null}
-        <div className={cn('m-auto flex w-full flex-col items-center gap-6', W[size])}>
+        <div className={cn('m-auto flex w-full min-w-0 flex-col items-center gap-6', W[size])}>
           <div className="flex justify-center">{logo ?? <Logo size={36} />}</div>
-          <main id="main" className="surface-card w-full rounded-card p-5 sm:p-8">
+          <main id="main" className="surface-card w-full min-w-0 rounded-card p-5 sm:p-8">
             {title || description ? (
               <div className="mb-6 flex flex-col gap-1.5 text-center">
                 {title ? <h1 className="text-h4 text-ink">{title}</h1> : null}

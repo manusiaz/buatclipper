@@ -23,10 +23,9 @@ Deno.serve(createBridgeHandler({
   core: coreBridge,
   authAdmin: lazyAuthAdmin(),
   crypto: piiCrypto,
-  email: () =>
-    (email ??= Deno.env.get("MAILPIT_URL") && isLocalUrl(Deno.env.get("SUPABASE_URL"))
-      ? mailpitSender({ baseUrl: Deno.env.get("MAILPIT_URL")!, from: env("EMAIL_FROM") })
-      : resendSender({ apiKey: env("RESEND_API_KEY"), from: env("EMAIL_FROM") })),
+  email: () => (email ??= Deno.env.get("MAILPIT_URL") && isLocalUrl(Deno.env.get("SUPABASE_URL"))
+    ? mailpitSender({ baseUrl: Deno.env.get("MAILPIT_URL")!, from: env("EMAIL_FROM") })
+    : resendSender({ apiKey: env("RESEND_API_KEY"), from: env("EMAIL_FROM") })),
   push: () => (push ??= webPushSender()),
   provider: providerFromEnv,
   links: () => (links ??= linksFromEnv()),
