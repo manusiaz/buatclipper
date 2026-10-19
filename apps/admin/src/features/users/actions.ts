@@ -61,9 +61,14 @@ export async function banUser(userId: string, fd: FormData): Promise<ActionResul
   return settleFn(r, '/users');
 }
 
-export async function unbanUser(userId: string): Promise<ActionResult> {
+/** Cabut ban login (identity) lalu profil core yang di-ban fraud queue; diulang aman bila langkah core gagal. */
+export async function unbanUser(userId: string, fd: FormData): Promise<ActionResult> {
   await requireAdmin('admin_moderator');
-  return settleFn(await invokeFunction('identity', 'admin-auth', { action: 'unban_user', user_id: userId }, 'admin'), '/users');
+  const r = await invokeFunction('identity', 'admin-auth', { action: 'unban_user', user_id: userId }, 'admin');
+  if (!r.ok) return settleFn(r, '/users');
+  const db = await coreServer('admin');
+  const { error } = await db.rpc('manage_user', { p_user: userId, p_action: 'unban', p_params: { note: text(fd, 'note') } });
+  return settle(error, '/users');
 }
 
 /** A2.2: verify | reject | suspend lewat manage_org saja (record_review target org memakai logika yang sama → notifikasi ganda). */

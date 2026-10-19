@@ -1290,6 +1290,19 @@ select ok(finance.reconcile_ledger() ? 'pool_cache', 'selisih cache pool vs jurn
 select ok(exists (select 1 from ops.alerts where kind = 'reconcile.ledger' and severity = 'critical'), 'alert rekonsiliasi ledger');
 update finance.reward_pools set allocated = allocated - 1 where id = '66666666-0000-0000-0000-0000000000a1';
 
+-- Regresi review R14: ban dari fraud queue bisa dicabut admin (profil core kembali active, bukan cuma login).
+set local role authenticated;
+select pg_temp.jwt('33333333-0000-0000-0000-0000000000e1', '{"app_roles":["admin_moderator"],"aal":"aal2"}');
+select throws_ok($$ select api.manage_user('11111111-0000-0000-0000-00000000000e', 'unban', '{}') $$, 'P0001', 'invalid:reason',
+                 'cabut ban wajib alasan');
+select lives_ok($$ select api.manage_user('11111111-0000-0000-0000-00000000000e', 'unban', '{"note":"banding diterima"}') $$,
+                'admin mencabut ban profil');
+reset role;
+select is((select status::text from market.profiles where id = '11111111-0000-0000-0000-00000000000e'), 'active',
+          'regresi R14: profil yang di-ban fraud queue kembali active');
+select ok(exists (select 1 from ops.audit_logs where action = 'user.unban' and target = 'profile:11111111-0000-0000-0000-00000000000e'),
+          'cabut ban tercatat audit log');
+
 -- ========== Invarian akhir ==========
 select is((select count(*)::int from (select 1 from finance.ledger_entries e group by e.txn_id, e.reward_type_id having sum(e.amount) <> 0) x),
           0, 'akhir: ledger seimbang per transaksi per reward type');

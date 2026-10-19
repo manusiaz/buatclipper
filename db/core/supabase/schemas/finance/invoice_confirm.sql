@@ -71,16 +71,14 @@ begin
 
   -- Pin berlaku sejak lunas (atau sejak pin yang sedang berjalan habis), selama hari yang dibeli; campaign dikunci supaya
   -- dua invoice pin yang lunas bersamaan saling menyambung, tidak tumpang tindih.
+  -- Invoice terbit sebelum pin_days ada: durasi = periode perkiraannya (pin_until − issued_at, maks 90 hari).
   if inv.kind = 'pinned' then
-    if inv.pin_days is not null then
-      update market.campaigns set pinned_until = greatest(now(), coalesce(pinned_until, now())) + make_interval(days => inv.pin_days)
-       where id = inv.campaign_id
-      returning pinned_until into inv.pin_until;
-      update finance.invoices set pin_until = inv.pin_until where id = inv.id;
-    else  -- invoice lama (sebelum pin_days)
-      update market.campaigns set pinned_until = greatest(coalesce(pinned_until, inv.pin_until), inv.pin_until)
-       where id = inv.campaign_id;
-    end if;
+    update market.campaigns set pinned_until = greatest(now(), coalesce(pinned_until, now()))
+             + make_interval(days => coalesce(inv.pin_days,
+                                              least(90, greatest(1, ceil(extract(epoch from inv.pin_until - inv.issued_at) / 86400)))::int))
+     where id = inv.campaign_id
+    returning pinned_until into inv.pin_until;
+    update finance.invoices set pin_until = inv.pin_until where id = inv.id;
   end if;
   perform market.notify_org(inv.org_id, array['brand_owner', 'brand_finance']::market.org_role[], 'invoice.paid',
                             market.campaign_ref(inv.campaign_id) || finance.amount_ref(idr, inv.total)

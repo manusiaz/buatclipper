@@ -677,6 +677,21 @@ select is((select pinned_until from market.campaigns where id = '55555555-0000-0
 select is((select pin_until from finance.invoices where id = (select id from t_ids where k = 'inv_pin')), now() + interval '10 days',
           'invoice pin mencatat periode sebenarnya');
 update market.campaigns set pinned_until = null where id = '55555555-0000-0000-0000-000000000001';
+-- Regresi review R14: invoice pin terbit sebelum pin_days ada (7 hari, 10 hari lalu), dibayar sekarang → tetap 7 hari sejak lunas.
+set local role authenticated;
+select pg_temp.jwt('22222222-0000-0000-0000-0000000000a1');
+insert into t_ids (k, id) select 'inv_pin_old', api.buy_pin('55555555-0000-0000-0000-000000000001', 7);
+reset role;
+update finance.invoices set pin_days = null, issued_at = now() - interval '10 days', pin_until = now() - interval '3 days'
+ where id = (select id from t_ids where k = 'inv_pin_old');
+set local role authenticated;
+select pg_temp.jwt('33333333-0000-0000-0000-0000000000ad', array['admin_finance'], 'aal2');
+select api.confirm_invoice_payment((select id from t_ids where k = 'inv_pin_old'),
+                                   (select total from api.invoices where id = (select id from t_ids where k = 'inv_pin_old')), now(), 'REF-PIN-OLD', 'transfer');
+reset role;
+select is((select pinned_until from market.campaigns where id = '55555555-0000-0000-0000-000000000001'), now() + interval '7 days',
+          'regresi R14: invoice pin lama dibayar telat tetap dapat durasinya sejak lunas');
+update market.campaigns set pinned_until = null where id = '55555555-0000-0000-0000-000000000001';
 
 -- ---------- daftar campaign (F-C03): visibilitas = RLS, CTA 6 state per user, keyset ----------
 set local role anon;

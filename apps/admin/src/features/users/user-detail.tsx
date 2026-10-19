@@ -125,7 +125,14 @@ export async function UserDetail({ userId, claims, loc, back = '/users' }: { use
                 { kind: 'number', name: 'hours', label: t('users.banHours'), helper: t('users.banHoursHelp'), min: 1, max: 876000, step: '1' },
               ]}
             />
-            <ActionDialog trigger={{ label: t('users.unban'), icon: 'undo' }} title={t('users.unban')} submitLabel={t('users.unban')} success={t('users.unbanned')} action={unbanUser.bind(null, userId)} />
+            <ActionDialog
+              trigger={{ label: t('users.unban'), icon: 'undo' }}
+              title={t('users.unban')}
+              submitLabel={t('users.unban')}
+              success={t('users.unbanned')}
+              action={unbanUser.bind(null, userId)}
+              fields={[{ kind: 'textarea', name: 'note', label: t('form.reason'), required: true, maxLength: 500 }]}
+            />
           </div>
         ) : null}
         <section className="flex flex-col gap-2">
