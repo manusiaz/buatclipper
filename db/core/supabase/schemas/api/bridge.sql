@@ -12,7 +12,7 @@ begin
   if not found then
     raise exception 'not_found:batch' using errcode = 'P0002';
   end if;
-  if b.status <> 'approved' then
+  if b.status not in ('approved', 'exported') then  -- exported: identity menandatangani ulang link berkas yang sama
     raise exception 'invalid_state:%', b.status using errcode = 'P0001';
   end if;
   return jsonb_build_object(

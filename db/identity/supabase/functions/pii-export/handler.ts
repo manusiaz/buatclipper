@@ -62,6 +62,19 @@ export async function exportPayouts(deps: PiiExportDeps, actor: Actor, batchId: 
   ) {
     throw new HttpError(409, "batch_not_approved", "batch belum disetujui orang kedua");
   }
+  // Sudah diekspor: link baru untuk berkas yang sama (tanpa dekripsi ulang); tetap tercatat audit.
+  if (batch.status === "exported") {
+    const path = `payouts/${batchId}.csv`;
+    if (!(await deps.storage.exists(EXPORT_BUCKET, path))) {
+      throw new HttpError(404, "file_missing", "berkas ekspor tidak ditemukan");
+    }
+    const url = await deps.storage.signedUrl(EXPORT_BUCKET, path, SIGNED_URL_TTL_S);
+    await audit(deps, actor, "pii.export_payouts", `batch:${batchId}`, {
+      resign: true,
+      file_ref: `${EXPORT_BUCKET}/${path}`,
+    });
+    return { url, expires_in: SIGNED_URL_TTL_S, file_ref: `${EXPORT_BUCKET}/${path}`, rows: 0, held: [] };
+  }
 
   const methods = new Map(
     (await rpcByIds<MethodRow>(deps.rpc, "svc_payout_methods", "p_ids", payouts.map((p) => p.method_id)))

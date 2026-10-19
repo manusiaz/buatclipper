@@ -32,6 +32,10 @@ grant select on api.campaigns, api.campaign_assets, api.rate_rules, api.reward_t
 create view api.my_profile with (security_invoker = true) as
   select id, username, display_name, avatar_path, trust_score, status, suspended_until, created_at
   from market.profiles where id = (select auth.uid());
+-- Paket managed (J-A7): brief mentah brand untuk anggota org pemilik & admin; api.campaigns publik tidak membawanya.
+create view api.managed_briefs with (security_invoker = true) as
+  select c.id as campaign_id, c.managed_brief from market.campaigns c
+  where c.service_mode = 'managed' and ((select ops.is_org_member(c.org_id)) or (select ops.has_admin()));
 -- Admin (F-A07): status & Trust Score semua clipper. Baris kosong untuk non-admin.
 create view api.admin_profiles with (security_invoker = true) as
   select id, username, display_name, avatar_path, trust_score, status, suspended_until, created_at
@@ -77,16 +81,19 @@ create view api.wallet_entries with (security_invoker = true) as
   from finance.ledger_entries e join finance.ledger_accounts a on a.id = e.account_id
   where a.owner_type = 'user_wallet';
 create view api.payouts with (security_invoker = true) as
-  select id, user_id, method_id, batch_id, channel, amount, fee, status, hold_reason, created_at, paid_at from finance.payouts;
+  select id, user_id, method_id, batch_id, channel, amount, fee, status, hold_reason, bank_ref, provider_ref, last_error, created_at,
+         paid_at
+  from finance.payouts;
 create view api.fulfillments with (security_invoker = true) as
   select id, user_id, reward_type_id, amount, recipient, status, delivered_ref, attempts, created_at, delivered_at
   from finance.fulfillments;
 create view api.invoices with (security_invoker = true) as
   select id, number, org_id, campaign_id, kind, subtotal, mgmt_fee, admin_fee, service_fee, tax, total, status, payment_channel,
-         paid_amount, paid_at, faktur_no, issued_at, due_at, pin_until, pool_topups
+         paid_amount, paid_at, faktur_no, issued_at, due_at, pin_until, pool_topups, credit_applied,
+         total - credit_applied as amount_due  -- yang ditagih lewat transfer/QRIS setelah kredit org
   from finance.invoices;
 create view api.org_refunds with (security_invoker = true) as
-  select id, org_id, campaign_id, amount, transfer_fee, status, created_at, paid_at from finance.org_refunds;
+  select id, org_id, campaign_id, amount, transfer_fee, status, requested_by, created_at, paid_at from finance.org_refunds;
 create view api.payout_batches with (security_invoker = true) as
   select id, created_by, approved_by, status, cutoff_at, total, count, executed_at, created_at from finance.payout_batches;
 
@@ -111,7 +118,7 @@ create view api.leaderboard with (security_invoker = true) as
   from market.leaderboard_campaign c join market.profiles p on p.id = c.user_id
   where exists (select 1 from market.campaigns k where k.id = c.campaign_id);
 
-grant select on api.my_profile, api.admin_profiles, api.organizations, api.org_members, api.org_invites, api.claims, api.social_accounts,
+grant select on api.my_profile, api.admin_profiles, api.managed_briefs, api.organizations, api.org_members, api.org_invites, api.claims, api.social_accounts,
                 api.submissions, api.view_snapshots, api.review_decisions, api.fraud_flags, api.notifications,
                 api.notification_prefs, api.audit_logs, api.report_links, api.fee_rules, api.wallet_balances,
                 api.wallet_entries, api.payouts, api.fulfillments, api.invoices, api.org_refunds, api.payout_batches,

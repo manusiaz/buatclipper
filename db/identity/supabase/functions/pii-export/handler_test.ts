@@ -124,6 +124,26 @@ Deno.test("payout_csv: only batches approved by a second person", async () => {
   }
 });
 
+Deno.test("payout_csv: exported batch → new link for the same file, no re-decrypt, audited", async () => {
+  const first = await setup();
+  await json(await first.handler(post({ action: "payout_csv", batch_id: BATCH })));
+  const again = await setup({ status: "exported" });
+  again.storage.files = first.storage.files;
+  const res = await json(await again.handler(post({ action: "payout_csv", batch_id: BATCH })));
+  assertEquals(res.status, 200, JSON.stringify(res.body));
+  assertEquals(res.body.data.file_ref, `pii-exports/payouts/${BATCH}.csv`);
+  assertEquals(again.rpc.named("svc_payout_methods").length + again.core.named("attach_export").length, 0);
+  assertEquals(again.rpc.named("svc_audit")[0].args.p_after, {
+    resign: true,
+    file_ref: `pii-exports/payouts/${BATCH}.csv`,
+  });
+  const missing = await setup({ status: "exported" });
+  assertEquals(
+    (await json(await missing.handler(post({ action: "payout_csv", batch_id: BATCH })))).body.error.code,
+    "file_missing",
+  );
+});
+
 Deno.test("pii-export: aal1 admin and wrong role are refused before any PII is read", async () => {
   const aal1 = await setup({}, ["admin_finance"], "aal1");
   assertEquals(

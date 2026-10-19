@@ -1058,10 +1058,31 @@ set local role authenticated;
 select pg_temp.jwt('22222222-0000-0000-0000-0000000000a1');
 select is((select api.campaign_detail((select id from t_ids where k = 'c_mgd')) #>> '{campaign,managed_brief}'),
           'Tolong buatkan brief dari trailer kami.', 'anggota org melihat brief mentah di campaign_detail');
+select is((select managed_brief from api.managed_briefs where campaign_id = (select id from t_ids where k = 'c_mgd')),
+          'Tolong buatkan brief dari trailer kami.', 'anggota org melihat brief mentah lewat api.managed_briefs');
 reset role;
 -- Trigger brief beku memakai kode mesin (UI memetakan kode, bukan teks).
 select throws_ok($$ update market.campaigns set brief = 'ganti' where id = (select id from t_ids where k = 'c_mgd') $$,
                  '23514', 'campaign_locked', 'trigger brief beku: pesan = kode campaign_locked');
+
+-- Keputusan owner 2026-10-19: batal sebelum live → jasa managed yang sudah dibayar ikut dikembalikan (refund E-35 + jurnal balik).
+insert into t_ids (k, id) select 'inv_mgd', id from finance.invoices
+ where campaign_id = (select id from t_ids where k = 'c_mgd') and kind = 'managed_service';
+set local role authenticated;
+select pg_temp.jwt('33333333-0000-0000-0000-0000000000ad', array['admin_finance'], 'aal2');
+select lives_ok($$ select api.confirm_invoice_payment((select id from t_ids where k = 'inv_mgd'),
+                    (select total from api.invoices where id = (select id from t_ids where k = 'inv_mgd')), now(), 'REF-MGD-1', 'transfer') $$,
+                'jasa managed dibayar');
+select pg_temp.jwt('22222222-0000-0000-0000-0000000000a1');
+select lives_ok($$ select api.control_campaign((select id from t_ids where k = 'c_mgd'), 'end_early') $$, 'brand membatalkan sebelum live');
+reset role;
+select is((select amount from finance.org_refunds where campaign_id = (select id from t_ids where k = 'c_mgd')),
+          (select total from finance.invoices where id = (select id from t_ids where k = 'inv_mgd')),
+          'refund batal = jasa managed + pajak yang sudah dibayar');
+select is((select sum(e.amount) from finance.ledger_entries e join finance.ledger_accounts a on a.id = e.account_id
+            where e.ref_type = 'refund' and a.owner_type = 'platform_revenue'
+              and e.ref_id = (select id::text from finance.org_refunds where campaign_id = (select id from t_ids where k = 'c_mgd'))),
+          -(select service_fee from finance.invoices where id = (select id from t_ids where k = 'inv_mgd')), 'revenue jasa managed dibalik');
 
 select * from finish();
 rollback;

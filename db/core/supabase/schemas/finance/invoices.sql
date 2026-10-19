@@ -16,6 +16,8 @@ create table finance.invoices (
   payment_channel text check (payment_channel in ('qris', 'transfer', 'credit')),  -- credit = kredit org (D-09 rollover)
   payment_ref text,
   paid_amount numeric(18, 2) check (paid_amount > 0),
+  -- Kredit org yang dicadangkan untuk invoice ini (api.pay_invoice_with_credit); dijurnal saat lunas, lepas sendiri kalau void.
+  credit_applied numeric(18, 2) not null default 0 check (credit_applied >= 0),
   paid_at timestamptz,
   confirmed_by uuid,
   faktur_no text,
@@ -29,6 +31,7 @@ create table finance.invoices (
   constraint invoices_payment_ref_unique unique (payment_ref),
   constraint invoices_faktur_unique unique (faktur_no),
   constraint invoices_total_consistent check (total = subtotal + mgmt_fee + admin_fee + service_fee + tax),
+  constraint invoices_credit_within_total check (credit_applied <= total),
   constraint invoices_campaign_kinds check (kind not in ('campaign', 'topup', 'pinned') or campaign_id is not null),
   constraint invoices_pinned_has_period check ((kind = 'pinned') = (pin_until is not null)),
   constraint invoices_topup_has_pools check ((kind = 'topup') = coalesce(jsonb_typeof(pool_topups) = 'array', false)),

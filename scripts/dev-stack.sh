@@ -54,6 +54,11 @@ done
 
 for p in identity core; do
   supabase start --workdir "db/$p" -x vector,logflare,studio,imgproxy >/dev/null
+  # Setelah Docker/mesin restart hanya container db yang hidup lagi; `supabase start` menganggap stack sudah jalan.
+  if [ "$(docker inspect -f '{{.State.Running}}' "supabase_edge_runtime_clipper-$p" 2>/dev/null)" != true ]; then
+    supabase stop --workdir "db/$p" >/dev/null
+    supabase start --workdir "db/$p" -x vector,logflare,studio,imgproxy >/dev/null
+  fi
   [ "${1:-}" = "--reset" ] && supabase db reset --workdir "db/$p" >/dev/null
 done
 

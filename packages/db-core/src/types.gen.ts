@@ -206,14 +206,14 @@ export type Database = {
                   ]
                 },"invoices": {
                   Row: {
-                    "admin_fee": number | null,"campaign_id": string | null,"due_at": string | null,"faktur_no": string | null,"id": string | null,"issued_at": string | null,"kind": string | null,"mgmt_fee": number | null,"number": string | null,"org_id": string | null,"paid_amount": number | null,"paid_at": string | null,"payment_channel": string | null,"pin_until": string | null,"pool_topups": Json | null,"service_fee": number | null,"status": string | null,"subtotal": number | null,"tax": number | null,"total": number | null
+                    "admin_fee": number | null,"amount_due": number | null,"campaign_id": string | null,"credit_applied": number | null,"due_at": string | null,"faktur_no": string | null,"id": string | null,"issued_at": string | null,"kind": string | null,"mgmt_fee": number | null,"number": string | null,"org_id": string | null,"paid_amount": number | null,"paid_at": string | null,"payment_channel": string | null,"pin_until": string | null,"pool_topups": Json | null,"service_fee": number | null,"status": string | null,"subtotal": number | null,"tax": number | null,"total": number | null
                   }
                   ComputedFields: never
                   Insert: {
-                           "admin_fee"?: number | null,"campaign_id"?: string | null,"due_at"?: string | null,"faktur_no"?: string | null,"id"?: string | null,"issued_at"?: string | null,"kind"?: string | null,"mgmt_fee"?: number | null,"number"?: string | null,"org_id"?: string | null,"paid_amount"?: number | null,"paid_at"?: string | null,"payment_channel"?: string | null,"pin_until"?: string | null,"pool_topups"?: Json | null,"service_fee"?: number | null,"status"?: string | null,"subtotal"?: number | null,"tax"?: number | null,"total"?: number | null
+                           "admin_fee"?: number | null,"amount_due"?: never,"campaign_id"?: string | null,"credit_applied"?: number | null,"due_at"?: string | null,"faktur_no"?: string | null,"id"?: string | null,"issued_at"?: string | null,"kind"?: string | null,"mgmt_fee"?: number | null,"number"?: string | null,"org_id"?: string | null,"paid_amount"?: number | null,"paid_at"?: string | null,"payment_channel"?: string | null,"pin_until"?: string | null,"pool_topups"?: Json | null,"service_fee"?: number | null,"status"?: string | null,"subtotal"?: number | null,"tax"?: number | null,"total"?: number | null
                          }
                         Update: {
-                           "admin_fee"?: number | null,"campaign_id"?: string | null,"due_at"?: string | null,"faktur_no"?: string | null,"id"?: string | null,"issued_at"?: string | null,"kind"?: string | null,"mgmt_fee"?: number | null,"number"?: string | null,"org_id"?: string | null,"paid_amount"?: number | null,"paid_at"?: string | null,"payment_channel"?: string | null,"pin_until"?: string | null,"pool_topups"?: Json | null,"service_fee"?: number | null,"status"?: string | null,"subtotal"?: number | null,"tax"?: number | null,"total"?: number | null
+                           "admin_fee"?: number | null,"amount_due"?: never,"campaign_id"?: string | null,"credit_applied"?: number | null,"due_at"?: string | null,"faktur_no"?: string | null,"id"?: string | null,"issued_at"?: string | null,"kind"?: string | null,"mgmt_fee"?: number | null,"number"?: string | null,"org_id"?: string | null,"paid_amount"?: number | null,"paid_at"?: string | null,"payment_channel"?: string | null,"pin_until"?: string | null,"pool_topups"?: Json | null,"service_fee"?: number | null,"status"?: string | null,"subtotal"?: number | null,"tax"?: number | null,"total"?: number | null
                          }
                         Relationships: [
                     
@@ -224,6 +224,20 @@ export type Database = {
                   }
                   ComputedFields: never
                   Relationships: [
+                    
+                  ]
+                },"managed_briefs": {
+                  Row: {
+                    "campaign_id": string | null,"managed_brief": string | null
+                  }
+                  ComputedFields: never
+                  Insert: {
+                           "campaign_id"?: string | null,"managed_brief"?: string | null
+                         }
+                        Update: {
+                           "campaign_id"?: string | null,"managed_brief"?: string | null
+                         }
+                        Relationships: [
                     
                   ]
                 },"my_profile": {
@@ -312,14 +326,14 @@ export type Database = {
                   ]
                 },"org_refunds": {
                   Row: {
-                    "amount": number | null,"campaign_id": string | null,"created_at": string | null,"id": string | null,"org_id": string | null,"paid_at": string | null,"status": string | null,"transfer_fee": number | null
+                    "amount": number | null,"campaign_id": string | null,"created_at": string | null,"id": string | null,"org_id": string | null,"paid_at": string | null,"requested_by": string | null,"status": string | null,"transfer_fee": number | null
                   }
                   ComputedFields: never
                   Insert: {
-                           "amount"?: number | null,"campaign_id"?: string | null,"created_at"?: string | null,"id"?: string | null,"org_id"?: string | null,"paid_at"?: string | null,"status"?: string | null,"transfer_fee"?: number | null
+                           "amount"?: number | null,"campaign_id"?: string | null,"created_at"?: string | null,"id"?: string | null,"org_id"?: string | null,"paid_at"?: string | null,"requested_by"?: string | null,"status"?: string | null,"transfer_fee"?: number | null
                          }
                         Update: {
-                           "amount"?: number | null,"campaign_id"?: string | null,"created_at"?: string | null,"id"?: string | null,"org_id"?: string | null,"paid_at"?: string | null,"status"?: string | null,"transfer_fee"?: number | null
+                           "amount"?: number | null,"campaign_id"?: string | null,"created_at"?: string | null,"id"?: string | null,"org_id"?: string | null,"paid_at"?: string | null,"requested_by"?: string | null,"status"?: string | null,"transfer_fee"?: number | null
                          }
                         Relationships: [
                     
@@ -354,14 +368,14 @@ export type Database = {
                   ]
                 },"payouts": {
                   Row: {
-                    "amount": number | null,"batch_id": string | null,"channel": string | null,"created_at": string | null,"fee": number | null,"hold_reason": string | null,"id": string | null,"method_id": string | null,"paid_at": string | null,"status": "requested"|"on_hold"|"processing"|"cancelled"|"paid"|"failed"|"returned" | null,"user_id": string | null
+                    "amount": number | null,"bank_ref": string | null,"batch_id": string | null,"channel": string | null,"created_at": string | null,"fee": number | null,"hold_reason": string | null,"id": string | null,"last_error": string | null,"method_id": string | null,"paid_at": string | null,"provider_ref": string | null,"status": "requested"|"on_hold"|"processing"|"cancelled"|"paid"|"failed"|"returned" | null,"user_id": string | null
                   }
                   ComputedFields: never
                   Insert: {
-                           "amount"?: number | null,"batch_id"?: string | null,"channel"?: string | null,"created_at"?: string | null,"fee"?: number | null,"hold_reason"?: string | null,"id"?: string | null,"method_id"?: string | null,"paid_at"?: string | null,"status"?: "requested"|"on_hold"|"processing"|"cancelled"|"paid"|"failed"|"returned" | null,"user_id"?: string | null
+                           "amount"?: number | null,"bank_ref"?: string | null,"batch_id"?: string | null,"channel"?: string | null,"created_at"?: string | null,"fee"?: number | null,"hold_reason"?: string | null,"id"?: string | null,"last_error"?: string | null,"method_id"?: string | null,"paid_at"?: string | null,"provider_ref"?: string | null,"status"?: "requested"|"on_hold"|"processing"|"cancelled"|"paid"|"failed"|"returned" | null,"user_id"?: string | null
                          }
                         Update: {
-                           "amount"?: number | null,"batch_id"?: string | null,"channel"?: string | null,"created_at"?: string | null,"fee"?: number | null,"hold_reason"?: string | null,"id"?: string | null,"method_id"?: string | null,"paid_at"?: string | null,"status"?: "requested"|"on_hold"|"processing"|"cancelled"|"paid"|"failed"|"returned" | null,"user_id"?: string | null
+                           "amount"?: number | null,"bank_ref"?: string | null,"batch_id"?: string | null,"channel"?: string | null,"created_at"?: string | null,"fee"?: number | null,"hold_reason"?: string | null,"id"?: string | null,"last_error"?: string | null,"method_id"?: string | null,"paid_at"?: string | null,"provider_ref"?: string | null,"status"?: "requested"|"on_hold"|"processing"|"cancelled"|"paid"|"failed"|"returned" | null,"user_id"?: string | null
                          }
                         Relationships: [
                     
@@ -703,7 +717,7 @@ export type Database = {
 { Args: { "p_org": string }; Returns: Json
                            },
 "pay_invoice_with_credit":
-{ Args: { "p_invoice": string }; Returns: undefined
+{ Args: { "p_amount"?: number,"p_invoice": string }; Returns: Json
                            },
 "record_review":
 { Args: { "p_decision": string,"p_message"?: string,"p_note"?: string,"p_reason"?: string,"p_target_id": string,"p_target_type": string }; Returns: undefined

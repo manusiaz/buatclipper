@@ -13,6 +13,7 @@ create table finance.payouts (
   bank_ref text,
   proof_ref text,
   provider_ref text,
+  last_error text check (char_length(last_error) <= 500),  -- alasan gagal terakhir dari penyedia/bank (dibaca admin finance)
   idempotency_key text not null,
   created_at timestamptz not null default now(),
   paid_at timestamptz,

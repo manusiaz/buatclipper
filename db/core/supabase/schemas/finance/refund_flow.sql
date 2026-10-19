@@ -129,12 +129,13 @@ begin
 end $$;
 
 -- D-09 batal sebelum live (draft/in_review/scheduled → cancelled, lewat control_campaign atau jalur admin mana pun): semua yang
--- sudah dibayar untuk campaign (invoice campaign, topup, pinned: budget + fee + pajak; tanpa payment gateway jadi tanpa potongan)
+-- sudah dibayar untuk campaign (invoice campaign, topup, pinned, managed_service: budget + fee + jasa + pajak; tanpa payment gateway
+-- jadi tanpa potongan)
 -- dikembalikan lewat satu refund E-35 requested, lalu ikut alur approve → bukti transfer biasa. Satu transaksi, idempoten
 -- (idempotency_key 'cancel:<campaign>'). Jurnal (ref_type refund, ref_id = id E-35):
 --   campaign_pool(IDR) −saldo, platform_revenue −fee, tax_payable −pajak → org_credit +total (dibayar keluar saat pay_refund);
 --   stok non-tunai kembali ke brand: campaign_pool(rt) −saldo → bank_clearing(rt) +saldo.
--- Invoice managed_service tidak ikut: jasa penyusunan sudah diserahkan saat invoice terbit. Invoice issued di-void.
+-- Keputusan owner 2026-10-19: jasa paket managed ikut dikembalikan bila batal sebelum live. Invoice issued di-void.
 create function finance.refund_cancelled_campaign(p_campaign uuid) returns uuid
 language plpgsql security definer set search_path = '' as $$
 declare
@@ -162,7 +163,7 @@ begin
   select coalesce(sum(i.mgmt_fee + i.admin_fee + i.service_fee + case when i.kind = 'pinned' then i.subtotal else 0 end), 0),
          coalesce(sum(i.tax), 0)
     into fees, tx
-    from finance.invoices i where i.campaign_id = c.id and i.status = 'paid' and i.kind in ('campaign', 'topup', 'pinned');
+    from finance.invoices i where i.campaign_id = c.id and i.status = 'paid' and i.kind in ('campaign', 'topup', 'pinned', 'managed_service');
   perform 1 from finance.reward_pools rp where rp.campaign_id = c.id order by rp.id for update;
   for x in select rp.reward_type_id as rt, a.id as account, finance.balance(a.id) as bal
              from finance.reward_pools rp

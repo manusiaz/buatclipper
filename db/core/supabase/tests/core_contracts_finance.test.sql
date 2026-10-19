@@ -425,12 +425,14 @@ select throws_ok($$ select api.mark_batch_paid((select id from t_pay where k = '
                  'P0001', 'payout_not_in_export', 'mark paid hanya untuk payout di CSV');
 select lives_ok($$ select api.mark_batch_paid((select id from t_pay where k = 'batch'), jsonb_build_array(
                    jsonb_build_object('payout_id', (select id from t_pay where k = 'b1'), 'status', 'paid', 'bank_ref', 'TRX-1'),
-                   jsonb_build_object('payout_id', (select id from t_pay where k = 'b2'), 'status', 'failed'))) $$,
+                   jsonb_build_object('payout_id', (select id from t_pay where k = 'b2'), 'status', 'failed', 'reason', 'rekening ditutup'))) $$,
                 'mark_batch_paid paid + failed');
 reset role;
 select is((select string_agg(status::text, ',' order by amount) from finance.payouts
            where id in (select id from t_pay where k in ('b1', 'b2'))), 'returned,paid', 'S-05: paid / failed → returned');
 select is((select status from finance.payout_batches where id = (select id from t_pay where k = 'batch')), 'paid', 'batch paid');
+select is((select last_error from finance.payouts where id = (select id from t_pay where k = 'b2')), 'rekening ditutup',
+          'alasan gagal tersimpan (dibaca admin finance)');
 -- 1.000.000 + 2.502 − 200.000 − 100.000 (b3) − 100.000 (i2) − 100.000 (i3), b2 & i1 kembali
 select is(pg_temp.bal('11111111-0000-0000-0000-00000000000a', 'available'), 502502::numeric, 'payout gagal: saldo kembali ke Tersedia');
 select is(pg_temp.bal('11111111-0000-0000-0000-00000000000a', 'withdrawn'), 490000::numeric, 'Ditarik = b1 + b3 + i2 + i3 (bersih fee)');
@@ -1074,8 +1076,29 @@ select lives_ok($$ select api.pay_invoice_with_credit((select id from t_pay wher
 select lives_ok($$ select api.pay_invoice_with_credit((select id from t_pay where k = 'inv_credit')) $$, 'bayar ulang = no-op');
 select is((select v ->> 'available' from (select api.org_credit('44444444-0000-0000-0000-000000000001') v) x), '189000',
           'kredit berkurang total invoice (fee + pajak) sekali');
-select throws_ok($$ select api.pay_invoice_with_credit((select id from t_pay where k = 'inv_big')) $$, 'P0001', 'insufficient_credit',
-                 'kredit kurang ditolak (tidak ada bayar sebagian)');
+-- Kredit sebagian (inv_big total 999.000 > kredit 189.000): dicadangkan, sisa dibayar transfer.
+select throws_ok($$ select api.pay_invoice_with_credit((select id from t_pay where k = 'inv_big'), 500000) $$, 'P0001', 'insufficient_credit',
+                 'minta kredit melebihi yang tersedia ditolak');
+select is(api.pay_invoice_with_credit((select id from t_pay where k = 'inv_big')), '{"credit_applied": 189000, "due": 810000, "paid": false}'::jsonb,
+          'kredit sebagian dicadangkan, sisa tagihan 810.000');
+select is((select v ->> 'available' || '/' || (v ->> 'reserved') from (select api.org_credit('44444444-0000-0000-0000-000000000001') v) x), '0/189000',
+          'kredit yang dicadangkan tidak bisa dipakai dua kali');
+select is(api.pay_invoice_with_credit((select id from t_pay where k = 'inv_big'), 0) ->> 'due', '999000', 'cadangan bisa dilepas (p_amount 0)');
+select is(api.pay_invoice_with_credit((select id from t_pay where k = 'inv_big')) ->> 'credit_applied', '189000', 'cadangkan lagi');
+select pg_temp.jwt('33333333-0000-0000-0000-0000000000f1', '{"app_roles":["admin_finance"],"aal":"aal2"}');
+select throws_ok($$ select api.confirm_invoice_payment((select id from t_pay where k = 'inv_big'), 999000, now(), 'REF-MIX-1', 'transfer') $$,
+                 'P0001', 'amount_mismatch', 'konfirmasi wajib sebesar sisa tagihan setelah kredit');
+select lives_ok($$ select api.confirm_invoice_payment((select id from t_pay where k = 'inv_big'), 810000, now(), 'REF-MIX-1', 'transfer') $$,
+                'sisa tagihan dikonfirmasi');
+select pg_temp.jwt('22222222-0000-0000-0000-0000000000c1', '{"aal":"aal2"}');
+select is((select v ->> 'available' || '/' || (v ->> 'reserved') from (select api.org_credit('44444444-0000-0000-0000-000000000001') v) x), '0/0',
+          'setelah lunas kredit terpakai (bukan cadangan lagi)');
+reset role;
+select is((select jsonb_object_agg(a.owner_type, e.amount) from finance.ledger_entries e join finance.ledger_accounts a on a.id = e.account_id
+            where e.ref_type = 'invoice_payment' and e.ref_id = (select id::text from t_pay where k = 'inv_big')
+              and a.owner_type in ('bank_clearing', 'org_credit')),
+          '{"bank_clearing": -810000, "org_credit": -189000}'::jsonb, 'jurnal dua kaki: kas + kredit org = total');
+set local role authenticated;
 select pg_temp.jwt('22222222-0000-0000-0000-0000000000a2', '{"aal":"aal2"}');
 select throws_ok($$ select api.org_credit('44444444-0000-0000-0000-000000000001') $$, '42501', 'auth:forbidden', 'org lain tidak melihat kredit');
 reset role;

@@ -122,7 +122,7 @@ begin
     return;
   end if;
   if po.status in ('processing', 'paid') then
-    update finance.payouts set status = 'failed' where id = po.id;
+    update finance.payouts set status = 'failed', last_error = left(p_error, 500) where id = po.id;
   end if;
   update finance.payouts set status = 'returned' where id = po.id;  -- trigger S-05 menolak kalau bukan dari failed
   perform finance.unwind_payout_journal(po);
@@ -174,7 +174,7 @@ begin
   values ((select auth.uid()), 'payout_batch.approve', 'payout_batch:' || p_batch, '{"status": "draft"}', '{"status": "approved"}');
 end $$;
 
--- p_results: [{payout_id, status: paid|failed, bank_ref}]. Hanya payout yang masuk CSV (status processing, alur 3).
+-- p_results: [{payout_id, status: paid|failed, bank_ref, reason?}] (reason → payouts.last_error). Hanya payout yang masuk CSV (alur 3).
 -- Replay hasil yang sama = no-op. Batch → paid setelah tidak ada payout processing tersisa.
 create function api.mark_batch_paid(p_batch uuid, p_results jsonb) returns void
 language plpgsql security definer set search_path = '' as $$
@@ -193,7 +193,7 @@ begin
   if jsonb_typeof(p_results) is distinct from 'array' then
     raise exception 'invalid:results' using errcode = 'P0001';
   end if;
-  for x in select * from jsonb_to_recordset(p_results) r(payout_id uuid, status text, bank_ref text) loop
+  for x in select * from jsonb_to_recordset(p_results) r(payout_id uuid, status text, bank_ref text, reason text) loop
     select * into po from finance.payouts p where p.id = x.payout_id and p.batch_id = p_batch for update;
     if not found then
       raise exception 'payout_not_in_batch' using errcode = 'P0001';
@@ -208,7 +208,7 @@ begin
                                        || jsonb_build_object('payout_id', po.id, 'channel', po.channel));
     elsif x.status = 'failed' then
       update finance.payouts set bank_ref = x.bank_ref where id = po.id;
-      perform finance.return_payout(po.id);
+      perform finance.return_payout(po.id, coalesce(nullif(btrim(x.reason), ''), 'transfer gagal (batch)'));
     else
       raise exception 'invalid:result_status' using errcode = 'P0001';
     end if;

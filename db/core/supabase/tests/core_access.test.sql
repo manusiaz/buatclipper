@@ -192,6 +192,7 @@ select is((select count(*)::int from api.review_decisions), 1, 'clipper melihat 
 select throws_ok($$ select api.ensure_profile('budi', 'Andi') $$, '23505', 'username_taken', 'username milik orang lain ditolak');
 select is((select created from api.ensure_profile('andi_baru', 'Andi B')), false, 'ensure_profile memperbarui profil yang sudah ada');
 select is((select count(*)::int from api.admin_profiles), 0, 'non-admin tidak melihat status/Trust Score user lain');
+select is((select count(*)::int from api.managed_briefs), 0, 'clipper tidak melihat brief mentah paket managed');
 select throws_ok($$ select api.ensure_profile('andi_baru', 'Andi B', null, '11111111-0000-0000-0000-00000000000b/a.webp') $$,
                  '22023', 'invalid:avatar_path', 'avatar di folder user lain ditolak');
 select lives_ok($$ select api.ensure_profile('andi_baru', 'Andi B', null, '11111111-0000-0000-0000-00000000000a/a.webp') $$,
