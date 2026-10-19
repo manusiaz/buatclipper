@@ -21,7 +21,10 @@ rc, err = run(os.path.join(HERE, 'stub_supabase.sql'))
 assert rc == 0, err
 run(sql=f'alter database {db} set search_path = "$user", public, extensions', dbname='postgres', single=False)
 
-pending = sorted(glob.glob(os.path.join(ROOT, 'schemas', '**', '*.sql'), recursive=True))
+# _extensions.sql = extension asli Supabase; di sini digantikan stub.
+SCHEMA = [f for f in sorted(glob.glob(os.path.join(ROOT, 'schemas', '**', '*.sql'), recursive=True))
+          if os.path.basename(f) != '_extensions.sql']
+pending = list(SCHEMA)
 errors, rounds = {}, 0
 while pending:
     rounds += 1
@@ -34,7 +37,7 @@ while pending:
     if len(left) == len(pending):
         break
     pending = left
-loaded = len(glob.glob(os.path.join(ROOT, 'schemas', '**', '*.sql'), recursive=True)) - len(pending)
+loaded = len(SCHEMA) - len(pending)
 print(f'{proj}: {loaded} file schema dimuat dalam {rounds} putaran; gagal {len(pending)}')
 for f in pending:
     print('GAGAL', os.path.relpath(f, ROOT), '→', errors[f].splitlines()[0][:300])
