@@ -324,11 +324,13 @@ async function BatchDetail({ b, loc, me }: { b: { id: string | null; status: str
           </div>
         )
       ) : null}
-      {b.status === 'approved' ? (
-        <ExportPanel label={t('finance.exportCsv')} itemsTitle={t('finance.heldInExport')} action={exportPayoutCsv.bind(null, id, 0)} />
-      ) : null}
-      {b.status === 'exported' ? (
-        <ExportPanel label={t('finance.downloadAgain')} icon="download" itemsTitle={t('finance.heldInExport')} action={exportPayoutCsv.bind(null, id, b.count ?? 0)} />
+      {/* Satu slot untuk export & unduh ulang: setelah export, revalidasi mengganti status ke exported tanpa membuang hasil panel. */}
+      {b.status === 'approved' || b.status === 'exported' ? (
+        <ExportPanel
+          label={b.status === 'approved' ? t('finance.exportCsv') : t('finance.downloadAgain')}
+          itemsTitle={t('finance.heldInExport')}
+          action={exportPayoutCsv.bind(null, id, b.status === 'approved' ? 0 : (b.count ?? 0))}
+        />
       ) : null}
       {b.status === 'exported' ? (
         <BatchResults
