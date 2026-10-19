@@ -4,7 +4,7 @@
   "private": true,
   "type": "module",
   "exports": {".":"./src/index.ts","./messages/*":"./messages/*.json"},
-  "scripts": { "typecheck": "tsc --noEmit -p .", "test": "vitest run --passWithNoTests" },
+  "scripts": { "typecheck": "tsc --noEmit -p ." },
   "dependencies": {},
   "peerDependencies": {"next-intl":"catalog:"},
   "devDependencies": { "@clipper/config": "workspace:*", "typescript": "catalog:", "@types/react": "catalog:", "@types/node": "catalog:", "vitest": "catalog:" }
