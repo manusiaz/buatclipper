@@ -1,5 +1,7 @@
 -- test:rls.access-matrix (core) + invarian uang & state machine. Jalankan: supabase test db --workdir db/core
 begin;
+-- Fixture tes tidak bergantung seed.sql (supabase db reset memuatnya sebelum supabase test db); di-rollback di akhir.
+truncate ops.settings, market.categories, finance.fee_rules, market.reward_types cascade;
 select no_plan();
 
 -- ---------- data uji (sebagai postgres) ----------

@@ -1,5 +1,7 @@
 -- test:rls.access-matrix (identity) + test:member-data.integrity. Jalankan: supabase test db --workdir db/identity
 begin;
+-- Fixture tes tidak bergantung seed.sql (supabase db reset memuatnya sebelum supabase test db); di-rollback di akhir.
+truncate member.legal_versions cascade;
 select no_plan();
 
 insert into auth.users (id, email) values

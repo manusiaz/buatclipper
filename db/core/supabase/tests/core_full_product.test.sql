@@ -1,6 +1,8 @@
 -- Fitur produk penuh: campaign privat & template, agency, referral, leaderboard, kode voucher, invoice
 -- top-up/pinned/managed, instant withdraw, riwayat Trust Score, brief terstruktur & berkas internal brand. Jalankan: supabase test db --workdir db/core
 begin;
+-- Fixture tes tidak bergantung seed.sql (supabase db reset memuatnya sebelum supabase test db); di-rollback di akhir.
+truncate ops.settings, market.categories, finance.fee_rules, market.reward_types cascade;
 select no_plan();
 
 insert into ops.settings (key, value) values ('auth.identity_issuer', '"https://auth.contoh.id/auth/v1"');
