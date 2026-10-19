@@ -33,7 +33,7 @@ export function InvitePanel({
     });
 
   return (
-    <div className="grid gap-4 lg:grid-cols-[minmax(0,2fr)_minmax(0,3fr)]">
+    <div className="grid grid-cols-1 gap-4 lg:grid-cols-[minmax(0,2fr)_minmax(0,3fr)] [&>*]:min-w-0">
       <Card>
         <CardHeader>
           <CardTitle>{t('title')}</CardTitle>

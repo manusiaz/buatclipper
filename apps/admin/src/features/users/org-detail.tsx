@@ -105,7 +105,7 @@ export async function OrgDetail({ orgId, claims, loc }: { orgId: string; claims:
         ) : null}
       </div>
 
-      <div className="grid gap-5 lg:grid-cols-2">
+      <div className="grid grid-cols-1 gap-5 lg:grid-cols-2">
         <dl className="grid grid-cols-2 gap-3 text-body-s">
           {fields.map(([k, v]) => (
             <div key={k} className="min-w-0">

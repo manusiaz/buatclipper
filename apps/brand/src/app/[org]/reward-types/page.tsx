@@ -81,7 +81,7 @@ export default async function RewardTypesPage({ params }: { params: Promise<{ or
           <EmptyState icon="redeem" title={t('emptyTitle')} body={t('emptyBody')} />
         </Card>
       ) : (
-        <ul className="mb-6 grid gap-3 lg:grid-cols-2">
+        <ul className="mb-6 grid grid-cols-1 gap-3 lg:grid-cols-2 [&>*]:min-w-0">
           {own.map((r) => (
             <li key={r.id}>
               <Card className="flex h-full flex-col gap-3">
@@ -96,7 +96,7 @@ export default async function RewardTypesPage({ params }: { params: Promise<{ or
                   </div>
                   {edit ? <RewardTypeDialog orgId={orgId} row={r} trigger={<Button variant="ghost" size="sm" iconLeft="edit">{t('edit')}</Button>} /> : null}
                 </div>
-                <dl className="grid grid-cols-2 gap-2 text-body-s sm:grid-cols-3">
+                <dl className="grid grid-cols-2 gap-2 text-body-s sm:grid-cols-3 [&>*]:min-w-0">
                   <div>
                     <dt className="text-muted">{t('perUnit', { unit: r.unit_label })}</dt>
                     <dd className="font-semibold text-ink tnum">{value(r)}</dd>

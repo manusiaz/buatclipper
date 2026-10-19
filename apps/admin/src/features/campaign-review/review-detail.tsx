@@ -104,7 +104,7 @@ export async function ReviewDetail({ id, loc, canSeeInvoices }: { id: string; lo
         </div>
       </div>
 
-      <div className="grid gap-6 p-5 lg:grid-cols-[minmax(0,3fr)_minmax(0,2fr)]">
+      <div className="grid grid-cols-1 gap-6 p-5 lg:grid-cols-[minmax(0,3fr)_minmax(0,2fr)]">
         <div className="flex min-w-0 flex-col gap-5">
           <section className="flex flex-col gap-2">
             <h3 className="text-h6 text-ink">{t('campaigns.brief')}</h3>

@@ -21,6 +21,7 @@ import {
 import { arr, num } from '@/features/lib/pure';
 import { core, publicUrl, readSettings, uiLocale } from '@/features/lib/server';
 import { formatAmount } from '@/features/lib/units';
+import { EditProfile } from '@/features/profile/edit-profile';
 
 export const metadata: Metadata = { title: 'Profil & Trust Score' };
 
@@ -60,7 +61,9 @@ export default async function ProfilePage() {
         </div>
         {me.data?.status && me.data.status !== 'active' ? (
           <StatusBadge kind="profile" status={me.data.status} label={t(`status.${me.data.status}`)} />
-        ) : null}
+        ) : (
+          <EditProfile name={me.data?.display_name ?? ''} avatar={publicUrl('avatars', me.data?.avatar_path)} />
+        )}
       </Card>
 
       <Card variant="dark" className="flex flex-col gap-3">

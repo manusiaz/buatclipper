@@ -21,7 +21,7 @@ export function dbError(e: DbErrorLike): string {
       return 'constraint';
     case '22023':
     case '22P02':
-      return 'invalid';
+      return 'invalid_input';
     case 'PGRST301':
     case 'PGRST303':
       return 'auth:no_session';

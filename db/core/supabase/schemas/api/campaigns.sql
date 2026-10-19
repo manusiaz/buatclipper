@@ -27,7 +27,8 @@ create function api.list_campaigns(p_filters jsonb default '{}', p_cursor text d
 returns table (id uuid, slug text, title text, type text, category_id text, status market.campaign_status,
                platforms market.platform[], visibility text, start_at timestamptz, submit_deadline timestamptz, cover_path text,
                is_pinned boolean, pinned_rank smallint, is_new boolean, rates jsonb, budget_idr numeric, remaining_idr numeric,
-               est_remaining_views jsonb, cta_state text, cta_reason text, next_cursor text)
+               est_remaining_views jsonb, cta_state text, cta_reason text, brand_name text, brand_verified boolean,
+               next_cursor text)
 language plpgsql stable security definer set search_path = '' as $$
 #variable_conflict use_column
 declare
@@ -74,7 +75,7 @@ begin
 
   return query
   with base as (
-    select c.id, c.slug, c.title, c.type, c.category_id, c.status, c.platforms, c.visibility, c.start_at, c.submit_deadline,
+    select c.id, c.org_id, c.slug, c.title, c.type, c.category_id, c.status, c.platforms, c.visibility, c.start_at, c.submit_deadline,
            c.created_at, c.pinned_rank, coalesce(c.pinned_until > now(), false) as pinned,
            (select coalesce(sum((pl.total - pl.allocated) * rt.idr_value_per_unit), 0)
               from finance.reward_pools pl join market.reward_types rt on rt.id = pl.reward_type_id
@@ -110,8 +111,9 @@ begin
            order by a.created_at limit 1),
          pg.pinned, case when pg.pinned then pg.pinned_rank end, coalesce(pg.start_at, pg.created_at) > now() - make_interval(days => new_days),
          bb.bud -> 'rates', (bb.bud ->> 'budget_idr')::numeric, trim_scale(round(pg.rem_idr, 2)), bb.bud -> 'est_remaining_views',
-         cc.state, cc.reason, concat_ws('|', pg.g, pg.r, pg.k, pg.id)
+         cc.state, cc.reason, o.name, o.status = 'verified', concat_ws('|', pg.g, pg.r, pg.k, pg.id)
     from page pg
+    join market.organizations o on o.id = pg.org_id
     cross join lateral (select market.campaign_budget(pg.id) as bud) bb
     cross join lateral market.claim_check(pg.id) cc
    order by pg.g, pg.r, pg.k, pg.id;

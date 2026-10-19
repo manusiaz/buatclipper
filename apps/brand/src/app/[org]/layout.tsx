@@ -56,7 +56,7 @@ export default async function OrgLayout({ children, params }: { children: ReactN
       headerActions={
         <>
           <ThemeToggle labels={{ toggle: t('shell.theme') }} />
-          <NotificationBell core={core} userId={claims.sub} />
+          <NotificationBell userId={claims.sub} />
         </>
       }
       userMenu={<UserMenu name={name} email={claims.email} />}

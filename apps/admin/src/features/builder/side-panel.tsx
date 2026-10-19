@@ -8,8 +8,8 @@ import { assetHrefs, fileName, type AssetRow } from '@/features/campaign-review/
 export async function SidePanel({ detail, loc }: { detail: Record<string, unknown>; loc: UiLocale }) {
   const [t, db] = await Promise.all([getTranslations('admin'), coreServer('admin')]);
   const c = (detail.campaign ?? {}) as { brief?: string; managed_brief?: string | null; created_at?: string };
-  // managed_brief = brief mentah brand (terpisah dari brief terstruktur); fallback ke brief untuk read model lama.
-  const raw = c.managed_brief ?? (detail.managed_brief as string | null | undefined) ?? c.brief;
+  // managed_brief = brief mentah brand (terpisah dari brief terstruktur); kosong → brief.
+  const raw = c.managed_brief?.trim() ? c.managed_brief : c.brief;
   const files = ((detail.assets ?? []) as AssetRow[]).filter((a) => a.audience === 'internal');
   const hrefs = await assetHrefs(db, files);
   return (

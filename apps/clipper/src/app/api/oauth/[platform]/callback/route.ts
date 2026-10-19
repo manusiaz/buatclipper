@@ -1,4 +1,5 @@
 import { NextResponse, type NextRequest } from 'next/server';
+import { hosts } from '@clipper/auth';
 import { invokeFunction, requireClipper } from '@clipper/auth/server';
 import { isPlatform } from '@/features/lib/pure';
 import { cookieOptions, decodeState, redirectUri, STATE_COOKIE, verifyState } from '@/features/social/oauth';
@@ -11,7 +12,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
   const saved = decodeState(request.cookies.get(STATE_COOKIE)?.value);
   const done = (q: URLSearchParams) => {
     if (saved?.next) q.set('next', saved.next);
-    const res = NextResponse.redirect(new URL(`/social?${q}`, request.url));
+    const res = NextResponse.redirect(new URL(`/social?${q}`, hosts.app));
     res.cookies.set(STATE_COOKIE, '', { ...cookieOptions(), maxAge: 0 });
     return res;
   };

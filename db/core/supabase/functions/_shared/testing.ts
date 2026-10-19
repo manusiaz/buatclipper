@@ -18,7 +18,12 @@ export function mockFetch(...routes: Route[]): { fetch: typeof fetch; calls: Cal
   const calls: Call[] = [];
   const f = async (input: RequestInfo | URL, init: RequestInit = {}) => {
     const req = new Request(input, init);
-    const call: Call = { url: new URL(req.url), method: req.method, headers: req.headers, body: init.body ? String(init.body) : await req.text() };
+    const call: Call = {
+      url: new URL(req.url),
+      method: req.method,
+      headers: req.headers,
+      body: init.body ? String(init.body) : await req.text(),
+    };
     calls.push(call);
     for (const r of routes) {
       const res = await r(call);
@@ -39,7 +44,9 @@ export interface RpcCall {
 }
 
 /** RPC palsu: handler per nama fungsi; panggilan tanpa handler → error. */
-export function fakeRpc(handlers: Record<string, (args: Record<string, unknown>) => unknown>): { rpc: Rpc; calls: RpcCall[] } {
+export function fakeRpc(
+  handlers: Record<string, (args: Record<string, unknown>) => unknown>,
+): { rpc: Rpc; calls: RpcCall[] } {
   const calls: RpcCall[] = [];
   const rpc = (async (fn: string, args: Record<string, unknown> = {}) => {
     calls.push({ fn, args });

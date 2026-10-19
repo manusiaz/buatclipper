@@ -661,7 +661,7 @@ export type Database = {
                            },
 "list_campaigns":
 { Args: { "p_cursor"?: string,"p_filters"?: Json }; Returns: {
-              "budget_idr": number,"category_id": string,"cover_path": string,"cta_reason": string,"cta_state": string,"est_remaining_views": Json,"id": string,"is_new": boolean,"is_pinned": boolean,"next_cursor": string,"pinned_rank": number,"platforms": ("tiktok"|"instagram"|"youtube"|"threads"|"facebook"|"x")[],"rates": Json,"remaining_idr": number,"slug": string,"start_at": string,"status": "draft"|"in_review"|"cancelled"|"scheduled"|"rejected"|"live"|"paused"|"tracking"|"exhausted"|"settling"|"settled","submit_deadline": string,"title": string,"type": string,"visibility": string
+              "brand_name": string,"brand_verified": boolean,"budget_idr": number,"category_id": string,"cover_path": string,"cta_reason": string,"cta_state": string,"est_remaining_views": Json,"id": string,"is_new": boolean,"is_pinned": boolean,"next_cursor": string,"pinned_rank": number,"platforms": ("tiktok"|"instagram"|"youtube"|"threads"|"facebook"|"x")[],"rates": Json,"remaining_idr": number,"slug": string,"start_at": string,"status": "draft"|"in_review"|"cancelled"|"scheduled"|"rejected"|"live"|"paused"|"tracking"|"exhausted"|"settling"|"settled","submit_deadline": string,"title": string,"type": string,"visibility": string
             }[]
                            },
 "manage_org":

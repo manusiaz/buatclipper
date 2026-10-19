@@ -137,6 +137,7 @@ export default async function CampaignDashboardPage({
             pools={stats.pools.map((p) => ({ poolId: p.poolId, code: p.code, unitLabel: p.unitLabel, decimals: p.decimals }))}
             canControl={edit && !c.is_template}
             canFund={can(role, 'fund') && !c.is_template}
+            canBilling={can(role, 'billing')}
           />
         </TabsContent>
         {invite ? (
@@ -156,6 +157,7 @@ export default async function CampaignDashboardPage({
             pricePerWeek={num(settings['public.billing.pin_price_per_week_idr'], 500_000)}
             pinnedUntil={c.pinned_until}
             canBuy={can(role, 'fund')}
+            canBilling={can(role, 'billing')}
             running={running && !c.is_template}
           />
         </TabsContent>

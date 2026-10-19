@@ -15,6 +15,7 @@ export function PinPanel({
   pricePerWeek,
   pinnedUntil,
   canBuy,
+  canBilling,
   running,
 }: {
   orgId: string;
@@ -22,6 +23,7 @@ export function PinPanel({
   pricePerWeek: number;
   pinnedUntil: string | null;
   canBuy: boolean;
+  canBilling: boolean;
   running: boolean;
 }) {
   const t = useTranslations('brand.pin');
@@ -58,7 +60,7 @@ export function PinPanel({
                 const res = await buyPin(orgId, campaignId, days);
                 if (!res.ok) return void toast.error(errText(res.error));
                 toast.success(t('invoiced'));
-                router.push(`/${orgId}/billing?invoice=${res.invoiceId}`);
+                if (canBilling) router.push(`/${orgId}/billing?invoice=${res.invoiceId}`);
               });
             }}
           >

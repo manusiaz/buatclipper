@@ -27,6 +27,8 @@ begin
                    c.min_views, c.max_clips_per_clipper, c.clipper_quota, c.allow_video_reuse, c.visibility, c.is_template,
                    c.pinned_until, c.pinned_rank, c.created_at, c.fee_rule_id,
                    case when staff then c.managed_brief end as managed_brief) v),
+    'brand', (select jsonb_build_object('name', o.name, 'verified', o.status = 'verified') from market.organizations o
+               where o.id = c.org_id),
     'rules', bud -> 'rates',
     'pools', bud -> 'pools',
     'budget_idr', bud -> 'budget_idr',

@@ -180,7 +180,7 @@ async function Payouts({ loc, claims, batch }: { loc: UiLocale; claims: Claims; 
         <StatCard label={t('finance.onHold')} value={String(held.length)} icon="hourglass_top" />
       </section>
 
-      <div className="grid gap-5 lg:grid-cols-2">
+      <div className="grid grid-cols-1 gap-5 lg:grid-cols-2">
         <Card padding="md" className="flex flex-col gap-3">
           <CardHeader>
             <CardTitle>{t('finance.createBatch')}</CardTitle>
@@ -297,7 +297,7 @@ function CancelPayout({ id, t }: { id: string; t: Awaited<ReturnType<typeof getT
 
 async function BatchDetail({ b, loc, me }: { b: { id: string | null; status: string | null; created_by: string | null; approved_by: string | null; count: number | null; total: number | null }; loc: UiLocale; me: string }) {
   const [t, db] = await Promise.all([getTranslations('admin'), coreServer('admin')]);
-  const payouts = rows(await db.from('payouts').select('id, user_id, amount, fee, status, hold_reason, bank_ref').eq('batch_id', b.id!).order('created_at'));
+  const payouts = rows(await db.from('payouts').select('id, user_id, amount, fee, status, hold_reason').eq('batch_id', b.id!).order('created_at'));
   const user = await names(db, payouts.map((p) => p.user_id));
   const id = b.id!;
   return (
@@ -345,7 +345,6 @@ async function BatchDetail({ b, loc, me }: { b: { id: string | null; status: str
             <TH>{t('finance.payout')}</TH>
             <TH align="right">{t('finance.net')}</TH>
             <TH>{t('finance.status')}</TH>
-            <TH>{t('finance.bankRef')}</TH>
             {b.status === 'draft' ? <TH align="right">{t('form.actions')}</TH> : null}
           </TR>
         </THead>
@@ -358,7 +357,6 @@ async function BatchDetail({ b, loc, me }: { b: { id: string | null; status: str
                 <StatusBadge kind="payout" status={p.status!} label={t(`status.payout.${p.status}`)} />
                 {p.hold_reason ? <span className="ml-2 text-caption text-muted">{p.hold_reason}</span> : null}
               </TD>
-              <TD muted>{p.bank_ref ?? '—'}</TD>
               {b.status === 'draft' ? (
                 <TD align="right">
                   {p.status === 'requested' ? <CancelPayout id={p.id!} t={t} /> : null}

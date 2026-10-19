@@ -36,7 +36,7 @@ export function LeftoverPanel({ orgId, rows, aal2, securityHref }: { orgId: stri
         <CardDescription>{t('description')}</CardDescription>
       </CardHeader>
       <CardContent className="flex flex-col gap-3">
-        {!aal2 ? <Alert tone="info" action={{ label: t('setupMfa'), href: securityHref }}>{t('mfaNote')}</Alert> : null}
+        {!aal2 ? <Alert tone="info">{t('mfaNote')}</Alert> : null}
         <ul className="flex flex-col divide-y divide-border">
           {rows.map((r) => (
             <li key={r.campaignId} className="flex flex-col gap-3 py-3 sm:flex-row sm:items-center">

@@ -91,7 +91,17 @@ interface Item {
 export async function runTrackWorker(deps: TrackDeps): Promise<TrackSummary> {
   const now = deps.now ?? Date.now;
   const deadline = now() + (deps.budgetMs ?? 50_000);
-  const s: TrackSummary = { dequeued: 0, recorded: 0, flagged: 0, gone: 0, expired: 0, retried: 0, skipped: 0, failed: 0, acked: 0 };
+  const s: TrackSummary = {
+    dequeued: 0,
+    recorded: 0,
+    flagged: 0,
+    gone: 0,
+    expired: 0,
+    retried: 0,
+    skipped: 0,
+    failed: 0,
+    acked: 0,
+  };
   const rpc = deps.rpc;
   const ack = async (ids: number[]) => {
     for (const id of ids) {
@@ -102,7 +112,11 @@ export async function runTrackWorker(deps: TrackDeps): Promise<TrackSummary> {
   let flags: Record<string, boolean> | null = null;
 
   while (now() < deadline - 5_000) {
-    const msgs = (await rpc<QueueMsg[] | null>("worker_dequeue", { p_queue: "tracking", p_qty: deps.batch ?? 20, p_vt_seconds: deps.vtSeconds ?? 300 })) ?? [];
+    const msgs = (await rpc<QueueMsg[] | null>("worker_dequeue", {
+      p_queue: "tracking",
+      p_qty: deps.batch ?? 20,
+      p_vt_seconds: deps.vtSeconds ?? 300,
+    })) ?? [];
     if (!msgs.length) break;
     s.dequeued += msgs.length;
     flags ??= await deps.flags(); // gagal → seluruh run berhenti, pesan kembali setelah visibility timeout
@@ -162,7 +176,9 @@ export async function runTrackWorker(deps: TrackDeps): Promise<TrackSummary> {
       for (const final of [false, true]) {
         const items = g.items.filter((it) => it.ctx.final === final);
         const byPost = new Map<string, Item[]>();
-        for (const it of items) byPost.set(it.ctx.submission.post_id, [...(byPost.get(it.ctx.submission.post_id) ?? []), it]);
+        for (const it of items) {
+          byPost.set(it.ctx.submission.post_id, [...(byPost.get(it.ctx.submission.post_id) ?? []), it]);
+        }
         const postIds = [...byPost.keys()];
         for (let i = 0; i < postIds.length; i += adapter.maxBatch) {
           if (now() >= deadline) return; // sisa pesan kembali setelah visibility timeout

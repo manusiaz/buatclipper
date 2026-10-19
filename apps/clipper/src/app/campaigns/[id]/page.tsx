@@ -147,16 +147,16 @@ export default async function CampaignDetailPage({ params, searchParams }: Props
       </header>
 
       <Card className="flex flex-col gap-3">
-        <div className="flex items-end justify-between gap-3">
+        <div className="flex flex-wrap items-end justify-between gap-x-3 gap-y-2">
           <div>
             <p className="text-caption text-muted">{t('detail.topRate')}</p>
-            <p className="leading-none">
+            <p className="leading-none whitespace-nowrap">
               <span className="text-[26px] font-extrabold tracking-[-0.03em] tnum">{top ? formatIDR(top.ratePer1k, { locale }) : '—'}</span>
               <span className="ml-1 text-caption text-muted">/1K views</span>
             </p>
           </div>
           {top ? (
-            <p className="rounded-chip bg-success-bg px-2.5 py-1.5 text-caption font-semibold text-success-fg tnum">
+            <p className="rounded-chip bg-success-bg px-2.5 py-1.5 text-caption font-semibold whitespace-nowrap text-success-fg tnum">
               {t('detail.example', { views: formatNumber(10_000, locale), amount: formatIDR(earningFor(10_000, top.ratePer1k), { locale }) })}
             </p>
           ) : null}

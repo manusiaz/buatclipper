@@ -19,14 +19,17 @@ async function token(claims: JWTPayload = {}, opts: { key?: KeyLike; kid?: strin
     .sign(opts.key ?? privateKey);
 }
 
-const req = (t?: string) => new Request("https://core.test/functions/v1/social", { headers: t ? { authorization: `Bearer ${t}` } : {} });
+const req = (t?: string) =>
+  new Request("https://core.test/functions/v1/social", { headers: t ? { authorization: `Bearer ${t}` } : {} });
 
 /** JWKS remote dimock lewat fetch global (jose memakai fetch). */
 function withJwks<T>(fn: () => Promise<T>): Promise<T> {
   const orig = globalThis.fetch;
   globalThis.fetch = ((input: RequestInfo | URL) => {
     assert.equal(String(input instanceof Request ? input.url : input), `${ISS}/.well-known/jwks.json`);
-    return Promise.resolve(new Response(JSON.stringify({ keys: [jwk] }), { headers: { "content-type": "application/json" } }));
+    return Promise.resolve(
+      new Response(JSON.stringify({ keys: [jwk] }), { headers: { "content-type": "application/json" } }),
+    );
   }) as typeof fetch;
   Deno.env.set("IDENTITY_ISSUER", ISS);
   Deno.env.set("IDENTITY_JWKS_URL", `${ISS}/.well-known/jwks.json`);
@@ -56,8 +59,11 @@ Deno.test("jwt: tanpa token / issuer lain / key lain / kedaluwarsa / anon → 40
 
 Deno.test("jwt: algoritma HS256 (secret bersama) ditolak", () =>
   withJwks(async () => {
-    const hs = await new SignJWT({ role: "authenticated" }).setProtectedHeader({ alg: "HS256", kid: "key-1" }).setIssuer(ISS)
-      .setAudience("authenticated").setSubject("x").setExpirationTime("5m").sign(new TextEncoder().encode("s".repeat(32)));
+    const hs = await new SignJWT({ role: "authenticated" }).setProtectedHeader({ alg: "HS256", kid: "key-1" })
+      .setIssuer(ISS)
+      .setAudience("authenticated").setSubject("x").setExpirationTime("5m").sign(
+        new TextEncoder().encode("s".repeat(32)),
+      );
     await assert.rejects(verifyUserJwt(req(hs)), unauthorized);
   }));
 

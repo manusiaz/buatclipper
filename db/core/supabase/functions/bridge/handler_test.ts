@@ -7,12 +7,18 @@ import { type BridgeDeps, createBridgeHandler, INBOUND, reconcileIds } from "./h
 
 const SECRET = "identity-to-core";
 
-function handler(rpcHandlers: Record<string, (a: Record<string, unknown>) => unknown>, identity: BridgeDeps["identity"] = () => Promise.resolve(null)) {
+function handler(
+  rpcHandlers: Record<string, (a: Record<string, unknown>) => unknown>,
+  identity: BridgeDeps["identity"] = () => Promise.resolve(null),
+) {
   const f = fakeRpc(rpcHandlers);
   const h = createBridgeHandler({
     rpc: f.rpc,
     inboundSecret: () => SECRET,
-    requireApiKey: (req) => req.headers.get("apikey") === "sb_secret_core" ? Promise.resolve() : Promise.reject(new HttpError(401, "unauthorized")),
+    requireApiKey: (req) =>
+      req.headers.get("apikey") === "sb_secret_core"
+        ? Promise.resolve()
+        : Promise.reject(new HttpError(401, "unauthorized")),
     identity,
     background: async (task) => ({ result: await task, accepted: false }),
   });
@@ -60,9 +66,11 @@ Deno.test("bridge: aksi identity → RPC bridge_* 1:1", async () => {
 });
 
 Deno.test("bridge: HMAC salah / aksi tak dikenal / payload kurang / error RPC → {ok:false,error}", async () => {
-  const { h, calls } = handler({ bridge_get_payout: () => {
-    throw new RpcError("bridge_get_payout", "P0002", "payout tidak ada");
-  } });
+  const { h, calls } = handler({
+    bridge_get_payout: () => {
+      throw new RpcError("bridge_get_payout", "P0002", "payout tidak ada");
+    },
+  });
   let r = await h(await inbound("get_batch", { batch_id: "b1" }, "wrong"));
   assert.deepEqual([r.status, (await r.json()).error.code], [401, "bad_signature"]);
   r = await h(await inbound("drop_tables", {}));
@@ -83,7 +91,11 @@ Deno.test("bridge: cron apikey → disburse/ban_user diteruskan ke identity; tan
     return Promise.resolve({ ok: true });
   });
   const cron = (body: unknown, key = "sb_secret_core") =>
-    new Request("https://core.test/functions/v1/bridge", { method: "POST", headers: { apikey: key }, body: JSON.stringify(body) });
+    new Request("https://core.test/functions/v1/bridge", {
+      method: "POST",
+      headers: { apikey: key },
+      body: JSON.stringify(body),
+    });
   assert.equal((await h(cron({ action: "disburse", payout_id: "p1" }))).status, 200);
   assert.equal((await h(cron({ action: "ban_user", payload: { user_id: "u1" } }))).status, 200);
   assert.equal((await h(cron({ action: "ban_user", user_id: "u2", unban: true }))).status, 200);
@@ -108,10 +120,18 @@ Deno.test("bridge: reconcile_ids → check_ids (dipecah per 1000) → bridge_rep
     identity: (action, p) => {
       assert.equal(action, "check_ids");
       batches.push((p.user_ids as string[]).length);
-      return Promise.resolve({ missing: { user_ids: (p.user_ids as string[]).filter((u) => u === "u7" || u === "u2400"), method_ids: (p.method_ids as string[]), recipient_refs: [] } });
+      return Promise.resolve({
+        missing: {
+          user_ids: (p.user_ids as string[]).filter((u) => u === "u7" || u === "u2400"),
+          method_ids: p.method_ids as string[],
+          recipient_refs: [],
+        },
+      });
     },
   });
   assert.deepEqual(batches, [1000, 1000, 500]);
-  assert.deepEqual(f.calls.find((c) => c.fn === "bridge_report_orphans")!.args, { p_missing: { user_ids: ["u7", "u2400"], method_ids: ["m1"], recipient_refs: [] } });
+  assert.deepEqual(f.calls.find((c) => c.fn === "bridge_report_orphans")!.args, {
+    p_missing: { user_ids: ["u7", "u2400"], method_ids: ["m1"], recipient_refs: [] },
+  });
   assert.deepEqual(out.missing, { user_ids: 2, method_ids: 1, recipient_refs: 0 });
 });

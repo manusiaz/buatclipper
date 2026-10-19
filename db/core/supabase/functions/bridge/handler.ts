@@ -28,13 +28,19 @@ export const INBOUND: Record<string, { fn: string; args: (p: Payload) => Payload
   get_batch: { fn: "bridge_get_batch", args: (p) => ({ p_batch: pick(p, "batch_id", "batch") }) },
   attach_export: {
     fn: "bridge_attach_export",
-    args: (p) => ({ p_batch: pick(p, "batch_id", "batch"), p_file_ref: pick(p, "file_ref"), p_held: opt(p, "held", []) }),
+    args: (p) => ({
+      p_batch: pick(p, "batch_id", "batch"),
+      p_file_ref: pick(p, "file_ref"),
+      p_held: opt(p, "held", []),
+    }),
   },
   attach_proof: {
     fn: "bridge_attach_proof",
     args: (p) => {
       const target = pick(p, "target");
-      if (target !== "batch" && target !== "refund") throw new HttpError(400, "bad_payload", "target harus batch|refund");
+      if (target !== "batch" && target !== "refund") {
+        throw new HttpError(400, "bad_payload", "target harus batch|refund");
+      }
       return { p_target: target, p_id: pick(p, "id", "target_id"), p_proof_ref: pick(p, "proof_ref") };
     },
   },
@@ -60,7 +66,10 @@ export const INBOUND: Record<string, { fn: string; args: (p: Payload) => Payload
     }),
   },
   pph21: { fn: "bridge_pph21", args: (p) => ({ p_from: pick(p, "from"), p_to: pick(p, "to") }) },
-  fulfillment_export: { fn: "bridge_fulfillment_export", args: (p) => ({ p_reward_type: pick(p, "reward_type_id", "reward_type") }) },
+  fulfillment_export: {
+    fn: "bridge_fulfillment_export",
+    args: (p) => ({ p_reward_type: pick(p, "reward_type_id", "reward_type") }),
+  },
 };
 
 const BAN_FOREVER = "876000h"; // ±100 tahun (ban_duration Supabase Auth); "none" = unban
@@ -70,11 +79,17 @@ const ids = (v: unknown): string[] => Array.isArray(v) ? v.map(String) : [];
 /** Alur 10: ID di core yang sudah tidak ada di identity → antrean review finance (bridge_report_orphans). */
 export async function reconcileIds(deps: Pick<BridgeDeps, "rpc" | "identity">, chunkSize = 1000) {
   const all = (await deps.rpc<Record<string, unknown> | null>("bridge_collect_ids")) ?? {};
-  const lists = { user_ids: ids(all.user_ids), method_ids: ids(all.method_ids), recipient_refs: ids(all.recipient_refs) };
+  const lists = {
+    user_ids: ids(all.user_ids),
+    method_ids: ids(all.method_ids),
+    recipient_refs: ids(all.recipient_refs),
+  };
   const missing: Record<keyof typeof lists, string[]> = { user_ids: [], method_ids: [], recipient_refs: [] };
   const rounds = Math.max(1, ...Object.values(lists).map((l) => Math.ceil(l.length / chunkSize)));
   for (let r = 0; r < rounds; r++) {
-    const part = Object.fromEntries(Object.entries(lists).map(([k, l]) => [k, l.slice(r * chunkSize, (r + 1) * chunkSize)]));
+    const part = Object.fromEntries(
+      Object.entries(lists).map(([k, l]) => [k, l.slice(r * chunkSize, (r + 1) * chunkSize)]),
+    );
     if (!Object.values(part).some((l) => l.length)) continue;
     const out = (await deps.identity("check_ids", part)) as { missing?: Record<string, unknown> } | null;
     for (const k of Object.keys(missing) as (keyof typeof missing)[]) missing[k].push(...ids(out?.missing?.[k]));
@@ -91,7 +106,9 @@ function rpcFailure(e: RpcError): HttpError {
   const m = /^([a-z_]+)(?::\s*(.*))?$/s.exec(e.message.trim());
   if (e.code === "P0002") return new HttpError(404, "not_found", e.message);
   if (e.code === "42501") return new HttpError(403, "forbidden", e.message);
-  if (e.code === "P0001" || e.code === "23514" || e.code === "23505") return new HttpError(422, m?.[1] ?? "rejected", e.message);
+  if (e.code === "P0001" || e.code === "23514" || e.code === "23505") {
+    return new HttpError(422, m?.[1] ?? "rejected", e.message);
+  }
   if (e.code === "22P02") return new HttpError(400, "bad_payload", e.message);
   console.error("bridge rpc", e.fn, e.code, e.message);
   return new HttpError(500, "internal", "internal error");
@@ -138,7 +155,9 @@ export function createBridgeHandler(deps: BridgeDeps): (req: Request) => Promise
       if (!run) throw new HttpError(400, "unknown_action", action);
       const payload = (body.payload && typeof body.payload === "object" ? body.payload : body) as Payload;
       const out = await deps.background(run(payload), new URL(req.url).searchParams.get("sync") === "1");
-      return out.accepted ? json(202, { ok: true, data: { accepted: true } }) : json(200, { ok: true, data: out.result ?? null });
+      return out.accepted
+        ? json(202, { ok: true, data: { accepted: true } })
+        : json(200, { ok: true, data: out.result ?? null });
     } catch (e) {
       return fail(e);
     }

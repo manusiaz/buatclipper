@@ -2,7 +2,8 @@
 
 export type Platform = "tiktok" | "instagram" | "youtube" | "threads" | "facebook" | "x";
 export const PLATFORMS: readonly Platform[] = ["tiktok", "instagram", "youtube", "threads", "facebook", "x"];
-export const isPlatform = (p: unknown): p is Platform => typeof p === "string" && (PLATFORMS as readonly string[]).includes(p);
+export const isPlatform = (p: unknown): p is Platform =>
+  typeof p === "string" && (PLATFORMS as readonly string[]).includes(p);
 
 /** Isi secret Vault (string JSON). meta = id platform yang dibutuhkan adapter (open_id, channel, page, …). */
 export interface StoredToken {
@@ -67,7 +68,12 @@ export interface PlatformAdapter {
   /** Jumlah post per panggilan metrik (YouTube 50, TikTok 20, X 100, Meta 1). */
   readonly maxBatch: number;
   authorizeUrl(redirectUri: string, state: string, codeChallenge?: string): string;
-  exchangeCode(code: string, redirectUri: string, codeVerifier?: string, opts?: { pageId?: string }): Promise<StoredToken>;
+  exchangeCode(
+    code: string,
+    redirectUri: string,
+    codeVerifier?: string,
+    opts?: { pageId?: string },
+  ): Promise<StoredToken>;
   profile(token: StoredToken): Promise<Profile>;
   listVideos(token: StoredToken, sinceIso: string): Promise<Video[]>;
   /** Ambil satu post milik akun token; post akun lain → AdapterError('not_owner'). */

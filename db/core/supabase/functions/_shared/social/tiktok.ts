@@ -20,7 +20,8 @@ export const TIKTOK = {
   authorize: "https://www.tiktok.com/v2/auth/authorize/",
   api: "https://open.tiktokapis.com/v2",
   scopes: ["user.info.basic", "user.info.profile", "user.info.stats", "video.list"],
-  videoFields: "id,create_time,cover_image_url,share_url,video_description,title,duration,view_count,like_count,comment_count,share_count",
+  videoFields:
+    "id,create_time,cover_image_url,share_url,video_description,title,duration,view_count,like_count,comment_count,share_count",
   userFields: "open_id,union_id,display_name,username,follower_count",
   queryMax: 20,
   listMax: 20,
@@ -34,7 +35,9 @@ function tiktokError(status: number, body: Json): Error {
     return new TokenExpired(msg, code === "scope_not_authorized");
   }
   if (code === "scope_not_authorized" || code === "scope_permission_missed") return new TokenExpired(msg, true);
-  if (code === "rate_limit_exceeded" || code === "internal_error" || status === 429 || status >= 500) return new Retryable(msg);
+  if (code === "rate_limit_exceeded" || code === "internal_error" || status === 429 || status >= 500) {
+    return new Retryable(msg);
+  }
   return new AdapterError("api_error", msg, { code });
 }
 
@@ -130,7 +133,12 @@ export function createTikTok(cfg: { clientKey: string; clientSecret: string; fet
     },
 
     async exchangeCode(code, redirectUri, codeVerifier) {
-      const t = await token({ code, grant_type: "authorization_code", redirect_uri: redirectUri, code_verifier: codeVerifier })
+      const t = await token({
+        code,
+        grant_type: "authorization_code",
+        redirect_uri: redirectUri,
+        code_verifier: codeVerifier,
+      })
         .catch(oauthFailed);
       requireScopes(t.scope, [...TIKTOK.scopes]);
       return t;
@@ -165,7 +173,9 @@ export function createTikTok(cfg: { clientKey: string; clientSecret: string; fet
 
     async getPost(t, postIdOrUrl) {
       let id = videoIdFrom(postIdOrUrl);
-      if (!id && /^https:\/\/(vm|vt)\.tiktok\.com\//.test(postIdOrUrl.trim())) id = videoIdFrom(await resolveShort(postIdOrUrl.trim()));
+      if (!id && /^https:\/\/(vm|vt)\.tiktok\.com\//.test(postIdOrUrl.trim())) {
+        id = videoIdFrom(await resolveShort(postIdOrUrl.trim()));
+      }
       if (!id) throw new AdapterError("bad_url", "link TikTok tidak dikenali");
       const [v] = await query(t, [id]);
       // video/query hanya mengembalikan video milik user token: kosong = bukan milik akun ini (atau dihapus/private).
@@ -180,8 +190,9 @@ export function createTikTok(cfg: { clientKey: string; clientSecret: string; fet
         for (const id of ids) {
           const v = byId.get(id);
           if (!v) results.push({ postId: id, gone: true, reason: "not_found_or_private" });
-          else if (toInt(v.view_count) === null) results.push({ postId: id, retry: true, reason: "view_count_missing" });
-          else {
+          else if (toInt(v.view_count) === null) {
+            results.push({ postId: id, retry: true, reason: "view_count_missing" });
+          } else {
             results.push({
               postId: id,
               views: toInt(v.view_count)!,

@@ -91,9 +91,9 @@ export async function InvoiceDetail({ invoice: inv, campaignTitle, orgId, pay }:
           {inv.pin_until ? ` · ${t('pinUntil', { date: formatDate(inv.pin_until, loc) })}` : ''}
         </CardDescription>
       </CardHeader>
-      <CardContent className="grid gap-6 px-5 pb-6 md:grid-cols-2 md:px-6">
+      <CardContent className="grid grid-cols-1 gap-6 px-5 pb-6 md:grid-cols-2 md:px-6 [&>*]:min-w-0">
         <div className="flex flex-col gap-4">
-          <dl className="grid grid-cols-2 gap-3 text-body-s">
+          <dl className="grid grid-cols-2 gap-3 text-body-s [&>*]:min-w-0">
             <div>
               <dt className="text-muted">{t('issuedAt')}</dt>
               <dd className="font-semibold text-ink">{inv.issued_at ? formatDateTime(inv.issued_at, loc) : '—'}</dd>

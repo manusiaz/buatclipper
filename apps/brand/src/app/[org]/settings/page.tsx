@@ -68,7 +68,7 @@ export default async function SettingsPage({ params }: { params: Promise<{ org: 
             <CardTitle>{t('settings.profile')}</CardTitle>
           </CardHeader>
           <CardContent className="flex flex-col gap-4">
-            <dl className="grid gap-x-6 gap-y-3 text-body-s sm:grid-cols-2">
+            <dl className="grid grid-cols-1 gap-x-6 gap-y-3 text-body-s sm:grid-cols-2 [&>*]:min-w-0">
               {rows.map(([k, v]) => (
                 <div key={k} className="min-w-0">
                   <dt className="text-muted">{k}</dt>

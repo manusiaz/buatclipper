@@ -46,7 +46,8 @@ export function tweetIdFrom(input: string): string | null {
 export function createX(cfg: { clientId: string; clientSecret: string; fetch?: Fetch }): PlatformAdapter {
   const http: Http = defaultHttp(cfg.fetch);
   const basic = `Basic ${btoa(`${cfg.clientId}:${cfg.clientSecret}`)}`;
-  const get = (url: string, t: StoredToken) => request(http, url, { headers: { authorization: `Bearer ${t.access_token}` } }, xError);
+  const get = (url: string, t: StoredToken) =>
+    request(http, url, { headers: { authorization: `Bearer ${t.access_token}` } }, xError);
 
   async function tokenCall(params: Record<string, string | undefined>, prev?: StoredToken): Promise<StoredToken> {
     const out = await request(http, X.token, {
@@ -80,15 +81,19 @@ export function createX(cfg: { clientId: string; clientSecret: string; fetch?: F
     };
   };
 
-  const mediaMap = (body: Json) => new Map<string, Json>((body?.includes?.media ?? []).map((m: Json) => [m.media_key, m]));
+  const mediaMap = (body: Json) =>
+    new Map<string, Json>((body?.includes?.media ?? []).map((m: Json) => [m.media_key, m]));
 
   async function lookup(t: StoredToken, ids: string[]): Promise<Json> {
-    return await get(qs(`${X.api}/tweets`, {
-      ids: ids.join(","),
-      "tweet.fields": X.tweetFields,
-      expansions: "attachments.media_keys",
-      "media.fields": X.mediaFields,
-    }), t);
+    return await get(
+      qs(`${X.api}/tweets`, {
+        ids: ids.join(","),
+        "tweet.fields": X.tweetFields,
+        expansions: "attachments.media_keys",
+        "media.fields": X.mediaFields,
+      }),
+      t,
+    );
   }
 
   return {
@@ -111,7 +116,12 @@ export function createX(cfg: { clientId: string; clientSecret: string; fetch?: F
 
     async exchangeCode(code, redirectUri, codeVerifier) {
       if (!codeVerifier) throw new AdapterError("oauth_failed", "code_verifier wajib untuk X");
-      const t = await tokenCall({ code, grant_type: "authorization_code", redirect_uri: redirectUri, code_verifier: codeVerifier })
+      const t = await tokenCall({
+        code,
+        grant_type: "authorization_code",
+        redirect_uri: redirectUri,
+        code_verifier: codeVerifier,
+      })
         .catch(oauthFailed);
       requireScopes(t.scope, [...X.scopes]);
       return t;
@@ -132,16 +142,21 @@ export function createX(cfg: { clientId: string; clientSecret: string; fetch?: F
     async listVideos(t, sinceIso) {
       const uid = t.meta?.user_id;
       if (!uid) throw new TokenExpired("user_id tidak ada di token");
-      const body = await get(qs(`${X.api}/users/${uid}/tweets`, {
-        start_time: new Date(sinceIso).toISOString().replace(/\.\d{3}Z$/, "Z"), // YYYY-MM-DDTHH:mm:ssZ
-        max_results: 100,
-        exclude: "retweets,replies",
-        "tweet.fields": X.tweetFields,
-        expansions: "attachments.media_keys",
-        "media.fields": X.mediaFields,
-      }), t);
+      const body = await get(
+        qs(`${X.api}/users/${uid}/tweets`, {
+          start_time: new Date(sinceIso).toISOString().replace(/\.\d{3}Z$/, "Z"), // YYYY-MM-DDTHH:mm:ssZ
+          max_results: 100,
+          exclude: "retweets,replies",
+          "tweet.fields": X.tweetFields,
+          expansions: "attachments.media_keys",
+          "media.fields": X.mediaFields,
+        }),
+        t,
+      );
       const media = mediaMap(body);
-      return (body?.data ?? []).filter((tw: Json) => videoOf(tw, media)).map((tw: Json) => toVideo(tw, media, t.meta?.username ?? ""));
+      return (body?.data ?? []).filter((tw: Json) => videoOf(tw, media)).map((tw: Json) =>
+        toVideo(tw, media, t.meta?.username ?? "")
+      );
     },
 
     async getPost(t, postIdOrUrl) {
@@ -149,7 +164,9 @@ export function createX(cfg: { clientId: string; clientSecret: string; fetch?: F
       if (!id) throw new AdapterError("bad_url", "link X tidak dikenali");
       const body = await lookup(t, [id]);
       const tw = body?.data?.[0];
-      if (!tw || String(tw.author_id) !== t.meta?.user_id) throw new AdapterError("not_owner", "post bukan milik akun ini");
+      if (!tw || String(tw.author_id) !== t.meta?.user_id) {
+        throw new AdapterError("not_owner", "post bukan milik akun ini");
+      }
       const media = mediaMap(body);
       if (!videoOf(tw, media)) throw new AdapterError("not_video", "post tidak berisi video");
       return toVideo(tw, media, t.meta?.username ?? "");
@@ -162,7 +179,9 @@ export function createX(cfg: { clientId: string; clientSecret: string; fetch?: F
         const media = mediaMap(body);
         const byId = new Map<string, Json>((body?.data ?? []).map((tw: Json) => [String(tw.id), tw]));
         const errs = new Map<string, string>(
-          (body?.errors ?? []).map((e: Json) => [String(e.resource_id ?? e.value ?? ""), String(e.title ?? e.detail ?? "error")]),
+          (body?.errors ?? []).map((
+            e: Json,
+          ) => [String(e.resource_id ?? e.value ?? ""), String(e.title ?? e.detail ?? "error")]),
         );
         for (const id of ids) {
           const tw = byId.get(id);

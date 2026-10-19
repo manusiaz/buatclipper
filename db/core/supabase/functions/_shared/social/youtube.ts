@@ -31,7 +31,9 @@ function googleError(status: number, body: Json): Error {
   const reason = String(body?.error?.errors?.[0]?.reason ?? (typeof body?.error === "string" ? body.error : ""));
   const msg = String(body?.error?.message ?? body?.error_description ?? `HTTP ${status}`);
   if (status === 401 || reason === "invalid_grant" || reason === "authError") return new TokenExpired(msg);
-  if (status === 429 || status >= 500 || /rateLimit|quotaExceeded|backendError/i.test(reason)) return new Retryable(msg);
+  if (status === 429 || status >= 500 || /rateLimit|quotaExceeded|backendError/i.test(reason)) {
+    return new Retryable(msg);
+  }
   if (status === 404 || reason === "videoNotFound") return new PostGone(msg);
   if (status === 403) return new AdapterError("permission", msg, { reason });
   return new AdapterError("api_error", msg, { reason });
@@ -71,7 +73,8 @@ export function reportRows(body: Json): Record<string, string | number>[] {
 
 export function createYouTube(cfg: { clientId: string; clientSecret: string; fetch?: Fetch }): PlatformAdapter {
   const http: Http = defaultHttp(cfg.fetch);
-  const get = (url: string, t: StoredToken) => request(http, url, { headers: { authorization: `Bearer ${t.access_token}` } }, googleError);
+  const get = (url: string, t: StoredToken) =>
+    request(http, url, { headers: { authorization: `Bearer ${t.access_token}` } }, googleError);
 
   async function tokenCall(params: Record<string, string | undefined>, prev?: StoredToken): Promise<StoredToken> {
     const out = await request(http, YOUTUBE.token, {
@@ -100,7 +103,9 @@ export function createYouTube(cfg: { clientId: string; clientSecret: string; fet
 
   async function videos(t: StoredToken, ids: string[], part: string): Promise<Json[]> {
     const out: Json[] = [];
-    for (const c of chunk(ids, YOUTUBE.idsPerCall)) out.push(...((await get(qs(`${YOUTUBE.api}/videos`, { part, id: c.join(",") }), t))?.items ?? []));
+    for (const c of chunk(ids, YOUTUBE.idsPerCall)) {
+      out.push(...((await get(qs(`${YOUTUBE.api}/videos`, { part, id: c.join(",") }), t))?.items ?? []));
+    }
     return out;
   }
 
@@ -113,11 +118,15 @@ export function createYouTube(cfg: { clientId: string; clientSecret: string; fet
     };
     const [basic, countries, traffic] = await Promise.all([
       get(qs(YOUTUBE.analytics, { ...base, metrics: "views,averageViewDuration,averageViewPercentage,shares" }), t),
-      get(qs(YOUTUBE.analytics, { ...base, metrics: "views", dimensions: "country", sort: "-views", maxResults: 10 }), t),
+      get(
+        qs(YOUTUBE.analytics, { ...base, metrics: "views", dimensions: "country", sort: "-views", maxResults: 10 }),
+        t,
+      ),
       get(qs(YOUTUBE.analytics, { ...base, metrics: "views", dimensions: "insightTrafficSourceType" }), t),
     ]);
     const b = reportRows(basic)[0] ?? {};
-    const toMap = (rows: Record<string, string | number>[], k: string) => Object.fromEntries(rows.map((r) => [r[k], toInt(r.views)]));
+    const toMap = (rows: Record<string, string | number>[], k: string) =>
+      Object.fromEntries(rows.map((r) => [r[k], toInt(r.views)]));
     return {
       shares: toInt(b.shares),
       avg_watch_time: toInt(b.averageViewDuration), // detik
@@ -128,7 +137,9 @@ export function createYouTube(cfg: { clientId: string; clientSecret: string; fet
   }
 
   async function profile(t: StoredToken): Promise<Profile> {
-    const ch = (await get(qs(`${YOUTUBE.api}/channels`, { part: "snippet,statistics,contentDetails", mine: "true" }), t))?.items?.[0];
+    const ch =
+      (await get(qs(`${YOUTUBE.api}/channels`, { part: "snippet,statistics,contentDetails", mine: "true" }), t))?.items
+        ?.[0];
     if (!ch) throw new AdapterError("no_channel", "akun Google ini belum punya channel YouTube");
     return {
       externalId: ch.id,
@@ -160,7 +171,12 @@ export function createYouTube(cfg: { clientId: string; clientSecret: string; fet
     },
 
     async exchangeCode(code, redirectUri, codeVerifier) {
-      const t = await tokenCall({ code, grant_type: "authorization_code", redirect_uri: redirectUri, code_verifier: codeVerifier })
+      const t = await tokenCall({
+        code,
+        grant_type: "authorization_code",
+        redirect_uri: redirectUri,
+        code_verifier: codeVerifier,
+      })
         .catch(oauthFailed);
       requireScopes(t.scope, [YOUTUBE.scopes[0]]); // analytics opsional; tanpa itu FR-09/FR-11 tidak jalan untuk akun ini
       if (!t.refresh_token) throw new AdapterError("oauth_failed", "Google tidak mengirim refresh_token");
@@ -176,7 +192,15 @@ export function createYouTube(cfg: { clientId: string; clientSecret: string; fet
       const ids: string[] = [];
       let pageToken: string | undefined;
       for (let page = 0; page < 2; page++) {
-        const out = await get(qs(`${YOUTUBE.api}/playlistItems`, { part: "contentDetails", playlistId: playlist, maxResults: 50, pageToken }), t);
+        const out = await get(
+          qs(`${YOUTUBE.api}/playlistItems`, {
+            part: "contentDetails",
+            playlistId: playlist,
+            maxResults: 50,
+            pageToken,
+          }),
+          t,
+        );
         let older = false;
         for (const it of out?.items ?? []) {
           const at = Date.parse(it.contentDetails?.videoPublishedAt ?? "");
@@ -196,7 +220,9 @@ export function createYouTube(cfg: { clientId: string; clientSecret: string; fet
       const id = videoIdFrom(postIdOrUrl);
       if (!id) throw new AdapterError("bad_url", "link YouTube tidak dikenali");
       const [v] = await videos(t, [id], "snippet,contentDetails,status");
-      if (!v || v.snippet?.channelId !== t.meta?.channel_id) throw new AdapterError("not_owner", "video bukan milik channel ini");
+      if (!v || v.snippet?.channelId !== t.meta?.channel_id) {
+        throw new AdapterError("not_owner", "video bukan milik channel ini");
+      }
       if (v.status?.privacyStatus === "private") throw new AdapterError("not_public", "video masih private");
       return toVideo(v);
     },

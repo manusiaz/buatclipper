@@ -82,7 +82,7 @@ export function ReviewQueue({ orgId, items, canReview }: { orgId: string; items:
         </Card>
       ) : null}
 
-      <ul className="grid gap-3 lg:grid-cols-2">
+      <ul className="grid grid-cols-1 gap-3 lg:grid-cols-2 [&>*]:min-w-0">
         {items.map((i) => (
           <li key={i.id}>
             <Card padding="md" className="flex h-full flex-col gap-3" data-selected={selected.has(i.id) || undefined}>
@@ -118,10 +118,10 @@ export function ReviewQueue({ orgId, items, canReview }: { orgId: string; items:
               <a href={i.url} target="_blank" rel="noopener noreferrer" className="truncate text-caption text-link focus-ring rounded-[4px]">{i.url}</a>
               {canReview ? (
                 <div className="mt-auto flex gap-2 pt-1">
-                  <Button variant="secondary" size="sm" iconLeft="cancel" fullWidth disabled={pending} onClick={() => setRejectFor([i.id])}>
+                  <Button variant="secondary" size="sm" iconLeft="cancel" className="flex-1" disabled={pending} onClick={() => setRejectFor([i.id])}>
                     {t('reject')}
                   </Button>
-                  <Button size="sm" iconLeft="check" fullWidth disabled={pending} onClick={() => decide([i.id], 'approve')}>
+                  <Button size="sm" iconLeft="check" className="flex-1" disabled={pending} onClick={() => decide([i.id], 'approve')}>
                     {t('approve')}
                   </Button>
                 </div>

@@ -23,7 +23,8 @@ export const FACEBOOK = {
   graph: `https://graph.facebook.com/${FB_VERSION}`,
   scopes: ["pages_show_list", "pages_read_engagement", "read_insights"],
   videoFields: "id,description,created_time,length,permalink_url,picture,from,post_id",
-  metricFields: "id,description,created_time,views,post_id,from,likes.summary(true).limit(0),comments.summary(true).limit(0)",
+  metricFields:
+    "id,description,created_time,views,post_id,from,likes.summary(true).limit(0),comments.summary(true).limit(0)",
 } as const;
 
 export function fbVideoIdFrom(input: string): string | null {
@@ -80,7 +81,12 @@ export function createFacebook(cfg: { appId: string; appSecret: string; fetch?: 
       try {
         const user = await request(
           http,
-          qs(`${FACEBOOK.graph}/oauth/access_token`, { client_id: cfg.appId, client_secret: cfg.appSecret, redirect_uri: redirectUri, code }),
+          qs(`${FACEBOOK.graph}/oauth/access_token`, {
+            client_id: cfg.appId,
+            client_secret: cfg.appSecret,
+            redirect_uri: redirectUri,
+            code,
+          }),
           {},
           graphError,
         );
@@ -95,7 +101,9 @@ export function createFacebook(cfg: { appId: string; appSecret: string; fetch?: 
           {},
           graphError,
         );
-        pages = (await g("me/accounts", long.access_token, { fields: "id,name,username,access_token", limit: 100 }))?.data ?? [];
+        pages =
+          (await g("me/accounts", long.access_token, { fields: "id,name,username,access_token", limit: 100 }))?.data ??
+            [];
       } catch (e) {
         return oauthFailed(e);
       }
@@ -105,7 +113,13 @@ export function createFacebook(cfg: { appId: string; appSecret: string; fetch?: 
         throw new AdapterError("page_ambiguous", "pilih satu Page", pages.map((p) => ({ id: p.id, name: p.name })));
       }
       // Page token dari user token jangka panjang tidak punya masa berlaku.
-      return { v: 1, access_token: page.access_token, expires_at: null, scope: null, meta: { page_id: String(page.id) } };
+      return {
+        v: 1,
+        access_token: page.access_token,
+        expires_at: null,
+        scope: null,
+        meta: { page_id: String(page.id) },
+      };
     },
 
     async profile(t): Promise<Profile> {
@@ -124,7 +138,11 @@ export function createFacebook(cfg: { appId: string; appSecret: string; fetch?: 
       const since = Date.parse(sinceIso);
       const id = pageId(t);
       const [reels, vids] = await Promise.all([
-        g(`${id}/video_reels`, t.access_token, { fields: FACEBOOK.videoFields, since: Math.floor(since / 1000), limit: 50 }),
+        g(`${id}/video_reels`, t.access_token, {
+          fields: FACEBOOK.videoFields,
+          since: Math.floor(since / 1000),
+          limit: 50,
+        }),
         g(`${id}/videos`, t.access_token, { fields: FACEBOOK.videoFields, type: "uploaded", limit: 50 }),
       ]);
       const seen = new Map<string, Json>();

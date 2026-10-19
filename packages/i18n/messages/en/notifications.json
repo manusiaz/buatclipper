@@ -1,1 +1,89 @@
-{}
+{
+  "fallback": {
+    "campaign": "this",
+    "platform": "social",
+    "amount": "your",
+    "soon": "within a few hours",
+    "further": "further notice",
+    "count": "Several",
+    "invoice": "new",
+    "dueAt": "per the invoice",
+    "reward": "Your non-cash reward",
+    "broadcast": "Announcement",
+    "org": "your organization",
+    "agency": "An agency",
+    "client": "A client"
+  },
+  "reason": "Reason: {reason}",
+  "unknown": { "title": "New notification", "body": "Open the app for details." },
+  "campaign": {
+    "new": { "title": "New campaign: {campaign}", "body": "Claim it before the slots or budget run out." },
+    "invited": { "title": "You are invited to campaign {campaign}", "body": "Open the campaign to read the brief and claim a slot." },
+    "approved": { "title": "Campaign {campaign} approved", "body": "The campaign passed review and goes live on schedule." },
+    "rejected": { "title": "Campaign {campaign} rejected", "body": "Fix the campaign and submit it again." },
+    "live": { "title": "Campaign {campaign} is live", "body": "Clippers can now claim it. Track views and budget from the dashboard." },
+    "settled": { "title": "Campaign {campaign} finished", "body": "The final report is ready. Remaining budget follows your refund or rollover choice." }
+  },
+  "claim": {
+    "expiring": { "title": "Your claim is about to expire", "body": "Your claim on {campaign} ends {expiresAt}. Post and submit before the slot is released." }
+  },
+  "submission": {
+    "approved": { "title": "Your submission was approved", "body": "Your video in {campaign} was approved. Its views now count toward earnings." },
+    "rejected": { "title": "Your submission was rejected", "body": "Your video in {campaign} was rejected. You can appeal once from the Tasks page." },
+    "forfeited": { "title": "Submission earnings forfeited", "body": "Your video in {campaign} is no longer accessible, so its earnings were forfeited." },
+    "pending_review": { "title": "Submissions waiting for review: {campaign}", "body": "{count} new submissions are waiting. Without a decision in 72 hours they are approved automatically." }
+  },
+  "social": {
+    "token_expired": { "title": "Reconnect your {platform} account", "body": "Access to your {platform} account{handle} expired or was revoked, so view tracking is paused." }
+  },
+  "earning": {
+    "available": { "title": "Earnings ready to withdraw", "body": "{amount} is now Available in your wallet." }
+  },
+  "payout": {
+    "paid": { "title": "Payout of {amount} sent", "body": "The money has been transferred. Arrival time depends on the destination bank or e-wallet." },
+    "failed": { "title": "Payout of {amount} failed", "body": "The balance is back in your wallet. Check your payout account and try again." },
+    "cancelled": { "title": "Withdrawal of {amount} cancelled", "body": "The balance is back in Available and can be withdrawn again." }
+  },
+  "fulfillment": {
+    "delivered": { "title": "Your reward was delivered", "body": "{reward} has been delivered. Details are in the Rewards tab." },
+    "cancelled": { "title": "Reward claim cancelled", "body": "The reward balance is back and can be claimed again." }
+  },
+  "kyc": {
+    "approved": { "title": "Your KYC was approved", "body": "Your identity is verified. You can now withdraw your balance." },
+    "rejected": { "title": "Your KYC was rejected", "body": "Fix your details or ID photo and resubmit from the KYC page." }
+  },
+  "broadcast": {
+    "sent": { "title": "{title}", "body": "{body}" }
+  },
+  "account": {
+    "suspended": { "title": "Your account is suspended", "body": "Suspended until {until}. Until then you cannot claim, submit or withdraw." },
+    "banned": { "title": "Your account is banned", "body": "The account was banned for breaking the terms of service. Contact support if you think this is a mistake." }
+  },
+  "invoice": {
+    "issued": { "title": "Invoice {invoice} issued", "body": "{amount} is due {dueAt}. Pay via QRIS or bank transfer." },
+    "paid": { "title": "Payment received", "body": "We received payment of {amount} for invoice {invoice}." }
+  },
+  "budget": {
+    "used": {
+      "title": "{level, select, full {Budget for {campaign} is used up} p80 {80% of the {campaign} budget is used} other {50% of the {campaign} budget is used}}",
+      "body": "{level, select, full {The campaign stopped counting new views. Top up to keep it running.} p80 {Consider a top-up so the campaign does not stop suddenly.} other {Track its performance on the dashboard.}}"
+    },
+    "projection_low": { "title": "{campaign} is projected below target", "body": "Less than half the budget is expected to be used. Raise the rate, extend the schedule or invite clippers." }
+  },
+  "org": {
+    "verified": { "title": "{org} is verified", "body": "You can now submit campaigns." },
+    "rejected": { "title": "Organization verification rejected", "body": "Fix the organization details and resubmit from settings." },
+    "suspended": { "title": "{org} is suspended", "body": "New campaigns cannot be submitted until the suspension is lifted." }
+  },
+  "agency": {
+    "link_requested": { "title": "{agency} requests access to {org}", "body": "Approve only if you actually work with this agency." },
+    "link_approved": { "title": "{client} approved the agency link", "body": "The client organization now appears in your organization switcher." }
+  },
+  "refund": {
+    "requested": { "title": "Refund for {campaign} is being processed", "body": "Our finance team will transfer {amount} and upload the proof on the billing page." },
+    "paid": { "title": "Refund of {amount} transferred", "body": "The transfer proof is on the billing page." }
+  },
+  "managed": {
+    "draft_ready": { "title": "Campaign draft {campaign} is ready for approval", "body": "Check the summary, then approve and pay so the campaign can be reviewed." }
+  }
+}

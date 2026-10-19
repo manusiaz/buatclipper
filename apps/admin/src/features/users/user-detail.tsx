@@ -44,7 +44,7 @@ export async function UserDetail({ userId, claims, loc }: { userId: string; clai
   const needsNotify = decided && lastCore?.decision !== decided;
 
   return (
-    <div className="mb-6 grid gap-5 lg:grid-cols-2">
+    <div className="mb-6 grid grid-cols-1 gap-5 lg:grid-cols-2">
       <Card padding="md" className="flex flex-col gap-4">
         <Link href="/users" className="inline-flex items-center gap-1 text-body-s font-semibold text-link focus-ring">
           <Icon name="arrow_back" size={16} />

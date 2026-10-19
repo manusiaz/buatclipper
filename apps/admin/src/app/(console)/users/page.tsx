@@ -190,7 +190,7 @@ async function AdminTab() {
   const t = await getTranslations('admin');
   const roleOptions = ROLES.map((r) => ({ value: r, label: t(`roles.${r}`) }));
   return (
-    <div className="grid gap-4 md:grid-cols-3">
+    <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
       <Alert tone="info" className="md:col-span-3">
         {t('users.adminListGap')}
       </Alert>

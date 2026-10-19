@@ -70,6 +70,7 @@ export default async function CampaignBuilderPage({
       <BuilderHost
         orgId={orgId}
         renderId={randomUUID()}
+        canBilling={can(ctx.role, 'billing')}
         context={await builderContext(ctx)}
         initial={initial}
         save={saveCampaign.bind(null, orgId)}

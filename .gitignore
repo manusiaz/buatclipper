@@ -16,3 +16,7 @@ supabase/.temp/
 playwright-report/
 test-results/
 db/.dev-secrets.env
+
+# dibangkitkan next dev/build/typegen
+apps/*/next-env.d.ts
+apps/*/AGENTS.md

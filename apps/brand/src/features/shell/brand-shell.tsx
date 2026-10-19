@@ -13,7 +13,7 @@ export interface ShellNavItem {
   badge?: number;
 }
 
-/** SidebarShell + item aktif dari URL (layout tidak dirender ulang saat pindah halaman). */
+/** SidebarShell + item aktif dari URL (layout tidak dirender ulang saat pindah halaman). Builder punya banner verifikasi sendiri. */
 export function BrandShell({
   nav,
   orgSwitcher,
@@ -41,7 +41,7 @@ export function BrandShell({
       orgSwitcher={orgSwitcher}
       userMenu={userMenu}
       headerActions={headerActions}
-      banner={banner}
+      banner={path.endsWith('/campaigns/new') ? null : banner}
       sidebarFooter={footer}
       linkAs={Link}
       labels={{ openMenu: t('openMenu'), closeMenu: t('closeMenu'), nav: t('nav') }}

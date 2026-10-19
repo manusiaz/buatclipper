@@ -137,9 +137,14 @@ const PLATFORMS: Record<string, string> = {
   x: "X",
 };
 
+/** platform (satu) atau platforms (array, campaign.new). */
 function platform(p: Payload): string {
-  const raw = txt(p, "platform", 30);
-  return PLATFORMS[raw.toLowerCase()] ?? raw;
+  const list = Array.isArray(p.platforms) ? p.platforms : [p.platform];
+  return list
+    .map((v) => txt({ v }, "v", 30))
+    .filter(Boolean)
+    .map((raw) => PLATFORMS[raw.toLowerCase()] ?? raw)
+    .join(", ");
 }
 
 function campaign(p: Payload): string {
@@ -154,6 +159,20 @@ function rupiah(p: Payload, key = "amount"): string {
   const m = /^(\d{1,16})(?:\.(\d{1,2}))?$/.exec(s);
   if (!m) return "";
   return "Rp" + idr.format(Number(`${m[1]}.${m[2] ?? "0"}`));
+}
+
+/** finance.amount_ref ({amount, reward_type, unit_label}) atau daftarnya di amounts (earning.available, multi-reward). */
+function money(p: Payload): string {
+  const list = Array.isArray(p.amounts) ? (p.amounts as Payload[]) : [p];
+  return list
+    .map((a) => {
+      const code = txt(a, "reward_type", 30);
+      if (!code || code === "IDR") return rupiah(a);
+      const n = typeof a.amount === "number" || typeof a.amount === "string" ? Number(a.amount) : NaN;
+      return Number.isFinite(n) ? `${idr.format(n)} ${txt(a, "unit_label", 30) || code}` : "";
+    })
+    .filter(Boolean)
+    .join(" + ");
 }
 
 const wib = new Intl.DateTimeFormat("id-ID", {
@@ -304,7 +323,7 @@ const DEFS: Record<NotificationEvent, Def> = {
   },
   "earning.available": {
     title: () => "Earning siap ditarik",
-    lines: (p) => [`${rupiah(p) || "Earning kamu"} sudah Tersedia di wallet dan bisa ditarik.`],
+    lines: (p) => [`${money(p) || "Earning kamu"} sudah Tersedia di wallet dan bisa ditarik.`],
     cta: "Buka wallet",
     url: (_p, l) => join(l.app, "wallet"),
   },

@@ -1,11 +1,11 @@
 import { getLocale, getTranslations } from 'next-intl/server';
 import { formatIDR } from '@clipper/ui';
-import type { CoreClient } from '@clipper/db-core';
+import { coreServer } from '@clipper/auth/server';
 import { BRAND_EVENTS, isBrandEvent, notificationHref, notificationValues } from './events';
 import { BellMenu, type BellItem } from './bell-menu';
 
-export async function NotificationBell({ core, userId }: { core: CoreClient; userId: string }) {
-  const [t, locale] = await Promise.all([getTranslations('brand'), getLocale()]);
+export async function NotificationBell({ userId }: { userId: string }) {
+  const [t, locale, core] = await Promise.all([getTranslations('brand'), getLocale(), coreServer()]);
   const events = [...BRAND_EVENTS];
   const [{ data }, { count }] = await Promise.all([
     core.from('notifications').select('id, event, payload, read_at, created_at').eq('user_id', userId).in('event', events)

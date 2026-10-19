@@ -7,7 +7,7 @@
     "dev": "next dev -p 3004",
     "build": "next build",
     "start": "next start -p 3004",
-    "typecheck": "tsc --noEmit -p .",
+    "typecheck": "next typegen && tsc --noEmit -p .",
     "test": "vitest run --passWithNoTests"
   },
   "dependencies": {

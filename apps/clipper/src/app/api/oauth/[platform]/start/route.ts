@@ -1,4 +1,5 @@
 import { NextResponse, type NextRequest } from 'next/server';
+import { hosts } from '@clipper/auth';
 import { invokeFunction, requireClipper } from '@clipper/auth/server';
 import { isPlatform } from '@/features/lib/pure';
 import { cookieOptions, encodeState, internalNext, redirectUri, STATE_COOKIE } from '@/features/social/oauth';
@@ -7,7 +8,7 @@ import { cookieOptions, encodeState, internalNext, redirectUri, STATE_COOKIE } f
 export async function GET(request: NextRequest, { params }: { params: Promise<{ platform: string }> }) {
   await requireClipper();
   const { platform } = await params;
-  const back = (q: string) => NextResponse.redirect(new URL(`/social?${q}`, request.url));
+  const back = (q: string) => NextResponse.redirect(new URL(`/social?${q}`, hosts.app));
   if (!isPlatform(platform)) return back('error=bad_request');
   const next = internalNext(request.nextUrl.searchParams.get('next'));
   const pageId = request.nextUrl.searchParams.get('page_id')?.slice(0, 64) || undefined;

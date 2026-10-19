@@ -33,7 +33,12 @@ export function threadsShortcode(url: string): string | null {
 export function createThreads(cfg: { appId: string; appSecret: string; fetch?: Fetch }): PlatformAdapter {
   const http: Http = defaultHttp(cfg.fetch);
   const g = (path: string, t: StoredToken, params: Record<string, string | number | undefined> = {}) =>
-    request(http, qs(`${THREADS.graph}/${THREADS.version}/${path}`, { ...params, access_token: t.access_token }), {}, graphError);
+    request(
+      http,
+      qs(`${THREADS.graph}/${THREADS.version}/${path}`, { ...params, access_token: t.access_token }),
+      {},
+      graphError,
+    );
 
   const toVideo = (m: Json): Video => ({
     postId: String(m.id),
@@ -74,11 +79,21 @@ export function createThreads(cfg: { appId: string; appSecret: string; fetch?: F
         const short = await request(http, `${THREADS.graph}/oauth/access_token`, {
           method: "POST",
           headers: { "content-type": "application/x-www-form-urlencoded" },
-          body: form({ client_id: cfg.appId, client_secret: cfg.appSecret, grant_type: "authorization_code", redirect_uri: redirectUri, code }),
+          body: form({
+            client_id: cfg.appId,
+            client_secret: cfg.appSecret,
+            grant_type: "authorization_code",
+            redirect_uri: redirectUri,
+            code,
+          }),
         }, graphError);
         const long = await request(
           http,
-          qs(`${THREADS.graph}/access_token`, { grant_type: "th_exchange_token", client_secret: cfg.appSecret, access_token: short.access_token }),
+          qs(`${THREADS.graph}/access_token`, {
+            grant_type: "th_exchange_token",
+            client_secret: cfg.appSecret,
+            access_token: short.access_token,
+          }),
           {},
           graphError,
         );
@@ -116,7 +131,9 @@ export function createThreads(cfg: { appId: string; appSecret: string; fetch?: F
       const since = Math.floor(Date.parse(sinceIso) / 1000);
       const out: Video[] = [];
       for await (const page of pages(t, { since })) {
-        for (const m of page) if (m.media_type === "VIDEO" && Date.parse(metaTime(m.timestamp)) >= since * 1000) out.push(toVideo(m));
+        for (const m of page) {
+          if (m.media_type === "VIDEO" && Date.parse(metaTime(m.timestamp)) >= since * 1000) out.push(toVideo(m));
+        }
       }
       return out;
     },
@@ -129,7 +146,9 @@ export function createThreads(cfg: { appId: string; appSecret: string; fetch?: F
           if (e instanceof PostGone) throw new AdapterError("not_owner", "post tidak ditemukan di akun ini");
           throw e;
         });
-        if (!m.username || m.username !== t.meta?.username) throw new AdapterError("not_owner", "post bukan milik akun ini");
+        if (!m.username || m.username !== t.meta?.username) {
+          throw new AdapterError("not_owner", "post bukan milik akun ini");
+        }
       } else {
         const code = threadsShortcode(s);
         if (!code) throw new AdapterError("bad_url", "link Threads tidak dikenali");

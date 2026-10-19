@@ -58,7 +58,7 @@ export function ReviewQueue({ items }: { items: QueueItem[] }) {
 
   return (
     <div className="flex flex-col gap-4">
-      <Card variant="raised" padding="sm" className="sticky top-[calc(var(--safe-top)+72px)] z-10 flex flex-col gap-3 lg:flex-row lg:items-end">
+      <Card variant="raised" padding="sm" className="z-10 flex lg:sticky lg:top-[calc(var(--safe-top)+72px)] flex-col gap-3 lg:flex-row lg:items-end">
         <div className="flex items-center gap-3 lg:h-12">
           <Checkbox
             checked={all ? true : selected.size ? 'indeterminate' : false}

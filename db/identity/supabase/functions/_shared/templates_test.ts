@@ -34,7 +34,10 @@ Deno.test("templates: deep links per event", () => {
     `https://brand.clipper.test/${ORG}/campaigns/${CAMP}`,
   );
   assertEquals(render("budget.used", { pct: 100, campaign_title: "MPL" }, L).subject, "Budget campaign MPL habis");
-  assertEquals(render("budget.used", { pct: 80, campaign_title: "MPL" }, L).subject, "Budget campaign MPL terpakai 80%");
+  assertEquals(
+    render("budget.used", { pct: 80, campaign_title: "MPL" }, L).subject,
+    "Budget campaign MPL terpakai 80%",
+  );
   assertEquals(render("invoice.issued", { org_id: ORG }, L).push.url, `https://brand.clipper.test/${ORG}/billing`);
   assertEquals(
     render("submission.pending_review", { org_id: ORG }, L).push.url,
@@ -92,4 +95,19 @@ Deno.test("templates: unsubscribe URL and base URL validation", () => {
   assertEquals(linksFromEnv((n) => env[n]).app, "https://app.clipper.test");
   assertEquals(linksFromEnv((n) => env[n]).accounts, "http://accounts.clipper.localhost:3000");
   assertThrows(() => linksFromEnv((n) => ({ ...env, APP_URL: "http://app.clipper.test" })[n]));
+});
+
+// Regresi 2026-10-19: payload SQL asli (bukan bentuk yang diasumsikan template).
+Deno.test("templates: payload SQL campaign.new (platforms[]) dan earning.available (amounts[])", () => {
+  const unsub = { unsubscribeUrl: "https://app.clipper.test/u/1" };
+  assertStringIncludes(
+    render("campaign.new", { campaign_title: "MPL", platforms: ["tiktok", "youtube"] }, L, unsub).text,
+    "untuk TikTok, YouTube",
+  );
+  const amounts = [{ amount: 15000.5, reward_type: "IDR", unit_label: "Rp" }, {
+    amount: 120,
+    reward_type: "DIAMOND",
+    unit_label: "Diamonds",
+  }];
+  assertStringIncludes(render("earning.available", { amounts }, L).text, "Rp15.000,5 + 120 Diamonds sudah Tersedia");
 });

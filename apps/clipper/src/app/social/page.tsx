@@ -126,18 +126,18 @@ export default async function SocialPage({ searchParams }: Props) {
                   {mine.length ? (
                     <ul className="flex flex-col divide-y divide-border rounded-card-sm border border-border">
                       {mine.map((a) => (
-                        <li key={a.id} className="flex flex-wrap items-center gap-x-3 gap-y-2 p-3">
+                        <li key={a.id} className="flex items-center gap-3 p-3">
                           <div className="min-w-0 flex-1">
                             <p className="truncate text-body-s font-bold text-ink">@{a.handle}</p>
-                            <p className="text-caption text-muted tnum">
-                              {a.followers != null ? t('followers', { n: formatCompact(a.followers, locale) }) : '—'}
+                            <p className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-caption text-muted tnum">
+                              <Badge tone={TONE[a.status ?? ''] ?? 'neutral'} size="sm">
+                                {t(`status.${a.status}`)}
+                              </Badge>
+                              {a.followers != null ? t('followers', { n: formatCompact(a.followers, locale) }) : null}
                             </p>
                           </div>
-                          <Badge tone={TONE[a.status ?? ''] ?? 'neutral'} size="sm">
-                            {t(`status.${a.status}`)}
-                          </Badge>
                           {a.status !== 'verified' ? (
-                            <Button size="sm" variant="secondary" href={start(p)} iconLeft="refresh">
+                            <Button size="sm" variant="secondary" href={start(p)} iconLeft="refresh" className="shrink-0">
                               {t('reconnect')}
                             </Button>
                           ) : null}

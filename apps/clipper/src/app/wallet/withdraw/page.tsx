@@ -20,7 +20,7 @@ import {
   type IconName,
 } from '@clipper/ui';
 import { isUuid, nextBatchDate, num, recipientFields } from '@/features/lib/pure';
-import { core, readSettings, uiLocale } from '@/features/lib/server';
+import { core, errorText, readSettings, uiLocale } from '@/features/lib/server';
 import { balances } from '@/features/wallet/data';
 import { CashForm } from '@/features/withdraw/cash-form';
 import { RewardForm } from '@/features/withdraw/reward-form';
@@ -61,6 +61,7 @@ export default async function WithdrawPage({ searchParams }: Props) {
   const payoutUrl = (q: Record<string, string>) =>
     `${hosts.accounts}/payout-methods?${new URLSearchParams({ ...q, next: q.next ?? SELF })}`;
   const tab = sp.tab === 'reward' ? 'reward' : 'cash';
+  const methodsError = methods.error ? await errorText(methods.error.message) : null;
 
   const checks: { ok: boolean; icon: IconName; label: string; detail: string; href?: string; action?: string }[] = [
     {
@@ -126,6 +127,7 @@ export default async function WithdrawPage({ searchParams }: Props) {
         </TabsList>
 
         <TabsContent value="cash" className="mt-4 flex flex-col gap-4">
+          {methodsError ? <Alert tone="danger">{methodsError}</Alert> : null}
           <Card padding="sm">
             <h2 className="px-1 pb-2 text-h6 text-ink">{t('checklist')}</h2>
             <ul className="flex flex-col divide-y divide-border">

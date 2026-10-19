@@ -46,7 +46,10 @@ export function isPublicHttpsUrl(raw: string): boolean {
   }
   if (u.protocol !== "https:" || u.username || u.password) return false;
   const h = u.hostname.toLowerCase().replace(/^\[|\]$/g, "");
-  if (h === "localhost" || h.endsWith(".localhost") || h.endsWith(".local") || h.endsWith(".internal") || !h.includes(".") && !h.includes(":")) {
+  if (
+    h === "localhost" || h.endsWith(".localhost") || h.endsWith(".local") || h.endsWith(".internal") ||
+    !h.includes(".") && !h.includes(":")
+  ) {
     return false;
   }
   const v4 = /^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/.exec(h);
@@ -55,7 +58,9 @@ export function isPublicHttpsUrl(raw: string): boolean {
     return !(a === 0 || a === 10 || a === 127 || (a === 169 && b === 254) || (a === 172 && b >= 16 && b <= 31) ||
       (a === 192 && b === 168) || (a === 100 && b >= 64 && b <= 127) || a >= 224);
   }
-  if (h.includes(":")) return !(h === "::1" || h === "::" || /^(fc|fd|fe8|fe9|fea|feb)/.test(h) || h.startsWith("::ffff:"));
+  if (h.includes(":")) {
+    return !(h === "::1" || h === "::" || /^(fc|fd|fe8|fe9|fea|feb)/.test(h) || h.startsWith("::ffff:"));
+  }
   return true;
 }
 
@@ -119,7 +124,12 @@ export async function runFulfill(deps: FulfillDeps): Promise<FulfillSummary> {
         signal: AbortSignal.timeout(deps.timeoutMs ?? 10_000),
       });
     } catch (e) {
-      return await result(f.id, false, null, e instanceof DOMException && e.name === "TimeoutError" ? "timeout" : "network_error");
+      return await result(
+        f.id,
+        false,
+        null,
+        e instanceof DOMException && e.name === "TimeoutError" ? "timeout" : "network_error",
+      );
     }
     if (res.status < 200 || res.status >= 300) {
       await res.body?.cancel();

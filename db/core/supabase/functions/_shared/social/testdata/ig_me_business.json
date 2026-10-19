@@ -1,1 +1,8 @@
-{ "id": "7590123456789012", "user_id": "17841400000000001", "username": "clippersatu", "account_type": "MEDIA_CREATOR", "followers_count": 2300, "media_count": 41 }
+{
+  "id": "7590123456789012",
+  "user_id": "17841400000000001",
+  "username": "clippersatu",
+  "account_type": "MEDIA_CREATOR",
+  "followers_count": 2300,
+  "media_count": 41
+}

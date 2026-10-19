@@ -29,7 +29,8 @@ export async function runRefresh(deps: RefreshDeps): Promise<RefreshSummary> {
   const now = deps.now ?? Date.now;
   const deadline = now() + (deps.budgetMs ?? 50_000);
   const s: RefreshSummary = { checked: 0, refreshed: 0, expired: 0, retried: 0, failed: 0 };
-  const rows = (await deps.rpc<RefreshRow[] | null>("worker_accounts_to_refresh", { p_within: deps.within ?? "12 hours" })) ?? [];
+  const rows =
+    (await deps.rpc<RefreshRow[] | null>("worker_accounts_to_refresh", { p_within: deps.within ?? "12 hours" })) ?? [];
   let i = 0;
   await Promise.all(Array.from({ length: Math.min(4, rows.length) }, async () => {
     while (i < rows.length && now() < deadline) {
@@ -44,7 +45,10 @@ export async function runRefresh(deps: RefreshDeps): Promise<RefreshSummary> {
         s.refreshed++;
       } catch (e) {
         if (e instanceof TokenExpired) {
-          await deps.rpc("worker_account_status", { p_account: row.account_id, p_status: e.revoked ? "revoked" : "expired" });
+          await deps.rpc("worker_account_status", {
+            p_account: row.account_id,
+            p_status: e.revoked ? "revoked" : "expired",
+          });
           s.expired++;
         } else if (e instanceof Retryable) {
           s.retried++; // dicoba lagi di jadwal berikutnya (tiap 6 jam, jendela 12 jam)

@@ -1,5 +1,8 @@
 {
   "kind": "youtubeAnalytics#resultTable",
-  "columnHeaders": [{ "name": "insightTrafficSourceType", "columnType": "DIMENSION", "dataType": "STRING" }, { "name": "views", "columnType": "METRIC", "dataType": "INTEGER" }],
+  "columnHeaders": [
+    { "name": "insightTrafficSourceType", "columnType": "DIMENSION", "dataType": "STRING" },
+    { "name": "views", "columnType": "METRIC", "dataType": "INTEGER" }
+  ],
   "rows": [["SHORTS", 1400], ["YT_SEARCH", 100]]
 }

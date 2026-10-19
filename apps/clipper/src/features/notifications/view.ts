@@ -25,7 +25,12 @@ export interface NotificationView {
   event: string;
 }
 
-export async function notificationViews(rows: NotificationRow[], locale: UiLocale): Promise<NotificationView[]> {
+/** titles: judul campaign untuk payload yang hanya membawa campaign_id (mis. claim.expiring). */
+export async function notificationViews(
+  rows: NotificationRow[],
+  locale: UiLocale,
+  titles: ReadonlyMap<string, string> = new Map(),
+): Promise<NotificationView[]> {
   const t = await getTranslations('notifications');
   const when = (v: unknown) =>
     typeof v === 'string' && !Number.isNaN(new Date(v).getTime())
@@ -41,7 +46,7 @@ export async function notificationViews(rows: NotificationRow[], locale: UiLocal
         .join(', ');
       const platform = text(p, 'platform', 30).toLowerCase();
       const values = {
-        campaign: text(p, 'campaign_title') || t('fallback.campaign'),
+        campaign: text(p, 'campaign_title') || titles.get(String(p.campaign_id ?? '')) || t('fallback.campaign'),
         platform: isPlatform(platform) ? platformLabel(platform as Platform) : text(p, 'platform', 30) || t('fallback.platform'),
         handle: text(p, 'handle', 60) ? ` @${text(p, 'handle', 60)}` : '',
         amount: amounts || t('fallback.amount'),

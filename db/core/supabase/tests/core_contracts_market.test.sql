@@ -634,6 +634,8 @@ select is((select array_agg(slug order by slug collate "C") from api.list_campai
           'anon: default live + paused, hanya visibility public (tanpa invite/level)');
 select is((select count(*)::int from api.list_campaigns('{"status":"all","limit":50}') where cta_state is not null or cta_reason is not null), 0,
           'anon: cta_state NULL');
+select is((select row(brand_name, brand_verified)::text from api.list_campaigns('{}') where slug = 'film-satu'), '("Studio Satu",t)',
+          'anon: kartu campaign membawa nama brand + status verified');
 select throws_ok($$ select api.claim_campaign('55555555-0000-0000-0000-000000000001') $$, '42501', null, 'anon tidak bisa claim');
 select throws_ok($$ select api.campaign_detail('55555555-0000-0000-0000-000000000001') $$, '42501', null,
                  'anon tidak bisa memanggil campaign_detail');
@@ -768,6 +770,8 @@ select is((select status::text from market.claims where id = '88888888-0000-0000
 set local role authenticated;
 select pg_temp.jwt('11111111-0000-0000-0000-00000000000a');
 insert into t_json (k, j) select 'detail_a', api.campaign_detail('55555555-0000-0000-0000-000000000001');
+select is((select j -> 'brand' from t_json where k = 'detail_a'), '{"name": "Studio Satu", "verified": true}'::jsonb,
+          'detail campaign membawa nama brand untuk clipper');
 select pg_temp.jwt('22222222-0000-0000-0000-0000000000a1');
 insert into t_json (k, j) select 'detail_o', api.campaign_detail('55555555-0000-0000-0000-000000000001');
 select pg_temp.jwt('11111111-0000-0000-0000-00000000000b');

@@ -13,6 +13,7 @@ import { toast } from '@clipper/ui';
 export function BuilderHost({
   orgId,
   renderId,
+  canBilling,
   context,
   initial,
   save,
@@ -20,6 +21,8 @@ export function BuilderHost({
 }: {
   orgId: string;
   renderId: string;
+  /** Setelah diajukan: owner/finance → billing (B1.7); manajer tidak melihat invoice → dashboard campaign. */
+  canBilling: boolean;
   context: BuilderContext;
   initial: CampaignDraft | null;
   save: BuilderActions['save'];
@@ -38,7 +41,7 @@ export function BuilderHost({
       setMount((m) => (m.current === id ? m : { ...m, current: id }));
       if (submitted) {
         toast.success(t('submitted'));
-        router.push(`/${orgId}/billing`);
+        router.push(canBilling ? `/${orgId}/billing` : `/${orgId}/campaigns/${id}`);
         return;
       }
       const url = new URL(window.location.href);
@@ -47,7 +50,7 @@ export function BuilderHost({
         window.history.replaceState(null, '', url);
       }
     },
-    [orgId, router, t],
+    [orgId, canBilling, router, t],
   );
   return <CampaignBuilder key={mount.key} context={context} initial={initial} actions={actions} onSaved={onSaved} />;
 }

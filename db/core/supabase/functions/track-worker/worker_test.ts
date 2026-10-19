@@ -14,9 +14,16 @@ import { runTrackWorker, type SubmissionContext, xDue } from "./worker.ts";
 
 const H = 3_600_000;
 const NOW = Date.parse("2026-10-19T12:00:00Z");
-const tok = (exp = NOW + 10 * H) => JSON.stringify({ v: 1, access_token: "at", refresh_token: "rt", expires_at: new Date(exp).toISOString() });
+const tok = (exp = NOW + 10 * H) =>
+  JSON.stringify({ v: 1, access_token: "at", refresh_token: "rt", expires_at: new Date(exp).toISOString() });
 
-function ctx(id: string, platform: Platform, account: string, over: Partial<SubmissionContext> = {}, sub: Record<string, unknown> = {}): SubmissionContext {
+function ctx(
+  id: string,
+  platform: Platform,
+  account: string,
+  over: Partial<SubmissionContext> = {},
+  sub: Record<string, unknown> = {},
+): SubmissionContext {
   return {
     submission: {
       id,
@@ -38,7 +45,11 @@ function ctx(id: string, platform: Platform, account: string, over: Partial<Subm
   };
 }
 
-function fakeAdapter(platform: Platform, impl: (ids: string[], opts?: FetchOptions) => MetricResult[] | Promise<MetricResult[]>, extra: Partial<PlatformAdapter> = {}) {
+function fakeAdapter(
+  platform: Platform,
+  impl: (ids: string[], opts?: FetchOptions) => MetricResult[] | Promise<MetricResult[]>,
+  extra: Partial<PlatformAdapter> = {},
+) {
   const calls: { ids: string[]; opts?: FetchOptions }[] = [];
   const a = {
     platform,
@@ -48,7 +59,8 @@ function fakeAdapter(platform: Platform, impl: (ids: string[], opts?: FetchOptio
       calls.push({ ids, opts });
       return Promise.resolve(impl(ids, opts));
     },
-    refreshToken: (t: StoredToken) => Promise.resolve({ ...t, access_token: "fresh", expires_at: new Date(NOW + 24 * H).toISOString() }),
+    refreshToken: (t: StoredToken) =>
+      Promise.resolve({ ...t, access_token: "fresh", expires_at: new Date(NOW + 24 * H).toISOString() }),
     ...extra,
   } as unknown as PlatformAdapter;
   return { a, calls };
@@ -65,7 +77,10 @@ const metrics = (postId: string, views = 1000): MetricResult => ({
   raw: { id: postId },
 });
 
-function setup(messages: { msg_id: number; message: { submission_id: string; platform: string } }[], contexts: Record<string, SubmissionContext | null>) {
+function setup(
+  messages: { msg_id: number; message: { submission_id: string; platform: string } }[],
+  contexts: Record<string, SubmissionContext | null>,
+) {
   let dequeues = 0;
   return fakeRpc({
     worker_dequeue: () => (dequeues++ === 0 ? messages : []),
@@ -84,8 +99,18 @@ Deno.test("track-worker: dequeue → snapshot/gone → ack; Retryable tidak di-a
     { msg_id: 2, message: { submission_id: "s2", platform: "tiktok" } },
     { msg_id: 3, message: { submission_id: "s3", platform: "youtube" } },
   ];
-  const f = setup(msgs, { s1: ctx("s1", "tiktok", "a1"), s2: ctx("s2", "tiktok", "a1"), s3: ctx("s3", "youtube", "a2") });
-  const tt = fakeAdapter("tiktok", (ids) => ids.map((id) => id === "post-s2" ? { postId: id, gone: true as const, reason: "not_found_or_private" } : metrics(id)));
+  const f = setup(msgs, {
+    s1: ctx("s1", "tiktok", "a1"),
+    s2: ctx("s2", "tiktok", "a1"),
+    s3: ctx("s3", "youtube", "a2"),
+  });
+  const tt = fakeAdapter(
+    "tiktok",
+    (ids) =>
+      ids.map((id) =>
+        id === "post-s2" ? { postId: id, gone: true as const, reason: "not_found_or_private" } : metrics(id)
+      ),
+  );
   const yt = fakeAdapter("youtube", () => {
     throw new Retryable("quotaExceeded");
   });
@@ -108,7 +133,10 @@ Deno.test("track-worker: dequeue → snapshot/gone → ack; Retryable tidak di-a
     p_raw: { id: "post-s1" },
     p_extra: { reach: 900 },
   });
-  assert.deepEqual(f.calls.find((c) => c.fn === "worker_post_gone")!.args, { p_submission: "s2", p_reason: "not_found_or_private" });
+  assert.deepEqual(f.calls.find((c) => c.fn === "worker_post_gone")!.args, {
+    p_submission: "s2",
+    p_reason: "not_found_or_private",
+  });
   const acked = f.calls.filter((c) => c.fn === "worker_ack").map((c) => c.args.p_msg_id).sort();
   assert.deepEqual(acked, [1, 2]); // msg 3 (Retryable) tidak di-ack → kembali setelah visibility timeout
   assert.ok(f.calls.every((c) => c.fn !== "worker_ack" || c.args.p_queue === "tracking"));
@@ -117,12 +145,22 @@ Deno.test("track-worker: dequeue → snapshot/gone → ack; Retryable tidak di-a
 });
 
 Deno.test("track-worker: TokenExpired → account_status expired + ack; tidak pernah menulis 0 views", async () => {
-  const f = setup([{ msg_id: 9, message: { submission_id: "s9", platform: "instagram" } }], { s9: ctx("s9", "instagram", "a9") });
+  const f = setup([{ msg_id: 9, message: { submission_id: "s9", platform: "instagram" } }], {
+    s9: ctx("s9", "instagram", "a9"),
+  });
   const ig = fakeAdapter("instagram", () => {
     throw new TokenExpired("190");
   });
-  const s = await runTrackWorker({ rpc: f.rpc, adapter: () => ig.a, flags: () => Promise.resolve({ instagram: true }), now: () => NOW });
-  assert.deepEqual(f.calls.find((c) => c.fn === "worker_account_status")!.args, { p_account: "a9", p_status: "expired" });
+  const s = await runTrackWorker({
+    rpc: f.rpc,
+    adapter: () => ig.a,
+    flags: () => Promise.resolve({ instagram: true }),
+    now: () => NOW,
+  });
+  assert.deepEqual(f.calls.find((c) => c.fn === "worker_account_status")!.args, {
+    p_account: "a9",
+    p_status: "expired",
+  });
   assert.ok(!f.calls.some((c) => c.fn === "worker_record_snapshot"));
   assert.deepEqual([s.expired, s.acked], [1, 1]);
 });
@@ -134,11 +172,22 @@ Deno.test("track-worker: per-post retry tidak di-ack; platform mati / token paus
     s3: ctx("s3", "tiktok", "a3", { account: { id: "a3", external_id: "e", handle: "h", status: "token_expired" } }),
     s4: ctx("s4", "tiktok", "a1", {}, { status: "locked" }),
   };
-  const msgs = Object.keys(contexts).map((id, i) => ({ msg_id: i + 1, message: { submission_id: id, platform: "tiktok" } }));
+  const msgs = Object.keys(contexts).map((id, i) => ({
+    msg_id: i + 1,
+    message: { submission_id: id, platform: "tiktok" },
+  }));
   msgs.push({ msg_id: 99, message: { submission_id: "s1", platform: "tiktok" } }); // duplikat submisi
   const f = setup(msgs, contexts);
-  const tt = fakeAdapter("tiktok", (ids) => ids.map((id) => ({ postId: id, retry: true as const, reason: "view_count_missing" })));
-  const s = await runTrackWorker({ rpc: f.rpc, adapter: () => tt.a, flags: () => Promise.resolve({ tiktok: true, threads: false }), now: () => NOW });
+  const tt = fakeAdapter(
+    "tiktok",
+    (ids) => ids.map((id) => ({ postId: id, retry: true as const, reason: "view_count_missing" })),
+  );
+  const s = await runTrackWorker({
+    rpc: f.rpc,
+    adapter: () => tt.a,
+    flags: () => Promise.resolve({ tiktok: true, threads: false }),
+    now: () => NOW,
+  });
   assert.equal(tt.calls.length, 1);
   assert.deepEqual(tt.calls[0].ids, ["post-s1"]);
   const acked = f.calls.filter((c) => c.fn === "worker_ack").map((c) => c.args.p_msg_id).sort();
@@ -157,7 +206,12 @@ Deno.test("track-worker: token hampir kedaluwarsa di-refresh & disimpan sebelum 
       return Promise.resolve(ids.map((id) => metrics(id)));
     },
   });
-  await runTrackWorker({ rpc: f.rpc, adapter: () => yt.a, flags: () => Promise.resolve({ youtube: true }), now: () => NOW });
+  await runTrackWorker({
+    rpc: f.rpc,
+    adapter: () => yt.a,
+    flags: () => Promise.resolve({ youtube: true }),
+    now: () => NOW,
+  });
   assert.equal(used, "fresh");
   const store = f.calls.find((x) => x.fn === "store_social_token")!;
   assert.equal(store.args.p_account_id, "a1");
@@ -166,7 +220,13 @@ Deno.test("track-worker: token hampir kedaluwarsa di-refresh & disimpan sebelum 
 
 Deno.test("track-worker: X hanya di checkpoint 24 jam, 7 hari, lock", () => {
   const at = (ageH: number, over: Partial<SubmissionContext> = {}, last?: number) =>
-    xDue(ctx("s", "x", "a", over, { posted_at: new Date(NOW - ageH * H).toISOString(), last_snapshot_at: last ? new Date(NOW - last * H).toISOString() : null }), NOW);
+    xDue(
+      ctx("s", "x", "a", over, {
+        posted_at: new Date(NOW - ageH * H).toISOString(),
+        last_snapshot_at: last ? new Date(NOW - last * H).toISOString() : null,
+      }),
+      NOW,
+    );
   assert.equal(at(4), false);
   assert.equal(at(23), false);
   assert.equal(at(24.5), true);
@@ -180,24 +240,50 @@ Deno.test("track-worker: X hanya di checkpoint 24 jam, 7 hari, lock", () => {
 
 Deno.test("track-worker: berhenti saat budget habis; flags gagal → run berhenti tanpa ack", async () => {
   let t = NOW;
-  const f = setup([{ msg_id: 1, message: { submission_id: "s1", platform: "tiktok" } }], { s1: ctx("s1", "tiktok", "a1") });
-  const s = await runTrackWorker({ rpc: f.rpc, adapter: () => fakeAdapter("tiktok", () => []).a, flags: () => Promise.resolve({}), now: () => (t += 60_000) });
+  const f = setup([{ msg_id: 1, message: { submission_id: "s1", platform: "tiktok" } }], {
+    s1: ctx("s1", "tiktok", "a1"),
+  });
+  const s = await runTrackWorker({
+    rpc: f.rpc,
+    adapter: () => fakeAdapter("tiktok", () => []).a,
+    flags: () => Promise.resolve({}),
+    now: () => (t += 60_000),
+  });
   assert.equal(s.dequeued, 0);
-  const g = setup([{ msg_id: 1, message: { submission_id: "s1", platform: "tiktok" } }], { s1: ctx("s1", "tiktok", "a1") });
-  await assert.rejects(runTrackWorker({ rpc: g.rpc, adapter: () => fakeAdapter("tiktok", () => []).a, flags: () => Promise.reject(new Error("db")), now: () => NOW }));
+  const g = setup([{ msg_id: 1, message: { submission_id: "s1", platform: "tiktok" } }], {
+    s1: ctx("s1", "tiktok", "a1"),
+  });
+  await assert.rejects(
+    runTrackWorker({
+      rpc: g.rpc,
+      adapter: () => fakeAdapter("tiktok", () => []).a,
+      flags: () => Promise.reject(new Error("db")),
+      now: () => NOW,
+    }),
+  );
   assert.ok(!g.calls.some((c) => c.fn === "worker_ack"));
 });
 
 Deno.test("track-worker: submisi sudah dihapus (P0002) → ack; error RPC lain → tidak di-ack", async () => {
   let n = 0;
   const f = fakeRpc({
-    worker_dequeue: () => (n++ === 0 ? [{ msg_id: 1, message: { submission_id: "gone", platform: "tiktok" } }, { msg_id: 2, message: { submission_id: "flaky", platform: "tiktok" } }] : []),
+    worker_dequeue: () => (n++ === 0
+      ? [{ msg_id: 1, message: { submission_id: "gone", platform: "tiktok" } }, {
+        msg_id: 2,
+        message: { submission_id: "flaky", platform: "tiktok" },
+      }]
+      : []),
     worker_submission_context: (a) => {
       throw new RpcError("worker_submission_context", a.p_submission === "gone" ? "P0002" : "57014", "x");
     },
     worker_ack: () => true,
   });
-  const s = await runTrackWorker({ rpc: f.rpc, adapter: () => fakeAdapter("tiktok", () => []).a, flags: () => Promise.resolve({ tiktok: true }), now: () => NOW });
+  const s = await runTrackWorker({
+    rpc: f.rpc,
+    adapter: () => fakeAdapter("tiktok", () => []).a,
+    flags: () => Promise.resolve({ tiktok: true }),
+    now: () => NOW,
+  });
   assert.deepEqual(f.calls.filter((c) => c.fn === "worker_ack").map((c) => c.args.p_msg_id), [1]);
   assert.deepEqual([s.skipped, s.retried], [1, 1]);
 });

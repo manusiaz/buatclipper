@@ -69,7 +69,7 @@ export default async function OverviewPage({ searchParams }: { searchParams: Pro
         <StatCard label={t('overview.openAlerts')} value={formatNumber(ov.open_alerts, loc)} icon="notifications" />
       </section>
 
-      <div className="mt-6 grid gap-5 lg:grid-cols-[minmax(0,2fr)_minmax(0,1fr)]">
+      <div className="mt-6 grid grid-cols-1 gap-5 lg:grid-cols-[minmax(0,2fr)_minmax(0,1fr)]">
         <Card padding="none">
           <CardHeader className="px-5 pt-5">
             <CardTitle>{t('overview.alerts')}</CardTitle>

@@ -9,9 +9,9 @@ import {
   ensureFresh,
   isPlatform,
   parseToken,
+  pkcePair,
   type Platform,
   type PlatformAdapter,
-  pkcePair,
   platformFlags,
   Retryable,
   type StoredToken,
@@ -67,7 +67,11 @@ export const SUBMIT_ERRORS = [
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
-function str(body: Record<string, unknown>, key: string, opts: { optional?: boolean; max?: number; uuid?: boolean } = {}): string {
+function str(
+  body: Record<string, unknown>,
+  key: string,
+  opts: { optional?: boolean; max?: number; uuid?: boolean } = {},
+): string {
   const v = body[key];
   if (v === undefined || v === null || v === "") {
     if (opts.optional) return "";
@@ -84,7 +88,8 @@ export function mapRpcError(e: unknown, known: readonly string[]): HttpError {
   if (!(e instanceof RpcError)) throw e;
   const m = /^([a-z_]+)(?::\s*(.*))?$/s.exec(e.message.trim());
   if (m && known.includes(m[1])) {
-    const detail = m[1] === "missing_tags" && m[2] ? m[2].replace(/^[{[]|[}\]]$/g, "").split(",").map((s) => s.trim().replace(/^"|"$/g, "")).filter(Boolean)
+    const detail = m[1] === "missing_tags" && m[2]
+      ? m[2].replace(/^[{[]|[}\]]$/g, "").split(",").map((s) => s.trim().replace(/^"|"$/g, "")).filter(Boolean)
       : m[2] || undefined;
     return new HttpError(422, m[1], m[1], detail);
   }
@@ -101,7 +106,9 @@ export function mapRpcError(e: unknown, known: readonly string[]): HttpError {
 /** Error adapter → respons. TokenExpired saat memakai token tersimpan = akun perlu reconnect. */
 function mapAdapterError(e: unknown): never {
   if (e instanceof AdapterError) throw new HttpError(422, e.code, e.message, e.detail);
-  if (e instanceof Retryable) throw new HttpError(503, "platform_unavailable", "API platform sedang bermasalah, coba lagi");
+  if (e instanceof Retryable) {
+    throw new HttpError(503, "platform_unavailable", "API platform sedang bermasalah, coba lagi");
+  }
   throw e;
 }
 
@@ -124,7 +131,10 @@ export function createSocialHandler(deps: SocialDeps): (req: Request) => Promise
   }
 
   /** Akun milik user + token segar. Token kedaluwarsa → status expired + 409 token_expired (UI: Reconnect). */
-  async function account(user: User, accountId: string): Promise<{ acct: AccountRow; adapter: PlatformAdapter; token: StoredToken }> {
+  async function account(
+    user: User,
+    accountId: string,
+  ): Promise<{ acct: AccountRow; adapter: PlatformAdapter; token: StoredToken }> {
     const acct = await deps.rpc<AccountRow | null>("worker_account_token", { p_account: accountId });
     if (!acct || acct.user_id !== user.id) throw new HttpError(422, "account_not_yours");
     await enabled(acct.platform);
@@ -269,13 +279,18 @@ export function defaultSocialDeps(): SocialDeps {
     adapter: (p) => adapterFor(p),
     flags: () => platformFlags(),
     async getClaim(user, claimId) {
-      const { data, error } = await userClient(user.jwt).from("claims").select("id,campaign_id,user_id,status,created_at")
+      const { data, error } = await userClient(user.jwt).from("claims").select(
+        "id,campaign_id,user_id,status,created_at",
+      )
         .eq("id", claimId).eq("user_id", user.id).maybeSingle();
       if (error) throw new RpcError("claims", error.code ?? "", error.message);
       return data as Claim | null;
     },
     async missingTags(user, campaignId, caption) {
-      const { data, error } = await userClient(user.jwt).rpc("missing_brief_tags", { p_campaign: campaignId, p_caption: caption });
+      const { data, error } = await userClient(user.jwt).rpc("missing_brief_tags", {
+        p_campaign: campaignId,
+        p_caption: caption,
+      });
       if (error) throw new RpcError("missing_brief_tags", error.code ?? "", error.message);
       return data as string[] | null;
     },

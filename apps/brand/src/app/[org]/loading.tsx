@@ -7,7 +7,7 @@ export default function Loading() {
         <Skeleton shape="text" className="h-9 w-1/2 max-w-[360px]" />
         <Skeleton shape="text" className="w-2/3 max-w-[520px]" />
       </div>
-      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4 [&>*]:min-w-0">
         {Array.from({ length: 4 }, (_, i) => <Skeleton key={i} className="h-28" />)}
       </div>
       <Skeleton className="h-72" />

@@ -139,7 +139,7 @@ export function RewardTypeDialog({ orgId, row, trigger }: { orgId: string; row?:
           >
             {error ? <Alert tone="danger">{error}</Alert> : null}
             {row ? <Alert tone="info">{t('lockedNote')}</Alert> : null}
-            <div className="grid gap-4 sm:grid-cols-2">
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 [&>*]:min-w-0">
               <Field label={t('name')} error={err('name')} required>
                 <Input value={d.name} onChange={(e) => set('name', e.target.value)} maxLength={80} />
               </Field>
@@ -186,7 +186,7 @@ export function RewardTypeDialog({ orgId, row, trigger }: { orgId: string; row?:
             <Fieldset legend={t('recipientFields')} description={t('recipientHelp')} error={touched && issues.fields ? t('invalid.fields') : undefined}>
               <ul className="flex flex-col gap-3">
                 {d.recipient_schema.map((f, i) => (
-                  <li key={i} className="grid gap-2 rounded-card-sm border border-border p-3 sm:grid-cols-[1fr_1fr_auto]">
+                  <li key={i} className="grid grid-cols-1 gap-2 rounded-card-sm border border-border p-3 sm:grid-cols-[1fr_1fr_auto] [&>*]:min-w-0">
                     <Field label={t('fieldLabel')}>
                       <Input inputSize="sm" value={f.label} onChange={(e) => fieldRow(i, { label: e.target.value })} placeholder={t('fieldLabelPh')} />
                     </Field>

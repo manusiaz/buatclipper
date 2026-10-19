@@ -18,6 +18,7 @@ import {
   Input,
   Select,
   formatDateTime,
+  formatIDR,
   formatNumber,
   platformLabel,
   toast,
@@ -56,6 +57,7 @@ export function ControlPanel({
   pools,
   canControl,
   canFund,
+  canBilling,
 }: {
   orgId: string;
   campaignId: string;
@@ -66,6 +68,8 @@ export function ControlPanel({
   pools: ControlPool[];
   canControl: boolean;
   canFund: boolean;
+  /** Invoice hanya terlihat owner/finance (RLS invoices); manajer tetap di halaman ini. */
+  canBilling: boolean;
 }) {
   const t = useTranslations('brand.controls');
   const tk = useTranslations('brand.ruleKind');
@@ -100,13 +104,14 @@ export function ControlPanel({
 
   if (!canControl && !canFund) return <Alert tone="info">{t('readOnly')}</Alert>;
 
+  const money = (r: ControlRule, v: unknown) =>
+    r.code === 'IDR' ? formatIDR(num(v), { locale }) : `${formatNumber(num(v), locale, { maximumFractionDigits: 6 })} ${r.unitLabel}`;
   const ruleValue = (r: ControlRule) => {
     const p = r.params;
-    if (r.kind === 'per_1k_views') return t('valueRate', { rate: formatNumber(num(p.rate), locale), unit: r.unitLabel });
-    if (r.kind === 'flat_per_post') return t('valueAmount', { amount: formatNumber(num(p.amount), locale), unit: r.unitLabel });
-    if (r.kind === 'milestone_bonus')
-      return t('valueMilestone', { amount: formatNumber(num(p.amount), locale), unit: r.unitLabel, views: formatNumber(num(p.threshold), locale) });
-    return t('valueTiers', { count: tiers.length });
+    if (r.kind === 'per_1k_views') return t('valueRate', { value: money(r, p.rate) });
+    if (r.kind === 'flat_per_post') return t('valueAmount', { value: money(r, p.amount) });
+    if (r.kind === 'milestone_bonus') return t('valueMilestone', { value: money(r, p.amount), views: formatNumber(num(p.threshold), locale) });
+    return t('valueTiers', { count: Array.isArray(p.tiers) ? p.tiers.length : 0 });
   };
 
   const newParams = (): Record<string, unknown> | null => {
@@ -126,7 +131,7 @@ export function ControlPanel({
   const topupItems = pools.flatMap((p) => (num(topup[p.poolId]) > 0 ? [{ pool_id: p.poolId, amount: num(topup[p.poolId]) }] : []));
 
   return (
-    <div className="grid gap-4 lg:grid-cols-2">
+    <div className="grid grid-cols-1 gap-4 lg:grid-cols-2 [&>*]:min-w-0">
       {canControl ? (
         <Card>
           <CardHeader>
@@ -174,7 +179,7 @@ export function ControlPanel({
           </CardHeader>
           <CardContent>
             <form
-              className="flex flex-col gap-3 sm:flex-row sm:items-end"
+              className="flex flex-col gap-3"
               onSubmit={(e) => {
                 e.preventDefault();
                 const iso = fromWibInput(deadline);
@@ -182,10 +187,10 @@ export function ControlPanel({
                 void run('extend', { action: 'extend', submit_deadline: iso });
               }}
             >
-              <Field label={t('newDeadline')} helper={t('wib')} className="flex-1">
+              <Field label={t('newDeadline')} helper={t('wib')}>
                 <Input type="datetime-local" value={deadline} min={toWibInput(submitDeadline)} onChange={(e) => setDeadline(e.target.value)} required />
               </Field>
-              <Button type="submit" loading={busy === 'extend'} iconLeft="event">{t('extend')}</Button>
+              <Button type="submit" loading={busy === 'extend'} iconLeft="event" className="self-start">{t('extend')}</Button>
             </form>
           </CardContent>
         </Card>
@@ -242,7 +247,7 @@ export function ControlPanel({
                     <Field
                       key={i}
                       label={t('tierLabel', { from: formatNumber(num(x.from), locale), to: x.to == null ? '∞' : formatNumber(num(x.to), locale) })}
-                      helper={t('current', { value: formatNumber(num(x.rate), locale) })}
+                      helper={t('current', { value: rule ? money(rule, x.rate) : '' })}
                     >
                       <Input
                         type="number"
@@ -277,7 +282,7 @@ export function ControlPanel({
                 if (!topupItems.length) return toast.error(t('topupEmpty'));
                 void run('topup', { action: 'topup', pools: topupItems }, () => {
                   setTopup({});
-                  router.push(`/${orgId}/billing`);
+                  if (canBilling) router.push(`/${orgId}/billing`);
                 });
               }}
             >
@@ -297,7 +302,7 @@ export function ControlPanel({
               ))}
               <div className="flex flex-wrap items-center gap-3">
                 <Button type="submit" variant="ink" loading={busy === 'topup'} iconLeft="receipt_long">{t('topup')}</Button>
-                <Link href={`/${orgId}/billing`} className="text-body-s font-semibold text-link focus-ring rounded-[4px]">{t('toBilling')}</Link>
+                {canBilling ? <Link href={`/${orgId}/billing`} className="text-body-s font-semibold text-link focus-ring rounded-[4px]">{t('toBilling')}</Link> : null}
               </div>
             </form>
           </CardContent>

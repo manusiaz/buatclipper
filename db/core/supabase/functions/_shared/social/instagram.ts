@@ -23,15 +23,27 @@ export const INSTAGRAM = {
   graph: "https://graph.instagram.com",
   version: "v23.0",
   scopes: ["instagram_business_basic", "instagram_business_manage_insights"],
-  mediaFields: "id,caption,media_type,media_product_type,permalink,shortcode,timestamp,thumbnail_url,like_count,comments_count,username",
-  reelMetrics: ["views", "reach", "likes", "comments", "shares", "saved", "total_interactions", "ig_reels_avg_watch_time", "reels_skip_rate"],
+  mediaFields:
+    "id,caption,media_type,media_product_type,permalink,shortcode,timestamp,thumbnail_url,like_count,comments_count,username",
+  reelMetrics: [
+    "views",
+    "reach",
+    "likes",
+    "comments",
+    "shares",
+    "saved",
+    "total_interactions",
+    "ig_reels_avg_watch_time",
+    "reels_skip_rate",
+  ],
   baseMetrics: ["views", "reach", "likes", "comments", "shares", "saved"],
   professional: ["BUSINESS", "MEDIA_CREATOR", "CREATOR"],
   pages: 6,
 } as const;
 
 /** "2024-05-01T10:00:00+0000" → ISO. */
-export const metaTime = (s: string): string => new Date(String(s).replace(/([+-]\d{2})(\d{2})$/, "$1:$2")).toISOString();
+export const metaTime = (s: string): string =>
+  new Date(String(s).replace(/([+-]\d{2})(\d{2})$/, "$1:$2")).toISOString();
 
 /** Insights Graph: {data:[{name, values:[{value}]} | {name, total_value:{value}}]} → {name: value}. */
 export function insightValues(body: Json): Record<string, number | null> {
@@ -48,7 +60,12 @@ export function shortcodeFrom(url: string): string | null {
 export function createInstagram(cfg: { appId: string; appSecret: string; fetch?: Fetch }): PlatformAdapter {
   const http: Http = defaultHttp(cfg.fetch);
   const g = (path: string, t: StoredToken, params: Record<string, string | number | undefined> = {}) =>
-    request(http, qs(`${INSTAGRAM.graph}/${INSTAGRAM.version}/${path}`, { ...params, access_token: t.access_token }), {}, graphError);
+    request(
+      http,
+      qs(`${INSTAGRAM.graph}/${INSTAGRAM.version}/${path}`, { ...params, access_token: t.access_token }),
+      {},
+      graphError,
+    );
 
   const toVideo = (m: Json): Video => ({
     postId: String(m.id),
@@ -59,7 +76,10 @@ export function createInstagram(cfg: { appId: string; appSecret: string; fetch?:
     thumbnail: m.thumbnail_url ?? null,
   });
 
-  async function* mediaPages(t: StoredToken, params: Record<string, string | number | undefined>): AsyncGenerator<Json[]> {
+  async function* mediaPages(
+    t: StoredToken,
+    params: Record<string, string | number | undefined>,
+  ): AsyncGenerator<Json[]> {
     let body = await g("me/media", t, { fields: INSTAGRAM.mediaFields, limit: 50, ...params });
     for (let i = 0; i < INSTAGRAM.pages; i++) {
       yield body?.data ?? [];
@@ -71,10 +91,14 @@ export function createInstagram(cfg: { appId: string; appSecret: string; fetch?:
 
   async function insights(id: string, t: StoredToken, reel: boolean): Promise<Record<string, number | null>> {
     try {
-      return insightValues(await g(`${id}/insights`, t, { metric: (reel ? INSTAGRAM.reelMetrics : INSTAGRAM.baseMetrics).join(",") }));
+      return insightValues(
+        await g(`${id}/insights`, t, { metric: (reel ? INSTAGRAM.reelMetrics : INSTAGRAM.baseMetrics).join(",") }),
+      );
     } catch (e) {
       // Metrik tidak didukung untuk tipe media ini (code 100) → ulang sekali dengan set dasar.
-      if (e instanceof AdapterError && reel) return insightValues(await g(`${id}/insights`, t, { metric: INSTAGRAM.baseMetrics.join(",") }));
+      if (e instanceof AdapterError && reel) {
+        return insightValues(await g(`${id}/insights`, t, { metric: INSTAGRAM.baseMetrics.join(",") }));
+      }
       throw e;
     }
   }
@@ -99,7 +123,13 @@ export function createInstagram(cfg: { appId: string; appSecret: string; fetch?:
         const out = await request(http, INSTAGRAM.token, {
           method: "POST",
           headers: { "content-type": "application/x-www-form-urlencoded" },
-          body: form({ client_id: cfg.appId, client_secret: cfg.appSecret, grant_type: "authorization_code", redirect_uri: redirectUri, code }),
+          body: form({
+            client_id: cfg.appId,
+            client_secret: cfg.appSecret,
+            grant_type: "authorization_code",
+            redirect_uri: redirectUri,
+            code,
+          }),
         }, graphError);
         const short = Array.isArray(out?.data) ? out.data[0] : out; // docs: {data:[{access_token,user_id,permissions}]}
         if (!short?.access_token) throw new AdapterError("oauth_failed", "access_token kosong");
@@ -107,7 +137,11 @@ export function createInstagram(cfg: { appId: string; appSecret: string; fetch?:
         requireScopes(perms, [...INSTAGRAM.scopes]);
         const long = await request(
           http,
-          qs(`${INSTAGRAM.graph}/access_token`, { grant_type: "ig_exchange_token", client_secret: cfg.appSecret, access_token: short.access_token }),
+          qs(`${INSTAGRAM.graph}/access_token`, {
+            grant_type: "ig_exchange_token",
+            client_secret: cfg.appSecret,
+            access_token: short.access_token,
+          }),
           {},
           graphError,
         );
@@ -145,7 +179,9 @@ export function createInstagram(cfg: { appId: string; appSecret: string; fetch?:
       const out: Video[] = [];
       const since = Math.floor(Date.parse(sinceIso) / 1000);
       for await (const page of mediaPages(t, { since })) {
-        for (const m of page) if (m.media_type === "VIDEO" && Date.parse(metaTime(m.timestamp)) >= since * 1000) out.push(toVideo(m));
+        for (const m of page) {
+          if (m.media_type === "VIDEO" && Date.parse(metaTime(m.timestamp)) >= since * 1000) out.push(toVideo(m));
+        }
       }
       return out;
     },
@@ -159,7 +195,8 @@ export function createInstagram(cfg: { appId: string; appSecret: string; fetch?:
           throw e;
         });
         const owners = [t.meta?.ig_user_id, t.meta?.ig_scoped_id].filter(Boolean);
-        const own = (m.owner?.id && owners.includes(String(m.owner.id))) || (m.username && m.username === t.meta?.username);
+        const own = (m.owner?.id && owners.includes(String(m.owner.id))) ||
+          (m.username && m.username === t.meta?.username);
         if (!own) throw new AdapterError("not_owner", "post bukan milik akun ini");
       } else {
         const code = shortcodeFrom(s);
@@ -178,7 +215,9 @@ export function createInstagram(cfg: { appId: string; appSecret: string; fetch?:
       const results: MetricResult[] = [];
       for (const id of postIds) {
         try {
-          const m = await g(id, t, { fields: "id,caption,media_type,media_product_type,like_count,comments_count,timestamp" });
+          const m = await g(id, t, {
+            fields: "id,caption,media_type,media_product_type,like_count,comments_count,timestamp",
+          });
           const ins = await insights(id, t, m.media_product_type === "REELS");
           if (ins.views == null) {
             results.push({ postId: id, retry: true, reason: "views_missing" });

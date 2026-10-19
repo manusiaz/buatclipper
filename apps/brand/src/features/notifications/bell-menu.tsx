@@ -23,7 +23,7 @@ export function BellMenu({ items, unread }: { items: BellItem[]; unread: number 
   return (
     <Popover>
       <PopoverTrigger asChild>
-        <IconButton icon="notifications" label={unread ? t('labelUnread', { count: unread }) : t('label')} badge={unread || undefined} />
+        <IconButton icon="notifications" label={t('label')} badge={unread || undefined} />
       </PopoverTrigger>
       <PopoverContent align="end" className="w-[min(380px,calc(100vw-24px))] p-0">
         <div className="flex items-center justify-between gap-2 border-b border-border px-4 py-3">

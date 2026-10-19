@@ -34,7 +34,7 @@ export function AccountMenu({ data, pathname }: { data: ChromeData; pathname: st
         </button>
       </DropdownMenuTrigger>
       <DropdownMenuContent className="w-64">
-        <DropdownMenuLabel className="flex flex-col gap-0.5">
+        <DropdownMenuLabel className="flex flex-col gap-0.5 normal-case tracking-normal">
           <span className="truncate text-body-s font-bold text-ink">{data.name}</span>
           {data.username ? <span className="truncate text-caption text-muted">@{data.username}</span> : null}
         </DropdownMenuLabel>

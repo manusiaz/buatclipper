@@ -2,17 +2,37 @@ import assert from "node:assert/strict";
 import type { User } from "../_shared/auth.ts";
 import { RpcError } from "../_shared/db.ts";
 import { HttpError } from "../_shared/http.ts";
-import { AdapterError, type PlatformAdapter, type StoredToken, TokenExpired, type Video } from "../_shared/social/mod.ts";
+import {
+  AdapterError,
+  type PlatformAdapter,
+  type StoredToken,
+  TokenExpired,
+  type Video,
+} from "../_shared/social/mod.ts";
 import { fakeRpc } from "../_shared/testing.ts";
-import { type AccountRow, createSocialHandler, mapRpcError, SUBMIT_ERRORS, type SocialDeps } from "./handler.ts";
+import { type AccountRow, createSocialHandler, mapRpcError, type SocialDeps, SUBMIT_ERRORS } from "./handler.ts";
 
-const USER: User = { id: "11111111-1111-4111-8111-111111111111", roles: ["clipper"], aal: "aal1", kyc: null, jwt: "jwt", claims: {} };
+const USER: User = {
+  id: "11111111-1111-4111-8111-111111111111",
+  roles: ["clipper"],
+  aal: "aal1",
+  kyc: null,
+  jwt: "jwt",
+  claims: {},
+};
 const ACCOUNT = "22222222-2222-4222-8222-222222222222";
 const CLAIM = "33333333-3333-4333-8333-333333333333";
 const ORIGIN = "https://app.clipper.test";
 const CB = "https://app.clipper.test/api/oauth/tiktok/callback";
 
-const VIDEO: Video = { postId: "7080", url: "https://www.tiktok.com/@c/video/7080", caption: "#mplid", postedAt: "2026-10-01T10:00:00.000Z", durationSec: 34, thumbnail: null };
+const VIDEO: Video = {
+  postId: "7080",
+  url: "https://www.tiktok.com/@c/video/7080",
+  caption: "#mplid",
+  postedAt: "2026-10-01T10:00:00.000Z",
+  durationSec: 34,
+  thumbnail: null,
+};
 const tokenJson = JSON.stringify({ v: 1, access_token: "at", expires_at: "2099-01-01T00:00:00Z" });
 
 function adapter(over: Partial<PlatformAdapter> = {}): PlatformAdapter {
@@ -22,7 +42,14 @@ function adapter(over: Partial<PlatformAdapter> = {}): PlatformAdapter {
     maxBatch: 20,
     authorizeUrl: (r: string, s: string, c?: string) => `https://auth.test/?r=${r}&s=${s}&c=${c ?? ""}`,
     exchangeCode: () => Promise.resolve({ v: 1, access_token: "at", meta: { open_id: "o1" } } as StoredToken),
-    profile: () => Promise.resolve({ externalId: "o1", handle: "clipper", followers: 10, createdAt: null, tokenMeta: { username: "clipper" } }),
+    profile: () =>
+      Promise.resolve({
+        externalId: "o1",
+        handle: "clipper",
+        followers: 10,
+        createdAt: null,
+        tokenMeta: { username: "clipper" },
+      }),
     listVideos: () => Promise.resolve([VIDEO, { ...VIDEO, postId: "7081", caption: "tanpa tag" }]),
     getPost: () => Promise.resolve(VIDEO),
     fetchMetrics: () => Promise.resolve([]),
@@ -42,7 +69,10 @@ const acct = (over: Partial<AccountRow> = {}): AccountRow => ({
   ...over,
 });
 
-function deps(rpcHandlers: Record<string, (a: Record<string, unknown>) => unknown> = {}, over: Partial<SocialDeps> = {}) {
+function deps(
+  rpcHandlers: Record<string, (a: Record<string, unknown>) => unknown> = {},
+  over: Partial<SocialDeps> = {},
+) {
   const f = fakeRpc({
     worker_account_token: () => acct(),
     worker_account_status: () => null,
@@ -50,11 +80,21 @@ function deps(rpcHandlers: Record<string, (a: Record<string, unknown>) => unknow
     ...rpcHandlers,
   });
   const d: SocialDeps = {
-    auth: (req) => req.headers.get("authorization") === "Bearer good" ? Promise.resolve(USER) : Promise.reject(new HttpError(401, "unauthorized")),
+    auth: (req) =>
+      req.headers.get("authorization") === "Bearer good"
+        ? Promise.resolve(USER)
+        : Promise.reject(new HttpError(401, "unauthorized")),
     rpc: f.rpc,
     adapter: () => adapter(),
     flags: () => Promise.resolve({ tiktok: true, instagram: true, x: true, youtube: true, threads: false }),
-    getClaim: () => Promise.resolve({ id: CLAIM, campaign_id: "camp", user_id: USER.id, status: "open", created_at: "2026-09-30T00:00:00Z" }),
+    getClaim: () =>
+      Promise.resolve({
+        id: CLAIM,
+        campaign_id: "camp",
+        user_id: USER.id,
+        status: "open",
+        created_at: "2026-09-30T00:00:00Z",
+      }),
     missingTags: (_u, _c, caption) => Promise.resolve(caption.includes("#mplid") ? [] : ["#mplid"]),
     redirectAllowlist: [CB],
     origins: [ORIGIN],
@@ -121,17 +161,24 @@ Deno.test("social: submit memetakan error SQL ke kode (missing_tags dirinci per 
 });
 
 Deno.test("social: submit video akun lain → not_owner; akun bukan milik user → account_not_yours; token mati → 409 + status expired", async () => {
-  let r = await deps({}, { adapter: () => adapter({ getPost: () => Promise.reject(new AdapterError("not_owner", "bukan milikmu")) }) })
+  let r = await deps({}, {
+    adapter: () => adapter({ getPost: () => Promise.reject(new AdapterError("not_owner", "bukan milikmu")) }),
+  })
     .handler(post({ action: "submit", claim_id: CLAIM, account_id: ACCOUNT, post_id: "1" }));
   assert.deepEqual([r.status, (await r.json()).error], [422, "not_owner"]);
 
-  r = await deps({ worker_account_token: () => acct({ user_id: "someone-else" }) }).handler(post({ action: "submit", claim_id: CLAIM, account_id: ACCOUNT, post_id: "1" }));
+  r = await deps({ worker_account_token: () => acct({ user_id: "someone-else" }) }).handler(
+    post({ action: "submit", claim_id: CLAIM, account_id: ACCOUNT, post_id: "1" }),
+  );
   assert.deepEqual([r.status, (await r.json()).error], [422, "account_not_yours"]);
 
   const d = deps({}, { adapter: () => adapter({ getPost: () => Promise.reject(new TokenExpired("401")) }) });
   r = await d.handler(post({ action: "submit", claim_id: CLAIM, account_id: ACCOUNT, post_id: "1" }));
   assert.deepEqual([r.status, (await r.json()).error], [409, "token_expired"]);
-  assert.deepEqual(d.calls.find((c) => c.fn === "worker_account_status")!.args, { p_account: ACCOUNT, p_status: "expired" });
+  assert.deepEqual(d.calls.find((c) => c.fn === "worker_account_status")!.args, {
+    p_account: ACCOUNT,
+    p_status: "expired",
+  });
 
   r = await deps().handler(post({ action: "submit", claim_id: "bukan-uuid", account_id: ACCOUNT, post_id: "1" }));
   assert.deepEqual([r.status, (await r.json()).error], [400, "bad_request"]);
@@ -139,19 +186,24 @@ Deno.test("social: submit video akun lain → not_owner; akun bukan milik user �
 
 Deno.test("social: connect memetakan ig_personal, social_taken, account_limit, platform_disabled", async () => {
   const body = { action: "connect", platform: "instagram", code: "c", redirect_uri: CB };
-  let r = await deps({}, { adapter: () => adapter({ profile: () => Promise.reject(new AdapterError("ig_personal")) }) }).handler(post(body));
+  let r = await deps({}, { adapter: () => adapter({ profile: () => Promise.reject(new AdapterError("ig_personal")) }) })
+    .handler(post(body));
   assert.deepEqual([r.status, (await r.json()).error], [422, "ig_personal"]);
 
   r = await deps({ worker_upsert_social_account: rpcErr("social_taken") }).handler(post(body));
   assert.deepEqual([r.status, (await r.json()).error], [422, "social_taken"]);
 
-  r = await deps({ worker_upsert_social_account: rpcErr("maksimal 3 akun instagram per clipper", "23514") }).handler(post(body));
+  r = await deps({ worker_upsert_social_account: rpcErr("maksimal 3 akun instagram per clipper", "23514") }).handler(
+    post(body),
+  );
   assert.deepEqual([r.status, (await r.json()).error], [422, "account_limit"]);
 
   r = await deps().handler(post({ ...body, platform: "threads" }));
   assert.deepEqual([r.status, (await r.json()).error], [422, "platform_disabled"]);
 
-  r = await deps({}, { adapter: () => adapter({ exchangeCode: () => Promise.reject(new AdapterError("oauth_failed")) }) }).handler(post(body));
+  r = await deps({}, {
+    adapter: () => adapter({ exchangeCode: () => Promise.reject(new AdapterError("oauth_failed")) }),
+  }).handler(post(body));
   assert.deepEqual([r.status, (await r.json()).error], [422, "oauth_failed"]);
 });
 
@@ -170,7 +222,9 @@ Deno.test("social: authorize cek allowlist redirect, PKCE untuk X", async () => 
   r = await deps().handler(post({ action: "authorize", platform: "tiktok", redirect_uri: CB }));
   const plain = await r.json();
   assert.ok(plain.state && !plain.code_verifier);
-  r = await deps({}, { adapter: () => adapter({ pkce: "required" }) }).handler(post({ action: "authorize", platform: "x", redirect_uri: CB }));
+  r = await deps({}, { adapter: () => adapter({ pkce: "required" }) }).handler(
+    post({ action: "authorize", platform: "x", redirect_uri: CB }),
+  );
   const pk = await r.json();
   assert.match(pk.code_verifier, /^[A-Za-z0-9_-]{43,128}$/);
   assert.ok(new URL(pk.url).searchParams.get("c"));
@@ -179,15 +233,25 @@ Deno.test("social: authorize cek allowlist redirect, PKCE untuk X", async () => 
 Deno.test("social: list_videos menandai tag yang kurang per video", async () => {
   const r = await deps().handler(post({ action: "list_videos", claim_id: CLAIM, account_id: ACCOUNT }));
   const body = await r.json();
-  assert.deepEqual(body.videos.map((v: { postId: string; missing_tags: string[] }) => [v.postId, v.missing_tags]), [["7080", []], ["7081", ["#mplid"]]]);
+  assert.deepEqual(body.videos.map((v: { postId: string; missing_tags: string[] }) => [v.postId, v.missing_tags]), [[
+    "7080",
+    [],
+  ], ["7081", ["#mplid"]]]);
 });
 
 Deno.test("social: CORS hanya APP_ORIGINS; tanpa JWT → 401", async () => {
   const d = deps();
-  let r = await d.handler(new Request("https://core.test/functions/v1/social", { method: "OPTIONS", headers: { origin: ORIGIN } }));
+  let r = await d.handler(
+    new Request("https://core.test/functions/v1/social", { method: "OPTIONS", headers: { origin: ORIGIN } }),
+  );
   assert.equal(r.status, 204);
   assert.equal(r.headers.get("access-control-allow-origin"), ORIGIN);
-  r = await d.handler(new Request("https://core.test/functions/v1/social", { method: "OPTIONS", headers: { origin: "https://evil.test" } }));
+  r = await d.handler(
+    new Request("https://core.test/functions/v1/social", {
+      method: "OPTIONS",
+      headers: { origin: "https://evil.test" },
+    }),
+  );
   assert.equal(r.status, 403);
   r = await d.handler(post({ action: "submit" }, { origin: "https://evil.test" }));
   assert.equal(r.status, 403);

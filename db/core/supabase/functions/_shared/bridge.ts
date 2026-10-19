@@ -19,7 +19,11 @@ export function signBridge(secret: string, ts: number | string, rawBody: string)
 }
 
 /** Verifikasi request masuk; mengembalikan pesan yang sudah di-parse. Body dibaca sekali sebagai teks mentah. */
-export async function verifyBridge(req: Request, secret: string, nowS = Math.floor(Date.now() / 1000)): Promise<BridgeMessage> {
+export async function verifyBridge(
+  req: Request,
+  secret: string,
+  nowS = Math.floor(Date.now() / 1000),
+): Promise<BridgeMessage> {
   const ts = req.headers.get("x-bridge-ts") ?? "";
   const sig = (req.headers.get("x-bridge-sig") ?? "").toLowerCase();
   const raw = await req.text();
@@ -35,7 +39,9 @@ export async function verifyBridge(req: Request, secret: string, nowS = Math.flo
   if (msg?.v !== 1) throw new HttpError(400, "bad_version");
   if (typeof msg.action !== "string" || !msg.action) throw new HttpError(400, "bad_action");
   if (msg.payload === undefined) msg.payload = {};
-  if (typeof msg.payload !== "object" || msg.payload === null || Array.isArray(msg.payload)) throw new HttpError(400, "bad_payload");
+  if (typeof msg.payload !== "object" || msg.payload === null || Array.isArray(msg.payload)) {
+    throw new HttpError(400, "bad_payload");
+  }
   return msg;
 }
 
@@ -60,7 +66,11 @@ export function identityTarget(): BridgeTarget {
   return { url: env("IDENTITY_FUNCTIONS_URL"), secret: env("BRIDGE_SECRET_CORE_TO_IDENTITY") };
 }
 
-export async function callBridge<T = unknown>(target: BridgeTarget, action: string, payload: Record<string, unknown>): Promise<T> {
+export async function callBridge<T = unknown>(
+  target: BridgeTarget,
+  action: string,
+  payload: Record<string, unknown>,
+): Promise<T> {
   const body = JSON.stringify({ v: 1, action, payload });
   const ts = Math.floor(Date.now() / 1000);
   const sig = await signBridge(target.secret, ts, body);
@@ -82,7 +92,11 @@ export async function callBridge<T = unknown>(target: BridgeTarget, action: stri
     // respons bukan JSON
   }
   if (!res.ok || out.ok !== true) {
-    throw new BridgeError(res.ok ? 502 : res.status, out.error?.code ?? `http_${res.status}`, out.error?.message ?? res.statusText);
+    throw new BridgeError(
+      res.ok ? 502 : res.status,
+      out.error?.code ?? `http_${res.status}`,
+      out.error?.message ?? res.statusText,
+    );
   }
   return out.data as T;
 }

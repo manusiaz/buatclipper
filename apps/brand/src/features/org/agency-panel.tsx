@@ -71,16 +71,16 @@ export function AgencyPanel({
           <CardContent className="flex flex-col gap-4">
             {canRequest ? (
               <form
-                className="flex flex-col gap-3 sm:flex-row sm:items-end"
+                className="flex flex-col gap-3"
                 onSubmit={(e) => {
                   e.preventDefault();
                   if (clientValid) void act('request', orgId, client.trim(), 'request');
                 }}
               >
-                <Field label={t('clientId')} helper={t('clientIdHelp')} error={client && !clientValid ? t('clientIdInvalid') : undefined} className="flex-1">
+                <Field label={t('clientId')} helper={t('clientIdHelp')} error={client && !clientValid ? t('clientIdInvalid') : undefined}>
                   <Input value={client} onChange={(e) => setClient(e.target.value)} inputClassName="font-mono" placeholder="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx" />
                 </Field>
-                <Button type="submit" iconLeft="send" disabled={!clientValid} loading={busy === 'request'}>{t('request')}</Button>
+                <Button type="submit" iconLeft="send" disabled={!clientValid} loading={busy === 'request'} className="self-start">{t('request')}</Button>
               </form>
             ) : null}
             {asAgency.length ? (

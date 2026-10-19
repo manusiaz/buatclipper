@@ -5,7 +5,7 @@
 import { useState, useTransition } from 'react';
 import Link from 'next/link';
 import { useLocale, useTranslations } from 'next-intl';
-import { Alert, Button, Countdown, Icon, toast } from '@clipper/ui';
+import { Alert, Button, Countdown, Icon } from '@clipper/ui';
 import { claimCampaign } from './actions';
 import { fixFor } from '../campaigns/fix';
 import { SubmitSheet, type SubmitAccount } from '../submit/submit-sheet';
@@ -33,9 +33,8 @@ export function DetailCta({ campaignId, state, reasonText, reason, claim, accoun
       const r = await claimCampaign(campaignId);
       if (!r.ok) {
         setError({ message: r.message, code: r.code });
-        return;
       }
-      toast.success(t('claim.success'), { description: t('claim.successBody') });
+      // Sukses: tombol berubah jadi Submit video + hitung mundur (tanpa toast supaya tidak menutup tombol berikutnya).
     });
 
   const errFix = error ? fixFor(error.code, campaignId) : null;

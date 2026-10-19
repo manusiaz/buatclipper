@@ -18,8 +18,14 @@ const code = (c: string) => (e: unknown) => e instanceof HttpError && e.code ===
 
 Deno.test("bridge: tanda tangan = hex HMAC-SHA256(secret, ts.body) (vektor uji)", async () => {
   // Vektor dihitung independen: printf '1790000000.{"v":1}' | openssl dgst -sha256 -hmac identity-to-core-secret
-  assert.equal(await signBridge(SECRET, now, '{"v":1}'), "e1eec6f057555432466f9a27c2cd1cbde9ac64456971069b4f95d865fbb82397");
-  assert.equal(await hmacHex(SECRET, `${now}.{"v":1}`), "e1eec6f057555432466f9a27c2cd1cbde9ac64456971069b4f95d865fbb82397");
+  assert.equal(
+    await signBridge(SECRET, now, '{"v":1}'),
+    "e1eec6f057555432466f9a27c2cd1cbde9ac64456971069b4f95d865fbb82397",
+  );
+  assert.equal(
+    await hmacHex(SECRET, `${now}.{"v":1}`),
+    "e1eec6f057555432466f9a27c2cd1cbde9ac64456971069b4f95d865fbb82397",
+  );
   assert.match(await signBridge(SECRET, now, "{}"), /^[0-9a-f]{64}$/);
 });
 
@@ -64,7 +70,13 @@ Deno.test("bridge: callBridge menandatangani body persis yang dikirim; error ide
   assert.deepEqual(await callBridge(target, "check_ids", { user_ids: ["u1"] }), { missing: { user_ids: [] } });
 
   const bad = mockFetch(() => jsonRes(404, { ok: false, error: { code: "user_not_found", message: "no user" } }));
-  await assert.rejects(callBridge({ ...target, fetch: bad.fetch }, "send_email", {}), (e) => e instanceof BridgeError && e.permanent && e.code === "user_not_found");
+  await assert.rejects(
+    callBridge({ ...target, fetch: bad.fetch }, "send_email", {}),
+    (e) => e instanceof BridgeError && e.permanent && e.code === "user_not_found",
+  );
   const down = mockFetch(() => jsonRes(503, { ok: false, error: { code: "unavailable", message: "x" } }));
-  await assert.rejects(callBridge({ ...target, fetch: down.fetch }, "send_email", {}), (e) => e instanceof BridgeError && !e.permanent);
+  await assert.rejects(
+    callBridge({ ...target, fetch: down.fetch }, "send_email", {}),
+    (e) => e instanceof BridgeError && !e.permanent,
+  );
 });

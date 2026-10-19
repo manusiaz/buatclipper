@@ -66,7 +66,9 @@ export async function runNotify(deps: NotifyDeps): Promise<NotifySummary> {
   return s;
 
   async function deliver(msgId: number, notificationId: number | undefined): Promise<void> {
-    const n = notificationId ? await deps.rpc<Notification | null>("worker_notification", { p_id: notificationId }) : null;
+    const n = notificationId
+      ? await deps.rpc<Notification | null>("worker_notification", { p_id: notificationId })
+      : null;
     if (!n) {
       await ack(msgId);
       s.dropped++;
@@ -74,7 +76,11 @@ export async function runNotify(deps: NotifyDeps): Promise<NotifySummary> {
     }
     // notification_id → Idempotency-Key Resend di identity: retry setelah kirim sukses tidak menghasilkan email dobel.
     const email: Record<string, unknown> = {
-      notification_id: notificationId, user_id: n.user_id, event: n.event, payload: n.payload ?? {}, promo: !!n.promo,
+      notification_id: notificationId,
+      user_id: n.user_id,
+      event: n.event,
+      payload: n.payload ?? {},
+      promo: !!n.promo,
     };
     if (n.promo) email.unsubscribe_url = await unsubscribeUrl(deps.unsubscribeBase, deps.unsubscribeSecret, n.user_id);
     let emailed = false;
@@ -86,7 +92,12 @@ export async function runNotify(deps: NotifyDeps): Promise<NotifySummary> {
       console.error("send_email rejected", msgId, e.code); // 4xx (user dihapus, tanpa email) → tidak diulang
     }
     try {
-      await deps.bridge("send_push", { notification_id: notificationId, user_id: n.user_id, event: n.event, payload: n.payload ?? {} });
+      await deps.bridge("send_push", {
+        notification_id: notificationId,
+        user_id: n.user_id,
+        event: n.event,
+        payload: n.payload ?? {},
+      });
       s.pushed++;
     } catch (e) {
       console.error("send_push failed", msgId, e instanceof BridgeError ? e.code : e); // push best-effort
@@ -98,17 +109,25 @@ export async function runNotify(deps: NotifyDeps): Promise<NotifySummary> {
 }
 
 /** GET/POST /notify/unsubscribe?u=<uuid>&s=<hex HMAC(UNSUBSCRIBE_SECRET, u)> — publik, idempoten. */
-export async function handleUnsubscribe(req: Request, deps: Pick<NotifyDeps, "rpc" | "unsubscribeSecret">): Promise<Response> {
+export async function handleUnsubscribe(
+  req: Request,
+  deps: Pick<NotifyDeps, "rpc" | "unsubscribeSecret">,
+): Promise<Response> {
   if (req.method !== "GET" && req.method !== "POST") throw new HttpError(405, "method_not_allowed");
   const q = new URL(req.url).searchParams;
   const u = q.get("u") ?? "";
   const sig = (q.get("s") ?? "").toLowerCase();
-  if (!UUID.test(u) || !(await safeEqual(sig, await hmacHex(deps.unsubscribeSecret, u)))) throw new HttpError(403, "bad_signature");
+  if (!UUID.test(u) || !(await safeEqual(sig, await hmacHex(deps.unsubscribeSecret, u)))) {
+    throw new HttpError(403, "bad_signature");
+  }
   await deps.rpc("worker_unsubscribe", { p_user: u });
   if (req.method === "POST") return json(200, { ok: true }); // List-Unsubscribe-Post: List-Unsubscribe=One-Click
   // Domain *.supabase.co menyajikan HTML sebagai text/plain, jadi konfirmasi dikirim sebagai teks.
-  return new Response("Kamu tidak akan menerima email promosi lagi. Atur ulang kapan saja di Pengaturan > Notifikasi.\n", {
-    status: 200,
-    headers: { "content-type": "text/plain; charset=utf-8" },
-  });
+  return new Response(
+    "Kamu tidak akan menerima email promosi lagi. Atur ulang kapan saja di Pengaturan > Notifikasi.\n",
+    {
+      status: 200,
+      headers: { "content-type": "text/plain; charset=utf-8" },
+    },
+  );
 }

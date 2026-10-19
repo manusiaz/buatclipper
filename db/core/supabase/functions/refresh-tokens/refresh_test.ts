@@ -25,9 +25,14 @@ Deno.test("refresh-tokens: sukses → store_social_token + verified; ditolak →
   } as unknown as PlatformAdapter;
   const s = await runRefresh({ rpc: f.rpc, adapter: () => adapter });
   assert.deepEqual(f.calls[0].args, { p_within: "12 hours" });
-  const status = Object.fromEntries(f.calls.filter((c) => c.fn === "worker_account_status").map((c) => [c.args.p_account, c.args.p_status]));
+  const status = Object.fromEntries(
+    f.calls.filter((c) => c.fn === "worker_account_status").map((c) => [c.args.p_account, c.args.p_status]),
+  );
   assert.deepEqual(status, { a1: "verified", a2: "expired", a4: "expired" });
   const stored = f.calls.filter((c) => c.fn === "store_social_token");
-  assert.deepEqual(stored.map((c) => [c.args.p_account_id, JSON.parse(c.args.p_token as string).access_token]), [["a1", "new"]]);
+  assert.deepEqual(stored.map((c) => [c.args.p_account_id, JSON.parse(c.args.p_token as string).access_token]), [[
+    "a1",
+    "new",
+  ]]);
   assert.deepEqual([s.refreshed, s.expired, s.retried], [1, 2, 1]);
 });

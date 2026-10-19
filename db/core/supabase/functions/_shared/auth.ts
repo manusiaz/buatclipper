@@ -18,9 +18,12 @@ let cachedJwks: { url: string; jwks: JWTVerifyGetKey } | null = null;
 
 function jwksFromEnv(): JWTVerifyGetKey {
   const issuer = Deno.env.get("IDENTITY_ISSUER");
-  const url = Deno.env.get("IDENTITY_JWKS_URL") ?? (issuer ? `${issuer.replace(/\/+$/, "")}/.well-known/jwks.json` : "");
+  const url = Deno.env.get("IDENTITY_JWKS_URL") ??
+    (issuer ? `${issuer.replace(/\/+$/, "")}/.well-known/jwks.json` : "");
   if (!url) throw new HttpError(500, "misconfigured", "env IDENTITY_JWKS_URL belum diset");
-  if (cachedJwks?.url !== url) cachedJwks = { url, jwks: createRemoteJWKSet(new URL(url), { cacheMaxAge: 10 * 60_000 }) };
+  if (cachedJwks?.url !== url) {
+    cachedJwks = { url, jwks: createRemoteJWKSet(new URL(url), { cacheMaxAge: 10 * 60_000 }) };
+  }
   return cachedJwks.jwks;
 }
 

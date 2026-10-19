@@ -45,7 +45,8 @@ export type FlagLoader = () => Promise<Record<string, boolean>>;
 
 /** api.settings key public.flags.platforms (terbaca anon lewat policy settings_public_read). */
 export const loadPlatformFlags: FlagLoader = async () => {
-  const { data, error } = await publicClient().from("settings").select("value").eq("key", "public.flags.platforms").maybeSingle();
+  const { data, error } = await publicClient().from("settings").select("value").eq("key", "public.flags.platforms")
+    .maybeSingle();
   if (error) throw new Error(`settings: ${error.message}`);
   const v = data?.value;
   return v && typeof v === "object" ? v as Record<string, boolean> : {};
@@ -54,7 +55,10 @@ export const loadPlatformFlags: FlagLoader = async () => {
 let flagCache: { at: number; flags: Record<string, boolean> } | null = null;
 
 /** Cache 60 detik per isolate. Platform yang tidak ada di flag = mati (fail closed). */
-export async function platformFlags(load: FlagLoader = loadPlatformFlags, now = Date.now()): Promise<Record<string, boolean>> {
+export async function platformFlags(
+  load: FlagLoader = loadPlatformFlags,
+  now = Date.now(),
+): Promise<Record<string, boolean>> {
   if (flagCache && now - flagCache.at < 60_000) return flagCache.flags;
   const flags = await load();
   flagCache = { at: now, flags };

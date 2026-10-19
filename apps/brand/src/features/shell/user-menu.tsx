@@ -24,7 +24,7 @@ export function UserMenu({ name, email }: { name: string; email?: string }) {
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
-        <button type="button" aria-label={t('userMenu')} className="touch-target inline-flex items-center rounded-full focus-ring">
+        <button type="button" aria-label={t('userMenu')} className="inline-flex size-11 items-center justify-center rounded-full focus-ring">
           <Avatar name={name} size={36} />
         </button>
       </DropdownMenuTrigger>

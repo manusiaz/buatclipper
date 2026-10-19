@@ -20,7 +20,11 @@ export function json(status: number, body: unknown, headers: HeadersInit = {}): 
 /** Error → respons. Error tak dikenal tidak membocorkan pesan internal. */
 export function errorResponse(e: unknown, headers: HeadersInit = {}): Response {
   if (e instanceof HttpError) {
-    return json(e.status, { error: e.code, message: e.message, ...(e.detail === undefined ? {} : { detail: e.detail }) }, headers);
+    return json(e.status, {
+      error: e.code,
+      message: e.message,
+      ...(e.detail === undefined ? {} : { detail: e.detail }),
+    }, headers);
   }
   console.error("unhandled", e instanceof Error ? e.stack ?? e.message : e);
   return json(500, { error: "internal", message: "internal error" }, headers);
@@ -69,7 +73,9 @@ export function toHex(buf: ArrayBuffer | Uint8Array): string {
 }
 
 export async function hmacHex(secret: string, message: string): Promise<string> {
-  const key = await crypto.subtle.importKey("raw", enc.encode(secret), { name: "HMAC", hash: "SHA-256" }, false, ["sign"]);
+  const key = await crypto.subtle.importKey("raw", enc.encode(secret), { name: "HMAC", hash: "SHA-256" }, false, [
+    "sign",
+  ]);
   return toHex(await crypto.subtle.sign("HMAC", key, enc.encode(message)));
 }
 

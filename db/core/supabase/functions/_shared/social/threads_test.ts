@@ -18,7 +18,11 @@ Deno.test("threads: exchangeCode → th_exchange_token; profile + followers_coun
       return jsonRes(200, { access_token: "long", token_type: "bearer", expires_in: 5183944 });
     }),
     on("GET", `${G}/me`, () => jsonRes(200, { id: "1001", username: "clippersatu", name: "Clipper" })),
-    on("GET", `${G}/me/threads_insights`, () => jsonRes(200, { data: [{ name: "followers_count", period: "day", total_value: { value: 777 } }] })),
+    on(
+      "GET",
+      `${G}/me/threads_insights`,
+      () => jsonRes(200, { data: [{ name: "followers_count", period: "day", total_value: { value: 777 } }] }),
+    ),
   );
   const a = createThreads({ ...cfg, fetch: m.fetch });
   const t = await a.exchangeCode("c", "https://app.test/cb");
@@ -29,7 +33,17 @@ Deno.test("threads: exchangeCode → th_exchange_token; profile + followers_coun
 
 Deno.test("threads: fetchMetrics views/likes/replies/shares (+reposts, quotes di extra)", async () => {
   const m = mockFetch(
-    on("GET", `${G}/18050206876707110`, () => jsonRes(200, { id: "18050206876707110", text: "Clip #mplid", media_type: "VIDEO", timestamp: "2026-10-01T10:00:00+0000" })),
+    on(
+      "GET",
+      `${G}/18050206876707110`,
+      () =>
+        jsonRes(200, {
+          id: "18050206876707110",
+          text: "Clip #mplid",
+          media_type: "VIDEO",
+          timestamp: "2026-10-01T10:00:00+0000",
+        }),
+    ),
     on("GET", `${G}/18050206876707110/insights`, (c) => {
       assert.equal(c.url.searchParams.get("metric"), "views,likes,replies,reposts,quotes,shares");
       return jsonRes(200, insights);
@@ -42,13 +56,26 @@ Deno.test("threads: fetchMetrics views/likes/replies/shares (+reposts, quotes di
 
 Deno.test("threads: gone & token expired", async () => {
   const gone = mockFetch(() => jsonRes(400, missing));
-  assert.equal(((await createThreads({ ...cfg, fetch: gone.fetch }).fetchMetrics(T, ["9"]))[0] as { gone?: boolean }).gone, true);
+  assert.equal(
+    ((await createThreads({ ...cfg, fetch: gone.fetch }).fetchMetrics(T, ["9"]))[0] as { gone?: boolean }).gone,
+    true,
+  );
   const exp = mockFetch(() => jsonRes(400, expired));
   await assert.rejects(createThreads({ ...cfg, fetch: exp.fetch }).fetchMetrics(T, ["9"]), TokenExpired);
 });
 
 Deno.test("threads: getPost id milik akun lain = not_owner", async () => {
-  const m = mockFetch(on("GET", `${G}/18050206876707999`, () =>
-    jsonRes(200, { id: "18050206876707999", media_type: "VIDEO", username: "orang_lain", timestamp: "2026-10-01T10:00:00+0000" })));
-  await assert.rejects(createThreads({ ...cfg, fetch: m.fetch }).getPost(T, "18050206876707999"), (e) => e instanceof AdapterError && e.code === "not_owner");
+  const m = mockFetch(
+    on("GET", `${G}/18050206876707999`, () =>
+      jsonRes(200, {
+        id: "18050206876707999",
+        media_type: "VIDEO",
+        username: "orang_lain",
+        timestamp: "2026-10-01T10:00:00+0000",
+      })),
+  );
+  await assert.rejects(
+    createThreads({ ...cfg, fetch: m.fetch }).getPost(T, "18050206876707999"),
+    (e) => e instanceof AdapterError && e.code === "not_owner",
+  );
 });

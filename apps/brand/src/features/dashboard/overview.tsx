@@ -9,7 +9,6 @@ import {
   CardTitle,
   EmbedFrame,
   EmptyState,
-  PlatformChip,
   ProgressBar,
   StatCard,
   Table,
@@ -75,7 +74,7 @@ export async function Overview({
         </Alert>
       ) : null}
 
-      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4 [&>*]:min-w-0">
         <StatCard variant="dark" icon="visibility" label={t('viewsValid')} value={formatCompact(stats.viewsValid, loc)} hint={formatNumber(stats.viewsValid, loc)} />
         <StatCard
           icon="payments"
@@ -105,7 +104,7 @@ export async function Overview({
             tone="auto"
             size="lg"
           />
-          <dl className="grid gap-3 text-body-s sm:grid-cols-3">
+          <dl className="grid grid-cols-1 gap-3 text-body-s sm:grid-cols-3 [&>*]:min-w-0">
             <div>
               <dt className="text-muted">{t('remaining')}</dt>
               <dd className="font-semibold text-ink tnum">{formatIDR(stats.remainingIdr, { locale: loc })}</dd>
@@ -159,7 +158,7 @@ export async function Overview({
                 <TD numeric>{units(pl.allocated, pl.code, pl.unitLabel, loc, pl.decimals)}</TD>
                 <TD numeric className="font-semibold">{units(pl.remaining, pl.code, pl.unitLabel, loc, pl.decimals)}</TD>
                 <TD numeric muted>{pl.maxPerClip == null ? '—' : units(pl.maxPerClip, pl.code, pl.unitLabel, loc, pl.decimals)}</TD>
-                <TD muted>
+                <TD muted className="min-w-[240px] whitespace-normal">
                   {Object.entries(pl.estRemainingViews).length
                     ? Object.entries(pl.estRemainingViews).map(([pf, v]) => `${platformLabel(pf as Platform)} ${formatCompact(v, loc)}`).join(' · ')
                     : '—'}
@@ -170,7 +169,7 @@ export async function Overview({
         </Table>
       ) : null}
 
-      <div className="grid gap-4 lg:grid-cols-2">
+      <div className="grid grid-cols-1 gap-4 lg:grid-cols-2 [&>*]:min-w-0">
         <Card>
           <CardHeader><CardTitle>{t('byPlatform')}</CardTitle></CardHeader>
           <CardContent>
@@ -196,15 +195,15 @@ export async function Overview({
       <section aria-labelledby="top-clips" className="flex flex-col gap-3">
         <h2 id="top-clips" className="text-h5 text-ink">{t('topClips')}</h2>
         {stats.topClips.length ? (
-          <ul className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+          <ul className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3 [&>*]:min-w-0 max-sm:[&>li:nth-child(n+4)]:hidden">
             {stats.topClips.slice(0, 6).map((c, i) => (
               <li key={c.url}>
-                <Card padding="sm" className="flex flex-col gap-3">
-                  <EmbedFrame url={c.url} title={t('clipTitle', { rank: i + 1 })} openLabel={t('openClip')} />
-                  <div className="flex items-center justify-between gap-2">
-                    <PlatformChip platform={c.platform as Platform} />
-                    <span className="text-body-s font-bold text-ink tnum">{t('viewsCount', { views: formatNumber(c.views, loc) })}</span>
-                  </div>
+                <Card padding="sm" className="flex flex-col items-center gap-2">
+                  <p className="flex w-full items-center justify-between gap-2 text-body-s">
+                    <span className="font-bold text-muted tnum">#{i + 1}</span>
+                    <span className="font-bold text-ink tnum">{t('viewsCount', { views: formatNumber(c.views, loc) })}</span>
+                  </p>
+                  <EmbedFrame url={c.url} title={t('clipTitle', { rank: i + 1 })} openLabel={t('openClip')} maxWidth={300} />
                 </Card>
               </li>
             ))}

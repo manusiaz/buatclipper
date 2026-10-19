@@ -20,7 +20,13 @@ export function FilterBar({ filters, submitLabel, resetHref, resetLabel, hidden 
       {filters.map((f) => (
         <Field key={f.name} label={f.label} className="sm:w-56">
           {f.kind === 'select' ? (
-            <Select name={f.name} inputSize="sm" defaultValue={f.value || undefined} placeholder={f.placeholder} options={f.options} />
+            <Select
+              name={f.name}
+              inputSize="sm"
+              defaultValue={f.value || (f.options.some((o) => o.value === 'all') ? 'all' : undefined)}
+              placeholder={f.placeholder}
+              options={f.options}
+            />
           ) : (
             <Input name={f.name} type={f.kind} inputSize="sm" defaultValue={f.value} placeholder={f.placeholder} />
           )}

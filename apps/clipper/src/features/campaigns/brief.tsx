@@ -1,6 +1,6 @@
 import Markdown from 'react-markdown';
 
-// Brief brand = Markdown tanpa HTML mentah (skipHtml, tanpa rehype-raw — R-16); link keluar tab baru.
+// Brief brand = Markdown tanpa HTML mentah (skipHtml, tanpa plugin raw HTML — R-16); link keluar tab baru.
 export function Brief({ source }: { source: string }) {
   return (
     <div className="flex flex-col gap-3 text-body-s text-text-2 [&_strong]:text-ink">
