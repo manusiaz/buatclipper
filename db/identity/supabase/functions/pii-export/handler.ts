@@ -2,7 +2,7 @@
 // J-A3, J-A5). Caller: admin JWT with aal2; role re-checked against E-27. Every export is written to E-24 via svc_audit.
 // Files go to private buckets; the caller gets a 15-minute signed URL. Request bodies are never logged (§15.9).
 import { type AdminRole, type Claims, requireAdmin, requireAdminFresh } from "../_shared/auth.ts";
-import type { CoreBridge } from "../_shared/bridge.ts";
+import { BridgeError, type CoreBridge } from "../_shared/bridge.ts";
 import type { PiiCrypto } from "../_shared/crypto.ts";
 import { toCsv } from "../_shared/csv.ts";
 import { type Rpc, rpcByIds, type Storage } from "../_shared/db.ts";
@@ -32,7 +32,7 @@ export interface PiiExportDeps {
 type Actor = { id: string };
 
 interface CoreBatch {
-  batch: { id: string; status: string; created_by: string; approved_by: string | null };
+  batch: { id: string; status: string; created_by: string; approved_by: string | null; file_ref?: string | null };
   payouts: PayoutRef[];
 }
 
@@ -48,12 +48,19 @@ async function publish(deps: PiiExportDeps, path: string, csv: string): Promise<
   return { file_ref: `${EXPORT_BUCKET}/${path}`, url };
 }
 
-/** Serah-terima ke core; bila core menolak (mis. export_stale), berkas tidak boleh tertinggal sebagai export sah. */
+/** Nama berkas unik per percobaan: export paralel tidak saling menimpa berkas yang sudah diterima core. */
+function attemptName(deps: PiiExportDeps): string {
+  const stamp = (deps.now ?? (() => new Date()))().toISOString().replace(/[-:]/g, "").replace(/\.\d+Z$/, "Z");
+  return `${stamp}-${globalThis.crypto.randomUUID().slice(0, 8)}`;
+}
+
+/** Serah-terima ke core. Ditolak core (4xx) → berkas dihapus; 5xx/putus = hasil tidak pasti, berkas dibiarkan. */
 async function handoff(deps: PiiExportDeps, path: string, action: string, payload: Record<string, unknown>) {
   try {
     await deps.core().invoke(action, payload);
   } catch (e) {
-    await deps.storage.remove(EXPORT_BUCKET, [path]).catch(() => {});
+    const status = e instanceof BridgeError ? e.remoteStatus : e instanceof HttpError ? e.status : 500;
+    if (status >= 400 && status < 500) await deps.storage.remove(EXPORT_BUCKET, [path]).catch(() => {});
     throw e;
   }
 }
@@ -74,8 +81,9 @@ export async function exportPayouts(deps: PiiExportDeps, actor: Actor, batchId: 
   }
   // Sudah diekspor: link baru untuk berkas yang sama (tanpa dekripsi ulang); tetap tercatat audit.
   if (batch.status === "exported") {
-    const path = `payouts/${batchId}.csv`;
-    if (!(await deps.storage.exists(EXPORT_BUCKET, path))) {
+    const prefix = `${EXPORT_BUCKET}/`;
+    const path = batch.file_ref?.startsWith(prefix) ? batch.file_ref.slice(prefix.length) : "";
+    if (!path || !(await deps.storage.exists(EXPORT_BUCKET, path))) {
       throw new HttpError(404, "file_missing", "berkas ekspor tidak ditemukan");
     }
     const url = await deps.storage.signedUrl(EXPORT_BUCKET, path, SIGNED_URL_TTL_S);
@@ -117,7 +125,7 @@ export async function exportPayouts(deps: PiiExportDeps, actor: Actor, batchId: 
   }
 
   const csv = toCsv(["payout_id", "bank_code", "account_no", "account_name", "amount"], rows);
-  const path = `payouts/${batchId}.csv`;
+  const path = `payouts/${batchId}/${attemptName(deps)}.csv`;
   const { file_ref, url } = await publish(deps, path, csv);
   await audit(deps, actor, "pii.export_payouts", `batch:${batchId}`, {
     rows: rows.length,
@@ -305,8 +313,7 @@ export async function exportRecipients(deps: PiiExportDeps, actor: Actor, reward
     ["fulfillment_id", "amount", ...keys],
     records.map((r) => [r.id, r.amount, ...keys.map((k) => r.fields[k] ?? "")]),
   );
-  const stamp = (deps.now ?? (() => new Date()))().toISOString().replace(/[-:]/g, "").replace(/\.\d+Z$/, "Z");
-  const path = `recipients/${rewardTypeId}/${stamp}.csv`;
+  const path = `recipients/${rewardTypeId}/${attemptName(deps)}.csv`;
   const { file_ref, url } = await publish(deps, path, csv);
   await audit(deps, actor, "pii.export_recipients", `reward_type:${rewardTypeId}`, {
     rows: records.length,

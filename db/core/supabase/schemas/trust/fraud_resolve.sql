@@ -71,7 +71,9 @@ begin
       update tracking.submissions set status = 'flagged' where id = sub.id;
     end if;
     if f.target_type = 'payout' then
-      update finance.payouts set status = 'on_hold', hold_reason = 'fraud:' || f.signal where id = f.target_id and status = 'requested';
+      -- Instant requested sudah diteruskan ke penyedia (alur 11); menahannya membuka refund saat transfer berjalan.
+      update finance.payouts set status = 'on_hold', hold_reason = 'fraud:' || f.signal
+       where id = f.target_id and status = 'requested' and channel = 'batch';
     end if;
   elsif p_action = 'dismiss' then
     update trust.fraud_flags set status = 'dismissed', resolved_by = uid, resolved_at = now() where id = f.id;

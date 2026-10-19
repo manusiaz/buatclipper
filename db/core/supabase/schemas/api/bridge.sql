@@ -16,7 +16,8 @@ begin
     raise exception 'invalid_state:%', b.status using errcode = 'P0001';
   end if;
   return jsonb_build_object(
-    'batch', jsonb_build_object('id', b.id, 'status', b.status, 'created_by', b.created_by, 'approved_by', b.approved_by),
+    'batch', jsonb_build_object('id', b.id, 'status', b.status, 'created_by', b.created_by, 'approved_by', b.approved_by,
+                                'file_ref', b.file_ref),
     'payouts', coalesce((select jsonb_agg(jsonb_build_object('id', p.id, 'user_id', p.user_id, 'method_id', p.method_id,
                                                              'amount', p.amount, 'fee', p.fee) order by p.id)
                          from finance.payouts p where p.batch_id = b.id and p.status = 'requested'), '[]'));
@@ -219,7 +220,8 @@ begin
 end $$;
 
 -- Serah-terima CSV penerima ke brand: klaim yang ada di berkas → processing + export_ref (tidak terekspor ulang; refund butuh
--- konfirmasi brand). Klaim yang berubah sejak dibaca → export_stale, berkas tidak diserahkan.
+-- konfirmasi brand). Klaim yang berubah sejak dibaca → export_stale, berkas tidak diserahkan. Kirim ulang berkas yang sama
+-- (respons hilang, bridge mencoba lagi) = no-op.
 create function api.bridge_attach_fulfillment_export(p_reward_type uuid, p_file_ref text, p_exported uuid[]) returns void
 language plpgsql security definer set search_path = '' as $$
 begin
@@ -229,11 +231,11 @@ begin
   perform 1 from finance.fulfillments f where f.id = any (coalesce(p_exported, '{}')) order by f.id for update;
   if exists (select 1 from unnest(coalesce(p_exported, '{}')) e(id)
               where not exists (select 1 from finance.fulfillments f join market.reward_types rt on rt.id = f.reward_type_id
-                                 where f.id = e.id and f.reward_type_id = p_reward_type and f.status = 'requested'
-                                   and rt.fulfillment = 'manual_export')) then
+                                 where f.id = e.id and f.reward_type_id = p_reward_type and rt.fulfillment = 'manual_export'
+                                   and (f.status = 'requested' or (f.status = 'processing' and f.export_ref = p_file_ref)))) then
     raise exception 'export_stale' using errcode = 'P0001', detail = 'klaim berubah sejak dibaca; ekspor ulang';
   end if;
-  update finance.fulfillments set status = 'processing', export_ref = p_file_ref where id = any (p_exported);
+  update finance.fulfillments set status = 'processing', export_ref = p_file_ref where id = any (p_exported) and status = 'requested';
 end $$;
 
 -- Alur 10: ID lintas DB yang dirujuk core (profil belum ditutup, rekening & penerima milik mereka).

@@ -1,5 +1,6 @@
 import { assert, assertEquals } from "@std/assert";
 import { toPgBytea } from "../_shared/crypto.ts";
+import { BridgeError } from "../_shared/bridge.ts";
 import { HttpError } from "../_shared/http.ts";
 import { claims, FakeCore, FakeRpc, FakeStorage, json, post, testCrypto } from "../_shared/testing.ts";
 import { createPiiExportHandler, type PiiExportDeps } from "./handler.ts";
@@ -94,7 +95,9 @@ Deno.test("payout_csv: hold rules, decrypted CSV, attach_export with held list, 
   assertEquals(res.status, 200);
   assertEquals(res.body.data.rows, 2);
   assertEquals(res.body.data.expires_in, 900);
-  assertEquals(res.body.data.url, `https://storage.test/pii-exports/payouts/${BATCH}.csv?ttl=900`);
+  const fileRef: string = res.body.data.file_ref;
+  assert(fileRef.startsWith(`pii-exports/payouts/${BATCH}/`) && fileRef.endsWith(".csv"), fileRef);
+  assertEquals(res.body.data.url, `https://storage.test/${fileRef}?ttl=900`);
   const held = [
     { payout_id: p(2), reason: "method_owner_mismatch" },
     { payout_id: p(3), reason: "method_disabled" },
@@ -107,14 +110,14 @@ Deno.test("payout_csv: hold rules, decrypted CSV, attach_export with held list, 
   ];
   assertEquals(res.body.data.held, held);
   assertEquals(
-    s.storage.text(`pii-exports/payouts/${BATCH}.csv`),
+    s.storage.text(fileRef),
     "payout_id,bank_code,account_no,account_name,amount\r\n" +
       `${p(1)},BCA,8880001,  user   1 ,150000.00\r\n` +
       `${p(9)},BCA,8880009,'=cmd|' /C calc'!A0,120000.00\r\n`,
   );
   assertEquals(s.core.named("attach_export")[0].payload, {
     batch_id: BATCH,
-    file_ref: `pii-exports/payouts/${BATCH}.csv`,
+    file_ref: fileRef,
     held,
     exported: [p(1), p(9)],
   });
@@ -131,6 +134,23 @@ Deno.test("payout_csv: core rejects the handoff (export_stale) → CSV removed, 
   assertEquals(s.storage.files.size, 0);
 });
 
+Deno.test("payout_csv: core unreachable after upload → CSV kept (handoff may have committed)", async () => {
+  const s = await setup({}, ["admin_finance"], "aal2", () => {
+    throw new BridgeError(503, "core_unreachable", "timeout");
+  });
+  const res = await json(await s.handler(post({ action: "payout_csv", batch_id: BATCH })));
+  assertEquals(res.body.error.code, "core_unreachable");
+  assertEquals(s.storage.files.size, 1);
+});
+
+Deno.test("payout_csv: concurrent exports write separate files (accepted CSV never overwritten)", async () => {
+  const s = await setup();
+  const a = await json(await s.handler(post({ action: "payout_csv", batch_id: BATCH })));
+  const b = await json(await s.handler(post({ action: "payout_csv", batch_id: BATCH })));
+  assert(a.body.data.file_ref !== b.body.data.file_ref);
+  assertEquals(s.storage.files.size, 2);
+});
+
 Deno.test("payout_csv: only batches approved by a second person", async () => {
   for (const b of [{ approved_by: null, status: "draft" }, { approved_by: u(50) }, { status: "paid" }]) {
     const s = await setup(b);
@@ -143,15 +163,16 @@ Deno.test("payout_csv: only batches approved by a second person", async () => {
 Deno.test("payout_csv: exported batch → new link for the same file, no re-decrypt, audited", async () => {
   const first = await setup();
   await json(await first.handler(post({ action: "payout_csv", batch_id: BATCH })));
-  const again = await setup({ status: "exported" });
+  const accepted = first.core.named("attach_export")[0].payload.file_ref as string;
+  const again = await setup({ status: "exported", file_ref: accepted });
   again.storage.files = first.storage.files;
   const res = await json(await again.handler(post({ action: "payout_csv", batch_id: BATCH })));
   assertEquals(res.status, 200, JSON.stringify(res.body));
-  assertEquals(res.body.data.file_ref, `pii-exports/payouts/${BATCH}.csv`);
+  assertEquals(res.body.data.file_ref, accepted);
   assertEquals(again.rpc.named("svc_payout_methods").length + again.core.named("attach_export").length, 0);
   assertEquals(again.rpc.named("svc_audit")[0].args.p_after, {
     resign: true,
-    file_ref: `pii-exports/payouts/${BATCH}.csv`,
+    file_ref: accepted,
   });
   const missing = await setup({ status: "exported" });
   assertEquals(
@@ -216,13 +237,15 @@ Deno.test("recipients_csv: only users with share_with_brand consent; owner/rewar
     { fulfillment_id: p(63), reason: "recipient_mismatch" },
     { fulfillment_id: p(64), reason: "recipient_missing" },
   ]);
+  const fileRef: string = res.body.data.file_ref;
+  assert(fileRef.startsWith(`pii-exports/recipients/${RT}/20261019T030405Z-`), fileRef);
   assertEquals(
-    storage.text(`pii-exports/recipients/${RT}/20261019T030405Z.csv`),
+    storage.text(fileRef),
     `fulfillment_id,amount,address,game_id,phone,zone_id\r\n${p(61)},1,"Jl. Mawar 1, Jakarta",123,'+62812,45\r\n`,
   );
   assertEquals(core.named("attach_fulfillment_export")[0].payload, {
     reward_type_id: RT,
-    file_ref: `pii-exports/recipients/${RT}/20261019T030405Z.csv`,
+    file_ref: fileRef,
     exported: [p(61)],
   });
 });

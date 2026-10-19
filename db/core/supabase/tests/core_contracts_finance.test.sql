@@ -514,6 +514,12 @@ select is((select count(*)::int from api.bridge_fulfillment_export('77777777-000
 insert into finance.reward_codes (reward_type_id, code, uploaded_by) values ('77777777-0000-0000-0000-000000000003', 'VC-1', '22222222-0000-0000-0000-0000000000a1');
 select is((select count(*)::int from api.worker_fulfillments_due(10)), 3, 'worker fulfill: 2 code_pool + 1 webhook jatuh tempo');
 select is((select count(*)::int from api.worker_fulfillments_due(10)), 0, 'lease 5 menit: tidak diambil dua kali');
+-- Regresi review R4: worker mati sebelum mencatat hasil → lease kedaluwarsa diambil ulang = hasil kiriman lama tidak pasti.
+update finance.fulfillments set leased_until = now() - interval '1 minute', next_retry_at = now() - interval '1 minute'
+ where id = (select id from t_pay where k = 'f3');
+select is((select count(*)::int from api.worker_fulfillments_due(10)), 1, 'lease kedaluwarsa diambil ulang');
+select ok((select delivery_uncertain from finance.fulfillments where id = (select id from t_pay where k = 'f3')),
+          'lease kedaluwarsa tanpa hasil → kiriman lama tidak pasti');
 -- Regresi review 2026-10-19: klaim yang sedang dikirim worker tidak bisa dibatalkan (reward terkirim + saldo kembali).
 set local role authenticated;
 select pg_temp.jwt('33333333-0000-0000-0000-0000000000a0', '{"app_roles":["admin_ops"],"aal":"aal2"}');
@@ -548,6 +554,8 @@ select api.bridge_attach_fulfillment_export('77777777-0000-0000-0000-00000000000
                                             array['99999999-0000-0000-0000-0000000000e1'::uuid]);
 select is((select status::text || ':' || export_ref from finance.fulfillments where id = '99999999-0000-0000-0000-0000000000e1'),
           'processing:pii-exports/recipients/x.csv', 'CSV diserahkan → klaim processing + export_ref');
+select lives_ok($$ select api.bridge_attach_fulfillment_export('77777777-0000-0000-0000-000000000002', 'pii-exports/recipients/x.csv',
+                     array['99999999-0000-0000-0000-0000000000e1'::uuid]) $$, 'serah-terima berkas yang sama diulang (respons hilang) = no-op');
 select ok(not exists (select 1 from api.bridge_fulfillment_export('77777777-0000-0000-0000-000000000002')
                        where id = '99999999-0000-0000-0000-0000000000e1'), 'klaim yang sudah diserahkan tidak terekspor ulang');
 select throws_ok($$ select api.bridge_attach_fulfillment_export('77777777-0000-0000-0000-000000000002', 'pii-exports/recipients/y.csv',
@@ -769,6 +777,16 @@ select throws_ok($$ select api.resolve_fraud_flag((select id from t_pay where k 
                  'fraud queue hanya admin_moderator');
 select pg_temp.jwt('33333333-0000-0000-0000-0000000000e1', '{"app_roles":["admin_moderator"],"aal":"aal2"}');
 select api.resolve_fraud_flag((select id from t_pay where k = 'fl1'), 'hold', 'cek manual');
+reset role;
+insert into t_pay select 'fl5', trust.raise_flag('payout', (select id from t_pay where k = 'i3'), 'FR-07', 50, '{}');
+set local role authenticated;
+select pg_temp.jwt('33333333-0000-0000-0000-0000000000e1', '{"app_roles":["admin_moderator"],"aal":"aal2"}');
+select api.resolve_fraud_flag((select id from t_pay where k = 'fl5'), 'hold', 'cek');
+reset role;
+select is((select status::text from finance.payouts where id = (select id from t_pay where k = 'i3')), 'requested',
+          'regresi R4: instant yang sedang dikirim ke penyedia tidak ikut ditahan (tidak bisa dibatalkan + refund)');
+set local role authenticated;
+select pg_temp.jwt('33333333-0000-0000-0000-0000000000e1', '{"app_roles":["admin_moderator"],"aal":"aal2"}');
 select is((select f.status || ':' || s.status from api.fraud_flags f, api.submissions s
            where f.id = (select id from t_pay where k = 'fl1') and s.id = (select v::uuid from t_ids where k = 's9b')), 'held:flagged',
           'hold: flag held, earning submisi ditahan (flagged)');
@@ -795,7 +813,7 @@ select ok(exists (select 1 from ops.notifications where event = 'account.banned'
           'ban → notifikasi account.banned');
 select ok(exists (select 1 from net.http_request_queue q where convert_from(q.body, 'UTF8')::jsonb ->> 'action' = 'ban_user'
                   and convert_from(q.body, 'UTF8')::jsonb ->> 'user_id' = '11111111-0000-0000-0000-00000000000e'), 'ban → bridge identity admin-auth');
-select is((select count(*)::int from ops.audit_logs where action = 'fraud_flag.resolve'), 5, 'semua sanksi tercatat di audit log');
+select is((select count(*)::int from ops.audit_logs where action = 'fraud_flag.resolve'), 6, 'semua sanksi tercatat di audit log');
 
 -- ========== I. worker_create_submission (core/social, E-12) ==========
 insert into market.campaigns (id, org_id, slug, title, type, platforms, start_at, submit_deadline, created_by, review_mode, required_hashtags,
