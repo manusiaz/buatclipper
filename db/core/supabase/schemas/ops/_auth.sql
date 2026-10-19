@@ -27,7 +27,7 @@ begin
   return coalesce(
     (select m.role from market.org_members m where m.org_id = p_org and m.user_id = (select auth.uid())),
     (select m.role from market.org_links l join market.org_members m on m.org_id = l.agency_org_id
-      where l.client_org_id = p_org and l.revoked_at is null and m.user_id = (select auth.uid())
+      where l.client_org_id = p_org and l.approved_at is not null and l.revoked_at is null and m.user_id = (select auth.uid())
       order by array_position(enum_range(null::market.org_role), m.role) limit 1));
 end $$;
 

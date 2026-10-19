@@ -2,7 +2,7 @@
 
 -- S-01 campaign
 create trigger campaigns_state_machine before insert or update of status on market.campaigns
-  for each row execute function ops.check_transition('S-01', 'draft', '{"draft":["in_review","cancelled"],"in_review":["scheduled","rejected"],"rejected":["draft"],"scheduled":["live","cancelled"],"live":["paused","tracking","exhausted"],"paused":["live"],"tracking":["settling","exhausted"],"exhausted":["settling"],"settling":["settled"]}');
+  for each row execute function ops.check_transition('S-01', 'draft', '{"draft":["in_review","cancelled"],"in_review":["scheduled","rejected","cancelled"],"rejected":["draft"],"scheduled":["live","cancelled"],"live":["paused","tracking","exhausted"],"paused":["live","tracking","exhausted"],"tracking":["settling","exhausted"],"exhausted":["settling"],"settling":["settled"]}');
 
 -- S-02 claim
 create trigger claims_state_machine before insert or update of status on market.claims

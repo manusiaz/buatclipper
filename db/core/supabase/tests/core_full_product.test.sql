@@ -51,8 +51,12 @@ select is((select count(*)::int from api.campaigns), 0, 'Budi (tidak diundang, t
 set local request.jwt.claims = '{"sub":"22222222-0000-0000-0000-0000000000e1","role":"authenticated","aal":"aal1","iss":"https://auth.contoh.id/auth/v1"}';
 select is((select count(*)::int from api.campaigns where is_template), 0, 'agency belum tertaut tidak melihat template klien');
 reset role;
-insert into market.org_links (agency_org_id, client_org_id, approved_by, approved_at) values
-  ('44444444-0000-0000-0000-0000000000a9', '44444444-0000-0000-0000-000000000001', '22222222-0000-0000-0000-0000000000a1', now());
+insert into market.org_links (agency_org_id, client_org_id) values
+  ('44444444-0000-0000-0000-0000000000a9', '44444444-0000-0000-0000-000000000001');
+set local role authenticated;
+select is((select count(*)::int from api.campaigns where is_template), 0, 'tautan belum disetujui brand_owner klien → belum ada akses');
+reset role;
+update market.org_links set approved_by = '22222222-0000-0000-0000-0000000000a1', approved_at = now();
 set local role authenticated;
 select is((select count(*)::int from api.campaigns where is_template), 1, 'agency tertaut melihat template klien');
 select is((select role::text from api.org_members where org_id = '44444444-0000-0000-0000-0000000000a9'), 'brand_manager',

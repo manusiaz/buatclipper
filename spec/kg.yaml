@@ -49,7 +49,7 @@ entities:
   E-41: {table: reward_codes, db: core.finance, fields: [id, reward_type_id, code, fulfillment_id, uploaded_by, created_at, assigned_at], unique: [fulfillment_id, "reward_type_id+code"], belongs_to: [E-07, E-18]}  # pool kode voucher; satu kode = satu fulfillment (F-B03)
   E-42: {table: broadcasts, db: core.ops, fields: [id, title, body, segment, channels, created_by, scheduled_at, sent_at, recipient_count, created_at]}  # broadcast ke segmen clipper (F-A12)
 states:  # state: [state tujuan yang diizinkan]
-  S-01 campaign: {draft: [in_review, cancelled], in_review: [scheduled, rejected], rejected: [draft], scheduled: [live, cancelled], live: [paused, tracking, exhausted], paused: [live], tracking: [settling, exhausted], exhausted: [settling], settling: [settled]}
+  S-01 campaign: {draft: [in_review, cancelled], in_review: [scheduled, rejected, cancelled], rejected: [draft], scheduled: [live, cancelled], live: [paused, tracking, exhausted], paused: [live, tracking, exhausted], tracking: [settling, exhausted], exhausted: [settling], settling: [settled]}
   S-02 claim: {open: [submitted, expired, released]}
   S-03 submission: {validating: [in_review, tracking, rejected], in_review: [tracking, rejected], rejected: [appealed], appealed: [tracking, rejected_final], tracking: [flagged, forfeited, locked], flagged: [tracking, forfeited], locked: [settled]}
   S-04 earning: {pending: [available, reversed], available: [withdrawn]}
