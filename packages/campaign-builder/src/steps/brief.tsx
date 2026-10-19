@@ -106,9 +106,9 @@ export function BriefStep({ draft, update, ctx, locked, t, locale, errorOf, uplo
             <BriefEditor
               label={t('brief.rawBrief')}
               helper={t('brief.rawBriefHelper')}
-              value={draft.brief}
-              error={errorOf('brief')}
-              onChange={(brief) => update((d) => ({ ...d, brief }))}
+              value={draft.managed_brief}
+              error={errorOf('managed_brief')}
+              onChange={(managed_brief) => update((d) => ({ ...d, managed_brief }))}
               t={t}
               rows={8}
             />

@@ -146,6 +146,8 @@ export interface CampaignDraft {
   // (2) brief & aset
   service_mode: ServiceMode;
   brief: string;
+  /** Paket managed: brief mentah dari brand (kolom managed_brief), terpisah dari `brief` final susunan tim. */
+  managed_brief: string;
   dos: string[];
   donts: string[];
   example_urls: string[];

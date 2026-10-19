@@ -155,6 +155,7 @@ const draftObject = z.object({
   cover: assetSchema.nullable(),
   service_mode: z.enum(['self_serve', 'managed']),
   brief: z.string(),
+  managed_brief: z.string().max(20000),
   dos: z.array(z.string()),
   donts: z.array(z.string()),
   example_urls: listOf((v) => normalizeLink(v).ok, 'errors.linkHttps'),
@@ -252,6 +253,7 @@ export function fieldStep(path: readonly (string | number)[]): StepId {
       return 'basics';
     case 'service_mode':
     case 'brief':
+    case 'managed_brief':
     case 'dos':
     case 'donts':
     case 'example_urls':

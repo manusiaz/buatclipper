@@ -115,6 +115,7 @@ export function draftFromDetail(detail: unknown): CampaignDraft {
     cover: assets.find((a) => a.kind === 'cover') ?? null,
     service_mode: c.service_mode === 'managed' ? 'managed' : 'self_serve',
     brief: str(c.brief) ?? '',
+    managed_brief: str(c.managed_brief) ?? '',
     dos: strArr(c.dos),
     donts: strArr(c.donts),
     example_urls: strArr(c.example_urls),

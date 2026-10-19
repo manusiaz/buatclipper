@@ -66,6 +66,7 @@ export function toSavePayload(draft: CampaignDraft): Record<string, unknown> {
 
   p.service_mode = draft.service_mode;
   p.brief = draft.brief;
+  if (draft.service_mode === 'managed' || draft.managed_brief) p.managed_brief = draft.managed_brief;
   p.required_hashtags = normalizeList('hashtag', draft.required_hashtags).values;
   p.required_mentions = normalizeList('mention', draft.required_mentions).values;
   p.required_links = normalizeList('link', draft.required_links).values;

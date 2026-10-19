@@ -10,6 +10,8 @@ create table market.campaigns (
   status market.campaign_status not null default 'draft',
   platforms market.platform[] not null check (cardinality(platforms) >= 1),
   brief text not null default '',
+  -- Paket managed: brief mentah dari brand (hanya anggota org & admin); `brief` = versi final susunan tim (J-A7).
+  managed_brief text not null default '' check (length(managed_brief) <= 20000),
   -- Brief terstruktur (F-B02 langkah 2). Hashtag/mention disimpan huruf kecil tanpa # / @ (dinormalisasi save_campaign);
   -- hashtag, mention, dan link wajib dicek otomatis api.missing_brief_tags saat submit dan tiap snapshot (§11).
   required_hashtags text[] not null default '{}',
@@ -77,8 +79,8 @@ begin
          is distinct from
          (old.slug, old.type, old.platforms, old.brief, old.required_hashtags, old.required_mentions, old.required_links,
           old.sponsored_label, old.min_duration_sec, old.max_duration_sec, old.dos, old.donts, old.example_urls) then
-    raise exception 'campaigns: brief terkunci sejak diajukan (status %); yang boleh diubah hanya FAQ', old.status
-      using errcode = '23514';
+    raise exception 'campaign_locked' using errcode = '23514',
+      detail = format('brief terkunci sejak diajukan (status %s); yang boleh diubah hanya FAQ', old.status);
   end if;
   return new;
 end $$;

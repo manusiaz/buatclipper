@@ -68,6 +68,7 @@ export function newDraft(ctx: Pick<BuilderContext, 'org' | 'rewardTypes' | 'plat
     cover: null,
     service_mode: 'self_serve',
     brief: '',
+    managed_brief: '',
     dos: [],
     donts: [],
     example_urls: [],

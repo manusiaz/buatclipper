@@ -165,7 +165,7 @@ declare
   p jsonb := coalesce(p_campaign, '{}');
   is_admin boolean := ops.has_admin('admin_ops');
   is_brand boolean;
-  cols constant text[] := array['title', 'slug', 'type', 'category_id', 'platforms', 'brief', 'required_hashtags',
+  cols constant text[] := array['title', 'slug', 'type', 'category_id', 'platforms', 'brief', 'managed_brief', 'required_hashtags',
     'required_mentions', 'required_links', 'sponsored_label', 'min_duration_sec', 'max_duration_sec', 'dos', 'donts', 'example_urls',
     'faq', 'service_mode', 'start_at', 'submit_deadline', 'view_window_days', 'review_mode', 'min_followers', 'min_account_age_days',
     'min_trust_score', 'kyc_required', 'min_views', 'max_clips_per_clipper', 'clipper_quota', 'allow_video_reuse', 'visibility',
@@ -435,6 +435,12 @@ begin
 
   if org.status <> 'verified' then
     perform market.fail('org_not_verified', 'org belum diverifikasi admin');
+  end if;
+  -- Brand mengajukan sendiri draft managed (tanpa menunggu tim) → jasa managed tetap ditagih, sekali.
+  if c.service_mode = 'managed' and not exists (select 1 from finance.invoices i where i.campaign_id = c.id
+                                                and i.kind = 'managed_service' and i.status <> 'void') then
+    perform finance.issue_invoice(org.id, c.id, 'managed_service', 0,
+      coalesce((select (s.value #>> '{}')::numeric from ops.settings s where s.key = 'public.billing.managed_service_idr'), 2500000));
   end if;
   update market.campaigns set status = 'in_review' where id = c.id;
   if paid_sub is null then

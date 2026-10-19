@@ -266,8 +266,8 @@ create function market.check_rule_params(p_kind text, p jsonb) returns void
 language plpgsql set search_path = '' as $$
 declare
   t jsonb;
-  prev numeric := -1;
-  i int := 0;
+  prev numeric;
+  n int;
 begin
   if jsonb_typeof(p) is distinct from 'object' then
     perform market.fail('invalid:rule_params', 'params harus object');
@@ -288,14 +288,18 @@ begin
     if jsonb_typeof(p -> 'tiers') is distinct from 'array' or jsonb_array_length(p -> 'tiers') = 0 then
       perform market.fail('invalid:rule_params', 'tiered_cpm butuh tiers [{from, to, rate}]');
     end if;
-    for t in select jsonb_array_elements(p -> 'tiers') loop
-      if market.jnum(t -> 'from') is null or market.jnum(t -> 'from') <= prev or coalesce(market.jnum(t -> 'rate'), 0) <= 0
-         or (i = 0 and market.jnum(t -> 'from') <> 0)
-         or (t ? 'to' and jsonb_typeof(t -> 'to') <> 'null' and market.jnum(t -> 'to') <= market.jnum(t -> 'from')) then
-        perform market.fail('invalid:rule_params', 'tier harus mulai dari 0, naik, rate > 0');
+    -- Tier kontigu tanpa celah/tumpang tindih: [0, to1), [to1, to2), …; hanya tier terakhir boleh tanpa `to` (terbuka).
+    -- Tumpang tindih = views yang sama dibayar dua kali oleh finance.rule_amount.
+    n := jsonb_array_length(p -> 'tiers');
+    for i in 0 .. n - 1 loop
+      t := p -> 'tiers' -> i;
+      if market.jnum(t -> 'from') is null or coalesce(market.jnum(t -> 'rate'), 0) <= 0
+         or market.jnum(t -> 'from') <> (case when i = 0 then 0 else prev end)
+         or (i < n - 1 and coalesce(market.jnum(t -> 'to'), 0) <= market.jnum(t -> 'from'))
+         or (i = n - 1 and jsonb_typeof(t -> 'to') = 'number' and market.jnum(t -> 'to') <= market.jnum(t -> 'from')) then
+        perform market.fail('invalid:rule_params', 'tier harus kontigu mulai 0 (from = to tier sebelumnya), rate > 0, hanya tier terakhir terbuka');
       end if;
-      prev := market.jnum(t -> 'from');
-      i := i + 1;
+      prev := market.jnum(t -> 'to');
     end loop;
   else
     perform market.fail('invalid:rule_kind', coalesce(p_kind, 'null'));

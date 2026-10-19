@@ -1011,5 +1011,42 @@ select is((select array_agg(username || ':' || trust_score order by username) fr
           array['andi:51', 'budi:0', 'citra:50', 'eko:100'], 'skor = 50 + Σ delta, dibatasi 0–100');
 select is(trust.recalc_scores(), 0, 'dijalankan ulang tanpa perubahan');
 
+-- ---------- Perbaikan integrasi 2026-10-19 ----------
+reset role;
+-- Tier tiered_cpm wajib kontigu: tumpang tindih membuat views yang sama dibayar dua kali (finance.rule_amount).
+select lives_ok($$ select market.check_rule_params('tiered_cpm', '{"tiers":[{"from":0,"to":50000,"rate":2000},{"from":50000,"rate":1500}]}') $$,
+                'tier kontigu, tier terakhir terbuka: diterima');
+select throws_ok($$ select market.check_rule_params('tiered_cpm', '{"tiers":[{"from":0,"to":60000,"rate":2000},{"from":50000,"rate":1500}]}') $$,
+                 'P0001', 'invalid:rule_params', 'tier tumpang tindih ditolak');
+select throws_ok($$ select market.check_rule_params('tiered_cpm', '{"tiers":[{"from":0,"rate":2000},{"from":50000,"rate":1500}]}') $$,
+                 'P0001', 'invalid:rule_params', 'tier terbuka yang bukan terakhir ditolak');
+select throws_ok($$ select market.check_rule_params('tiered_cpm', '{"tiers":[{"from":0,"to":40000,"rate":2000},{"from":50000,"rate":1500}]}') $$,
+                 'P0001', 'invalid:rule_params', 'celah antar tier ditolak');
+
+-- Paket managed: brand mengajukan sendiri tanpa menunggu tim → invoice jasa managed tetap terbit (sekali).
+set local role authenticated;
+select pg_temp.jwt('22222222-0000-0000-0000-0000000000a1');
+insert into t_ids (k, id) select 'c_mgd', api.save_campaign($j${
+  "org_id":"44444444-0000-0000-0000-000000000001","title":"Managed Sendiri","type":"clipping","platforms":["tiktok"],
+  "service_mode":"managed","managed_brief":"Tolong buatkan brief dari trailer kami.",
+  "start_at":"2099-01-01T00:00:00Z","submit_deadline":"2099-01-20T00:00:00Z",
+  "pools":[{"key":"idr","reward_type_id":"77777777-0000-0000-0000-000000000001","total":1000000,"max_per_clip":100000}],
+  "rules":[{"kind":"per_1k_views","pool":"idr","params":{"rate":2000}}]}$j$::jsonb, true);
+reset role;
+select is((select count(*)::int from finance.invoices where campaign_id = (select id from t_ids where k = 'c_mgd') and kind = 'managed_service'),
+          1, 'brand mengajukan draft managed sendiri → invoice managed_service terbit');
+select is((select service_fee from finance.invoices where campaign_id = (select id from t_ids where k = 'c_mgd') and kind = 'managed_service'),
+          2500000::numeric, 'jasa managed = public.billing.managed_service_idr');
+select is((select managed_brief from market.campaigns where id = (select id from t_ids where k = 'c_mgd')),
+          'Tolong buatkan brief dari trailer kami.', 'brief mentah managed tersimpan terpisah dari brief final');
+set local role authenticated;
+select pg_temp.jwt('22222222-0000-0000-0000-0000000000a1');
+select is((select api.campaign_detail((select id from t_ids where k = 'c_mgd')) #>> '{campaign,managed_brief}'),
+          'Tolong buatkan brief dari trailer kami.', 'anggota org melihat brief mentah di campaign_detail');
+reset role;
+-- Trigger brief beku memakai kode mesin (UI memetakan kode, bukan teks).
+select throws_ok($$ update market.campaigns set brief = 'ganti' where id = (select id from t_ids where k = 'c_mgd') $$,
+                 '23514', 'campaign_locked', 'trigger brief beku: pesan = kode campaign_locked');
+
 select * from finish();
 rollback;

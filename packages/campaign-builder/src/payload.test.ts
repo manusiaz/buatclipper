@@ -149,3 +149,14 @@ describe('toSavePayload', () => {
     expect(p).toHaveProperty('pools');
   });
 });
+
+describe('toSavePayload managed', () => {
+  it('kirim brief mentah brand ke managed_brief, brief final tidak tertimpa', () => {
+    const p = toSavePayload({ ...validDraft(), service_mode: 'managed', brief: '', managed_brief: 'Buatkan dari trailer.' });
+    expect(p.managed_brief).toBe('Buatkan dari trailer.');
+    expect(p.brief).toBe('');
+  });
+  it('self-serve tanpa brief mentah tidak mengirim managed_brief', () => {
+    expect('managed_brief' in toSavePayload({ ...validDraft(), service_mode: 'self_serve', managed_brief: '' })).toBe(false);
+  });
+});
