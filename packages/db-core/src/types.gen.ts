@@ -8,7 +8,21 @@ export type Database = {
             [_ in never]: never
           }
           Views: {
-            "alerts": {
+            "admin_profiles": {
+                  Row: {
+                    "avatar_path": string | null,"created_at": string | null,"display_name": string | null,"id": string | null,"status": "active"|"suspended"|"banned"|"closed" | null,"suspended_until": string | null,"trust_score": number | null,"username": string | null
+                  }
+                  ComputedFields: never
+                  Insert: {
+                           "avatar_path"?: string | null,"created_at"?: string | null,"display_name"?: string | null,"id"?: string | null,"status"?: "active"|"suspended"|"banned"|"closed" | null,"suspended_until"?: string | null,"trust_score"?: number | null,"username"?: string | null
+                         }
+                        Update: {
+                           "avatar_path"?: string | null,"created_at"?: string | null,"display_name"?: string | null,"id"?: string | null,"status"?: "active"|"suspended"|"banned"|"closed" | null,"suspended_until"?: string | null,"trust_score"?: number | null,"username"?: string | null
+                         }
+                        Relationships: [
+                    
+                  ]
+                },"alerts": {
                   Row: {
                     "created_at": string | null,"id": number | null,"kind": string | null,"payload": Json | null,"resolved_at": string | null,"resolved_by": string | null,"severity": string | null
                   }
@@ -94,14 +108,14 @@ export type Database = {
                   ]
                 },"campaigns": {
                   Row: {
-                    "allow_video_reuse": boolean | null,"brief": string | null,"category_id": string | null,"clipper_quota": number | null,"created_at": string | null,"donts": (string)[] | null,"dos": (string)[] | null,"example_urls": (string)[] | null,"faq": Json | null,"id": string | null,"is_template": boolean | null,"kyc_required": boolean | null,"max_clips_per_clipper": number | null,"max_duration_sec": number | null,"min_account_age_days": number | null,"min_duration_sec": number | null,"min_followers": number | null,"min_trust_score": number | null,"min_views": number | null,"org_id": string | null,"pinned_rank": number | null,"pinned_until": string | null,"platforms": ("tiktok"|"instagram"|"youtube"|"threads"|"facebook"|"x")[] | null,"required_hashtags": (string)[] | null,"required_links": (string)[] | null,"required_mentions": (string)[] | null,"review_mode": string | null,"service_mode": string | null,"slug": string | null,"sponsored_label": boolean | null,"start_at": string | null,"status": "draft"|"in_review"|"cancelled"|"scheduled"|"rejected"|"live"|"paused"|"tracking"|"exhausted"|"settling"|"settled" | null,"submit_deadline": string | null,"title": string | null,"type": string | null,"view_window_days": number | null,"visibility": string | null
+                    "allow_video_reuse": boolean | null,"brief": string | null,"category_id": string | null,"clipper_quota": number | null,"created_at": string | null,"donts": (string)[] | null,"dos": (string)[] | null,"example_urls": (string)[] | null,"faq": Json | null,"fee_rule_id": string | null,"id": string | null,"is_template": boolean | null,"kyc_required": boolean | null,"max_clips_per_clipper": number | null,"max_duration_sec": number | null,"min_account_age_days": number | null,"min_duration_sec": number | null,"min_followers": number | null,"min_trust_score": number | null,"min_views": number | null,"org_id": string | null,"pinned_rank": number | null,"pinned_until": string | null,"platforms": ("tiktok"|"instagram"|"youtube"|"threads"|"facebook"|"x")[] | null,"required_hashtags": (string)[] | null,"required_links": (string)[] | null,"required_mentions": (string)[] | null,"review_mode": string | null,"service_mode": string | null,"slug": string | null,"sponsored_label": boolean | null,"start_at": string | null,"status": "draft"|"in_review"|"cancelled"|"scheduled"|"rejected"|"live"|"paused"|"tracking"|"exhausted"|"settling"|"settled" | null,"submit_deadline": string | null,"title": string | null,"type": string | null,"view_window_days": number | null,"visibility": string | null
                   }
                   ComputedFields: never
                   Insert: {
-                           "allow_video_reuse"?: boolean | null,"brief"?: string | null,"category_id"?: string | null,"clipper_quota"?: number | null,"created_at"?: string | null,"donts"?: (string)[] | null,"dos"?: (string)[] | null,"example_urls"?: (string)[] | null,"faq"?: Json | null,"id"?: string | null,"is_template"?: boolean | null,"kyc_required"?: boolean | null,"max_clips_per_clipper"?: number | null,"max_duration_sec"?: number | null,"min_account_age_days"?: number | null,"min_duration_sec"?: number | null,"min_followers"?: number | null,"min_trust_score"?: number | null,"min_views"?: number | null,"org_id"?: string | null,"pinned_rank"?: number | null,"pinned_until"?: string | null,"platforms"?: ("tiktok"|"instagram"|"youtube"|"threads"|"facebook"|"x")[] | null,"required_hashtags"?: (string)[] | null,"required_links"?: (string)[] | null,"required_mentions"?: (string)[] | null,"review_mode"?: string | null,"service_mode"?: string | null,"slug"?: string | null,"sponsored_label"?: boolean | null,"start_at"?: string | null,"status"?: "draft"|"in_review"|"cancelled"|"scheduled"|"rejected"|"live"|"paused"|"tracking"|"exhausted"|"settling"|"settled" | null,"submit_deadline"?: string | null,"title"?: string | null,"type"?: string | null,"view_window_days"?: number | null,"visibility"?: string | null
+                           "allow_video_reuse"?: boolean | null,"brief"?: string | null,"category_id"?: string | null,"clipper_quota"?: number | null,"created_at"?: string | null,"donts"?: (string)[] | null,"dos"?: (string)[] | null,"example_urls"?: (string)[] | null,"faq"?: Json | null,"fee_rule_id"?: string | null,"id"?: string | null,"is_template"?: boolean | null,"kyc_required"?: boolean | null,"max_clips_per_clipper"?: number | null,"max_duration_sec"?: number | null,"min_account_age_days"?: number | null,"min_duration_sec"?: number | null,"min_followers"?: number | null,"min_trust_score"?: number | null,"min_views"?: number | null,"org_id"?: string | null,"pinned_rank"?: number | null,"pinned_until"?: string | null,"platforms"?: ("tiktok"|"instagram"|"youtube"|"threads"|"facebook"|"x")[] | null,"required_hashtags"?: (string)[] | null,"required_links"?: (string)[] | null,"required_mentions"?: (string)[] | null,"review_mode"?: string | null,"service_mode"?: string | null,"slug"?: string | null,"sponsored_label"?: boolean | null,"start_at"?: string | null,"status"?: "draft"|"in_review"|"cancelled"|"scheduled"|"rejected"|"live"|"paused"|"tracking"|"exhausted"|"settling"|"settled" | null,"submit_deadline"?: string | null,"title"?: string | null,"type"?: string | null,"view_window_days"?: number | null,"visibility"?: string | null
                          }
                         Update: {
-                           "allow_video_reuse"?: boolean | null,"brief"?: string | null,"category_id"?: string | null,"clipper_quota"?: number | null,"created_at"?: string | null,"donts"?: (string)[] | null,"dos"?: (string)[] | null,"example_urls"?: (string)[] | null,"faq"?: Json | null,"id"?: string | null,"is_template"?: boolean | null,"kyc_required"?: boolean | null,"max_clips_per_clipper"?: number | null,"max_duration_sec"?: number | null,"min_account_age_days"?: number | null,"min_duration_sec"?: number | null,"min_followers"?: number | null,"min_trust_score"?: number | null,"min_views"?: number | null,"org_id"?: string | null,"pinned_rank"?: number | null,"pinned_until"?: string | null,"platforms"?: ("tiktok"|"instagram"|"youtube"|"threads"|"facebook"|"x")[] | null,"required_hashtags"?: (string)[] | null,"required_links"?: (string)[] | null,"required_mentions"?: (string)[] | null,"review_mode"?: string | null,"service_mode"?: string | null,"slug"?: string | null,"sponsored_label"?: boolean | null,"start_at"?: string | null,"status"?: "draft"|"in_review"|"cancelled"|"scheduled"|"rejected"|"live"|"paused"|"tracking"|"exhausted"|"settling"|"settled" | null,"submit_deadline"?: string | null,"title"?: string | null,"type"?: string | null,"view_window_days"?: number | null,"visibility"?: string | null
+                           "allow_video_reuse"?: boolean | null,"brief"?: string | null,"category_id"?: string | null,"clipper_quota"?: number | null,"created_at"?: string | null,"donts"?: (string)[] | null,"dos"?: (string)[] | null,"example_urls"?: (string)[] | null,"faq"?: Json | null,"fee_rule_id"?: string | null,"id"?: string | null,"is_template"?: boolean | null,"kyc_required"?: boolean | null,"max_clips_per_clipper"?: number | null,"max_duration_sec"?: number | null,"min_account_age_days"?: number | null,"min_duration_sec"?: number | null,"min_followers"?: number | null,"min_trust_score"?: number | null,"min_views"?: number | null,"org_id"?: string | null,"pinned_rank"?: number | null,"pinned_until"?: string | null,"platforms"?: ("tiktok"|"instagram"|"youtube"|"threads"|"facebook"|"x")[] | null,"required_hashtags"?: (string)[] | null,"required_links"?: (string)[] | null,"required_mentions"?: (string)[] | null,"review_mode"?: string | null,"service_mode"?: string | null,"slug"?: string | null,"sponsored_label"?: boolean | null,"start_at"?: string | null,"status"?: "draft"|"in_review"|"cancelled"|"scheduled"|"rejected"|"live"|"paused"|"tracking"|"exhausted"|"settling"|"settled" | null,"submit_deadline"?: string | null,"title"?: string | null,"type"?: string | null,"view_window_days"?: number | null,"visibility"?: string | null
                          }
                         Relationships: [
                     
@@ -312,14 +326,14 @@ export type Database = {
                   ]
                 },"organizations": {
                   Row: {
-                    "address": string | null,"created_at": string | null,"id": string | null,"is_agency": boolean | null,"legal_name": string | null,"name": string | null,"npwp": string | null,"org_type": string | null,"status": "pending_verification"|"verified"|"suspended" | null,"verified_at": string | null
+                    "address": string | null,"created_at": string | null,"fee_rule_id": string | null,"id": string | null,"is_agency": boolean | null,"legal_name": string | null,"name": string | null,"npwp": string | null,"org_type": string | null,"status": "pending_verification"|"verified"|"suspended" | null,"verified_at": string | null
                   }
                   ComputedFields: never
                   Insert: {
-                           "address"?: string | null,"created_at"?: string | null,"id"?: string | null,"is_agency"?: boolean | null,"legal_name"?: string | null,"name"?: string | null,"npwp"?: string | null,"org_type"?: string | null,"status"?: "pending_verification"|"verified"|"suspended" | null,"verified_at"?: string | null
+                           "address"?: string | null,"created_at"?: string | null,"fee_rule_id"?: string | null,"id"?: string | null,"is_agency"?: boolean | null,"legal_name"?: string | null,"name"?: string | null,"npwp"?: string | null,"org_type"?: string | null,"status"?: "pending_verification"|"verified"|"suspended" | null,"verified_at"?: string | null
                          }
                         Update: {
-                           "address"?: string | null,"created_at"?: string | null,"id"?: string | null,"is_agency"?: boolean | null,"legal_name"?: string | null,"name"?: string | null,"npwp"?: string | null,"org_type"?: string | null,"status"?: "pending_verification"|"verified"|"suspended" | null,"verified_at"?: string | null
+                           "address"?: string | null,"created_at"?: string | null,"fee_rule_id"?: string | null,"id"?: string | null,"is_agency"?: boolean | null,"legal_name"?: string | null,"name"?: string | null,"npwp"?: string | null,"org_type"?: string | null,"status"?: "pending_verification"|"verified"|"suspended" | null,"verified_at"?: string | null
                          }
                         Relationships: [
                     
@@ -667,8 +681,14 @@ export type Database = {
 "manage_org":
 { Args: { "p_action": string,"p_org": string,"p_params"?: Json }; Returns: undefined
                            },
+"manage_user":
+{ Args: { "p_action": string,"p_params"?: Json,"p_user": string }; Returns: undefined
+                           },
 "mark_batch_paid":
 { Args: { "p_batch": string,"p_results": Json }; Returns: undefined
+                           },
+"mark_fulfillment_delivered":
+{ Args: { "p_fulfillment": string,"p_ref": string }; Returns: undefined
                            },
 "missing_brief_tags":
 { Args: { "p_campaign": string,"p_caption": string }; Returns: (string)[]
@@ -678,6 +698,12 @@ export type Database = {
                            },
 "my_stats":
 { Args: Record<PropertyKey, never>; Returns: Json
+                           },
+"org_credit":
+{ Args: { "p_org": string }; Returns: Json
+                           },
+"pay_invoice_with_credit":
+{ Args: { "p_invoice": string }; Returns: undefined
                            },
 "record_review":
 { Args: { "p_decision": string,"p_message"?: string,"p_note"?: string,"p_reason"?: string,"p_target_id": string,"p_target_type": string }; Returns: undefined

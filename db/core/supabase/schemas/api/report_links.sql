@@ -7,11 +7,11 @@ declare
   tok text;
 begin
   if not ops.iss_ok() then
-    raise exception 'butuh sesi identity' using errcode = '42501';
+    perform market.fail('auth:no_session', 'butuh sesi identity', '42501');
   end if;
   select c.org_id into org from market.campaigns c where c.id = p_campaign;
   if org is null or not ops.is_org_member(org, 'brand_owner', 'brand_manager') then
-    raise exception 'hanya brand_owner atau brand_manager org ini' using errcode = '42501';
+    perform market.fail('auth:forbidden', 'hanya brand_owner atau brand_manager org ini', '42501');
   end if;
   tok := rtrim(translate(encode(extensions.gen_random_bytes(32), 'base64'), '+/', '-_'), '=');
   insert into market.report_links (campaign_id, token_hash, created_by, expires_at)
@@ -24,14 +24,14 @@ create function api.revoke_report_link(p_link uuid) returns void
 language plpgsql security definer set search_path = '' as $$
 begin
   if not ops.iss_ok() then
-    raise exception 'butuh sesi identity' using errcode = '42501';
+    perform market.fail('auth:no_session', 'butuh sesi identity', '42501');
   end if;
   update market.report_links rl set revoked_at = now()
    where rl.id = p_link and rl.revoked_at is null
      and exists (select 1 from market.campaigns c where c.id = rl.campaign_id
                  and ops.is_org_member(c.org_id, 'brand_owner', 'brand_manager'));
   if not found then
-    raise exception 'link tidak ada atau bukan milik org-mu' using errcode = '42501';
+    perform market.fail('auth:forbidden', 'link tidak ada atau bukan milik org-mu', '42501');
   end if;
 end $$;
 

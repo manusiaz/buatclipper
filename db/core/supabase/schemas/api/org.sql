@@ -380,8 +380,10 @@ begin
   if rt.id is null then
     perform market.fail('not_found:reward_type', null, 'P0002');
   end if;
-  if rt.owner_org_id is null or not ops.is_org_member(rt.owner_org_id, 'brand_owner', 'brand_manager') then
-    perform market.fail('auth:forbidden', 'butuh brand_owner/brand_manager pemilik reward type', '42501');
+  -- Brand pemilik reward type, atau admin_ops (F-A10: kode dari brand dikirim ke tim, atau reward type milik platform).
+  if not (ops.has_admin('admin_ops')
+          or (rt.owner_org_id is not null and ops.is_org_member(rt.owner_org_id, 'brand_owner', 'brand_manager'))) then
+    perform market.fail('auth:forbidden', 'butuh brand_owner/brand_manager pemilik reward type atau admin_ops', '42501');
   end if;
   if rt.fulfillment <> 'code_pool' then
     perform market.fail('invalid:fulfillment', 'reward type ini bukan pool kode');

@@ -368,13 +368,13 @@ begin
   end loop;
 end $$;
 
--- fn:release_earnings (job earning-release): submisi locked + hold (finance.hold_days) tanpa fraud flag terbuka di submisi,
+-- fn:release_earnings (job earning-release): submisi locked + hold (public.finance.hold_days) tanpa fraud flag terbuka di submisi,
 -- profil, atau akun sosmednya, dan tanpa demand settlement tertunda → pending ke Tersedia, submisi settled. Pembulatan ke bawah
 -- (decimals reward type) hanya di sini; recehan kembali ke pool. ref_id = '<submission_id>:<pool_id>'.
 create function finance.release_earnings() returns void
 language plpgsql security definer set search_path = '' as $$
 declare
-  hold int := (ops.cfg('finance.hold_days', '7'))::int;
+  hold int := (ops.cfg('public.finance.hold_days', '7'))::int;
   s record;
   g record;
   wallet uuid;

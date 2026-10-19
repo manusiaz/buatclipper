@@ -4,6 +4,11 @@ export type Locale = (typeof locales)[number];
 export const defaultLocale: Locale = 'id';
 export const LOCALE_COOKIE = 'NEXT_LOCALE';
 
+/** Alasan standar penolakan (reason_code E-19) — satu daftar untuk brand, admin, clipper; teks di common.rejectReasons.<kode>. */
+export const REJECT_REASONS = ['off_brief', 'missing_tags', 'low_quality', 'reused_content', 'wrong_account', 'sponsored_label', 'misleading',
+  'inappropriate', 'fraud_suspected', 'other'] as const;
+export type RejectReason = (typeof REJECT_REASONS)[number];
+
 export function resolveLocale(value: string | undefined | null): Locale {
   return (locales as readonly string[]).includes(value ?? '') ? (value as Locale) : defaultLocale;
 }

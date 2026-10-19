@@ -24,5 +24,6 @@
   "themeLight": "Light",
   "themeDark": "Dark",
   "themeSystem": "System",
-  "platforms": { "tiktok": "TikTok", "instagram": "Instagram", "youtube": "YouTube", "threads": "Threads", "facebook": "Facebook", "x": "X" }
+  "platforms": { "tiktok": "TikTok", "instagram": "Instagram", "youtube": "YouTube", "threads": "Threads", "facebook": "Facebook", "x": "X" },
+  "rejectReasons": { "off_brief": "Doesn't follow the brief", "missing_tags": "Required tag/mention/link missing", "low_quality": "Low video quality", "reused_content": "Reused/duplicate content", "wrong_account": "Not the connected account", "sponsored_label": "Sponsored label missing", "misleading": "Misleading / harms the brand", "inappropriate": "Inappropriate content", "fraud_suspected": "Suspected non-organic views", "other": "Other" }
 }

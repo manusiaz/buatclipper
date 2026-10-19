@@ -18,7 +18,7 @@ declare
   ref text;
   x record;
   entries jsonb := '[]';
-  fee numeric := (ops.cfg('finance.refund_transfer_fee_idr', '0'))::numeric;
+  fee numeric := (ops.cfg('public.finance.refund_transfer_fee_idr', '0'))::numeric;
 begin
   if uid is null or not ops.iss_ok() then
     raise exception 'auth:no_session' using errcode = '42501';

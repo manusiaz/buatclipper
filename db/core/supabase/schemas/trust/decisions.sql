@@ -54,12 +54,12 @@ begin
                                                       'message', p_message, 'final', to_status = 'rejected_final'));
 end $$;
 
--- F-B07: submisi campaign review brand yang tidak direview dalam market.brand_review_auto_approve_hours (72) → auto-approve.
+-- F-B07: submisi campaign review brand yang tidak direview dalam public.market.brand_review_auto_approve_hours (72) → auto-approve.
 -- Umur dihitung dari created_at submisi. Dipanggil job lifecycle (perform trust.auto_approve_overdue()).
 create function trust.auto_approve_overdue() returns int
 language plpgsql security definer set search_path = '' as $$
 declare
-  h int := coalesce((select (st.value #>> '{}')::int from ops.settings st where st.key = 'market.brand_review_auto_approve_hours'), 72);
+  h int := coalesce((select (st.value #>> '{}')::int from ops.settings st where st.key = 'public.market.brand_review_auto_approve_hours'), 72);
   r record;
   n int := 0;
 begin

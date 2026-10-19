@@ -14,10 +14,12 @@ insert into auth.users (id, email) values
   ('00000000-0000-0000-0000-00000000000b', 'b@contoh.id'),
   ('00000000-0000-0000-0000-00000000000c', 'c@contoh.id'),
   ('00000000-0000-0000-0000-0000000000ad', 'mod@contoh.id'),
-  ('00000000-0000-0000-0000-0000000000ae', 'support@contoh.id');
+  ('00000000-0000-0000-0000-0000000000ae', 'support@contoh.id'),
+  ('00000000-0000-0000-0000-0000000000af', 'super@contoh.id');
 insert into member.platform_roles (user_id, role) values
   ('00000000-0000-0000-0000-0000000000ad', 'admin_moderator'),
-  ('00000000-0000-0000-0000-0000000000ae', 'admin_support');
+  ('00000000-0000-0000-0000-0000000000ae', 'admin_support'),
+  ('00000000-0000-0000-0000-0000000000af', 'admin_super');
 insert into member.legal_versions (kind, version, published_at, url) values
   ('tos_clipper', '2026-09-01', now() - interval '40 days', 'https://contoh.id/legal/tos-clipper'),
   ('tos_clipper', '2026-10-01', now() - interval '1 day', 'https://contoh.id/legal/tos-clipper'),
@@ -101,8 +103,18 @@ set local request.jwt.claims = '{"sub":"00000000-0000-0000-0000-0000000000ae","r
 select throws_ok($$ select api.admin_kyc_decision('00000000-0000-0000-0000-00000000000a', 'approved') $$, '42501', null,
                  'admin_support (bukan reviewer KYC) ditolak');
 select is((select count(*)::int from api.admin_read('00000000-0000-0000-0000-00000000000a')), 1, 'admin_support boleh baca (tercatat)');
+select throws_ok($$ select * from api.admin_kyc_queue() $$, '42501', null, 'admin_support tidak melihat antrean KYC');
 set local request.jwt.claims = '{"sub":"00000000-0000-0000-0000-0000000000ad","role":"authenticated","aal":"aal2"}';
+select is((select array_agg(user_id) from api.admin_kyc_queue()), array['00000000-0000-0000-0000-00000000000a'::uuid],
+          'antrean KYC pending untuk reviewer (tanpa PII)');
+select throws_ok($$ select * from api.admin_list_roles() $$, '42501', null, 'daftar admin hanya admin_super');
+select is((select count(*)::int from api.audit_logs), 0, 'audit log identity hanya admin_super');
 select lives_ok($$ select api.admin_kyc_decision('00000000-0000-0000-0000-00000000000a', 'approved') $$, 'admin_moderator aal2 menyetujui KYC');
+select is((select count(*)::int from api.admin_kyc_queue()), 0, 'KYC yang diputus keluar dari antrean pending');
+set local request.jwt.claims = '{"sub":"00000000-0000-0000-0000-0000000000af","role":"authenticated","aal":"aal2"}';
+select is((select string_agg(email || '=' || array_to_string(roles, ','), ' ' order by email) from api.admin_list_roles()),
+          'mod@contoh.id=admin_moderator super@contoh.id=admin_super support@contoh.id=admin_support', 'admin_super melihat daftar admin + role');
+select ok((select count(*) > 0 from api.audit_logs where action = 'kyc.decide'), 'admin_super membaca audit log identity');
 reset role;
 select is((member.custom_access_token_hook('{"user_id":"00000000-0000-0000-0000-00000000000a","claims":{}}') -> 'claims' ->> 'kyc'),
           'approved', 'hook: claim kyc approved');

@@ -6,51 +6,17 @@
 --   tax_payable         +tax
 -- subtotal campaign/topup = tepat dana pool Rupiah (issue_invoice); beda → invoice_pool_mismatch (invoice basi, terbitkan ulang).
 -- Pool non-tunai (Diamonds, voucher) = stok dari brand, bukan kas: bank_clearing(reward type itu) −total → campaign_pool +total.
-create function api.confirm_invoice_payment(p_invoice uuid, p_amount numeric, p_paid_at timestamptz, p_ref text, p_channel text)
-returns void
+-- Jurnal pelunasan bersama (transfer/QRIS: sumber bank_clearing; kredit org: sumber org_credit). Status invoice sudah paid.
+create function finance.settle_invoice(inv finance.invoices, p_source uuid) returns void
 language plpgsql security definer set search_path = '' as $$
 declare
-  inv finance.invoices;
   idr uuid := finance.idr();
-  bank uuid;
   entries jsonb := '[]';
   pool_idr numeric := 0;
   revenue numeric;
   x record;
 begin
-  if not ops.has_admin('admin_finance') then
-    raise exception 'auth:forbidden' using errcode = '42501';
-  end if;
-  select * into inv from finance.invoices i where i.id = p_invoice for update;
-  if not found then
-    raise exception 'not_found:invoice' using errcode = 'P0002';
-  end if;
-  if inv.status = 'paid' and inv.payment_ref = p_ref then
-    return;  -- replay konfirmasi yang sama
-  end if;
-  if inv.status <> 'issued' then
-    raise exception 'invalid_state:%', inv.status using errcode = 'P0001';
-  end if;
-  if p_amount is distinct from inv.total then
-    raise exception 'amount_mismatch' using errcode = 'P0001', detail = format('invoice %s, dibayar %s', inv.total, p_amount);
-  end if;
-  if p_ref is null or btrim(p_ref) = '' or p_channel is null or p_channel not in ('qris', 'transfer') then
-    raise exception 'invalid:payment' using errcode = 'P0001';
-  end if;
-  if exists (select 1 from finance.invoices i where i.payment_ref = btrim(p_ref)) then
-    raise exception 'duplicate_payment_ref' using errcode = '23505';
-  end if;
-  if inv.kind = 'campaign' and exists (select 1 from finance.invoices i where i.campaign_id = inv.campaign_id and i.kind = 'campaign'
-                                                                        and i.status = 'paid') then
-    raise exception 'campaign_already_funded' using errcode = 'P0001';
-  end if;
-
-  update finance.invoices set status = 'paid', payment_channel = p_channel, payment_ref = btrim(p_ref), paid_amount = p_amount,
-         paid_at = coalesce(p_paid_at, now()), confirmed_by = (select auth.uid())
-   where id = inv.id;
-
-  bank := finance.account('bank_clearing', null, idr);
-  entries := jsonb_build_array(finance.e(bank, -inv.total, 'invoice_payment', inv.id::text),
+  entries := jsonb_build_array(finance.e(p_source, -inv.total, 'invoice_payment', inv.id::text),
                                finance.e(finance.account('tax_payable', null, idr), inv.tax, 'invoice_payment', inv.id::text));
   revenue := inv.mgmt_fee + inv.admin_fee + inv.service_fee;
 
@@ -100,9 +66,120 @@ begin
      where id = inv.campaign_id;
   end if;
   perform market.notify_org(inv.org_id, array['brand_owner', 'brand_finance']::market.org_role[], 'invoice.paid',
-                            market.campaign_ref(inv.campaign_id) || finance.amount_ref(idr, p_amount)
+                            market.campaign_ref(inv.campaign_id) || finance.amount_ref(idr, inv.total)
                             || jsonb_build_object('invoice_id', inv.id, 'number', inv.number, 'kind', inv.kind));
 end $$;
 
-revoke execute on function api.confirm_invoice_payment(uuid, numeric, timestamptz, text, text) from public;
-grant execute on function api.confirm_invoice_payment(uuid, numeric, timestamptz, text, text) to authenticated;
+create function api.confirm_invoice_payment(p_invoice uuid, p_amount numeric, p_paid_at timestamptz, p_ref text, p_channel text)
+returns void
+language plpgsql security definer set search_path = '' as $$
+declare
+  inv finance.invoices;
+begin
+  if not ops.has_admin('admin_finance') then
+    raise exception 'auth:forbidden' using errcode = '42501';
+  end if;
+  select * into inv from finance.invoices i where i.id = p_invoice for update;
+  if not found then
+    raise exception 'not_found:invoice' using errcode = 'P0002';
+  end if;
+  if inv.status = 'paid' and inv.payment_ref = p_ref then
+    return;  -- replay konfirmasi yang sama
+  end if;
+  if inv.status <> 'issued' then
+    raise exception 'invalid_state:%', inv.status using errcode = 'P0001';
+  end if;
+  if p_amount is distinct from inv.total then
+    raise exception 'amount_mismatch' using errcode = 'P0001', detail = format('invoice %s, dibayar %s', inv.total, p_amount);
+  end if;
+  if p_ref is null or btrim(p_ref) = '' or p_channel is null or p_channel not in ('qris', 'transfer') then
+    raise exception 'invalid:payment' using errcode = 'P0001';
+  end if;
+  if exists (select 1 from finance.invoices i where i.payment_ref = btrim(p_ref)) then
+    raise exception 'duplicate_payment_ref' using errcode = '23505';
+  end if;
+  if inv.kind = 'campaign' and exists (select 1 from finance.invoices i where i.campaign_id = inv.campaign_id and i.kind = 'campaign'
+                                                                        and i.status = 'paid') then
+    raise exception 'campaign_already_funded' using errcode = 'P0001';
+  end if;
+
+  update finance.invoices set status = 'paid', payment_channel = p_channel, payment_ref = btrim(p_ref), paid_amount = p_amount,
+         paid_at = coalesce(p_paid_at, now()), confirmed_by = (select auth.uid())
+   where id = inv.id;
+  perform finance.settle_invoice(inv, finance.account('bank_clearing', null, finance.idr()));
+end $$;
+
+-- Kredit org (rollover sisa budget, D-09): saldo akun org_credit Rupiah dikurangi refund yang masih berjalan (dananya sudah
+-- di org_credit sejak diajukan, keluar saat dibayar). Sisa per campaign = saldo campaign_pool Rupiah (ledger, bukan cache).
+create function finance.org_credit_available(p_org uuid) returns numeric
+language sql stable security definer set search_path = '' as $$
+  select finance.balance(finance.account('org_credit', p_org, finance.idr()))
+         - coalesce((select sum(r.amount) from finance.org_refunds r where r.org_id = p_org and r.status in ('requested', 'approved')), 0);
+$$;
+
+create function api.org_credit(p_org uuid) returns jsonb
+language plpgsql stable security definer set search_path = '' as $$
+declare
+  acc uuid;
+begin
+  perform market.session_uid();
+  if not (ops.is_org_member(p_org, 'brand_owner', 'brand_finance') or ops.has_admin('admin_finance')) then
+    perform market.fail('auth:forbidden', 'butuh brand_owner/brand_finance', '42501');
+  end if;
+  select a.id into acc from finance.ledger_accounts a
+   where a.owner_type = 'org_credit' and a.owner_id = p_org and a.reward_type_id = finance.idr();
+  return jsonb_build_object(
+    'balance', trim_scale(coalesce(finance.balance(acc), 0)),
+    'available', trim_scale(case when acc is null then 0 else finance.org_credit_available(p_org) end),
+    'history', coalesce((select jsonb_agg(jsonb_build_object('amount', trim_scale(e.amount), 'ref_type', e.ref_type, 'ref_id', e.ref_id,
+                                                             'created_at', e.created_at) order by e.created_at desc)
+                           from (select * from finance.ledger_entries x where x.account_id = acc
+                                  order by x.created_at desc limit 50) e), '[]'::jsonb),
+    'leftovers', coalesce((select jsonb_agg(jsonb_build_object('campaign_id', c.id, 'title', c.title, 'amount', trim_scale(l.amount)))
+                             from market.campaigns c
+                             cross join lateral (select sum(finance.balance(a.id)) as amount
+                                                   from finance.reward_pools rp
+                                                   join finance.ledger_accounts a on a.owner_type = 'campaign_pool' and a.owner_id = rp.id
+                                                  where rp.campaign_id = c.id and rp.reward_type_id = finance.idr()) l
+                            where c.org_id = p_org and c.status in ('settled', 'cancelled') and l.amount > 0), '[]'::jsonb));
+end $$;
+
+-- Bayar invoice penuh dari kredit org (brand_owner/brand_finance aal2). Jurnal sama dengan transfer, sumbernya org_credit.
+create function api.pay_invoice_with_credit(p_invoice uuid) returns void
+language plpgsql security definer set search_path = '' as $$
+declare
+  uid uuid := market.session_uid();
+  inv finance.invoices;
+begin
+  select * into inv from finance.invoices i where i.id = p_invoice for update;
+  if not found or not ops.is_org_member(inv.org_id, 'brand_owner', 'brand_finance') then
+    perform market.fail('not_found:invoice', null, 'P0002');
+  end if;
+  if coalesce(auth.jwt() ->> 'aal', '') <> 'aal2' then
+    perform market.fail('auth:mfa_required', 'aksi uang brand butuh aal2', '42501');
+  end if;
+  if inv.status = 'paid' and inv.payment_ref = 'credit:' || inv.id then
+    return;
+  end if;
+  if inv.status <> 'issued' then
+    perform market.fail('invalid_state:' || inv.status);
+  end if;
+  if inv.kind = 'campaign' and exists (select 1 from finance.invoices i where i.campaign_id = inv.campaign_id and i.kind = 'campaign'
+                                                                        and i.status = 'paid') then
+    perform market.fail('campaign_already_funded');
+  end if;
+  perform pg_advisory_xact_lock(hashtextextended('org_credit:' || inv.org_id, 0));
+  if finance.org_credit_available(inv.org_id) < inv.total then
+    perform market.fail('insufficient_credit', format('kredit %s, invoice %s', finance.org_credit_available(inv.org_id), inv.total));
+  end if;
+  update finance.invoices set status = 'paid', payment_channel = 'credit', payment_ref = 'credit:' || inv.id, paid_amount = inv.total,
+         paid_at = now(), confirmed_by = uid
+   where id = inv.id;
+  perform finance.settle_invoice(inv, finance.account('org_credit', inv.org_id, finance.idr()));
+end $$;
+
+
+revoke execute on function api.confirm_invoice_payment(uuid, numeric, timestamptz, text, text), finance.settle_invoice(finance.invoices, uuid),
+  finance.org_credit_available(uuid), api.org_credit(uuid), api.pay_invoice_with_credit(uuid) from public;
+grant execute on function api.confirm_invoice_payment(uuid, numeric, timestamptz, text, text), api.org_credit(uuid),
+  api.pay_invoice_with_credit(uuid) to authenticated;

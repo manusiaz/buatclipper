@@ -1,7 +1,7 @@
 {
   "generic": "Terjadi kesalahan. Coba lagi.",
   "network": "Koneksi bermasalah. Periksa internet lalu coba lagi.",
-  "auth": { "no_session": "Sesi kamu habis. Masuk lagi.", "forbidden": "Kamu tidak punya akses untuk aksi ini.", "kyc_required": "Lengkapi verifikasi identitas (KYC) dulu." },
+  "auth": { "no_session": "Sesi kamu habis. Masuk lagi.", "forbidden": "Kamu tidak punya akses untuk aksi ini.", "kyc_required": "Lengkapi verifikasi identitas (KYC) dulu.", "mfa_required": "Aksi uang ini butuh verifikasi dua langkah (MFA). Aktifkan atau masuk ulang." },
   "not_found": { "campaign": "Campaign tidak ditemukan.", "submission": "Submisi tidak ditemukan.", "org": "Organisasi tidak ditemukan.", "reward_type": "Reward type tidak ditemukan.", "invite": "Undangan tidak ditemukan.", "profile": "Profil tidak ditemukan.", "payout": "Penarikan tidak ditemukan.", "invoice": "Invoice tidak ditemukan." },
   "not_eligible": {
     "campaign_not_live": "Campaign belum atau sedang tidak tayang.",

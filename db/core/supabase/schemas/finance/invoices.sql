@@ -13,7 +13,7 @@ create table finance.invoices (
   tax numeric(18, 2) not null default 0 check (tax >= 0),
   total numeric(18, 2) not null,
   status text not null default 'issued' check (status in ('issued', 'paid', 'void')),
-  payment_channel text check (payment_channel in ('qris', 'transfer')),
+  payment_channel text check (payment_channel in ('qris', 'transfer', 'credit')),  -- credit = kredit org (D-09 rollover)
   payment_ref text,
   paid_amount numeric(18, 2) check (paid_amount > 0),
   paid_at timestamptz,
@@ -43,5 +43,6 @@ create policy invoices_iss on finance.invoices as restrictive for all to authent
   using ((select ops.iss_ok())) with check ((select ops.iss_ok()));
 create policy invoices_org_billing_read on finance.invoices for select to authenticated  -- policy:core.org-role
   using ((select ops.is_org_member(org_id, 'brand_owner', 'brand_finance')));
-create policy invoices_finance_read on finance.invoices for select to authenticated using ((select ops.has_admin('admin_finance')));  -- policy:core.admin-aal2
+-- admin_ops ikut membaca: approve campaign menunggu invoice lunas (F-A02).
+create policy invoices_finance_read on finance.invoices for select to authenticated using ((select ops.has_admin('admin_finance', 'admin_ops')));  -- policy:core.admin-aal2
 grant select on finance.invoices to authenticated;

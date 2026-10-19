@@ -24,5 +24,6 @@
   "themeLight": "Terang",
   "themeDark": "Gelap",
   "themeSystem": "Ikuti sistem",
-  "platforms": { "tiktok": "TikTok", "instagram": "Instagram", "youtube": "YouTube", "threads": "Threads", "facebook": "Facebook", "x": "X" }
+  "platforms": { "tiktok": "TikTok", "instagram": "Instagram", "youtube": "YouTube", "threads": "Threads", "facebook": "Facebook", "x": "X" },
+  "rejectReasons": { "off_brief": "Tidak sesuai brief", "missing_tags": "Tag/mention/link wajib kurang", "low_quality": "Kualitas video rendah", "reused_content": "Konten daur ulang/duplikat", "wrong_account": "Bukan akun yang terhubung", "sponsored_label": "Label sponsor tidak dipasang", "misleading": "Menyesatkan / merugikan brand", "inappropriate": "Konten tidak pantas", "fraud_suspected": "Dugaan views tidak organik", "other": "Lainnya" }
 }

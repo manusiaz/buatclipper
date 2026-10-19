@@ -8,7 +8,7 @@ create view api.campaigns with (security_invoker = true) as
          required_links, sponsored_label, min_duration_sec, max_duration_sec, dos, donts, example_urls, faq, service_mode,
          start_at, submit_deadline, view_window_days,
          review_mode, min_followers, min_account_age_days, min_trust_score, kyc_required, min_views, max_clips_per_clipper,
-         clipper_quota, allow_video_reuse, visibility, is_template, pinned_until, pinned_rank, created_at
+         clipper_quota, allow_video_reuse, visibility, is_template, pinned_until, pinned_rank, fee_rule_id, created_at
   from market.campaigns;
 create view api.campaign_assets with (security_invoker = true) as
   select id, campaign_id, kind, storage_path, url, size_bytes, audience, created_at from market.campaign_assets;
@@ -32,8 +32,12 @@ grant select on api.campaigns, api.campaign_assets, api.rate_rules, api.reward_t
 create view api.my_profile with (security_invoker = true) as
   select id, username, display_name, avatar_path, trust_score, status, suspended_until, created_at
   from market.profiles where id = (select auth.uid());
+-- Admin (F-A07): status & Trust Score semua clipper. Baris kosong untuk non-admin.
+create view api.admin_profiles with (security_invoker = true) as
+  select id, username, display_name, avatar_path, trust_score, status, suspended_until, created_at
+  from market.profiles where (select ops.has_admin());
 create view api.organizations with (security_invoker = true) as
-  select id, name, org_type, legal_name, npwp, address, is_agency, status, verified_at, created_at from market.organizations;
+  select id, name, org_type, legal_name, npwp, address, is_agency, fee_rule_id, status, verified_at, created_at from market.organizations;
 create view api.org_members with (security_invoker = true) as
   select org_id, user_id, role, created_at from market.org_members;
 create view api.org_invites with (security_invoker = true) as
@@ -107,7 +111,7 @@ create view api.leaderboard with (security_invoker = true) as
   from market.leaderboard_campaign c join market.profiles p on p.id = c.user_id
   where exists (select 1 from market.campaigns k where k.id = c.campaign_id);
 
-grant select on api.my_profile, api.organizations, api.org_members, api.org_invites, api.claims, api.social_accounts,
+grant select on api.my_profile, api.admin_profiles, api.organizations, api.org_members, api.org_invites, api.claims, api.social_accounts,
                 api.submissions, api.view_snapshots, api.review_decisions, api.fraud_flags, api.notifications,
                 api.notification_prefs, api.audit_logs, api.report_links, api.fee_rules, api.wallet_balances,
                 api.wallet_entries, api.payouts, api.fulfillments, api.invoices, api.org_refunds, api.payout_batches,

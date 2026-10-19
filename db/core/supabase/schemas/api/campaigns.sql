@@ -39,6 +39,7 @@ declare
   v_q text := nullif(lower(btrim(f ->> 'q')), '');
   v_platform market.platform := nullif(f ->> 'platform', '')::market.platform;
   v_category text := nullif(f ->> 'category', '');
+  v_slug text := nullif(f ->> 'slug', '');  -- halaman publik {domain}/c/[slug]
   pub constant market.campaign_status[] := array['live', 'paused', 'tracking', 'exhausted', 'settling', 'settled']::market.campaign_status[];
   v_status market.campaign_status[] := array['live', 'paused']::market.campaign_status[];
   new_days int := coalesce((select (s.value #>> '{}')::int from ops.settings s where s.key = 'public.market.new_badge_days'), 3);
@@ -91,6 +92,7 @@ begin
        and (c.visibility = 'public' or market.campaign_visible(c))
        and (v_platform is null or v_platform = any (c.platforms))
        and (v_category is null or c.category_id = v_category)
+       and (v_slug is null or c.slug = v_slug)
        and (v_q is null or position(v_q in lower(c.title)) > 0 or ltrim(v_q, '#') = any (c.required_hashtags))
   ), keyed as (
     select b.*, case when b.pinned then 0 else 1 end as g,

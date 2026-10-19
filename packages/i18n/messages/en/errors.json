@@ -5,7 +5,7 @@
     "no_session": "Your session expired. Sign in again.",
     "forbidden": "You don't have access to do this.",
     "kyc_required": "Complete identity verification (KYC) first."
-  },
+ , "mfa_required": "This money action needs two-step verification (MFA). Turn it on or sign in again." },
   "not_found": {
     "campaign": "Campaign not found.",
     "submission": "Submission not found.",

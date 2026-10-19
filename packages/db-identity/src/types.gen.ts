@@ -8,7 +8,21 @@ export type Database = {
             [_ in never]: never
           }
           Views: {
-            "legal_versions": {
+            "audit_logs": {
+                  Row: {
+                    "action": string | null,"actor_id": string | null,"after": Json | null,"at": string | null,"before": Json | null,"id": number | null,"target": string | null
+                  }
+                  ComputedFields: never
+                  Insert: {
+                           "action"?: string | null,"actor_id"?: string | null,"after"?: Json | null,"at"?: string | null,"before"?: Json | null,"id"?: number | null,"target"?: string | null
+                         }
+                        Update: {
+                           "action"?: string | null,"actor_id"?: string | null,"after"?: Json | null,"at"?: string | null,"before"?: Json | null,"id"?: number | null,"target"?: string | null
+                         }
+                        Relationships: [
+                    
+                  ]
+                },"legal_versions": {
                   Row: {
                     "kind": "tos_clipper"|"tos_brand"|"privacy"|"age_18_plus"|"kyc"|"share_with_brand" | null,"published_at": string | null,"url": string | null,"version": string | null
                   }
@@ -50,6 +64,20 @@ export type Database = {
                         Relationships: [
                     
                   ]
+                },"my_recipients": {
+                  Row: {
+                    "id": string | null,"reward_type_id": string | null,"updated_at": string | null
+                  }
+                  ComputedFields: never
+                  Insert: {
+                           "id"?: string | null,"reward_type_id"?: string | null,"updated_at"?: string | null
+                         }
+                        Update: {
+                           "id"?: string | null,"reward_type_id"?: string | null,"updated_at"?: string | null
+                         }
+                        Relationships: [
+                    
+                  ]
                 },"push_subscriptions": {
                   Row: {
                     "created_at": string | null,"endpoint": string | null,"id": string | null,"last_used_at": string | null
@@ -69,6 +97,16 @@ export type Database = {
           Functions: {
             "admin_kyc_decision":
 { Args: { "p_decision": string,"p_reason"?: string,"p_user_id": string }; Returns: undefined
+                           },
+"admin_kyc_queue":
+{ Args: { "p_limit"?: number,"p_status"?: string }; Returns: {
+              "decided_at": string,"reject_reason": string,"status": string,"submitted_at": string,"user_id": string
+            }[]
+                           },
+"admin_list_roles":
+{ Args: Record<PropertyKey, never>; Returns: {
+              "email": string,"granted_at": string,"roles": (string)[],"user_id": string
+            }[]
                            },
 "admin_read":
 { Args: { "p_user_id": string }; Returns: {

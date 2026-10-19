@@ -33,7 +33,7 @@ insert into ops.settings (key, value) values
   ('public.billing.managed_service_idr', '2500000'),
   ('public.billing.invoice_due_days', '7'),
   ('public.home.banners', '[]'),
-  ('market.brand_review_auto_approve_hours', '72'),
+  ('public.market.brand_review_auto_approve_hours', '72'),
   ('trust.score_deltas', '{"submission_approved":1,"submission_rejected":-2,"appeal_failed":-3}');
 insert into market.profiles (id, username, display_name, trust_score, status, suspended_until) values
   ('11111111-0000-0000-0000-00000000000a', 'andi', 'Andi', 60, 'active', null),
@@ -660,6 +660,7 @@ select is((select array[est_remaining_views ->> 'tiktok', remaining_idr::text, b
 select is((select array_agg(slug) from api.list_campaigns('{"q":"habis"}')), array['budget-habis'], 'cari judul');
 select is((select count(*)::int from api.list_campaigns('{"platform":"instagram","status":"all"}')), 0, 'filter platform');
 select is((select count(*)::int from api.list_campaigns('{"category":"music","status":"all"}')), 0, 'filter kategori');
+select is((select array_agg(slug) from api.list_campaigns('{"slug":"film-satu","status":"all"}')), array['film-satu'], 'filter slug (halaman publik)');
 select is((select slug from api.list_campaigns('{"status":"all","sort":"deadline","limit":1}')), 'deadline-lewat', 'sort deadline terdekat dulu');
 select throws_ok($$ select * from api.list_campaigns('{"sort":"acak"}') $$, 'P0001', 'invalid:sort', 'sort tidak dikenal ditolak');
 select throws_ok($$ select * from api.list_campaigns('{}', 'bukan-cursor') $$, 'P0001', 'invalid:cursor', 'cursor rusak ditolak');

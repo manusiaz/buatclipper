@@ -14,12 +14,12 @@ insert into ops.settings (key, value) values
   ('public.finance.instant_min_trust', '70'),
   ('public.flags.instant_withdraw', 'false'),
   ('public.market.max_accounts_per_platform', '3'),
-  ('finance.hold_days', '7'),
+  ('public.finance.hold_days', '7'),
   ('finance.settlement_threshold_pct', '5'),
   ('finance.settlement_wait_hours', '6'),
   ('finance.referral_bonus_pct', '5'),
   ('finance.referral_bonus_days', '90'),
-  ('finance.refund_transfer_fee_idr', '2500'),
+  ('public.finance.refund_transfer_fee_idr', '2500'),
   ('tracking.final_grace_hours', '72'),
   ('tracking.poll_schedule', '[{"until_hours":72,"every_hours":4},{"until_hours":336,"every_hours":24},{"until_hours":null,"every_hours":72}]'),
   ('trust.fraud.like_rate_min', '0.005'),
@@ -518,6 +518,41 @@ set local role authenticated;
 select pg_temp.jwt('33333333-0000-0000-0000-0000000000a0', '{"app_roles":["admin_ops"],"aal":"aal2"}');
 select throws_ok($$ select api.cancel_fulfillment((select id from t_pay where k = 'f1'), 'salah') $$, 'P0001', 'invalid_state:delivered',
                  'reward yang sudah terkirim tidak bisa dibatalkan');
+-- F-A10 manual: tandai terkirim (manual_export saja) + upload kode oleh admin
+reset role;
+insert into finance.fulfillments (id, user_id, reward_type_id, amount, recipient, idempotency_key) values
+  ('99999999-0000-0000-0000-0000000000fd', '11111111-0000-0000-0000-00000000000a', '77777777-0000-0000-0000-000000000002', 10,
+   '{"game_user_id":"123"}', 'ful-manual-test');
+set local role authenticated;
+select pg_temp.jwt('33333333-0000-0000-0000-0000000000a0', '{"app_roles":["admin_ops"],"aal":"aal2"}');
+select lives_ok($$ select api.mark_fulfillment_delivered('99999999-0000-0000-0000-0000000000fd', 'RESI-123') $$, 'admin menandai reward manual terkirim');
+select lives_ok($$ select api.mark_fulfillment_delivered('99999999-0000-0000-0000-0000000000fd', 'RESI-123') $$, 'tandai ulang = no-op');
+select throws_ok($$ select api.mark_fulfillment_delivered((select id from t_pay where k = 'f2'), 'X') $$, 'P0001', 'invalid:fulfillment',
+                 'reward code_pool tidak ditandai manual');
+select is(api.upload_reward_codes('77777777-0000-0000-0000-000000000003', array['VC-ADM']), 1, 'admin_ops mengunggah kode');
+-- F-A07: override Trust Score, suspend, unsuspend
+select throws_ok($$ select api.manage_user('11111111-0000-0000-0000-00000000000a', 'trust_override', '{"delta":-5}') $$, 'P0001', 'invalid:reason',
+                 'aksi admin atas user wajib alasan');
+select lives_ok($$ select api.manage_user('11111111-0000-0000-0000-00000000000a', 'trust_override', '{"delta":-5,"note":"cek manual"}') $$,
+                'override Trust Score');
+select lives_ok($$ select api.manage_user('11111111-0000-0000-0000-00000000000a', 'suspend', '{"days":3,"reason":"spam"}') $$, 'suspend 3 hari');
+select lives_ok($$ select api.manage_user('11111111-0000-0000-0000-00000000000a', 'unsuspend', '{"note":"banding diterima"}') $$, 'unsuspend');
+select pg_temp.jwt('11111111-0000-0000-0000-00000000000b');
+select throws_ok($$ select api.manage_user('11111111-0000-0000-0000-00000000000a', 'suspend', '{"days":3,"reason":"x"}') $$, '42501', 'auth:forbidden',
+                 'clipper tidak bisa mengelola user');
+reset role;
+select is((select status::text || ':' || delivered_ref from finance.fulfillments where id = '99999999-0000-0000-0000-0000000000fd'), 'delivered:RESI-123',
+          'reward manual delivered dengan resi');
+select is((select trust_score from market.profiles where id = '11111111-0000-0000-0000-00000000000a'),
+          (select least(100, greatest(0, 50 + sum(delta)))::smallint from trust.score_events where user_id = '11111111-0000-0000-0000-00000000000a'),
+          'override: skor dihitung ulang langsung dengan rumus job');
+select is((select status::text from market.profiles where id = '11111111-0000-0000-0000-00000000000a'), 'active', 'unsuspend → active');
+select is((select array_agg(action order by id) from ops.audit_logs where action like 'user.%'), array['user.trust_override', 'user.suspend', 'user.unsuspend'],
+          'aksi admin atas user tercatat audit log');
+select ok(exists (select 1 from ops.notifications where event = 'account.suspended' and user_id = '11111111-0000-0000-0000-00000000000a'),
+          'clipper dikabari suspend');
+set local role authenticated;
+select pg_temp.jwt('33333333-0000-0000-0000-0000000000a0', '{"app_roles":["admin_ops"],"aal":"aal2"}');
 select lives_ok($$ select api.cancel_fulfillment((select id from t_pay where k = 'f2'), 'stok kode habis') $$, 'klaim on_hold dibatalkan');
 select lives_ok($$ select api.cancel_fulfillment((select id from t_pay where k = 'fd'), 'ID game tidak valid') $$, 'klaim requested dibatalkan');
 select lives_ok($$ select api.cancel_fulfillment((select id from t_pay where k = 'fd'), 'ulang') $$, 'batal klaim idempoten');
@@ -1020,6 +1055,35 @@ select is((select v -> 'payout_pending' from t_ov), '{"count": 1, "sum": 100000.
 select ok((select (v ->> 'fraud_queue')::int > 0 and (v ->> 'active_campaigns')::int > 0 and v -> 'tracking' ? 'overdue'
                   and v -> 'tracking' ? 'last_snapshot_age_seconds' and v ? 'open_alerts' and v -> 'revenue' ? 'month' from t_ov),
           'overview: fraud queue, campaign aktif, kesehatan tracking, alert');
+
+-- ========== N3. Kredit org (rollover D-09) dipakai membayar invoice ==========
+insert into t_pay select 'inv_credit', (finance.issue_invoice('44444444-0000-0000-0000-000000000001', '55555555-0000-0000-0000-0000000000a1',
+                                                              'pinned', 0, 100000, now() + interval '7 days')).id;
+insert into t_pay select 'inv_big', (finance.issue_invoice('44444444-0000-0000-0000-000000000001', '55555555-0000-0000-0000-0000000000a1',
+                                                           'pinned', 0, 900000, now() + interval '7 days')).id;
+set local role authenticated;
+select pg_temp.jwt('22222222-0000-0000-0000-0000000000c1');
+select throws_ok($$ select api.pay_invoice_with_credit((select id from t_pay where k = 'inv_credit')) $$, '42501', 'auth:mfa_required',
+                 'bayar pakai kredit butuh aal2');
+select pg_temp.jwt('22222222-0000-0000-0000-0000000000c1', '{"aal":"aal2"}');
+select is((select v ->> 'available' from (select api.org_credit('44444444-0000-0000-0000-000000000001') v) x), '300000',
+          'kredit tersedia = rollover (refund yang sudah dibayar tidak dihitung)');
+select is((select v -> 'leftovers' -> 0 ->> 'amount' from (select api.org_credit('44444444-0000-0000-0000-000000000001') v) x), '195000',
+          'sisa campaign settled dari ledger campaign_pool');
+select lives_ok($$ select api.pay_invoice_with_credit((select id from t_pay where k = 'inv_credit')) $$, 'invoice dibayar dari kredit org');
+select lives_ok($$ select api.pay_invoice_with_credit((select id from t_pay where k = 'inv_credit')) $$, 'bayar ulang = no-op');
+select is((select v ->> 'available' from (select api.org_credit('44444444-0000-0000-0000-000000000001') v) x), '189000',
+          'kredit berkurang total invoice (fee + pajak) sekali');
+select throws_ok($$ select api.pay_invoice_with_credit((select id from t_pay where k = 'inv_big')) $$, 'P0001', 'insufficient_credit',
+                 'kredit kurang ditolak (tidak ada bayar sebagian)');
+select pg_temp.jwt('22222222-0000-0000-0000-0000000000a2', '{"aal":"aal2"}');
+select throws_ok($$ select api.org_credit('44444444-0000-0000-0000-000000000001') $$, '42501', 'auth:forbidden', 'org lain tidak melihat kredit');
+reset role;
+select is((select status || ':' || payment_channel from finance.invoices where id = (select id from t_pay where k = 'inv_credit')), 'paid:credit',
+          'invoice lunas lewat kanal credit');
+select ok((select pinned_until is not null from market.campaigns where id = '55555555-0000-0000-0000-0000000000a1'), 'pinned diterapkan');
+set constraints all immediate;
+set constraints all deferred;
 
 -- ========== Invarian akhir ==========
 select is((select count(*)::int from (select 1 from finance.ledger_entries e group by e.txn_id, e.reward_type_id having sum(e.amount) <> 0) x),
