@@ -470,7 +470,11 @@ begin
   return query
   with due as (
     select f.id as fid from finance.fulfillments f join market.reward_types rt on rt.id = f.reward_type_id
-     where f.status = 'requested' and rt.fulfillment in ('code_pool', 'webhook')
+     where (f.status = 'requested'
+            -- pool kode sempat kosong: lanjut otomatis begitu ada kode bebas lagi (S-06 on_hold → processing)
+            or (f.status = 'on_hold' and f.last_error = 'code_pool_empty' and rt.fulfillment = 'code_pool'
+                and exists (select 1 from finance.reward_codes rc where rc.reward_type_id = f.reward_type_id and rc.fulfillment_id is null)))
+       and rt.fulfillment in ('code_pool', 'webhook')
        and (f.next_retry_at is null or f.next_retry_at <= now())
      order by coalesce(f.next_retry_at, f.created_at), f.id
      limit greatest(coalesce(p_limit, 20), 1)
@@ -505,7 +509,7 @@ begin
   if code is not null then
     return code;
   end if;
-  if f.status <> 'requested' then
+  if f.status <> 'requested' and not (f.status = 'on_hold' and f.last_error = 'code_pool_empty') then
     return null;
   end if;
   select rc.id, rc.code into cid, code from finance.reward_codes rc

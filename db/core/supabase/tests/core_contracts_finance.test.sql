@@ -654,6 +654,23 @@ select is(pg_temp.bal('11111111-0000-0000-0000-00000000000a', 'available', '7777
           'klaim voucher batal: saldo kembali ke Tersedia (sekali)');
 select ok(exists (select 1 from ops.notifications where event = 'fulfillment.cancelled' and payload ->> 'unit_label' = 'Diamonds'
                   and payload ->> 'amount' = '50'), 'notifikasi fulfillment.cancelled dengan nominal & satuan');
+-- Regresi review R11: klaim voucher yang tertahan karena pool kosong lanjut sendiri setelah kode diunggah ulang (VC-ADM bebas).
+insert into finance.fulfillments (id, user_id, reward_type_id, amount, recipient, idempotency_key) values
+  ('99999999-0000-0000-0000-0000000000e2', '11111111-0000-0000-0000-00000000000a', '77777777-0000-0000-0000-000000000003', 1, '{}',
+   'ful-restock-test');
+select finance.post(gen_random_uuid(), jsonb_build_array(
+  finance.e(finance.account('user_wallet', '11111111-0000-0000-0000-00000000000a', '77777777-0000-0000-0000-000000000003'), -1,
+            'fulfillment', '99999999-0000-0000-0000-0000000000e2', 'available'),
+  finance.e(finance.account('user_wallet', '11111111-0000-0000-0000-00000000000a', '77777777-0000-0000-0000-000000000003'), 1,
+            'fulfillment', '99999999-0000-0000-0000-0000000000e2', 'withdrawn')));
+update finance.fulfillments set status = 'on_hold', last_error = 'code_pool_empty', next_retry_at = now() - interval '1 minute'
+ where id = '99999999-0000-0000-0000-0000000000e2';
+select ok(exists (select 1 from api.worker_fulfillments_due(10) d where d.id = '99999999-0000-0000-0000-0000000000e2'),
+          'regresi R11: klaim on_hold pool kosong diambil worker lagi setelah restock');
+select is(api.worker_assign_code('99999999-0000-0000-0000-0000000000e2'), 'VC-ADM', 'kode hasil restock dipasang');
+select api.worker_fulfillment_result('99999999-0000-0000-0000-0000000000e2', true, 'VC-ADM', null);
+select is((select status::text from finance.fulfillments where id = '99999999-0000-0000-0000-0000000000e2'), 'delivered',
+          'on_hold → processing → delivered');
 
 -- ========== E. Invoice (§5.2) & konfirmasi pembayaran (F-A08) ==========
 insert into market.campaigns (id, org_id, slug, title, type, platforms, start_at, submit_deadline, created_by)

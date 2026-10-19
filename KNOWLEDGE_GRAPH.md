@@ -772,9 +772,9 @@ Arah: `A --tipe--> B` = A bergantung pada B. `?` = belum terverifikasi.
 | `api:fn core/fulfill` | calls | `ext:brand-webhook` | db/core/supabase/functions/fulfill/fulfill.ts:115 |
 | `api:fn core/fulfill` | guarded-by | `policy:fn-cron-key` | db/core/supabase/functions/fulfill/index.ts:10 |
 | `api:fn core/fulfill` | reads | `table:finance.fulfillments` | db/core/supabase/schemas/api/worker.sql:472 (rpc worker_fulfillments_due) |
-| `api:fn core/fulfill` | reads | `table:vault.social-tokens` | db/core/supabase/schemas/api/worker.sql:485 (secret webhook reward type di Vault core) |
-| `api:fn core/fulfill` | writes | `table:finance.fulfillments` | db/core/supabase/schemas/api/worker.sql:541 (rpc worker_fulfillment_result) |
-| `api:fn core/fulfill` | writes | `table:finance.reward_codes` | db/core/supabase/schemas/api/worker.sql:520 (rpc worker_assign_code) |
+| `api:fn core/fulfill` | reads | `table:vault.social-tokens` | db/core/supabase/schemas/api/worker.sql:489 (secret webhook reward type di Vault core) |
+| `api:fn core/fulfill` | writes | `table:finance.fulfillments` | db/core/supabase/schemas/api/worker.sql:545 (rpc worker_fulfillment_result) |
+| `api:fn core/fulfill` | writes | `table:finance.reward_codes` | db/core/supabase/schemas/api/worker.sql:524 (rpc worker_assign_code) |
 | `api:fn core/notify` | calls | `api:fn identity/bridge` | db/core/supabase/functions/notify/notify.ts:88 |
 | `api:fn core/notify` | configured-by | `env:BRIDGE_SECRET_CORE_TO_IDENTITY` | db/core/supabase/functions/_shared/bridge.ts:66 |
 | `api:fn core/notify` | configured-by | `env:SUPABASE_DB_URL` | PRD v0.3.1 §15.8 Queue lewat koneksi Postgres langsung (belum di kode: queue dibaca lewat rpc api.worker_dequeue dengan secret key, bukan koneksi Postgres) |
@@ -932,7 +932,7 @@ Arah: `A --tipe--> B` = A bergantung pada B. `?` = belum terverifikasi.
 | `api:rpc core.mark_batch_paid` | writes | `table:ops.audit_logs` | PRD v0.3.1 §9 F-A11 semua aksi admin/finance (belum di kode: fungsi ini tidak menulis ops.audit_logs) |
 | `api:rpc core.mark_fulfillment_delivered` | guarded-by | `policy:core.admin-aal2` | db/core/supabase/schemas/finance/fulfillment_admin.sql:9 |
 | `api:rpc core.mark_fulfillment_delivered` | reads | `table:market.reward_types` | db/core/supabase/schemas/finance/fulfillment_admin.sql:16 |
-| `api:rpc core.mark_fulfillment_delivered` | writes | `table:finance.fulfillments` | db/core/supabase/schemas/finance/fulfillment_admin.sql:12, db/core/supabase/schemas/api/worker.sql:541 (api.worker_fulfillment_result, baris 28) |
+| `api:rpc core.mark_fulfillment_delivered` | writes | `table:finance.fulfillments` | db/core/supabase/schemas/finance/fulfillment_admin.sql:12, db/core/supabase/schemas/api/worker.sql:545 (api.worker_fulfillment_result, baris 28) |
 | `api:rpc core.mark_fulfillment_delivered` | writes | `table:ops.audit_logs` | db/core/supabase/schemas/finance/fulfillment_admin.sql:29 |
 | `api:rpc core.cancel_payout` | writes | `table:finance.payouts` | db/core/supabase/schemas/finance/payout_flow.sql:319 |
 | `api:rpc core.cancel_fulfillment` | writes | `table:finance.fulfillments` | db/core/supabase/schemas/finance/payout_flow.sql:370 |
@@ -2147,6 +2147,7 @@ Masalah sistem yang ditemukan saat menyusun PRD v0.2 dan saat dicek ulang (v0.2.
 | 2026-10-19 | `fn:accrue_earnings` | Review Claudex R8: backfill lineage melewati versi yang sudah ber-lineage_id (raise pasca-R6 di atas rantai pra-R6) → root beda → flat dibayar ulang | diperbaiki: backfill menelusuri seluruh rantai dari rule pertama dan menyeragamkan semua versi; R9: sebagai migrasi baru (backfill_rate_rule_lineage_full_chain), migrasi R7 dikembalikan ke isi asli supaya DB yang sudah menjalankannya ikut terperbaiki |
 | 2026-10-19 | `table:market.referrals` | Review Claudex R8: referral baru berlaku saat withdraw pertama (core baru melihat claim kyc di request_payout) → earning teman antara KYC disetujui dan withdraw pertama tidak dihitung | diperbaiki: record_review('kyc','approve') di core mengisi qualified_at/bonus_until; request_payout tetap cadangan |
 | 2026-10-19 | `table:finance.fee_rules` | Review Claudex R10: clipper_fee_pct bisa diatur admin (config global, override org/campaign) tapi tidak pernah dipotong → setting diam-diam tidak berlaku. PRD: potongan earning clipper ada di config (default 0%) untuk dinyalakan kelak | diperbaiki: finance.release_earnings memotong fee rule efektif campaign saat Rupiah Tertunda → Tersedia, ke platform_revenue (ref fee); non-tunai tidak dipotong. Catatan: app clipper belum menampilkan potongan ini |
+| 2026-10-19 | `api:fn core/fulfill` | Review Claudex R11: klaim voucher on_hold karena pool kode kosong tidak pernah lanjut setelah kode diunggah ulang (worker hanya ambil requested, assign_code menolak on_hold) → saldo sudah terpotong, voucher tak terkirim | diperbaiki: worker_fulfillments_due ikut mengambil on_hold code_pool_empty bila ada kode bebas; worker_assign_code menerimanya (S-06 on_hold → processing → delivered) |
 ## Keputusan
 
 Keputusan yang sudah diambil — jangan dibahas ulang tanpa alasan baru.
