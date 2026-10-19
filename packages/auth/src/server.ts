@@ -101,3 +101,42 @@ export async function requireAdmin(...roles: PlatformRole[]): Promise<Guard> {
   if (roles.length && !hasRole(claims, ...roles)) redirect('/?forbidden=1');
   return { claims };
 }
+
+export type FnResult<T> = { ok: true; data: T } | { ok: false; error: string; detail?: unknown; status: number };
+
+/**
+ * Panggil Edge Function dengan JWT sesi user (diverifikasi fungsi lewat JWKS identity). Menyatukan dua envelope:
+ * core → body mentah / {error, message, detail}; identity → {ok, data} / {ok:false, error:{code, message}}.
+ * brand & web hanya boleh project 'core' (dicek scripts/check-arch.mjs).
+ */
+export async function invokeFunction<T = unknown>(
+  project: 'core' | 'identity',
+  name: string,
+  body: unknown,
+  kind: SessionKind = 'sso',
+): Promise<FnResult<T>> {
+  const token = await accessToken(kind);
+  if (!token) return { ok: false, error: 'auth:no_session', status: 401 };
+  const [base, key] = project === 'core'
+    ? [process.env.NEXT_PUBLIC_CORE_URL!, process.env.NEXT_PUBLIC_CORE_PUBLISHABLE_KEY!]
+    : [process.env.NEXT_PUBLIC_IDENTITY_URL!, process.env.NEXT_PUBLIC_IDENTITY_PUBLISHABLE_KEY!];
+  let res: Response;
+  try {
+    res = await fetch(`${base}/functions/v1/${name}`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', authorization: `Bearer ${token}`, apikey: key },
+      body: JSON.stringify(body),
+      cache: 'no-store',
+    });
+  } catch {
+    return { ok: false, error: 'network', status: 0 };
+  }
+  const json = (await res.json().catch(() => null)) as Record<string, unknown> | null;
+  if (json && typeof json.ok === 'boolean') {
+    if (json.ok) return { ok: true, data: json.data as T };
+    const e = (json.error ?? {}) as { code?: string };
+    return { ok: false, error: e.code ?? 'generic', status: res.status };
+  }
+  if (!res.ok) return { ok: false, error: String(json?.error ?? 'generic'), detail: json?.detail, status: res.status };
+  return { ok: true, data: json as T };
+}

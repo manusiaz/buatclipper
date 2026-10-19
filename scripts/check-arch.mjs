@@ -27,7 +27,7 @@ for (const app of readdirSync(join(root, 'apps'))) {
     const src = readFileSync(file, 'utf8');
     const rel = relative(root, file);
     if (/from ['"]@clipper\/app-/.test(src) || /from ['"](\.\.\/)+apps\//.test(src)) errors.push(`${rel}: app tidak boleh import app lain`);
-    if (NO_IDENTITY.includes(app) && /@clipper\/db-identity|identityApi\(|identityFunctionUrl\(/.test(src)) {
+    if (NO_IDENTITY.includes(app) && /@clipper\/db-identity|identityApi\(|identityFunctionUrl\(|invokeFunction(<[^>]*>)?\(\s*['"]identity/.test(src)) {
       errors.push(`${rel}: ${app} tidak punya jalur ke data identity (invarian 1)`);
     }
     if (SECRET.test(src)) errors.push(`${rel}: app Next.js tidak boleh membaca secret (${src.match(SECRET)[0]}) (invarian 4)`);

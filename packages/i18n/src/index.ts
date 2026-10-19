@@ -15,3 +15,14 @@ export async function loadMessages(locale: Locale, namespaces: readonly string[]
   );
   return Object.fromEntries(entries);
 }
+
+/**
+ * Error fungsi api (message = kode mesin, mis. `not_eligible:need_social_account:tiktok`, `missing_tags:#mplid`,
+ * `invalid:title`) → kunci namespace `errors` + parameter. Grup bertingkat: kunci `<grup>.<alasan>`.
+ */
+export function parseDbError(message: string | null | undefined): { key: string; param: string } {
+  const [group = 'generic', ...rest] = (message ?? '').trim().split(':');
+  const nested = ['not_eligible', 'auth', 'not_found', 'config'];
+  if (nested.includes(group) && rest.length) return { key: `${group}.${rest[0]}`, param: rest.slice(1).join(':') };
+  return { key: /^[a-z_]+$/.test(group) ? group : 'generic', param: rest.join(':') };
+}
