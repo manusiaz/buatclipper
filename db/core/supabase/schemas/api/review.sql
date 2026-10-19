@@ -60,6 +60,10 @@ begin
       if not exists (select 1 from finance.invoices i where i.campaign_id = c.id and i.kind = 'campaign' and i.status = 'paid') then
         perform market.fail('invoice_unpaid', 'invoice campaign belum lunas');
       end if;
+      -- Paket managed (REV-3): jasa tim internal juga harus lunas sebelum campaign tayang.
+      if exists (select 1 from finance.invoices i where i.campaign_id = c.id and i.kind = 'managed_service' and i.status = 'issued') then
+        perform market.fail('invoice_unpaid', 'invoice paket managed belum lunas');
+      end if;
       update market.campaigns set status = 'scheduled' where id = c.id;
     elsif p_decision = 'reject' then
       if nullif(btrim(p_reason), '') is null then

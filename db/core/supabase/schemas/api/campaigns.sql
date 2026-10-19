@@ -684,6 +684,7 @@ begin
   end if;
   inv := finance.issue_invoice(c.org_id, c.id, 'pinned', 0, ceil(p_days / 7.0) * price,
                                greatest(now(), coalesce(c.pinned_until, now())) + make_interval(days => p_days));
+  update finance.invoices set pin_days = p_days where id = inv.id;
   return inv.id;
 end $$;
 

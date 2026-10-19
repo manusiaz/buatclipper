@@ -430,7 +430,7 @@ Arah: `A --tipe--> B` = A bergantung pada B. `?` = belum terverifikasi.
 | `page:admin/campaigns` | reads | `api:view core.managed_briefs` | apps/admin/src/features/campaign-review/managed-queue.tsx:24 |
 | `api:view core.managed_briefs` | reads | `table:market.campaigns` | db/core/supabase/schemas/api/views.sql:37 |
 | `page:admin/campaigns` | reads | `table:market.campaigns` | apps/admin/src/features/campaign-review/managed-queue.tsx:13 |
-| `page:admin/campaigns` | routes-to | `page:admin/campaigns/new` | apps/admin/src/features/campaign-review/review-detail.tsx:223 |
+| `page:admin/campaigns` | routes-to | `page:admin/campaigns/new` | apps/admin/src/features/campaign-review/review-detail.tsx:226 |
 | `page:admin/campaigns` | wrapped-by | `layout:admin` | apps/admin/src/app/layout.tsx:20 |
 | `page:admin/campaigns/new` | renders | `comp:CampaignBuilder` | apps/admin/src/features/builder/admin-builder.tsx:4 |
 | `page:admin/campaigns/new` | wrapped-by | `layout:admin` | apps/admin/src/app/layout.tsx:20 |
@@ -878,10 +878,10 @@ Arah: `A --tipe--> B` = A bergantung pada B. `?` = belum terverifikasi.
 | `api:rpc core.claim_campaign` | reads | `table:market.campaigns` | db/core/supabase/schemas/api/campaigns.sql:136 |
 | `api:rpc core.claim_campaign` | reads | `table:market.profiles` | db/core/supabase/schemas/api/_helpers.sql:182 (market.claim_check) |
 | `api:rpc core.claim_campaign` | writes | `table:market.claims` | db/core/supabase/schemas/api/campaigns.sql:150 |
-| `api:rpc core.confirm_invoice_payment` | guarded-by | `policy:core.admin-aal2` | db/core/supabase/schemas/finance/invoice_confirm.sql:87 |
-| `api:rpc core.confirm_invoice_payment` | writes | `table:finance.invoices` | db/core/supabase/schemas/finance/invoice_confirm.sql:115 |
+| `api:rpc core.confirm_invoice_payment` | guarded-by | `policy:core.admin-aal2` | db/core/supabase/schemas/finance/invoice_confirm.sql:96 |
+| `api:rpc core.confirm_invoice_payment` | writes | `table:finance.invoices` | db/core/supabase/schemas/finance/invoice_confirm.sql:124 |
 | `api:rpc core.confirm_invoice_payment` | writes | `table:finance.ledger_accounts` | db/core/supabase/schemas/finance/invoice_confirm.sql:47 (finance.account membuat akun campaign_pool, finance.settle_invoice) |
-| `api:rpc core.confirm_invoice_payment` | writes | `table:finance.ledger_entries` | db/core/supabase/schemas/finance/invoice_confirm.sql:118 (finance.settle_invoice → finance.post) |
+| `api:rpc core.confirm_invoice_payment` | writes | `table:finance.ledger_entries` | db/core/supabase/schemas/finance/invoice_confirm.sql:127 (finance.settle_invoice → finance.post) |
 | `api:rpc core.confirm_invoice_payment` | writes | `table:finance.reward_pools` | db/core/supabase/schemas/finance/invoice_confirm.sql:45 (finance.settle_invoice) |
 | `api:rpc core.confirm_invoice_payment` | writes | `table:ops.audit_logs` | PRD v0.3.1 §9 F-A11 semua aksi admin/finance (belum di kode: fungsi ini tidak menulis ops.audit_logs) |
 | `api:rpc core.control_campaign` | writes | `table:finance.invoices` | db/core/supabase/schemas/api/campaigns.sql:566 (topup → finance.issue_invoice) |
@@ -942,24 +942,24 @@ Arah: `A --tipe--> B` = A bergantung pada B. `?` = belum terverifikasi.
 | `api:rpc core.missing_brief_tags` | reads | `table:market.campaigns` | db/core/supabase/schemas/api/brief.sql:15 |
 | `api:rpc core.my_referral_code` | guarded-by | `policy:core.rls-self` | PRD v0.3.1 Lampiran A.2 my_referral_code; kode: security definer, hanya profil auth.uid() (market/referrals.sql baris 27, 33) |
 | `api:rpc core.my_referral_code` | writes | `table:market.profiles` | db/core/supabase/schemas/market/referrals.sql:36 |
-| `api:rpc core.org_credit` | guarded-by | `policy:core.admin-aal2` | db/core/supabase/schemas/finance/invoice_confirm.sql:140 |
-| `api:rpc core.org_credit` | guarded-by | `policy:core.org-role` | db/core/supabase/schemas/finance/invoice_confirm.sql:140 |
-| `api:rpc core.org_credit` | reads | `table:finance.ledger_accounts` | db/core/supabase/schemas/finance/invoice_confirm.sql:143 |
-| `api:rpc core.org_credit` | reads | `table:finance.ledger_entries` | db/core/supabase/schemas/finance/invoice_confirm.sql:151 |
-| `api:rpc core.org_credit` | reads | `table:finance.org_refunds` | db/core/supabase/schemas/finance/invoice_confirm.sql:130 (finance.org_credit_available) |
-| `api:rpc core.org_credit` | reads | `table:finance.reward_pools` | db/core/supabase/schemas/finance/invoice_confirm.sql:156 |
-| `api:rpc core.pay_invoice_with_credit` | guarded-by | `policy:core.org-role` | db/core/supabase/schemas/finance/invoice_confirm.sql:173 |
-| `api:rpc core.pay_invoice_with_credit` | writes | `table:finance.invoices` | db/core/supabase/schemas/finance/invoice_confirm.sql:203 |
-| `api:rpc core.pay_invoice_with_credit` | writes | `table:finance.ledger_entries` | db/core/supabase/schemas/finance/invoice_confirm.sql:208 (finance.settle_invoice → finance.post) |
+| `api:rpc core.org_credit` | guarded-by | `policy:core.admin-aal2` | db/core/supabase/schemas/finance/invoice_confirm.sql:149 |
+| `api:rpc core.org_credit` | guarded-by | `policy:core.org-role` | db/core/supabase/schemas/finance/invoice_confirm.sql:149 |
+| `api:rpc core.org_credit` | reads | `table:finance.ledger_accounts` | db/core/supabase/schemas/finance/invoice_confirm.sql:152 |
+| `api:rpc core.org_credit` | reads | `table:finance.ledger_entries` | db/core/supabase/schemas/finance/invoice_confirm.sql:160 |
+| `api:rpc core.org_credit` | reads | `table:finance.org_refunds` | db/core/supabase/schemas/finance/invoice_confirm.sql:139 (finance.org_credit_available) |
+| `api:rpc core.org_credit` | reads | `table:finance.reward_pools` | db/core/supabase/schemas/finance/invoice_confirm.sql:165 |
+| `api:rpc core.pay_invoice_with_credit` | guarded-by | `policy:core.org-role` | db/core/supabase/schemas/finance/invoice_confirm.sql:182 |
+| `api:rpc core.pay_invoice_with_credit` | writes | `table:finance.invoices` | db/core/supabase/schemas/finance/invoice_confirm.sql:212 |
+| `api:rpc core.pay_invoice_with_credit` | writes | `table:finance.ledger_entries` | db/core/supabase/schemas/finance/invoice_confirm.sql:217 (finance.settle_invoice → finance.post) |
 | `api:rpc core.pay_invoice_with_credit` | writes | `table:finance.reward_pools` | db/core/supabase/schemas/finance/invoice_confirm.sql:45 (finance.settle_invoice) |
 | `api:rpc core.record_review` | calls | `fn:enqueue_notification` | db/core/supabase/schemas/trust/decisions.sql:50 (trust.apply_submission_decision) |
 | `api:rpc core.record_review` | guarded-by | `policy:core.admin-aal2` | db/core/supabase/schemas/api/review.sql:49 |
-| `api:rpc core.record_review` | guarded-by | `policy:core.org-role` | db/core/supabase/schemas/api/review.sql:92 |
-| `api:rpc core.record_review` | writes | `table:market.campaigns` | db/core/supabase/schemas/api/review.sql:63 |
-| `api:rpc core.record_review` | writes | `table:market.referrals` | db/core/supabase/schemas/api/review.sql:120 (KYC approve → referral berlaku) |
-| `api:rpc core.record_review` | writes | `table:ops.audit_logs` | db/core/supabase/schemas/api/review.sql:77 |
+| `api:rpc core.record_review` | guarded-by | `policy:core.org-role` | db/core/supabase/schemas/api/review.sql:96 |
+| `api:rpc core.record_review` | writes | `table:market.campaigns` | db/core/supabase/schemas/api/review.sql:67 |
+| `api:rpc core.record_review` | writes | `table:market.referrals` | db/core/supabase/schemas/api/review.sql:124 (KYC approve → referral berlaku) |
+| `api:rpc core.record_review` | writes | `table:ops.audit_logs` | db/core/supabase/schemas/api/review.sql:81 |
 | `api:rpc core.record_review` | writes | `table:tracking.submissions` | db/core/supabase/schemas/trust/decisions.sql:41 (trust.apply_submission_decision) |
-| `api:rpc core.record_review` | writes | `table:trust.review_decisions` | db/core/supabase/schemas/api/review.sql:72 |
+| `api:rpc core.record_review` | writes | `table:trust.review_decisions` | db/core/supabase/schemas/api/review.sql:76 |
 | `api:rpc core.report_by_token` | guarded-by | `policy:core.public-read` | PRD v0.3.1 Lampiran A.2 report_by_token (belum di kode: bukan RLS public-read; security definer, anon boleh EXECUTE, token sha256 = kapabilitas, api/report_links.sql baris 74, 85) |
 | `api:rpc core.report_by_token` | reads | `table:finance.reward_pools` | db/core/supabase/schemas/api/report_links.sql:59 (market.campaign_report) |
 | `api:rpc core.report_by_token` | reads | `table:market.campaigns` | db/core/supabase/schemas/api/report_links.sql:65 (market.campaign_report) |
@@ -1124,9 +1124,9 @@ Arah: `A --tipe--> B` = A bergantung pada B. `?` = belum terverifikasi.
 | `table:finance.fulfillments` | typed-by | `table:market.profiles` | db/core/supabase/schemas/finance/fulfillments.sql:5 |
 | `table:finance.fulfillments` | typed-by | `table:market.reward_types` | db/core/supabase/schemas/finance/fulfillments.sql:6 |
 | `table:finance.fulfillments` | typed-by | `table:member.recipient_details` | PRD v0.3.1 §14 kg.yaml E-18 refs E-29 (recipient_ref, tanpa FK); kode: finance/fulfillments.sql baris 9 recipient_ref |
-| `table:finance.invoices` | guarded-by | `policy:core.admin-aal2` | db/core/supabase/schemas/finance/invoices.sql:50 |
-| `table:finance.invoices` | guarded-by | `policy:core.iss-identity` | db/core/supabase/schemas/finance/invoices.sql:45 |
-| `table:finance.invoices` | guarded-by | `policy:core.org-role` | db/core/supabase/schemas/finance/invoices.sql:47 |
+| `table:finance.invoices` | guarded-by | `policy:core.admin-aal2` | db/core/supabase/schemas/finance/invoices.sql:51 |
+| `table:finance.invoices` | guarded-by | `policy:core.iss-identity` | db/core/supabase/schemas/finance/invoices.sql:46 |
+| `table:finance.invoices` | guarded-by | `policy:core.org-role` | db/core/supabase/schemas/finance/invoices.sql:48 |
 | `table:finance.invoices` | typed-by | `table:market.campaigns` | db/core/supabase/schemas/finance/invoices.sql:7 |
 | `table:finance.invoices` | typed-by | `table:market.organizations` | db/core/supabase/schemas/finance/invoices.sql:6 |
 | `table:finance.ledger_accounts` | guarded-by | `policy:core.admin-aal2` | db/core/supabase/schemas/finance/ledger_accounts.sql:24 |
@@ -2148,6 +2148,8 @@ Masalah sistem yang ditemukan saat menyusun PRD v0.2 dan saat dicek ulang (v0.2.
 | 2026-10-19 | `table:market.referrals` | Review Claudex R8: referral baru berlaku saat withdraw pertama (core baru melihat claim kyc di request_payout) → earning teman antara KYC disetujui dan withdraw pertama tidak dihitung | diperbaiki: record_review('kyc','approve') di core mengisi qualified_at/bonus_until; request_payout tetap cadangan |
 | 2026-10-19 | `table:finance.fee_rules` | Review Claudex R10: clipper_fee_pct bisa diatur admin (config global, override org/campaign) tapi tidak pernah dipotong → setting diam-diam tidak berlaku. PRD: potongan earning clipper ada di config (default 0%) untuk dinyalakan kelak | diperbaiki: finance.release_earnings memotong fee rule efektif campaign saat Rupiah Tertunda → Tersedia, ke platform_revenue (ref fee); non-tunai tidak dipotong. api.campaign_detail membawa clipper_fee_pct; detail campaign di app clipper menampilkan potongan bila > 0 |
 | 2026-10-19 | `api:fn core/fulfill` | Review Claudex R11: klaim voucher on_hold karena pool kode kosong tidak pernah lanjut setelah kode diunggah ulang (worker hanya ambil requested, assign_code menolak on_hold) → saldo sudah terpotong, voucher tak terkirim | diperbaiki: worker_fulfillments_due ikut mengambil on_hold code_pool_empty bila ada kode bebas atau kodenya sudah terpasang (R12: worker mati sebelum hasil tercatat); worker_assign_code menerimanya (S-06 on_hold → processing → delivered) |
+| 2026-10-19 | `api:rpc core.buy_pin` | Review Claudex R13: pin_until dikunci saat invoice terbit → bayar telat = hari pin berkurang (lewat 7 hari = tidak dapat pin) | diperbaiki: invoices.pin_days; settle_invoice menerapkan pin sejak lunas (atau sejak pin berjalan habis), campaign dikunci, pin_until invoice diganti periode sebenarnya |
+| 2026-10-19 | `api:rpc core.record_review` | Review Claudex R13: campaign managed bisa di-approve & tayang walau invoice managed_service belum lunas; halaman review admin hanya menampilkan invoice budget | diperbaiki: approve butuh managed_service lunas (invoice_unpaid); review-detail admin menampilkan invoice paket managed |
 ## Keputusan
 
 Keputusan yang sudah diambil — jangan dibahas ulang tanpa alasan baru.

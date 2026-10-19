@@ -69,9 +69,18 @@ begin
                                                     'invoice_payment', inv.id::text));
   perform finance.post(gen_random_uuid(), entries);
 
+  -- Pin berlaku sejak lunas (atau sejak pin yang sedang berjalan habis), selama hari yang dibeli; campaign dikunci supaya
+  -- dua invoice pin yang lunas bersamaan saling menyambung, tidak tumpang tindih.
   if inv.kind = 'pinned' then
-    update market.campaigns set pinned_until = greatest(coalesce(pinned_until, inv.pin_until), inv.pin_until)
-     where id = inv.campaign_id;
+    if inv.pin_days is not null then
+      update market.campaigns set pinned_until = greatest(now(), coalesce(pinned_until, now())) + make_interval(days => inv.pin_days)
+       where id = inv.campaign_id
+      returning pinned_until into inv.pin_until;
+      update finance.invoices set pin_until = inv.pin_until where id = inv.id;
+    else  -- invoice lama (sebelum pin_days)
+      update market.campaigns set pinned_until = greatest(coalesce(pinned_until, inv.pin_until), inv.pin_until)
+       where id = inv.campaign_id;
+    end if;
   end if;
   perform market.notify_org(inv.org_id, array['brand_owner', 'brand_finance']::market.org_role[], 'invoice.paid',
                             market.campaign_ref(inv.campaign_id) || finance.amount_ref(idr, inv.total)

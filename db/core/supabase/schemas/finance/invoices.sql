@@ -23,7 +23,8 @@ create table finance.invoices (
   faktur_no text,
   issued_at timestamptz not null default now(),
   due_at timestamptz,
-  pin_until timestamptz,
+  pin_until timestamptz,  -- perkiraan saat terbit; diganti periode sebenarnya saat lunas (pin_days dihitung dari waktu bayar)
+  pin_days smallint check (pin_days between 1 and 90),
   -- Top-up (F-B06): pool yang ditambah saat lunas, [{"pool_id": uuid, "amount": numeric}] (unit reward type pool).
   -- Diisi control_campaign, diterapkan confirm_invoice_payment ke finance.reward_pools.total.
   pool_topups jsonb,

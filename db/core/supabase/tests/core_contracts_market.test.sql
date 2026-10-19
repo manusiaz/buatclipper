@@ -538,6 +538,18 @@ reset role;
 select is((select array[mgmt_fee, admin_fee, tax, total] from finance.invoices
             where campaign_id = (select id from t_ids where k = 'c_managed') and kind = 'campaign'),
           array[120000, 50000, 18700, 1188700]::numeric[], 'override fee campaign (12%) mengalahkan fee org/global');
+-- Regresi review R13: invoice budget lunas tapi invoice paket managed belum → approve ditolak.
+update finance.invoices set status = 'paid', payment_channel = 'transfer', payment_ref = 'REF-MGD-C', paid_amount = total, paid_at = now(),
+       confirmed_by = '33333333-0000-0000-0000-0000000000ad'
+ where campaign_id = (select id from t_ids where k = 'c_managed') and kind = 'campaign';
+set local role authenticated;
+select pg_temp.jwt('33333333-0000-0000-0000-0000000000ad', '{admin_ops}', 'aal2');
+select throws_ok($$ select api.record_review('campaign', (select id from t_ids where k = 'c_managed'), 'approve') $$, 'P0001',
+                 'invoice_unpaid', 'regresi R13: campaign managed tidak bisa tayang sebelum jasa managed lunas');
+reset role;
+update finance.invoices set status = 'issued', payment_channel = null, payment_ref = null, paid_amount = null, paid_at = null,
+       confirmed_by = null
+ where campaign_id = (select id from t_ids where k = 'c_managed') and kind = 'campaign';
 
 -- Duplikat & template (F-B10)
 set local role authenticated;
@@ -653,6 +665,18 @@ select ok((select kind = 'pinned' and pin_until between now() + interval '10 day
              from finance.invoices where id = (select id from t_ids where k = 'inv_pin')), 'invoice pinned membawa pin_until');
 select is((select pinned_until from market.campaigns where id = '55555555-0000-0000-0000-000000000001'), null,
           'pinned_until baru diset saat invoice lunas');
+-- Regresi review R13: invoice pin dibayar 3 hari setelah terbit → tetap dapat 10 hari penuh sejak lunas.
+update finance.invoices set pin_until = now() + interval '7 days' where id = (select id from t_ids where k = 'inv_pin');
+set local role authenticated;
+select pg_temp.jwt('33333333-0000-0000-0000-0000000000ad', array['admin_finance'], 'aal2');
+select api.confirm_invoice_payment((select id from t_ids where k = 'inv_pin'),
+                                   (select total from api.invoices where id = (select id from t_ids where k = 'inv_pin')), now(), 'REF-PIN-1', 'transfer');
+reset role;
+select is((select pinned_until from market.campaigns where id = '55555555-0000-0000-0000-000000000001'), now() + interval '10 days',
+          'regresi R13: durasi pin dihitung sejak lunas (hari yang dibeli utuh)');
+select is((select pin_until from finance.invoices where id = (select id from t_ids where k = 'inv_pin')), now() + interval '10 days',
+          'invoice pin mencatat periode sebenarnya');
+update market.campaigns set pinned_until = null where id = '55555555-0000-0000-0000-000000000001';
 
 -- ---------- daftar campaign (F-C03): visibilitas = RLS, CTA 6 state per user, keyset ----------
 set local role anon;
