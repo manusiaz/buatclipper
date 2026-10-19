@@ -69,6 +69,7 @@ export interface DetailSubmission {
 
 export interface CampaignDetail {
   campaign: DetailCampaign;
+  brand: { name: string; verified: boolean } | null;
   rules: RateRule[];
   pools: DetailPool[];
   budget_idr: number;
@@ -92,7 +93,9 @@ export function parseDetail(raw: unknown): CampaignDetail {
   const c = (d.campaign ?? {}) as O;
   const my = (d.my ?? {}) as O;
   const claim = my.claim as O | null | undefined;
+  const brand = (d.brand ?? null) as O | null;
   return {
+    brand: brand && str(brand.name) ? { name: str(brand.name), verified: brand.verified === true } : null,
     campaign: {
       id: str(c.id),
       title: str(c.title),

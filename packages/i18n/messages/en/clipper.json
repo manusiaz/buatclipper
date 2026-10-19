@@ -210,7 +210,8 @@
     "faq": "FAQ",
     "mySubmissions": "Your submissions",
     "allTasks": "All tasks",
-    "views": "{n} views"
+    "views": "{n} views",
+    "verifiedBrand": "Verified brand"
   },
   "submit": {
     "title": "Submit video",

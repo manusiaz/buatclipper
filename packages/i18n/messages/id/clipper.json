@@ -210,7 +210,8 @@
     "faq": "FAQ",
     "mySubmissions": "Submisi kamu",
     "allTasks": "Semua tugas",
-    "views": "{n} views"
+    "views": "{n} views",
+    "verifiedBrand": "Brand terverifikasi"
   },
   "submit": {
     "title": "Submit video",

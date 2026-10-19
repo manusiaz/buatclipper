@@ -1,7 +1,7 @@
 'use client';
 
 // C6.1: klaim reward non-tunai. Field non-PII (User ID, Zone ID…) diisi di sini; field PII (alamat/HP) hanya di
-// accounts.{domain}/payout-methods yang mengembalikan recipient_ref.
+// accounts.{domain}/payout-methods; recipient_ref dari identity api.my_recipients (atau ?recipient_ref setelah kembali).
 import { useMemo, useState, useTransition } from 'react';
 import { useRouter } from 'next/navigation';
 import { useLocale, useTranslations } from 'next-intl';

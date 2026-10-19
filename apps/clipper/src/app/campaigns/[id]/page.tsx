@@ -4,6 +4,7 @@ import { notFound } from 'next/navigation';
 import { getTranslations } from 'next-intl/server';
 import { requireClipper } from '@clipper/auth/server';
 import {
+  Avatar,
   Badge,
   Button,
   Card,
@@ -135,7 +136,19 @@ export default async function CampaignDetailPage({ params, searchParams }: Props
           </div>
         </div>
         <div className="flex flex-col gap-1.5">
-          {c.category_id ? <p className="text-caption font-semibold text-muted">{categories.get(c.category_id) ?? c.category_id}</p> : null}
+          {d.brand || c.category_id ? (
+            <p className="flex min-w-0 items-center gap-1.5 text-caption text-muted">
+              {d.brand ? (
+                <>
+                  <Avatar name={d.brand.name} size={20} shape="square" />
+                  <span className="truncate font-semibold text-text-2">{d.brand.name}</span>
+                  {d.brand.verified ? <Icon name="verified" size={14} filled className="shrink-0 text-primary" title={t('detail.verifiedBrand')} /> : null}
+                </>
+              ) : null}
+              {d.brand && c.category_id ? <span aria-hidden>·</span> : null}
+              {c.category_id ? <span className="truncate">{categories.get(c.category_id) ?? c.category_id}</span> : null}
+            </p>
+          ) : null}
           <h2 className="text-h4 text-ink [overflow-wrap:anywhere]">{c.title}</h2>
           {c.sponsored_label ? (
             <p className="flex items-center gap-1.5 text-caption font-semibold text-warn-fg">

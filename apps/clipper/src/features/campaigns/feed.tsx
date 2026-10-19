@@ -52,6 +52,7 @@ export function CampaignFeed({ initial, next, filters }: { initial: CampaignCard
               linkAs={Link}
               locale={locale}
               title={c.title}
+              brand={c.brand}
               coverSrc={c.coverSrc}
               category={c.category}
               categoryIcon={c.categoryIcon}

@@ -5,7 +5,6 @@ import { requireClipper } from '@clipper/auth/server';
 import { Button, EmptyState, Icon, RelativeTime, cn, type IconName } from '@clipper/ui';
 import { markAllRead, openNotification } from '@/features/notifications/actions';
 import { notificationViews } from '@/features/notifications/view';
-import { isUuid } from '@/features/lib/pure';
 import { core, uiLocale } from '@/features/lib/server';
 
 export const metadata: Metadata = { title: 'Notifikasi' };
@@ -38,16 +37,7 @@ export default async function NotificationsPage() {
     uiLocale(),
     db.from('notifications').select('id,event,payload,read_at,created_at').eq('user_id', claims.sub).order('created_at', { ascending: false }).limit(100),
   ]);
-  const missing = [
-    ...new Set(
-      (rows.data ?? [])
-        .map((r) => (r.payload ?? {}) as Record<string, unknown>)
-        .filter((p) => !p.campaign_title && isUuid(p.campaign_id))
-        .map((p) => p.campaign_id as string),
-    ),
-  ];
-  const titles = missing.length ? (await db.from('campaigns').select('id,title').in('id', missing)).data ?? [] : [];
-  const items = await notificationViews(rows.data ?? [], locale, new Map(titles.map((c) => [c.id ?? '', c.title ?? ''])));
+  const items = await notificationViews(rows.data ?? [], locale);
   const unread = items.filter((n) => !n.read).length;
 
   if (!items.length) {

@@ -67,10 +67,7 @@ export function budgetUsedRatio(budget: unknown, remaining: unknown): number | u
 
 const DAY = 86_400_000;
 
-/**
- * Perkiraan earning Pending → Tersedia: lock (locked_at, atau posted_at + view window) + hold. hold = public.finance.hold_days
- * (bukan public.*, tidak terbaca clipper) → default PRD 7 hari.
- */
+/** Perkiraan earning Pending → Tersedia: lock (locked_at, atau posted_at + view window) + hold (public.finance.hold_days, default 7). */
 export function estimateRelease(
   s: { locked_at: string | null; posted_at: string | null; created_at: string },
   viewWindowDays: number,

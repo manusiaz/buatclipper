@@ -13,6 +13,7 @@ export const PAGE_SIZE = 12;
 export interface CampaignCardData {
   id: string;
   title: string;
+  brand?: { name: string; verified: boolean };
   coverSrc: string | null;
   category?: string;
   categoryIcon: IconName;
@@ -92,6 +93,7 @@ export async function toCards(rows: Row[]): Promise<CampaignCardData[]> {
       return {
         id: r.id,
         title: r.title,
+        brand: r.brand_name ? { name: r.brand_name, verified: !!r.brand_verified } : undefined,
         coverSrc: publicUrl('campaign-covers', r.cover_path),
         category: r.category_id ? categories.get(r.category_id) ?? undefined : undefined,
         categoryIcon: CATEGORY_ICON[r.category_id ?? ''] ?? 'movie',

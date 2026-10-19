@@ -38,13 +38,14 @@ export default async function WalletPage({ searchParams }: Props) {
     getTranslations('clipper.wallet'),
     uiLocale(),
     balances(uid),
-    readSettings(['public.finance.min_withdraw_idr']),
+    readSettings(['public.finance.min_withdraw_idr', 'public.finance.hold_days']),
     db.from('wallet_entries').select('id,reward_type_id,amount,state,ref_type,created_at').eq('user_id', uid).order('created_at', { ascending: false }).limit(60),
     db.from('payouts').select('id,amount,fee,channel,status,created_at,paid_at').eq('user_id', uid).order('created_at', { ascending: false }).limit(10),
     db.from('fulfillments').select('id,reward_type_id,amount,status,delivered_ref,created_at,delivered_at').eq('user_id', uid).order('created_at', { ascending: false }).limit(30),
     db.from('submissions').select('campaign_id,posted_at,locked_at,created_at').eq('user_id', uid).in('status', ['tracking', 'flagged', 'locked']).limit(100),
   ]);
   const min = num(settings['public.finance.min_withdraw_idr']) || 100_000;
+  const holdDays = num(settings['public.finance.hold_days']) || 7;
   const idr = bal.idr;
   const available = idr?.available ?? 0;
   const ful = fulfillments.data ?? [];
@@ -57,7 +58,7 @@ export default async function WalletPage({ searchParams }: Props) {
   ]);
   const windowOf = new Map((windows.data ?? []).map((c) => [c.id, num(c.view_window_days) || 30]));
   const nextRelease = (live.data ?? [])
-    .map((s) => estimateRelease({ locked_at: s.locked_at ?? null, posted_at: s.posted_at ?? null, created_at: s.created_at! }, windowOf.get(s.campaign_id) ?? 30))
+    .map((s) => estimateRelease({ locked_at: s.locked_at ?? null, posted_at: s.posted_at ?? null, created_at: s.created_at! }, windowOf.get(s.campaign_id) ?? 30, holdDays))
     .filter((d) => d.getTime() > Date.now())
     .sort((a, b) => a.getTime() - b.getTime())[0];
   const codeOf = new Map((codes.data ?? []).map((c) => [c.fulfillment_id, c.code]));

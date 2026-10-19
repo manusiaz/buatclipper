@@ -2,6 +2,7 @@ import type { Metadata } from 'next';
 import Link from 'next/link';
 import { getTranslations } from 'next-intl/server';
 import { requireClipper } from '@clipper/auth/server';
+import { REJECT_REASONS } from '@clipper/i18n';
 import {
   Alert,
   Badge,
@@ -19,7 +20,7 @@ import {
 } from '@clipper/ui';
 import { Flash } from '@/features/lib/flash';
 import { estimateRelease, isPlatform, num, taskGroup, type TaskGroup } from '@/features/lib/pure';
-import { core, rewardTypes, uiLocale } from '@/features/lib/server';
+import { core, readSettings, rewardTypes, uiLocale } from '@/features/lib/server';
 import { formatAmount } from '@/features/lib/units';
 import { AppealButton } from '@/features/tasks/appeal-button';
 
@@ -36,9 +37,11 @@ export default async function TasksPage({ searchParams }: Props) {
   const uid = claims.sub;
   const db = await core();
   const nowIso = new Date().toISOString();
-  const [t, locale, openClaims, subs, accounts] = await Promise.all([
+  const [t, tc, locale, settings, openClaims, subs, accounts] = await Promise.all([
     getTranslations('clipper'),
+    getTranslations('common'),
     uiLocale(),
+    readSettings(['public.finance.hold_days']),
     db.from('claims').select('id,campaign_id,expires_at').eq('user_id', uid).eq('status', 'open').gt('expires_at', nowIso).order('expires_at'),
     db
       .from('submissions')
@@ -89,6 +92,12 @@ export default async function TasksPage({ searchParams }: Props) {
   const grouped = new Map<TaskGroup, typeof list>(GROUPS.map((g) => [g, []]));
   for (const s of list) grouped.get(taskGroup(s.status ?? ''))!.push(s);
   const empty = !list.length && !(openClaims.data ?? []).length;
+  const holdDays = num(settings['public.finance.hold_days']) || 7;
+  // Alasan reject: label standar (common.rejectReasons) kalau kodenya dikenal, lalu pesan reviewer, lalu kode mentah.
+  const reasonOf = (code: string | null | undefined, message: string | null | undefined) => {
+    const label = code && (REJECT_REASONS as readonly string[]).includes(code) ? tc(`rejectReasons.${code}`) : null;
+    return { label: label ?? message ?? code ?? '—', detail: label && message ? message : null };
+  };
 
   return (
     <div className="flex flex-col gap-5">
@@ -162,6 +171,7 @@ export default async function TasksPage({ searchParams }: Props) {
                     ? estimateRelease(
                         { locked_at: s.locked_at ?? null, posted_at: s.posted_at ?? null, created_at: s.created_at! },
                         num(camp?.view_window_days) || 30,
+                        holdDays,
                       )
                     : null;
                 return (
@@ -229,7 +239,10 @@ export default async function TasksPage({ searchParams }: Props) {
                         <div className="flex items-start gap-2 rounded-chip bg-danger-bg/60 px-2.5 py-2 text-caption text-danger-fg">
                           <Icon name="info" size={16} filled className="mt-px shrink-0" />
                           <p className="[overflow-wrap:anywhere]">
-                            <span className="font-bold">{t('tasks.reason')}</span> {verdict.message || verdict.reason_code || '—'}
+                            <span className="font-bold">{t('tasks.reason')}</span> {reasonOf(verdict.reason_code, verdict.message).label}
+                            {reasonOf(verdict.reason_code, verdict.message).detail ? (
+                              <span className="block text-text-2">{reasonOf(verdict.reason_code, verdict.message).detail}</span>
+                            ) : null}
                           </p>
                         </div>
                       ) : null}

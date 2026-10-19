@@ -1,6 +1,7 @@
 // Baris api.notifications → judul/isi terjemahan (namespace notifications) + link.
 import { getTranslations } from 'next-intl/server';
 import { hosts } from '@clipper/auth';
+import { REJECT_REASONS } from '@clipper/i18n';
 import { formatDateTime, platformLabel, type Platform, type UiLocale } from '@clipper/ui';
 import { isPlatform, num } from '../lib/pure';
 import { formatAmount } from '../lib/units';
@@ -25,13 +26,8 @@ export interface NotificationView {
   event: string;
 }
 
-/** titles: judul campaign untuk payload yang hanya membawa campaign_id (mis. claim.expiring). */
-export async function notificationViews(
-  rows: NotificationRow[],
-  locale: UiLocale,
-  titles: ReadonlyMap<string, string> = new Map(),
-): Promise<NotificationView[]> {
-  const t = await getTranslations('notifications');
+export async function notificationViews(rows: NotificationRow[], locale: UiLocale): Promise<NotificationView[]> {
+  const [t, tc] = await Promise.all([getTranslations('notifications'), getTranslations('common')]);
   const when = (v: unknown) =>
     typeof v === 'string' && !Number.isNaN(new Date(v).getTime())
       ? `${formatDateTime(v, locale, { dateStyle: 'medium', timeStyle: 'short' })} WIB`
@@ -46,7 +42,7 @@ export async function notificationViews(
         .join(', ');
       const platform = text(p, 'platform', 30).toLowerCase();
       const values = {
-        campaign: text(p, 'campaign_title') || titles.get(String(p.campaign_id ?? '')) || t('fallback.campaign'),
+        campaign: text(p, 'campaign_title') || t('fallback.campaign'),
         platform: isPlatform(platform) ? platformLabel(platform as Platform) : text(p, 'platform', 30) || t('fallback.platform'),
         handle: text(p, 'handle', 60) ? ` @${text(p, 'handle', 60)}` : '',
         amount: amounts || t('fallback.amount'),
@@ -64,7 +60,11 @@ export async function notificationViews(
         level: budgetLevel(p.pct),
       };
       const known = isEvent(event);
-      const reason = text(p, 'message', 300) || text(p, 'reason', 300);
+      // Kode alasan standar → label common.rejectReasons; pesan reviewer ikut di belakangnya.
+      const code = text(p, 'reason', 60);
+      const label = (REJECT_REASONS as readonly string[]).includes(code) ? tc(`rejectReasons.${code}`) : null;
+      const message = text(p, 'message', 300);
+      const reason = label ? (message ? `${label} — ${message}` : label) : message || text(p, 'reason', 300);
       return {
         id: r.id!,
         event,

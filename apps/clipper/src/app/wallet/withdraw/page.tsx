@@ -37,7 +37,7 @@ export default async function WithdrawPage({ searchParams }: Props) {
   const sp = await searchParams;
   const { supabase } = await getAuth('sso');
   const db = await core();
-  const [t, locale, bal, settings, me, feeRule, methods] = await Promise.all([
+  const [t, locale, bal, settings, me, feeRule, methods, recipients] = await Promise.all([
     getTranslations('clipper.withdraw'),
     uiLocale(),
     balances(claims.sub),
@@ -45,6 +45,7 @@ export default async function WithdrawPage({ searchParams }: Props) {
     db.from('my_profile').select('trust_score,status,suspended_until').maybeSingle(),
     db.from('fee_rules').select('instant_withdraw_fee').eq('scope', 'global').maybeSingle(),
     identityApi(supabase).rpc('my_payout_methods'),
+    identityApi(supabase).from('my_recipients').select('id,reward_type_id'),
   ]);
   const min = num(settings['public.finance.min_withdraw_idr']) || 100_000;
   const minTrust = num(settings['public.finance.instant_min_trust']) || 70;
@@ -61,6 +62,7 @@ export default async function WithdrawPage({ searchParams }: Props) {
   const payoutUrl = (q: Record<string, string>) =>
     `${hosts.accounts}/payout-methods?${new URLSearchParams({ ...q, next: q.next ?? SELF })}`;
   const tab = sp.tab === 'reward' ? 'reward' : 'cash';
+  const recipientOf = new Map((recipients.data ?? []).map((r) => [r.reward_type_id, r.id]));
   const methodsError = methods.error ? await errorText(methods.error.message) : null;
 
   const checks: { ok: boolean; icon: IconName; label: string; detail: string; href?: string; action?: string }[] = [
@@ -103,7 +105,8 @@ export default async function WithdrawPage({ searchParams }: Props) {
         fulfillment: b.unit.fulfillment,
         available: b.available,
         fields: recipientFields(b.unit.recipient_schema),
-        recipientRef: sp.reward_type === b.unit.id && isUuid(sp.recipient_ref) ? sp.recipient_ref! : null,
+        // Data penerima tersimpan di identity (api.my_recipients); ?recipient_ref dari accounts menimpa (baru disimpan).
+        recipientRef: sp.reward_type === b.unit.id && isUuid(sp.recipient_ref) ? sp.recipient_ref! : (recipientOf.get(b.unit.id) ?? null),
         recipientHref: payoutUrl({ reward_type: b.unit.id, next: back }),
       };
     })
