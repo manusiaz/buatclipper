@@ -108,7 +108,9 @@ export function supabaseStorage(client: Client): Storage {
     async signedUrl(bucket, path, expiresIn) {
       const { data, error } = await client.storage.from(bucket).createSignedUrl(path, expiresIn);
       if (error || !data?.signedUrl) throw new HttpError(502, "storage_error", "gagal membuat link unduh");
-      return data.signedUrl;
+      // SUPABASE_URL di runtime bisa alamat internal (lokal: http://kong:8000); link untuk browser memakai origin publik.
+      const pub = envOpt("PUBLIC_SUPABASE_URL")?.replace(/\/+$/, "");
+      return pub ? data.signedUrl.replace(/^https?:\/\/[^/]+/, pub) : data.signedUrl;
     },
     async exists(bucket, path) {
       const { data, error } = await client.storage.from(bucket).exists(path);

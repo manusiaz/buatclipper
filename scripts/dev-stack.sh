@@ -27,8 +27,17 @@ EOF
 fi
 set -a; . "$SECRETS"; set +a
 
+# Kunci signing JWT lokal (ES256), sama untuk kedua project: core memverifikasi JWT identity (produksi: Custom OIDC/JWKS).
+KEYS=db/identity/supabase/dev-keys/signing_keys.json
+if [ ! -f "$KEYS" ]; then
+  mkdir -p db/identity/supabase/dev-keys db/core/supabase/dev-keys
+  supabase gen signing-key --algorithm ES256 2>/dev/null | python3 -c 'import json,sys; json.dump([json.load(sys.stdin)], sys.stdout)' > "$KEYS"
+fi
+cp "$KEYS" db/core/supabase/dev-keys/signing_keys.json
+
 # Nilai non-rahasia. Lintas stack: host.docker.internal:<port host>; dalam stack sendiri: nama container.
 export IDENTITY_ISSUER="http://127.0.0.1:54321/auth/v1"
+export IDENTITY_PUBLIC_URL="http://127.0.0.1:54321"
 export IDENTITY_JWKS_URL="http://host.docker.internal:54321/auth/v1/.well-known/jwks.json"
 export IDENTITY_FUNCTIONS_URL="http://host.docker.internal:54321/functions/v1"
 export CORE_FUNCTIONS_URL="http://host.docker.internal:55321/functions/v1"

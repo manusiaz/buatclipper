@@ -20,7 +20,8 @@ export function buildCsp(nonce: string): string {
     "default-src 'self'",
     `script-src 'self' 'nonce-${nonce}' 'strict-dynamic' https://challenges.cloudflare.com${dev ? " 'unsafe-eval'" : ''}`,
     "style-src 'self' 'unsafe-inline'",
-    "img-src 'self' data: blob: https:",
+    // Origin Supabase eksplisit: storage lokal (http://127.0.0.1) tidak tercakup https:.
+    `img-src 'self' data: blob: https: ${supabase.join(' ')}`,
     "font-src 'self' data:",
     `connect-src 'self' ${supabase.join(' ')}${dev ? ' ws: wss:' : ''}`,
     `frame-src https://challenges.cloudflare.com ${EMBEDS.join(' ')}`,

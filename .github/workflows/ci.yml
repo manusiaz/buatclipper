@@ -1,0 +1,65 @@
+# Perintah sama dengan "Perintah verifikasi" di KNOWLEDGE_GRAPH.md.
+name: ci
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  apps:
+    runs-on: ubuntu-latest
+    env:
+      NEXT_PUBLIC_CORE_URL: https://core.example.supabase.co
+      NEXT_PUBLIC_CORE_PUBLISHABLE_KEY: sb_publishable_ci
+      NEXT_PUBLIC_IDENTITY_URL: https://identity.example.supabase.co
+      NEXT_PUBLIC_IDENTITY_PUBLISHABLE_KEY: sb_publishable_ci
+      NEXT_PUBLIC_COOKIE_DOMAIN: .clipper.example
+      NEXT_PUBLIC_WEB_URL: https://clipper.example
+      NEXT_PUBLIC_ACCOUNTS_URL: https://accounts.clipper.example
+      NEXT_PUBLIC_APP_URL: https://app.clipper.example
+      NEXT_PUBLIC_BRAND_URL: https://brand.clipper.example
+      NEXT_PUBLIC_ADMIN_URL: https://admin.clipper.example
+      NEXT_PUBLIC_VAPID_PUBLIC_KEY: ci
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22, cache: pnpm }
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm lint
+      - run: pnpm typecheck
+      - run: pnpm test
+      - run: pnpm build
+
+  functions:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix: { project: [identity, core] }
+    defaults:
+      run: { working-directory: "db/${{ matrix.project }}/supabase/functions" }
+    steps:
+      - uses: actions/checkout@v4
+      - uses: denoland/setup-deno@v2
+        with: { deno-version: v2.x }
+      - run: deno fmt --check && deno lint && deno task check && deno task test
+
+  db:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        include:
+          - { project: identity, schemas: "member,api" }
+          - { project: core, schemas: "market,tracking,finance,trust,ops,api" }
+    steps:
+      - uses: actions/checkout@v4
+      - uses: supabase/setup-cli@v1
+        with: { version: 2.121.0 }
+      - name: kunci signing JWT lokal (gitignored; sama seperti scripts/dev-stack.sh)
+        run: |
+          mkdir -p db/${{ matrix.project }}/supabase/dev-keys
+          supabase gen signing-key --algorithm ES256 2>/dev/null \
+            | python3 -c 'import json,sys; json.dump([json.load(sys.stdin)], sys.stdout)' > db/${{ matrix.project }}/supabase/dev-keys/signing_keys.json
+      - run: supabase start --workdir db/${{ matrix.project }} -x vector,logflare,studio,imgproxy,edge-runtime
+      - run: supabase test db --workdir db/${{ matrix.project }}
+      - run: supabase db lint --workdir db/${{ matrix.project }} -s ${{ matrix.schemas }} --fail-on error
+      - run: supabase db advisors --workdir db/${{ matrix.project }} --type security --fail-on warn

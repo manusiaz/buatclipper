@@ -77,6 +77,7 @@ verify_jwt = false
 # Secret Edge Function untuk stack LOKAL saja (scripts/dev-stack.sh mengisi env-nya). Produksi: supabase secrets set.
 [edge_runtime.secrets]
 IDENTITY_ISSUER = "env(IDENTITY_ISSUER)"
+PUBLIC_SUPABASE_URL = "env(IDENTITY_PUBLIC_URL)"
 APP_ORIGINS = "env(APP_ORIGINS)"
 PII_HMAC_KEY = "env(PII_HMAC_KEY)"
 PII_ENC_KEYS = "env(PII_ENC_KEYS)"
