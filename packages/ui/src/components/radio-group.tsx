@@ -33,7 +33,7 @@ export interface RadioGroupProps {
 const radioClasses = cn(
   'peer touch-target size-[22px] shrink-0 cursor-pointer appearance-none rounded-full border-[1.5px] border-border-hover bg-surface',
   'transition-[border-color,background-color,box-shadow] duration-120 ease-out',
-  'hover:border-primary hover:bg-brand-50 dark:hover:bg-primary-soft focus-ring',
+  'hover:border-primary hover:bg-primary-tint focus-ring',
   'checked:border-2 checked:border-primary checked:bg-[radial-gradient(circle,var(--color-primary)_0_4.5px,transparent_5px)] checked:hover:bg-surface checked:hover:bg-[radial-gradient(circle,var(--color-primary)_0_4.5px,transparent_5px)]',
   'disabled:cursor-not-allowed disabled:opacity-40',
 );
@@ -94,7 +94,7 @@ export function RadioGroup({
                 htmlFor={optId}
                 className={cn(
                   'flex cursor-pointer items-start gap-3 rounded-card-sm border-[1.5px] border-border-strong bg-surface p-4 transition-[border-color,background-color,box-shadow] duration-120',
-                  'hover:border-border-hover has-[:checked]:border-primary has-[:checked]:bg-brand-50 dark:has-[:checked]:bg-primary-soft',
+                  'hover:border-border-hover has-[:checked]:border-primary has-[:checked]:bg-primary-tint',
                   'has-[:focus-visible]:shadow-[0_0_0_4px_var(--color-focus-halo)] has-[:disabled]:cursor-not-allowed has-[:disabled]:opacity-50',
                   orientation === 'horizontal' && 'flex-1',
                 )}

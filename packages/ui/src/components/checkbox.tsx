@@ -58,7 +58,7 @@ export function Checkbox({
       className={cn(
         'peer touch-target grid size-[22px] shrink-0 place-items-center rounded-[7px] border-[1.5px] border-border-hover bg-surface text-white',
         'transition-[background-color,border-color,box-shadow] duration-120 ease-out',
-        'hover:border-primary hover:bg-brand-50 dark:hover:bg-primary-soft focus-ring',
+        'hover:border-primary hover:bg-primary-tint focus-ring',
         'data-[state=checked]:border-0 data-[state=checked]:bg-cta data-[state=checked]:shadow-[0_4px_10px_-4px_rgb(29_91_255/0.6)]',
         'data-[state=indeterminate]:border-0 data-[state=indeterminate]:bg-cta',
         'disabled:cursor-not-allowed disabled:opacity-40',

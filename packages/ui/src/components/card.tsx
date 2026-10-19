@@ -66,7 +66,7 @@ export function CardTitle({ as: Comp = 'h3', className, ...rest }: HTMLAttribute
 }
 
 export function CardDescription({ className, ...rest }: HTMLAttributes<HTMLParagraphElement>) {
-  return <p className={cn('text-body-s text-muted [.surface-dark_&]:text-white/70 [.surface-blue_&]:text-white/85', className)} {...rest} />;
+  return <p className={cn('text-body-s text-muted', className)} {...rest} />;
 }
 
 export function CardContent({ className, ...rest }: HTMLAttributes<HTMLDivElement>) {

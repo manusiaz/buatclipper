@@ -60,7 +60,7 @@ export function StatCard({ label, value, delta, icon, hint, variant = 'default',
                   good === undefined && 'bg-subtle text-text-2',
                 )}
               >
-                <Icon name={delta.trend === 'up' ? 'arrow_upward' : delta.trend === 'down' ? 'arrow_downward' : 'remove'} size={12} />
+                {delta.trend !== 'flat' ? <Icon name={delta.trend === 'up' ? 'arrow_upward' : 'arrow_downward'} size={12} /> : null}
                 {delta.value}
               </span>
               {delta.caption ? <span className={onDark ? 'text-white/70' : 'text-muted'}>{delta.caption}</span> : null}

@@ -52,8 +52,7 @@ function NavList({ sections, L }: { sections: NavSection[]; L: ElementType }) {
                   className={cn(
                     'group/item flex h-11 items-center gap-3 rounded-[10px] px-3 text-sm font-semibold text-text-2 transition-colors duration-120 md:h-10',
                     'hover:bg-subtle hover:text-ink focus-ring',
-                    'aria-[current=page]:bg-brand-50 aria-[current=page]:font-bold aria-[current=page]:text-primary-soft-fg aria-[current=page]:shadow-[inset_3px_0_0_var(--color-primary)]',
-                    'dark:aria-[current=page]:bg-primary-soft',
+                    'aria-[current=page]:bg-primary-tint aria-[current=page]:font-bold aria-[current=page]:text-primary-soft-fg aria-[current=page]:shadow-[inset_3px_0_0_var(--color-primary)]',
                   )}
                 >
                   {item.icon ? (

@@ -141,7 +141,7 @@ select pg_temp.mk_campaign('55555555-0000-0000-0000-0000000000a1', 'k1-cpm');
 select pg_temp.mk_pool('55555555-0000-0000-0000-0000000000a1', '66666666-0000-0000-0000-0000000000a1', 1000000, 100000);
 create temp table t_ids (k text primary key, v text);
 create temp table t_pay (k text primary key, id uuid);
-grant all on t_pay, t_ids to authenticated;
+grant all on t_pay, t_ids to authenticated, service_role;
 insert into t_ids select 'r_k1', pg_temp.mk_rule('55555555-0000-0000-0000-0000000000a1', '66666666-0000-0000-0000-0000000000a1', 'per_1k_views', '{"rate":2000}');
 insert into t_ids select 's1', pg_temp.mk_sub('55555555-0000-0000-0000-0000000000a1', '11111111-0000-0000-0000-00000000000a', 'v1');
 
@@ -298,8 +298,10 @@ select is((select status::text from tracking.submissions where id = (select v::u
 select is((select status::text from tracking.submissions where id = (select v::uuid from t_ids where k = 's7c')), 'locked',
           'fraud flag terbuka → tidak dirilis');
 select is(pg_temp.bal('11111111-0000-0000-0000-00000000000a', 'pending'), 199000::numeric, 'pending andi tinggal K1 + K4 (belum lock)');
-select is((select count(*)::int from ops.notifications where event = 'earning.available'
-           and user_id = '11111111-0000-0000-0000-00000000000a'), 1, 'notifikasi earning tersedia');
+select is((select payload - 'submission_id' from ops.notifications where event = 'earning.available'
+           and user_id = '11111111-0000-0000-0000-00000000000a'),
+          '{"campaign_id":"55555555-0000-0000-0000-0000000000a7","campaign_title":"Campaign k7-release","org_id":"44444444-0000-0000-0000-000000000001",
+            "amounts":[{"amount":2502,"reward_type":"IDR","unit_label":"Rp"}]}'::jsonb, 'notifikasi earning tersedia: judul campaign + nominal + satuan');
 select finance.release_earnings();
 select is((select count(*)::int from finance.ledger_entries where ref_type = 'release' and state = 'available'), 1, 'release diulang = no-op');
 
@@ -401,6 +403,11 @@ select pg_temp.jwt('33333333-0000-0000-0000-0000000000f2', '{"app_roles":["admin
 select lives_ok($$ select api.approve_payout_batch((select id from t_pay where k = 'batch')) $$, 'admin_finance lain menyetujui batch');
 reset role;
 select is(jsonb_array_length(api.bridge_get_batch((select id from t_pay where k = 'batch')) -> 'payouts'), 3, 'bridge_get_batch: isi batch approved');
+select is((select jsonb_agg(x - 'id' - 'user_id' order by x ->> 'amount') from jsonb_array_elements(api.bridge_get_batch((select id from t_pay where k = 'batch')) -> 'payouts') x),
+          '[{"method_id":"aaaaaaaa-0000-0000-0000-0000000000b1","amount":100000.00,"fee":0.00},
+            {"method_id":"aaaaaaaa-0000-0000-0000-0000000000b1","amount":150000.00,"fee":0.00},
+            {"method_id":"aaaaaaaa-0000-0000-0000-0000000000b1","amount":200000.00,"fee":0.00}]'::jsonb,
+          'bridge_get_batch: amount bruto + fee (transfer = amount − fee)');
 select api.bridge_attach_export((select id from t_pay where k = 'batch'), 'pii-exports/batch-1.csv',
                                 jsonb_build_array(jsonb_build_object('payout_id', (select id from t_pay where k = 'b3'), 'reason', 'nama_tidak_cocok')));
 select is((select status::text from finance.payouts where id = (select id from t_pay where k = 'b3')), 'on_hold', 'gagal cek export → on_hold');
@@ -426,6 +433,15 @@ select api.bridge_attach_proof('batch', (select id from t_pay where k = 'batch')
 select is((select status from finance.payout_batches where id = (select id from t_pay where k = 'batch')), 'closed', 'bukti transfer → batch closed');
 select is((select proof_ref from finance.payouts where id = (select id from t_pay where k = 'b1')), 'payout-proofs/batch-1.pdf',
           'proof_ref tersimpan di payout paid');
+select ok((select payload ->> 'unit_label' = 'Rp' and payload ->> 'reward_type' = 'IDR' and payload ? 'payout_id' and payload ->> 'amount' = '150000'
+           from ops.notifications where event = 'payout.failed' and payload ->> 'payout_id' = (select id::text from t_pay where k = 'b2')),
+          'payload payout.failed: payout_id + nominal + satuan');
+-- Penyedia mengirim REVERSED setelah paid (S-05 paid → failed): dana kembali, idempoten
+select api.bridge_mark_instant((select id from t_pay where k = 'i2'), 'failed', 'PRV-1', 'REVERSED');
+select api.bridge_mark_instant((select id from t_pay where k = 'i2'), 'failed', 'PRV-1', 'REVERSED');
+select is((select status::text from finance.payouts where id = (select id from t_pay where k = 'i2')), 'returned', 'instant paid lalu REVERSED → returned');
+select is(pg_temp.bal('11111111-0000-0000-0000-00000000000a', 'available'), 602502::numeric, 'REVERSED: dana + biaya kembali ke Tersedia (sekali)');
+select is(pg_temp.bal('11111111-0000-0000-0000-00000000000a', 'withdrawn'), 395000::numeric, 'REVERSED: Ditarik berkurang Rp95.000');
 
 -- ========== D. Fulfillment non-tunai (S-06) ==========
 insert into vault.secrets (id, name, secret) values ('eeeeeeee-0000-0000-0000-00000000000f', 'webhook:gems', 'rahasia-hmac');
@@ -533,6 +549,9 @@ select is((select total from finance.reward_pools where id = '66666666-0000-0000
 select is(pg_temp.acct('campaign_pool', '66666666-0000-0000-0000-0000000000a8'), 12000000::numeric, 'top-up mengisi saldo akun pool');
 select ok((select count(*) >= 2 from ops.notifications where event = 'invoice.paid' and user_id = '22222222-0000-0000-0000-0000000000c1'),
           'brand_finance dinotifikasi pembayaran diterima');
+select ok(exists (select 1 from ops.notifications where event = 'invoice.paid' and payload ->> 'campaign_title' = 'Invoice'
+                  and payload ->> 'org_id' = '44444444-0000-0000-0000-000000000001' and payload ->> 'amount' = '30550000'),
+          'payload invoice.paid: judul campaign, org, nominal');
 
 -- ========== F. Sisa budget: rollover vs refund (D-09) ==========
 update market.campaigns set status = 'cancelled' where id = '55555555-0000-0000-0000-0000000000a8';
@@ -579,7 +598,7 @@ select is(pg_temp.bal('11111111-0000-0000-0000-00000000000d', 'available'), 125:
 select is(pg_temp.bal('11111111-0000-0000-0000-00000000000f', 'available'), 0::numeric, 'lewat bonus_until → tanpa bonus');
 select is((select sum(e.amount) from finance.ledger_entries e join finance.ledger_accounts a on a.id = e.account_id
            where e.ref_type = 'referral_bonus' and a.owner_type = 'platform_revenue'), -125::numeric, 'bonus dibayar dari akun platform');
-select is(pg_temp.bal('11111111-0000-0000-0000-00000000000a', 'available'), 502502::numeric, 'earning teman tidak dipotong');
+select is(pg_temp.bal('11111111-0000-0000-0000-00000000000a', 'available'), 602502::numeric, 'earning teman tidak dipotong');
 select finance.accrue_referral_bonus();
 select is(pg_temp.bal('11111111-0000-0000-0000-00000000000d', 'available'), 125::numeric, 'job referral diulang = no-op');
 
@@ -698,10 +717,16 @@ select is((select jsonb_object_keys from jsonb_object_keys(api.worker_submission
           is not null, true, 'worker_submission_context terbaca');
 select is(api.worker_submission_context((select v::uuid from t_ids where k = 's10')) #>> '{campaign,required_hashtags,0}', 'mplid',
           'context memuat brief untuk cek caption');
-select is(api.worker_record_snapshot((select v::uuid from t_ids where k = 's10'), 2000, 100, 5, 1, '#mplid mantap', '{}'),
-          jsonb_build_object('snapshot_id', (select max(id) from tracking.view_snapshots), 'flagged', false,
-                             'next_poll_at', now() + interval '4 hours', 'locked', false),
+create temp table t_rec on commit drop as
+  select api.worker_record_snapshot((select v::uuid from t_ids where k = 's10'), 2000, 100, 5, 1, '#mplid mantap', '{"api":"tiktok"}',
+                                    '{"reach":1500}') as r;
+select is((select r - 'snapshot_id' from t_rec), jsonb_build_object('flagged', false, 'next_poll_at', now() + interval '4 hours', 'locked', false),
           'snapshot pertama: umur < 72 jam → poll lagi 4 jam');
+select is((select raw from tracking.view_snapshots where id = (select (r ->> 'snapshot_id')::bigint from t_rec)),
+          '{"api":"tiktok","extra":{"reach":1500}}'::jsonb, 'p_extra tersimpan di raw.extra');
+select is((select last_snapshot_at is not null from tracking.submissions where id = (select v::uuid from t_ids where k = 's10'))
+          and api.worker_submission_context((select v::uuid from t_ids where k = 's10')) #>> '{submission,last_snapshot_at}' is not null, true,
+          'context memuat last_snapshot_at');
 select is(pg_temp.rule_amt((select v::uuid from t_ids where k = 's10'),
                            (select id from market.rate_rules where campaign_id = '55555555-0000-0000-0000-0000000000b0')), 2000::numeric,
           'record_snapshot memanggil accrue_earnings');
@@ -721,6 +746,27 @@ select is((api.worker_record_snapshot((select v::uuid from t_ids where k = 's5')
           now() + interval '24 hours', 'umur posting 5 hari → poll tiap 24 jam');
 select is(api.worker_record_snapshot((select v::uuid from t_ids where k = 's7'), 9999, null, null, null, null, null) ->> 'snapshot_id', null,
           'submisi yang sudah settled tidak dicatat (no-op)');
+insert into ops.settings (key, value) values ('trust.fraud.min_avg_watch_sec', '3'), ('trust.fraud.max_skip_rate', '80'),
+  ('trust.fraud.min_id_country_share', '0.5');
+select is((api.worker_record_snapshot((select v::uuid from t_ids where k = 's2'), 140000, 5000, 100, 50, null, null, '{"avg_watch_time":1}')
+           ->> 'flagged')::boolean, true, 'FR-09: durasi tonton rata-rata < 3 detik → flag');
+select ok(exists (select 1 from trust.fraud_flags where target_id = (select v::uuid from t_ids where k = 's2') and signal = 'FR-09'), 'flag FR-09');
+select is((select status::text from tracking.submissions where id = (select v::uuid from t_ids where k = 's2')), 'tracking', 'FR-09 hanya antre review');
+select is((api.worker_record_snapshot((select v::uuid from t_ids where k = 's2'), 150000, 5000, 100, 50, null, null,
+            '{"countries":{"ID":300,"US":900,"IN":800},"traffic_sources":{"ADVERTISING":1500}}') ->> 'flagged')::boolean, true,
+          'FR-11: penonton Indonesia < 50% → flag');
+select is((select status::text from tracking.submissions where id = (select v::uuid from t_ids where k = 's2')), 'flagged', 'FR-11 menahan earning');
+select is((select (details ->> 'id_share')::numeric from trust.fraud_flags where target_id = (select v::uuid from t_ids where k = 's2')
+           and signal = 'FR-11'), 0.15::numeric, 'FR-11 mencatat porsi penonton Indonesia');
+select is(api.worker_account_token('99999999-0000-0000-0000-00000000000a') - 'token',
+          '{"id":"99999999-0000-0000-0000-00000000000a","user_id":"11111111-0000-0000-0000-00000000000a","platform":"tiktok",
+            "external_id":"tt-andi","handle":"@andi","status":"verified"}'::jsonb, 'worker_account_token: akun + token');
+select api.worker_defer((select v::uuid from t_ids where k = 's5'), now() + interval '6 days');
+select is((select next_poll_at from tracking.submissions where id = (select v::uuid from t_ids where k = 's5')), now() + interval '6 days',
+          'worker_defer: poll dilewati sampai waktu yang diminta');
+select api.worker_defer((select v::uuid from t_ids where k = 's5'), now() + interval '90 days');
+select is((select next_poll_at from tracking.submissions where id = (select v::uuid from t_ids where k = 's5')), now() + interval '25 days',
+          'worker_defer: tidak melewati akhir view window (poll final)');
 -- Lock di akhir view window + FR-08
 select pg_temp.mk_campaign('55555555-0000-0000-0000-0000000000b2', 'k12-lock', 1000, 'auto', 1);
 select pg_temp.mk_pool('55555555-0000-0000-0000-0000000000b2', '66666666-0000-0000-0000-0000000000b2', 1000000, 1000000);
@@ -774,8 +820,8 @@ select is((select status::text from tracking.submissions where user_id = '111111
           'submisi yang menunggu review dihentikan');
 
 -- ========== M. Hak akses RPC service_role ==========
-select is((select count(*)::int from pg_proc p where p.pronamespace = 'api'::regnamespace and p.proname ~ '^(worker|bridge)_'), 25,
-          '25 RPC worker/bridge');
+select is((select count(*)::int from pg_proc p where p.pronamespace = 'api'::regnamespace and p.proname ~ '^(worker|bridge)_'), 27,
+          '27 RPC worker/bridge');
 select is((select count(*)::int from pg_proc p where p.pronamespace = 'api'::regnamespace and p.proname ~ '^(worker|bridge)_'
             and (has_function_privilege('authenticated', p.oid, 'execute') or has_function_privilege('anon', p.oid, 'execute'))), 0,
           'authenticated/anon tidak bisa EXECUTE RPC worker/bridge');
@@ -801,11 +847,12 @@ do $$ begin
   end if;
 end $$;
 select pgmq.send('tracking', jsonb_build_object('submission_id', (select v from t_ids where k = 's10')));
+insert into t_ids select 'last_notif', max(id)::text from ops.notifications where event = 'social.token_expired';
 set local role service_role;
 select is((select count(*)::int from api.worker_dequeue('tracking', 5)), 1, 'service_role: worker_dequeue queue tracking');
 select lives_ok($$ select api.worker_ack('tracking', (select max(msg_id) from api.worker_dequeue('tracking', 5))) $$, 'service_role: worker_ack');
 select throws_ok($$ select * from api.worker_dequeue('rahasia', 5) $$, 'P0001', 'invalid:queue', 'hanya queue tracking & email');
-select is(api.worker_notification((select max(id) from ops.notifications)) ->> 'event', 'social.token_expired', 'worker_notification');
+select is(api.worker_notification((select v::bigint from t_ids where k = 'last_notif')) ->> 'event', 'social.token_expired', 'worker_notification');
 reset role;
 select api.worker_unsubscribe('11111111-0000-0000-0000-00000000000d');
 select is((select email_promotions from ops.notification_prefs where user_id = '11111111-0000-0000-0000-00000000000d'), false, 'one-click unsubscribe');
@@ -835,7 +882,10 @@ insert into t_ids select 's15c', pg_temp.mk_sub('55555555-0000-0000-0000-0000000
 update tracking.submissions set next_poll_at = now() + interval '10 hours' where id = (select v::uuid from t_ids where k = 's15a');
 update tracking.submissions set next_poll_at = null where id = (select v::uuid from t_ids where k = 's15b');
 update tracking.submissions set next_poll_at = now() - interval '3 hours' where id = (select v::uuid from t_ids where k = 's15c');
+update finance.payouts set created_at = now() - interval '20 minutes' where id = (select id from t_pay where k = 'i3');
 select market.run_lifecycle();
+select is((select count(*)::int from net.http_request_queue q where q.body ->> 'action' = 'disburse'
+           and q.body ->> 'payout_id' = (select id::text from t_pay where k = 'i3')), 2, 'instant macet > 15 menit → disburse dikirim ulang');
 select is((select status::text from market.campaigns where id = '55555555-0000-0000-0000-0000000000b3'), 'live', 'scheduled → live saat start_at');
 select ok(exists (select 1 from ops.notifications where event = 'campaign.live' and payload ->> 'campaign_id' = '55555555-0000-0000-0000-0000000000b3'),
           'brand dinotifikasi campaign live');
@@ -856,7 +906,8 @@ select finance.release_earnings();
 select market.run_lifecycle();
 select is((select status::text from market.campaigns where id = '55555555-0000-0000-0000-0000000000b4'), 'settled', 'settling → settled setelah semua submisi settled');
 select ok(exists (select 1 from ops.notifications where event = 'campaign.settled' and user_id = '22222222-0000-0000-0000-0000000000a1'
-                  and payload -> 'leftover' -> 0 ->> 'amount' = '995000.0000000000'), 'campaign.settled ke org dengan sisa budget');
+                  and payload ->> 'campaign_title' = 'Selesai' and payload -> 'leftover' -> 0 ->> 'amount' = '995000'
+                  and payload -> 'leftover' -> 0 ->> 'unit_label' = 'Rp'), 'campaign.settled ke org dengan judul & sisa budget');
 
 -- ========== O. Alert & overview admin ==========
 set local role authenticated;

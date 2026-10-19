@@ -46,15 +46,14 @@ export function Section({
   children,
   ...rest
 }: SectionProps) {
-  const onDark = tone === 'dark' || tone === 'blue';
   const wrap = contained ?? (tone !== 'none' && spacing === 'page');
   const head =
     title || eyebrow || actions ? (
       <div className={cn('flex flex-wrap items-end justify-between gap-x-6 gap-y-3', spacing === 'page' ? 'mb-8' : 'mb-4')}>
         <div className="flex max-w-[56ch] min-w-0 flex-col gap-2">
-          {eyebrow ? <p className={cn('text-overline uppercase', onDark ? 'text-brand-300' : 'text-primary-soft-fg')}>{eyebrow}</p> : null}
-          {title ? <H className={cn(spacing === 'page' ? 'text-h2' : 'text-h5', onDark && 'text-white')}>{title}</H> : null}
-          {description ? <p className={cn(spacing === 'page' ? 'text-body-l' : 'text-body-s', onDark ? 'text-white/75' : 'text-muted')}>{description}</p> : null}
+          {eyebrow ? <p className="text-overline text-primary-soft-fg uppercase">{eyebrow}</p> : null}
+          {title ? <H className={cn('text-ink', spacing === 'page' ? 'text-h2' : 'text-h5')}>{title}</H> : null}
+          {description ? <p className={cn('text-muted', spacing === 'page' ? 'text-body-l' : 'text-body-s')}>{description}</p> : null}
         </div>
         {actions ? <div className="flex shrink-0 items-center gap-2">{actions}</div> : null}
       </div>

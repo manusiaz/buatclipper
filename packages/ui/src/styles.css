@@ -16,8 +16,11 @@
 @source "./";
 @source not "./icons.generated.ts";
 
-/* next-themes sets class="dark" on <html>; any subtree with .dark also switches. */
-@custom-variant dark (&:where(.dark, .dark *));
+/*
+ * next-themes sets class="dark" on <html>. DARK and BLUE surfaces (surface-dark / surface-blue) are dark scopes too,
+ * so `dark:` variants and the semantic tokens below also flip inside them (cards, CTA bands, footer).
+ */
+@custom-variant dark (&:where(.dark, .dark *, .surface-dark, .surface-dark *, .surface-blue, .surface-blue *));
 
 /* ───────────────────────── Static brand palette + scales ───────────────────────── */
 @theme static {
@@ -193,6 +196,7 @@
   --color-primary-soft-hover: #d5e1ff;
   --color-primary-soft-pressed: #c2d3ff;
   --color-primary-soft-fg: #0f47e0;
+  --color-primary-tint: #f2f6ff;
   --color-link: #1d5bff;
 
   --color-info: #1d5bff;
@@ -254,8 +258,11 @@
     --safe-right: env(safe-area-inset-right, 0px);
   }
 
-  /* Dark theme — ink-blue surfaces (DS DARK style + semantic dark column, DS 03). All text pairs ≥ 4.5:1. */
-  .dark {
+  /* Dark theme — ink-blue surfaces (DS DARK style + semantic dark column, DS 03). All text pairs ≥ 4.5:1.
+     Also applied inside DARK/BLUE surfaces so nested components stay readable in light mode. */
+  .dark,
+  .surface-dark,
+  .surface-blue {
     color-scheme: dark;
     --color-canvas: #070d1c;
     --color-surface: #0e1730;
@@ -286,6 +293,7 @@
     --color-primary-soft-hover: #1d3270;
     --color-primary-soft-pressed: #223a82;
     --color-primary-soft-fg: #a9c1ff;
+    --color-primary-tint: #131f45;
     --color-link: #7fa2ff;
 
     --color-info: #5f8bff;
@@ -335,6 +343,29 @@
     --scrim: rgb(3 6 15 / 0.66);
     --skeleton-base: #152040;
     --skeleton-shine: #1c2a52;
+  }
+
+  /* BLUE surface (gradient #4D7DFF → #0F47E0): text must stay near-white — #E8EEFF is the lightest grey that
+     still reaches 4.5:1 on #1D5BFF. Secondary text uses it; borders/subtle become translucent white. */
+  .surface-blue {
+    --color-ink: #ffffff;
+    --color-text-2: #f2f6ff;
+    --color-muted: #e8eeff;
+    --color-faint: #d5e1ff;
+    --color-placeholder: #e8eeff;
+    --color-border: rgb(255 255 255 / 0.22);
+    --color-border-strong: rgb(255 255 255 / 0.4);
+    --color-border-hover: rgb(255 255 255 / 0.6);
+    --color-subtle: rgb(255 255 255 / 0.16);
+    --color-surface: #0f47e0;
+    --color-surface-2: rgb(255 255 255 / 0.12);
+    --color-link: #ffffff;
+    --color-focus: #ffffff;
+    --color-focus-halo: rgb(255 255 255 / 0.35);
+    --color-primary-soft: rgb(255 255 255 / 0.16);
+    --color-primary-soft-hover: rgb(255 255 255 / 0.24);
+    --color-primary-soft-fg: #ffffff;
+    --color-primary-tint: rgb(255 255 255 / 0.12);
   }
 
   html {

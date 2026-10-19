@@ -40,8 +40,14 @@ export const buttonVariants = cva(
         ],
         ghost: [
           'bg-transparent text-link',
-          'hover:bg-brand-50 hover:text-primary-soft-fg active:bg-primary-soft dark:hover:bg-primary-soft',
+          'hover:bg-primary-tint hover:text-primary-soft-fg active:bg-primary-soft',
           'disabled:text-disabled-fg aria-disabled:text-disabled-fg',
+        ],
+        /** White button for DARK/BLUE surfaces and photos (DS "Card gelap" action). */
+        inverse: [
+          'bg-white text-navy shadow-hairline',
+          'hover:bg-brand-50 active:bg-brand-100',
+          'disabled:bg-white/40 disabled:text-navy/50 aria-disabled:bg-white/40 aria-disabled:text-navy/50',
         ],
         ink: [
           'bg-cta-ink text-white shadow-btn-ink',
@@ -134,7 +140,8 @@ export function Button(props: ButtonProps) {
     children,
   } = props;
   const iconSize = ICON_SIZE[size];
-  const classes = cn(buttonVariants({ variant, size, fullWidth }), loading && 'cursor-progress', className);
+  // Loading keeps the variant's look (DS 07 state 6) — only clicks are blocked.
+  const classes = cn(buttonVariants({ variant, size, fullWidth }), loading && 'pointer-events-none', className);
   const content = (
     <>
       {loading ? <Spinner size={iconSize} /> : renderIcon(iconLeft, iconSize)}
@@ -143,7 +150,7 @@ export function Button(props: ButtonProps) {
         <span
           className={cn(
             'grid h-5 min-w-5 place-items-center rounded-full px-1.5 text-[11px] font-extrabold tnum',
-            variant === 'primary' || variant === 'ink' ? 'bg-white/25 text-white' : 'bg-primary text-white',
+            variant === 'primary' || variant === 'ink' ? 'bg-white/25 text-white' : variant === 'inverse' ? 'bg-navy text-white' : 'bg-primary text-white',
           )}
         >
           {badge}
@@ -177,8 +184,9 @@ export function Button(props: ButtonProps) {
       <Comp
         {...anchorRest}
         href={inert ? undefined : href}
-        aria-disabled={inert || undefined}
+        aria-disabled={disabled || undefined}
         aria-busy={loading || undefined}
+        data-loading={loading || undefined}
         tabIndex={inert ? -1 : anchorRest.tabIndex}
         target={external ? '_blank' : anchorRest.target}
         rel={external ? 'noopener noreferrer' : anchorRest.rel}
@@ -211,8 +219,8 @@ export function Button(props: ButtonProps) {
       {...buttonRest}
       type={type}
       disabled={disabled}
-      aria-disabled={loading || undefined}
       aria-busy={loading || undefined}
+      data-loading={loading || undefined}
       onClick={loading ? undefined : buttonRest.onClick}
       className={classes}
     >
@@ -238,6 +246,7 @@ export const iconButtonVariants = cva(
         tertiary: 'bg-primary-soft text-primary-soft-fg hover:bg-primary-soft-hover active:bg-primary-soft-pressed',
         ghost: 'bg-transparent text-text-2 hover:bg-subtle hover:text-ink active:bg-border',
         glass: 'surface-glass text-ink shadow-hairline hover:bg-white/90 dark:hover:bg-surface',
+        inverse: 'bg-white text-navy shadow-hairline hover:bg-brand-50',
         'glass-dark': 'surface-glass-dark hover:bg-navy/75',
         danger: 'border border-danger-border bg-danger-bg text-danger-fg hover:border-danger',
       },

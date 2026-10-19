@@ -91,7 +91,7 @@ export function TR({ selected, interactive, className, ...rest }: TRProps) {
       className={cn(
         'transition-colors duration-120 [&>td]:bg-surface',
         interactive && 'cursor-pointer hover:[&>td]:bg-surface-2',
-        selected && '[&>td]:bg-brand-50 hover:[&>td]:bg-brand-50 dark:[&>td]:bg-primary-soft',
+        selected && '[&>td]:bg-primary-tint hover:[&>td]:bg-primary-tint',
         className,
       )}
       {...rest}
