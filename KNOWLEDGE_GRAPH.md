@@ -119,51 +119,51 @@ Wajib tetap benar setiap perubahan (dicek otomatis saat graph ini dibuat; cek ul
 | `api:GET app/api/oauth/[platform]/callback` | api | apps/clipper/src/app/api/oauth/[platform]/callback/route.ts | Callback OAuth sosmed: cek state, teruskan code ke core/social |  |
 | `api:GET app/auth/callback` | api | apps/clipper/src/app/auth/callback/route.ts | Tukar code OAuth Google untuk login di app (PWA) |  |
 | `api:GET identity/.well-known/openid-configuration` | api |  | Discovery OIDC + JWKS identity (publik): issuer, jwks_uri; selalu ada, tanpa OAuth 2.1 Server | Supabase Auth identity, bawaan |
-| `api:fn core/bridge` | api |  | Terima panggilan identity: get_batch, raise_fraud_flag, deletion_check, anonymize_profile | db/core/supabase/functions/bridge/index.ts |
-| `api:fn core/fulfill` | api |  | Fulfillment otomatis: pasang kode dari pool (E-41), kirim webhook reward ke brand (HMAC, retry 5 menit) | db/core/supabase/functions/fulfill/index.ts |
-| `api:fn core/notify` | api |  | Kuras antrean email → bridge identity (alur 4) | db/core/supabase/functions/notify/index.ts |
-| `api:fn core/refresh-tokens` | api |  | Refresh token sosmed sebelum kedaluwarsa (§11, R-08) | db/core/supabase/functions/refresh-tokens/index.ts |
-| `api:fn core/social` | api |  | Connect OAuth (tukar code), daftar video, verifikasi kepemilikan, submit | db/core/supabase/functions/social/index.ts |
-| `api:fn core/track-worker` | api |  | Ambil metrik per batch, tulis snapshot, panggil accrue (§11) | db/core/supabase/functions/track-worker/index.ts |
-| `api:fn identity/admin-auth` | api |  | Auth Admin API dengan secret key identity: undang user (paket managed), ban/unban (ban_duration), reset MFA admin | db/identity/supabase/functions/admin-auth/index.ts |
-| `api:fn identity/bridge` | api |  | Terima panggilan core: send_email, check_ids | db/identity/supabase/functions/bridge/index.ts |
-| `api:fn identity/delete-account` | api |  | Orkestrasi hapus akun UU PDP (alur 7) | db/identity/supabase/functions/delete-account/index.ts |
-| `api:fn identity/disburse` | api |  | Instant withdraw: ambil payout lewat bridge core, cek pemilik & nama rekening, kirim ke penyedia disbursement, terima callback, mark_instant | db/identity/supabase/functions/disburse/index.ts |
-| `api:fn identity/member-data` | api |  | Tulis PII milik sendiri: KYC (NIK), rekening, data penerima. Verifikasi JWT, HMAC + enkripsi di fungsi, simpan lewat SQL khusus service role | db/identity/supabase/functions/member-data/index.ts |
-| `api:fn identity/pii-export` | api |  | CSV ber-PII: payout (rekening) & reward fisik (alur 3) | db/identity/supabase/functions/pii-export/index.ts |
-| `api:rpc core.accept_org_invite` | api |  | Terima undangan → org_members (alur 5) | kontrak — PRD v0.3.1 Lampiran A.3 |
-| `api:rpc core.appeal_submission` | api |  | hanya dari rejected, 1× (unique index), S-03 rejected → appealed | kontrak — PRD v0.3.1 Lampiran A.3 |
-| `api:rpc core.approve_payout_batch` | api |  | approved_by ≠ created_by (constraint) | kontrak — PRD v0.3.1 Lampiran A.3 |
-| `api:rpc core.buy_pin` | api |  | invoice kind pinned + pin_until; pinned_until diset saat lunas | kontrak — PRD v0.3.1 Lampiran A.3 |
-| `api:rpc core.claim_campaign` | api |  | Claim 1 slot 48 jam (F-C05) | kontrak — PRD v0.3.1 Lampiran A.3 |
-| `api:rpc core.confirm_invoice_payment` | api |  | Finance konfirmasi QRIS/transfer → ledger bank → pool (F-A08) | kontrak — PRD v0.3.1 Lampiran A.3 |
-| `api:rpc core.control_campaign` | api |  | pause/resume/extend/raise_rate/topup/end_early; raise_rate = tutup rule lama + rule baru; topup = invoice kind topup | kontrak — PRD v0.3.1 Lampiran A.3 |
-| `api:rpc core.create_org` | api |  | status pending_verification, pembuat = brand_owner | kontrak — PRD v0.3.1 Lampiran A.3 |
-| `api:rpc core.create_org_invite` | api |  | Token undangan org tanpa email (alur 5) | kontrak — PRD v0.3.1 Lampiran A.3 |
-| `api:rpc core.create_payout_batch` | api |  | Buat batch payout mingguan (F-A08) | kontrak — PRD v0.3.1 Lampiran A.3 |
+| `api:fn core/bridge` | api | db/core/supabase/functions/bridge/index.ts | Terima panggilan identity: get_batch, raise_fraud_flag, deletion_check, anonymize_profile |  |
+| `api:fn core/fulfill` | api | db/core/supabase/functions/fulfill/index.ts | Fulfillment otomatis: pasang kode dari pool (E-41), kirim webhook reward ke brand (HMAC, retry 5 menit) |  |
+| `api:fn core/notify` | api | db/core/supabase/functions/notify/index.ts | Kuras antrean email → bridge identity (alur 4) |  |
+| `api:fn core/refresh-tokens` | api | db/core/supabase/functions/refresh-tokens/index.ts | Refresh token sosmed sebelum kedaluwarsa (§11, R-08) |  |
+| `api:fn core/social` | api | db/core/supabase/functions/social/index.ts | Connect OAuth (tukar code), daftar video, verifikasi kepemilikan, submit |  |
+| `api:fn core/track-worker` | api | db/core/supabase/functions/track-worker/index.ts | Ambil metrik per batch, tulis snapshot, panggil accrue (§11) |  |
+| `api:fn identity/admin-auth` | api | db/identity/supabase/functions/admin-auth/index.ts | Auth Admin API dengan secret key identity: undang user (paket managed), ban/unban (ban_duration), reset MFA admin |  |
+| `api:fn identity/bridge` | api | db/identity/supabase/functions/bridge/index.ts | Terima panggilan core: send_email, check_ids |  |
+| `api:fn identity/delete-account` | api | db/identity/supabase/functions/delete-account/index.ts | Orkestrasi hapus akun UU PDP (alur 7) |  |
+| `api:fn identity/disburse` | api | db/identity/supabase/functions/disburse/index.ts | Instant withdraw: ambil payout lewat bridge core, cek pemilik & nama rekening, kirim ke penyedia disbursement, terima callback, mark_instant |  |
+| `api:fn identity/member-data` | api | db/identity/supabase/functions/member-data/index.ts | Tulis PII milik sendiri: KYC (NIK), rekening, data penerima. Verifikasi JWT, HMAC + enkripsi di fungsi, simpan lewat SQL khusus service role |  |
+| `api:fn identity/pii-export` | api | db/identity/supabase/functions/pii-export/index.ts | CSV ber-PII: payout (rekening) & reward fisik (alur 3) |  |
+| `api:rpc core.accept_org_invite` | api | db/core/supabase/schemas/api/org.sql | Terima undangan → org_members (alur 5) |  |
+| `api:rpc core.appeal_submission` | api | db/core/supabase/schemas/api/review.sql | hanya dari rejected, 1× (unique index), S-03 rejected → appealed |  |
+| `api:rpc core.approve_payout_batch` | api | db/core/supabase/schemas/finance/payout_flow.sql | approved_by ≠ created_by (constraint) |  |
+| `api:rpc core.buy_pin` | api | db/core/supabase/schemas/api/campaigns.sql | invoice kind pinned + pin_until; pinned_until diset saat lunas |  |
+| `api:rpc core.claim_campaign` | api | db/core/supabase/schemas/api/campaigns.sql | Claim 1 slot 48 jam (F-C05) |  |
+| `api:rpc core.confirm_invoice_payment` | api | db/core/supabase/schemas/finance/invoice_confirm.sql | Finance konfirmasi QRIS/transfer → ledger bank → pool (F-A08) |  |
+| `api:rpc core.control_campaign` | api | db/core/supabase/schemas/api/campaigns.sql | pause/resume/extend/raise_rate/topup/end_early; raise_rate = tutup rule lama + rule baru; topup = invoice kind topup |  |
+| `api:rpc core.create_org` | api | db/core/supabase/schemas/api/org.sql | status pending_verification, pembuat = brand_owner |  |
+| `api:rpc core.create_org_invite` | api | db/core/supabase/schemas/api/org.sql | Token undangan org tanpa email (alur 5) |  |
+| `api:rpc core.create_payout_batch` | api | db/core/supabase/schemas/finance/payout_flow.sql | Buat batch payout mingguan (F-A08) |  |
 | `api:rpc core.create_report_link` | api | db/core/supabase/schemas/api/report_links.sql | Buat link laporan read-only (token sekali tampil, simpan sha256) — brand_owner/manager |  |
-| `api:rpc core.duplicate_campaign` | api |  | salinan selalu draft | kontrak — PRD v0.3.1 Lampiran A.3 |
+| `api:rpc core.duplicate_campaign` | api | db/core/supabase/schemas/api/campaigns.sql | salinan selalu draft |  |
 | `api:rpc core.ensure_profile` | api | db/core/supabase/schemas/api/ensure_profile.sql | Buat/ambil profil E-01 dari JWT identity, idempoten (alur 1) |  |
-| `api:rpc core.invite_to_campaign` | api |  | notifikasi campaign.invited | kontrak — PRD v0.3.1 Lampiran A.3 |
-| `api:rpc core.link_agency` | api |  | approved_by = brand_owner klien | kontrak — PRD v0.3.1 Lampiran A.3 |
-| `api:rpc core.list_campaigns` | api |  | CTA per user: bisa claim / sudah claim belum submit / slot penuh / budget habis / deadline lewat / tidak eligible + alasan | kontrak — PRD v0.3.1 Lampiran A.3 |
-| `api:rpc core.manage_org` | api |  | Admin buat/verifikasi org, fee custom, tambah anggota + stub profil (paket managed F-A03, F-A07) | kontrak — PRD v0.3.1 Lampiran A.3 |
-| `api:rpc core.mark_batch_paid` | api |  | Tandai batch paid/gagal + jurnal (F-A08) | kontrak — PRD v0.3.1 Lampiran A.3 |
+| `api:rpc core.invite_to_campaign` | api | db/core/supabase/schemas/api/campaigns.sql | notifikasi campaign.invited |  |
+| `api:rpc core.link_agency` | api | db/core/supabase/schemas/api/org.sql | approved_by = brand_owner klien |  |
+| `api:rpc core.list_campaigns` | api | db/core/supabase/schemas/api/campaigns.sql | CTA per user: bisa claim / sudah claim belum submit / slot penuh / budget habis / deadline lewat / tidak eligible + alasan |  |
+| `api:rpc core.manage_org` | api | db/core/supabase/schemas/api/org.sql | Admin buat/verifikasi org, fee custom, tambah anggota + stub profil (paket managed F-A03, F-A07) |  |
+| `api:rpc core.mark_batch_paid` | api | db/core/supabase/schemas/finance/payout_flow.sql | Tandai batch paid/gagal + jurnal (F-A08) |  |
 | `api:rpc core.missing_brief_tags` | api | db/core/supabase/schemas/api/brief.sql | Hashtag/mention/link wajib yang belum ada di caption, urut brief; {} = lengkap, NULL = campaign tidak terlihat (sheet Submit, core/social, track-worker) |  |
 | `api:rpc core.my_referral_code` | api | db/core/supabase/schemas/market/referrals.sql | Kode referral 8 karakter milik sendiri, dibuat saat pertama diminta (F-C16) |  |
-| `api:rpc core.record_review` | api |  | Keputusan review campaign/submisi (F-A02, F-A05, F-B07) | kontrak — PRD v0.3.1 Lampiran A.3 |
+| `api:rpc core.record_review` | api | db/core/supabase/schemas/api/review.sql | Keputusan review campaign/submisi (F-A02, F-A05, F-B07) |  |
 | `api:rpc core.report_by_token` | api | db/core/supabase/schemas/api/report_links.sql | Angka agregat campaign untuk {domain}/r/[token] (anon, tanpa data clipper selain URL posting) |  |
-| `api:rpc core.request_fulfillment` | api |  | Klaim reward non-tunai → antre fulfillment (F-C09) | kontrak — PRD v0.3.1 Lampiran A.3 |
-| `api:rpc core.request_payout` | api |  | Tarik saldo tersedia → payout requested (F-C09) | kontrak — PRD v0.3.1 Lampiran A.3 |
-| `api:rpc core.request_refund` | api |  | rollover → jurnal ke org_credit; refund → E-35 requested | kontrak — PRD v0.3.1 Lampiran A.3 |
-| `api:rpc core.resolve_fraud_flag` | api |  | Tahan/reverse/suspend dari fraud queue (F-A06) | kontrak — PRD v0.3.1 Lampiran A.3 |
+| `api:rpc core.request_fulfillment` | api | db/core/supabase/schemas/finance/payout_flow.sql | Klaim reward non-tunai → antre fulfillment (F-C09) |  |
+| `api:rpc core.request_payout` | api | db/core/supabase/schemas/finance/payout_flow.sql | Tarik saldo tersedia → payout requested (F-C09) |  |
+| `api:rpc core.request_refund` | api | db/core/supabase/schemas/finance/refund_flow.sql | rollover → jurnal ke org_credit; refund → E-35 requested |  |
+| `api:rpc core.resolve_fraud_flag` | api | db/core/supabase/schemas/trust/fraud_resolve.sql | Tahan/reverse/suspend dari fraud queue (F-A06) |  |
 | `api:rpc core.revoke_report_link` | api | db/core/supabase/schemas/api/report_links.sql | Cabut link laporan read-only |  |
-| `api:rpc core.save_campaign` | api |  | Simpan campaign + rule + pool dari builder (F-B02/F-A03) | kontrak — PRD v0.3.1 Lampiran A.3 |
-| `api:rpc core.save_reward_type` | api |  | Brand simpan reward type custom (F-B03) | kontrak — PRD v0.3.1 Lampiran A.3 |
-| `api:rpc core.send_broadcast` | api |  | dikirim job broadcast-dispatch | kontrak — PRD v0.3.1 Lampiran A.3 |
+| `api:rpc core.save_campaign` | api | db/core/supabase/schemas/api/campaigns.sql | Simpan campaign + rule + pool dari builder (F-B02/F-A03) |  |
+| `api:rpc core.save_reward_type` | api | db/core/supabase/schemas/api/org.sql | Brand simpan reward type custom (F-B03) |  |
+| `api:rpc core.send_broadcast` | api | db/core/supabase/schemas/api/config.sql | dikirim job broadcast-dispatch |  |
 | `api:rpc core.store_social_token` | api | db/core/supabase/schemas/tracking/vault.sql | Simpan/perbarui token OAuth sosmed di Vault core; hanya service role (core/social, refresh-tokens) |  |
-| `api:rpc core.update_config` | api |  | Admin ubah settings, fee rules, pinned & kategori (F-A04, F-A09) | kontrak — PRD v0.3.1 Lampiran A.3 |
-| `api:rpc core.upload_reward_codes` | api |  | kode duplikat diabaikan (unique) | kontrak — PRD v0.3.1 Lampiran A.3 |
+| `api:rpc core.update_config` | api | db/core/supabase/schemas/api/config.sql | Admin ubah settings, fee rules, pinned & kategori (F-A04, F-A09) |  |
+| `api:rpc core.upload_reward_codes` | api | db/core/supabase/schemas/api/org.sql | kode duplikat diabaikan (unique) |  |
 | `api:rpc identity.admin_kyc_decision` | api | db/identity/supabase/schemas/api/admin_kyc_decision.sql | Admin approve/reject KYC (aal2) |  |
 | `api:rpc identity.admin_read` | api | db/identity/supabase/schemas/api/admin_read.sql | Admin baca KYC & log akses PII, ikut tercatat (aal2) |  |
 | `api:rpc identity.admin_set_role` | api | db/identity/supabase/schemas/api/admin_set_role.sql | admin_super ubah role platform (E-27), aal2 |  |
@@ -174,10 +174,10 @@ Wajib tetap benar setiap perubahan (dicek otomatis saat graph ini dibuat; cek ul
 | `api:rpc identity.store_kyc` | api | db/identity/supabase/schemas/api/member_data.sql | Simpan KYC (hash + ciphertext dari member-data); NIK di akun lain ditolak; hanya service role |  |
 | `api:rpc identity.store_payout_method` | api | db/identity/supabase/schemas/api/member_data.sql | Simpan rekening; nama wajib = nama KYC; rekening di akun lain ditolak; hanya service role |  |
 | `api:rpc identity.store_recipient` | api | db/identity/supabase/schemas/api/member_data.sql | Simpan data penerima reward terenkripsi; hanya service role |  |
-| `fn:accrue_earnings` | fn |  | Hitung earning per snapshot, alokasi pool atomik (§10.5) | kontrak — PRD v0.3.1 Lampiran A.3 |
+| `fn:accrue_earnings` | fn | db/core/supabase/schemas/finance/earnings.sql | Hitung earning per snapshot, alokasi pool atomik (§10.5) |  |
 | `fn:custom_access_token_hook` | fn | db/identity/supabase/schemas/member/custom_access_token_hook.sql | Isi claim app_roles & kyc sebelum JWT terbit |  |
 | `fn:enqueue_notification` | fn | db/core/supabase/schemas/ops/enqueue_notification.sql | Tulis notifikasi in-app + masukkan antrean email |  |
-| `fn:reverse_earning` | fn |  | Koreksi/reverse earning pending, kembalikan ke pool (§10.5 #6, §12) | kontrak — PRD v0.3.1 Lampiran A.3 |
+| `fn:reverse_earning` | fn | db/core/supabase/schemas/finance/earnings.sql | Koreksi/reverse earning pending, kembalikan ke pool (§10.5 #6, §12) |  |
 | `job:broadcast-dispatch` | job | db/core/supabase/schemas/ops/cron.sql | Kirim broadcast terjadwal (F-A12) |  |
 | `job:budget-alerts` | job | db/core/supabase/schemas/market/cron.sql | Alert pemakaian budget 50/80/100% & proyeksi < 50% (F-B08) |  |
 | `job:claim-expiry` | job | db/core/supabase/schemas/market/cron.sql | Claim 48 jam kedaluwarsa + notifikasi |  |
