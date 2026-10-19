@@ -231,7 +231,7 @@ select is(api.report_by_token((select tok from t_tok)), null, 'link yang dicabut
 reset role;
 
 -- ---------- storage core ----------
-insert into storage.buckets (id, name, public) values ('campaign-covers', 'campaign-covers', true), ('avatars', 'avatars', true);
+insert into storage.buckets (id, name, public) values ('campaign-covers', 'campaign-covers', true), ('avatars', 'avatars', true) on conflict (id) do nothing;
 set local role authenticated;
 set local request.jwt.claims = '{"sub":"22222222-0000-0000-0000-0000000000b1","role":"authenticated","aal":"aal1","iss":"https://auth.contoh.id/auth/v1"}';
 select lives_ok($$ insert into storage.objects (bucket_id, name) values ('campaign-covers',
@@ -251,7 +251,7 @@ reset role;
 insert into ops.notification_prefs (user_id, email_promotions) values ('11111111-0000-0000-0000-00000000000a', false);
 select ops.enqueue_notification('11111111-0000-0000-0000-00000000000a', 'campaign.new', '{}');
 select ops.enqueue_notification('11111111-0000-0000-0000-00000000000a', 'payout.paid', '{}');
-select is((select array_agg(message ->> 'event') from pgmq.messages where queue_name = 'email'), array['payout.paid'],
+select is((select array_agg(message ->> 'event') from pgmq.q_email), array['payout.paid'],
           'email promosi dilewati kalau dimatikan; email transaksional tetap dikirim');
 insert into market.claims (id, campaign_id, user_id, expires_at, created_at) values
   ('88888888-0000-0000-0000-000000000003', '55555555-0000-0000-0000-000000000001', '11111111-0000-0000-0000-00000000000b',

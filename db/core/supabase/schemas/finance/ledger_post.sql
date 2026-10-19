@@ -27,7 +27,7 @@ end $$;
 -- Satu entri untuk argumen finance.post. state hanya untuk akun user_wallet (pending/available/withdrawn).
 create function finance.e(p_account uuid, p_amount numeric, p_ref_type text, p_ref_id text, p_state text default null)
 returns jsonb
-language plpgsql immutable set search_path = '' as $$
+language plpgsql stable set search_path = '' as $$
 begin
   return jsonb_build_object('account', p_account, 'amount', p_amount, 'ref_type', p_ref_type, 'ref_id', p_ref_id, 'state', p_state);
 end $$;

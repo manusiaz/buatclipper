@@ -85,27 +85,47 @@ create function cron.schedule(job_name text, schedule text, command text) return
 $$;
 
 create schema net;
-create table net.http_request_queue (id bigint generated always as identity primary key, url text, headers jsonb, body jsonb);
+-- Bentuk sama dengan pg_net asli: body bytea (tes membaca convert_from(body, 'UTF8')::jsonb).
+create table net.http_request_queue (id bigint generated always as identity primary key, method text, url text,
+                                     headers jsonb, body bytea, timeout_milliseconds int);
 create function net.http_post(url text, body jsonb default '{}', params jsonb default '{}',
                               headers jsonb default '{"Content-Type": "application/json"}', timeout_milliseconds int default 5000)
 returns bigint language sql as $$
-  insert into net.http_request_queue (url, headers, body) values (url, headers, body) returning id
+  insert into net.http_request_queue (method, url, headers, body, timeout_milliseconds)
+  values ('POST', url, headers, convert_to(body::text, 'UTF8'), timeout_milliseconds) returning id
 $$;
 
 create schema pgmq;
-create table pgmq.messages (msg_id bigint generated always as identity primary key, queue_name text not null, message jsonb,
-                            enqueued_at timestamptz default now());
-create table pgmq.queues (queue_name text primary key);
-create function pgmq.create(queue_name text) returns void language sql as $$
-  insert into pgmq.queues values (queue_name) on conflict do nothing
-$$;
-create function pgmq.send(queue_name text, msg jsonb, delay integer default 0) returns bigint language plpgsql as $$
-declare id bigint;
+-- Bentuk sama dengan pgmq asli (Supabase Queues): satu tabel pgmq.q_<queue> per queue + read/delete/send.
+create type pgmq.message_record as (msg_id bigint, read_ct int, enqueued_at timestamptz, vt timestamptz, message jsonb);
+create table pgmq.meta (queue_name text primary key);
+create function pgmq.create(queue_name text) returns void language plpgsql as $$
 begin
-  if not exists (select 1 from pgmq.queues q where q.queue_name = send.queue_name) then
+  insert into pgmq.meta values (queue_name) on conflict do nothing;
+  execute format('create table if not exists pgmq.%I (msg_id bigint generated always as identity primary key,
+                  read_ct int not null default 0, enqueued_at timestamptz not null default now(),
+                  vt timestamptz not null default now(), message jsonb)', 'q_' || queue_name);
+end $$;
+create function pgmq.send(queue_name text, msg jsonb, delay integer default 0) returns setof bigint language plpgsql as $$
+begin
+  if not exists (select 1 from pgmq.meta m where m.queue_name = send.queue_name) then
     raise exception 'queue % tidak ada', queue_name;
   end if;
-  insert into pgmq.messages (queue_name, message) values (send.queue_name, msg) returning msg_id into id;
-  return id;
+  return query execute format('insert into pgmq.%I (message, vt) values ($1, now() + make_interval(secs => $2)) returning msg_id',
+                              'q_' || queue_name) using msg, delay;
 end $$;
-
+create function pgmq.read(queue_name text, vt integer, qty integer) returns setof pgmq.message_record language plpgsql as $$
+begin
+  return query execute format('update pgmq.%1$I q set vt = now() + make_interval(secs => $1), read_ct = q.read_ct + 1
+                               where q.msg_id in (select msg_id from pgmq.%1$I where vt <= now() order by msg_id limit $2
+                                                  for update skip locked)
+                               returning q.msg_id, q.read_ct, q.enqueued_at, q.vt, q.message', 'q_' || queue_name)
+    using vt, qty;
+end $$;
+create function pgmq.delete(queue_name text, msg_id bigint) returns boolean language plpgsql as $$
+declare n int;
+begin
+  execute format('delete from pgmq.%I where msg_id = $1', 'q_' || queue_name) using msg_id;
+  get diagnostics n = row_count;
+  return n > 0;
+end $$;

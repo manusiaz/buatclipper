@@ -365,8 +365,8 @@ select is((select fee from api.payouts where id = (select id from t_pay where k 
 reset role;
 select is(pg_temp.bal('11111111-0000-0000-0000-00000000000a', 'available'), 702502::numeric, 'instant: Tersedia −Rp100.000');
 select is(pg_temp.acct('platform_revenue', null) - (-1000000), 5000::numeric, 'instant: biaya masuk platform_revenue');
-select ok(exists (select 1 from net.http_request_queue q where q.body ->> 'action' = 'disburse'
-                  and q.body ->> 'payout_id' = (select id::text from t_pay where k = 'i1')), 'instant: bridge disburse dipanggil (alur 11)');
+select ok(exists (select 1 from net.http_request_queue q where convert_from(q.body, 'UTF8')::jsonb ->> 'action' = 'disburse'
+                  and convert_from(q.body, 'UTF8')::jsonb ->> 'payout_id' = (select id::text from t_pay where k = 'i1')), 'instant: bridge disburse dipanggil (alur 11)');
 select is(api.bridge_get_payout((select id from t_pay where k = 'i1')) ->> 'net_amount', '95000.00', 'bridge_get_payout: transfer = amount − fee');
 select api.bridge_mark_instant((select id from t_pay where k = 'i1'), 'failed', null, 'rekening tidak valid');
 select is((select status::text from finance.payouts where id = (select id from t_pay where k = 'i1')), 'returned', 'instant gagal → returned');
@@ -460,10 +460,11 @@ select ok((select payload ->> 'amount' = '100000' and payload ->> 'unit_label' =
            from ops.notifications where event = 'payout.cancelled'), 'notifikasi payout.cancelled dengan nominal');
 
 -- ========== D. Fulfillment non-tunai (S-06) ==========
-insert into vault.secrets (id, name, secret) values ('eeeeeeee-0000-0000-0000-00000000000f', 'webhook:gems', 'rahasia-hmac');
+-- Vault asli mengenkripsi lewat fungsi milik supabase_admin: secret dibuat lewat API resmi, bukan INSERT langsung.
+insert into t_ids select 'gems_secret', vault.create_secret('rahasia-hmac', 'webhook:gems')::text;
 insert into market.reward_types (id, owner_org_id, code, name, kind, unit_label, idr_value_per_unit, fulfillment, webhook_url, webhook_secret_ref)
 values ('77777777-0000-0000-0000-000000000004', '44444444-0000-0000-0000-000000000001', 'GEMS', 'Gems', 'in_game', 'Gems', 100, 'webhook',
-        'https://brand.example/hook', 'eeeeeeee-0000-0000-0000-00000000000f');
+        'https://brand.example/hook', (select v::uuid from t_ids where k = 'gems_secret'));
 select finance.post(gen_random_uuid(), jsonb_build_array(
   finance.e(finance.account('bank_clearing', null, x.rt), -x.amt, 'adjustment', 'fixture:andi-' || x.rt),
   finance.e(finance.account('user_wallet', '11111111-0000-0000-0000-00000000000a', x.rt), x.amt, 'adjustment', 'fixture:andi-' || x.rt, 'available')))
@@ -695,8 +696,8 @@ select is((select status::text from market.profiles where id = '11111111-0000-00
 select is(pg_temp.bal('11111111-0000-0000-0000-00000000000e', 'pending'), 0::numeric, 'ban → semua pending hangus (kembali ke pool)');
 select ok(exists (select 1 from ops.notifications where event = 'account.banned' and user_id = '11111111-0000-0000-0000-00000000000e'),
           'ban → notifikasi account.banned');
-select ok(exists (select 1 from net.http_request_queue q where q.body ->> 'action' = 'ban_user'
-                  and q.body ->> 'user_id' = '11111111-0000-0000-0000-00000000000e'), 'ban → bridge identity admin-auth');
+select ok(exists (select 1 from net.http_request_queue q where convert_from(q.body, 'UTF8')::jsonb ->> 'action' = 'ban_user'
+                  and convert_from(q.body, 'UTF8')::jsonb ->> 'user_id' = '11111111-0000-0000-0000-00000000000e'), 'ban → bridge identity admin-auth');
 select is((select count(*)::int from ops.audit_logs where action = 'fraud_flag.resolve'), 5, 'semua sanksi tercatat di audit log');
 
 -- ========== I. worker_create_submission (core/social, E-12) ==========
@@ -889,14 +890,6 @@ select pg_temp.jwt('11111111-0000-0000-0000-00000000000a');
 select throws_ok($$ select api.worker_ack('email', 1) $$, '42501', null, 'browser tidak bisa memanggil worker_ack');
 select throws_ok($$ select api.bridge_close_account('11111111-0000-0000-0000-00000000000a') $$, '42501', null, 'browser tidak bisa memanggil bridge');
 reset role;
-do $$ begin
-  if to_regproc('pgmq.read') is null then  -- stub lokal tanpa pgmq.read/delete (Supabase Queues punya)
-    create function pgmq.read(queue_name text, vt integer, qty integer) returns table (msg_id bigint, message jsonb)
-    language sql as 'select m.msg_id, m.message from pgmq.messages m where m.queue_name = $1 order by m.msg_id limit $3';
-    create function pgmq.delete(queue_name text, msg_id bigint) returns boolean
-    language sql as 'delete from pgmq.messages m where m.queue_name = $1 and m.msg_id = $2 returning true';
-  end if;
-end $$;
 select pgmq.send('tracking', jsonb_build_object('submission_id', (select v from t_ids where k = 's10')));
 insert into t_ids select 'last_notif', max(id)::text from ops.notifications where event = 'social.token_expired';
 set local role service_role;
@@ -935,8 +928,8 @@ update tracking.submissions set next_poll_at = null where id = (select v::uuid f
 update tracking.submissions set next_poll_at = now() - interval '3 hours' where id = (select v::uuid from t_ids where k = 's15c');
 update finance.payouts set created_at = now() - interval '20 minutes' where id = (select id from t_pay where k = 'i3');
 select market.run_lifecycle();
-select is((select count(*)::int from net.http_request_queue q where q.body ->> 'action' = 'disburse'
-           and q.body ->> 'payout_id' = (select id::text from t_pay where k = 'i3')), 2, 'instant macet > 15 menit → disburse dikirim ulang');
+select is((select count(*)::int from net.http_request_queue q where convert_from(q.body, 'UTF8')::jsonb ->> 'action' = 'disburse'
+           and convert_from(q.body, 'UTF8')::jsonb ->> 'payout_id' = (select id::text from t_pay where k = 'i3')), 2, 'instant macet > 15 menit → disburse dikirim ulang');
 select is((select status::text from market.campaigns where id = '55555555-0000-0000-0000-0000000000b3'), 'live', 'scheduled → live saat start_at');
 select ok(exists (select 1 from ops.notifications where event = 'campaign.live' and payload ->> 'campaign_id' = '55555555-0000-0000-0000-0000000000b3'),
           'brand dinotifikasi campaign live');
@@ -946,7 +939,7 @@ select is((select array_agg(p.username order by p.username) from ops.notificatio
 select is((select payload from ops.notifications where event = 'campaign.new' and user_id = '11111111-0000-0000-0000-00000000000a'),
           '{"campaign_id":"55555555-0000-0000-0000-0000000000b3","campaign_title":"Terjadwal","campaign_slug":"k13-sched",
             "org_name":"Studio Satu","platforms":["tiktok"]}'::jsonb, 'payload campaign.new');
-select is((select count(*)::int from pgmq.messages where queue_name = 'email' and message ->> 'event' = 'campaign.new'), 1,
+select is((select count(*)::int from pgmq.q_email where message ->> 'event' = 'campaign.new'), 1,
           'email promosi campaign.new dilewati untuk yang unsubscribe');
 select is((select status::text || ':' || (locked_at is not null)::text from tracking.submissions where id = (select v::uuid from t_ids where k = 's14')),
           'locked:true', 'akhir view window + snapshot final → locked');

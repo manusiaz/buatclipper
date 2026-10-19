@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# Stack lokal penuh: dua project Supabase (identity :54321, core :55321) di satu docker network, secret dev Edge Function,
+# Stack lokal penuh: dua project Supabase (identity :54321, core :55321) — network docker terpisah (alias kong/db sama),
+# panggilan lintas stack lewat gateway host (host.docker.internal) —, secret dev Edge Function,
 # Vault untuk pg_cron, dan apps/*/.env.local untuk 5 app. Idempoten. Host dev: *.clipper.localhost.
 # Pakai: scripts/dev-stack.sh [--reset]   (--reset = supabase db reset kedua project, data lokal hilang)
 set -euo pipefail
@@ -16,7 +17,7 @@ if [ ! -f "$SECRETS" ]; then
 BRIDGE_SECRET_CORE_TO_IDENTITY=$(rand)
 BRIDGE_SECRET_IDENTITY_TO_CORE=$(rand)
 PII_HMAC_KEY=$(rand)
-PII_ENC_KEYS={"1":"$(rand)"}
+PII_ENC_KEYS='{"1":"'$(rand)'"}'
 PII_ENC_KEY_VERSION=1
 UNSUBSCRIBE_SECRET=$(rand)
 DISBURSE_CALLBACK_TOKEN=$(rand)
@@ -26,11 +27,11 @@ EOF
 fi
 set -a; . "$SECRETS"; set +a
 
-# Nilai non-rahasia (host di dalam network docker "clipper": supabase_kong_<project_id>:8000).
+# Nilai non-rahasia. Lintas stack: host.docker.internal:<port host>; dalam stack sendiri: nama container.
 export IDENTITY_ISSUER="http://127.0.0.1:54321/auth/v1"
-export IDENTITY_JWKS_URL="http://supabase_kong_clipper-identity:8000/auth/v1/.well-known/jwks.json"
-export IDENTITY_FUNCTIONS_URL="http://supabase_kong_clipper-identity:8000/functions/v1"
-export CORE_FUNCTIONS_URL="http://supabase_kong_clipper-core:8000/functions/v1"
+export IDENTITY_JWKS_URL="http://host.docker.internal:54321/auth/v1/.well-known/jwks.json"
+export IDENTITY_FUNCTIONS_URL="http://host.docker.internal:54321/functions/v1"
+export CORE_FUNCTIONS_URL="http://host.docker.internal:55321/functions/v1"
 export APP_ORIGINS="$ACC,$APP,$BRAND,$ADMIN"
 export SOCIAL_REDIRECT_ALLOWLIST=$(for p in tiktok instagram youtube threads facebook x; do printf '%s/api/oauth/%s/callback,' "$APP" "$p"; done | sed 's/,$//')
 export UNSUBSCRIBE_BASE_URL="http://127.0.0.1:55321/functions/v1/notify/unsubscribe"
@@ -42,20 +43,33 @@ for v in TIKTOK_CLIENT_KEY TIKTOK_CLIENT_SECRET META_APP_ID META_APP_SECRET GOOG
   export "$v=${!v:-}"
 done
 
-docker network inspect clipper >/dev/null 2>&1 || docker network create clipper >/dev/null
 for p in identity core; do
-  supabase start --workdir "db/$p" --network-id clipper -x vector,logflare,studio,imgproxy >/dev/null
+  supabase start --workdir "db/$p" -x vector,logflare,studio,imgproxy >/dev/null
   [ "${1:-}" = "--reset" ] && supabase db reset --workdir "db/$p" >/dev/null
+done
+
+# Container edge runtime tidak selalu punya akses internet: unduh paket npm di host lalu salin ke cache Deno container.
+DENO_NPM="$(deno info --json | python3 -c 'import json,sys; print(json.load(sys.stdin)["denoDir"])')/npm"
+for p in identity core; do
+  (cd "db/$p/supabase/functions" && deno cache */index.ts >/dev/null)
+  docker exec "supabase_edge_runtime_clipper-$p" mkdir -p /root/.cache/deno/npm
+  docker cp "$DENO_NPM/registry.npmjs.org" "supabase_edge_runtime_clipper-$p:/root/.cache/deno/npm/" >/dev/null
 done
 
 status() { supabase status --workdir "db/$1" -o env 2>/dev/null | grep "^$2=" | cut -d= -f2- | tr -d '"'; }
 ID_PUB=$(status identity PUBLISHABLE_KEY); CORE_PUB=$(status core PUBLISHABLE_KEY)
-ID_SVC=$(status identity SERVICE_ROLE_KEY); CORE_SVC=$(status core SERVICE_ROLE_KEY)
+# Kunci cron = nilai yang dilihat Edge Function sendiri (SUPABASE_SERVICE_ROLE_KEY di container berbeda dengan yang
+# dicetak `supabase status`). Produksi: isi Vault dengan secret key yang sama dengan env fungsi (Fase 0).
+fnkey() { docker exec "supabase_edge_runtime_clipper-$1" printenv SUPABASE_SERVICE_ROLE_KEY; }
+ID_SVC=$(fnkey identity); CORE_SVC=$(fnkey core)
 
 # Vault: URL + kunci yang dipakai pg_cron/pg_net memanggil Edge Function project sendiri (policy:fn-cron-key).
 vault() { # port name value
   psql "postgresql://postgres:postgres@127.0.0.1:$1/postgres" -qtAX -v ON_ERROR_STOP=1 -c \
-    "select coalesce((select vault.update_secret(id, '$3') from vault.secrets where name = '$2'), vault.create_secret('$3', '$2'))" >/dev/null
+    "do \$\$ begin
+       if exists (select 1 from vault.secrets where name = '$2') then
+         perform vault.update_secret((select id from vault.secrets where name = '$2'), '$3');
+       else perform vault.create_secret('$3', '$2'); end if; end \$\$" >/dev/null
 }
 vault 54322 identity_url "http://supabase_kong_clipper-identity:8000"
 vault 54322 identity_secret_key "$ID_SVC"

@@ -994,8 +994,8 @@ select is((select array_agg(p.username order by p.username) from ops.notificatio
 select is((select array_agg(p.username) from ops.notifications n join market.profiles p on p.id = n.user_id
             where n.event = 'broadcast.sent' and n.payload ->> 'broadcast_id' = (select id from t_ids where k = 'bc2')::text),
           array['budi'], 'segmen KYC dari keputusan KYC yang dicatat core');
-select is((select array_agg(p.username) from pgmq.messages m join market.profiles p on p.id = (m.message ->> 'user_id')::uuid
-            where m.queue_name = 'email' and m.message ->> 'event' = 'broadcast.sent'),
+select is((select array_agg(p.username) from pgmq.q_email m join market.profiles p on p.id = (m.message ->> 'user_id')::uuid
+            where m.message ->> 'event' = 'broadcast.sent'),
           array['eko'], 'email promosi ikut preferensi (Andi mematikan) dan hanya untuk kanal email');
 select is((select array_agg(coalesce(recipient_count::text, 'null') order by title) from ops.broadcasts),
           array['2', '1', 'null'], 'recipient_count tercatat; yang terjadwal nanti belum terkirim');

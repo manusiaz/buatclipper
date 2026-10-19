@@ -178,7 +178,7 @@ insert into market.campaign_assets (campaign_id, kind, storage_path, audience) v
    '44444444-0000-0000-0000-000000000001/55555555-0000-0000-0000-000000000014/aset.mp4', 'clipper'),
   ('55555555-0000-0000-0000-000000000014', 'document',
    '44444444-0000-0000-0000-000000000001/55555555-0000-0000-0000-000000000014/internal/brief-brand.pdf', 'internal');
-insert into storage.buckets (id, name, public) values ('campaign-assets', 'campaign-assets', false);
+insert into storage.buckets (id, name, public) values ('campaign-assets', 'campaign-assets', false) on conflict (id) do nothing;
 insert into storage.objects (bucket_id, name) values
   ('campaign-assets', '44444444-0000-0000-0000-000000000001/55555555-0000-0000-0000-000000000014/aset.mp4'),
   ('campaign-assets', '44444444-0000-0000-0000-000000000001/55555555-0000-0000-0000-000000000014/internal/brief-brand.pdf');

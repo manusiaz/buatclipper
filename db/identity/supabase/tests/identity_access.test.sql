@@ -106,7 +106,7 @@ select is((select count(*)::int from member.audit_logs where action in ('kyc.sub
 select throws_ok($$ update member.audit_logs set action = 'x.y' $$, '42501', null, 'audit log tidak bisa diubah');
 
 -- Storage kyc-docs: folder milik sendiri; reviewer KYC bisa membaca, admin_support tidak.
-insert into storage.buckets (id, name, public) values ('kyc-docs', 'kyc-docs', false);
+insert into storage.buckets (id, name, public) values ('kyc-docs', 'kyc-docs', false) on conflict (id) do nothing;
 set local role authenticated;
 set local request.jwt.claims = '{"sub":"00000000-0000-0000-0000-00000000000a","role":"authenticated","aal":"aal1"}';
 select lives_ok($$ insert into storage.objects (bucket_id, name) values ('kyc-docs', '00000000-0000-0000-0000-00000000000a/ktp.jpg') $$,
