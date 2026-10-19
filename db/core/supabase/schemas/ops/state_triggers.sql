@@ -14,7 +14,7 @@ create trigger submissions_state_machine before insert or update of status on tr
 
 -- S-05 payout
 create trigger payouts_state_machine before insert or update of status on finance.payouts
-  for each row execute function ops.check_transition('S-05', 'requested', '{"requested":["on_hold","processing"],"on_hold":["processing","cancelled"],"processing":["paid","failed"],"failed":["requested","returned"]}');
+  for each row execute function ops.check_transition('S-05', 'requested', '{"requested":["on_hold","processing"],"on_hold":["processing","cancelled"],"processing":["paid","failed"],"paid":["failed"],"failed":["requested","returned"]}');
 
 -- S-06 fulfillment
 create trigger fulfillments_state_machine before insert or update of status on finance.fulfillments

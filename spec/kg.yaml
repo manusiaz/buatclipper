@@ -53,5 +53,5 @@ states:  # state: [state tujuan yang diizinkan]
   S-02 claim: {open: [submitted, expired, released]}
   S-03 submission: {validating: [in_review, tracking, rejected], in_review: [tracking, rejected], rejected: [appealed], appealed: [tracking, rejected_final], tracking: [flagged, forfeited, locked], flagged: [tracking, forfeited], locked: [settled]}
   S-04 earning: {pending: [available, reversed], available: [withdrawn]}
-  S-05 payout: {requested: [on_hold, processing], on_hold: [processing, cancelled], processing: [paid, failed], failed: [requested, returned]}
+  S-05 payout: {requested: [on_hold, processing], on_hold: [processing, cancelled], processing: [paid, failed], paid: [failed], failed: [requested, returned]}
   S-06 fulfillment: {requested: [on_hold, processing], on_hold: [processing, cancelled], processing: [delivered, failed], failed: [requested, returned]}

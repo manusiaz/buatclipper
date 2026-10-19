@@ -38,7 +38,12 @@ export interface PayoutRef {
   user_id: string;
   method_id: string;
   amount: string | number;
+  /** Biaya (gross − fee = yang ditransfer). Batch mingguan gratis → 0; ada untuk berjaga kalau batch berbiaya. */
+  fee?: string | number;
 }
+
+/** Jumlah yang benar-benar ditransfer ke rekening. */
+export const netAmount = (p: PayoutRef): string => formatCents(toCents(p.amount) - toCents(p.fee ?? 0));
 
 export function normalizeName(s: string | null | undefined): string {
   return (s ?? "").trim().replace(/\s+/g, " ").toLowerCase();
@@ -66,7 +71,7 @@ export function holdReason(p: PayoutRef, method: MethodRow | undefined, kyc: Kyc
   if (!kyc || kyc.closed || kyc.status !== "approved" || !kyc.legal_name) return "kyc_not_approved";
   if (normalizeName(method.account_name) !== normalizeName(kyc.legal_name)) return "name_mismatch";
   try {
-    if (toCents(p.amount) <= 0n) return "invalid_amount";
+    if (toCents(p.amount) - toCents(p.fee ?? 0) <= 0n) return "invalid_amount";
   } catch {
     return "invalid_amount";
   }
