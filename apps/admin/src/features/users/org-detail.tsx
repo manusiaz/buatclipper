@@ -28,7 +28,7 @@ export async function OrgDetail({ orgId, claims, loc }: { orgId: string; claims:
 
   let ownerKyc: string | null = null;
   if (o.org_type === 'perorangan' && owner?.user_id && hasRole(claims, 'admin_moderator', 'admin_support', 'admin_finance')) {
-    const { data, error } = await identityApi((await getAuth('admin')).supabase).schema('api').rpc('admin_read', { p_user_id: owner.user_id });
+    const { data, error } = await identityApi((await getAuth('admin')).supabase).rpc('admin_read', { p_user_id: owner.user_id });
     ownerKyc = error ? 'error' : (data?.[0]?.status ?? 'none');
   }
   const reasonOptions = ORG_REJECT_REASONS.map((r) => ({ value: r, label: t(`users.orgReasons.${r}`) }));

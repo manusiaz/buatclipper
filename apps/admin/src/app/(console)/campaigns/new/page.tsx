@@ -32,19 +32,25 @@ export default async function AdminBuilderPage({ searchParams }: { searchParams:
   }
   if (!isUuid(orgId)) return <OrgPicker q={param(sp, 'q')} />;
 
-  const [orgRes, catRes, rtRes, setRes, feeRes] = await Promise.all([
-    db.from('organizations').select('id, name, status').eq('id', orgId).maybeSingle(),
+  const [orgRes, campRes, catRes, rtRes, setRes] = await Promise.all([
+    db.from('organizations').select('id, name, status, fee_rule_id').eq('id', orgId).maybeSingle(),
+    initial?.id ? db.from('campaigns').select('fee_rule_id').eq('id', initial.id).maybeSingle() : Promise.resolve({ data: null, error: null }),
     db.from('categories').select('id, name_id, name_en').eq('active', true).order('sort'),
     db.from('reward_types').select('id, code, name, unit_label, kind, idr_value_per_unit, decimals, owner_org_id, fulfillment')
       .or(`owner_org_id.is.null,owner_org_id.eq.${orgId}`).order('code'),
     db.from('settings').select('key, value').in('key', ['public.flags.platforms', 'public.billing.tax_pct', 'public.billing.managed_service_idr']),
-    db.from('fee_rules').select('id, scope, mgmt_fee_pct, admin_fee_pct').eq('scope', 'global'),
   ]);
   const org = must(orgRes);
   if (!org?.id) return <EmptyState icon="storefront" tone="neutral" title={t('builder.orgMissing')} action={{ label: t('builder.pickOrg'), href: '/campaigns/new', linkAs: Link }} />;
   const cfg = new Map(rows(setRes).map((s) => [s.key, s.value]));
-  const global = rows(feeRes)[0];
-  const fee = { mgmt_fee_pct: Number(global?.mgmt_fee_pct ?? 0), admin_fee_pct: Number(global?.admin_fee_pct ?? 0) };
+  // Fee efektif campaign → org → global (finance.effective_fee_rule); aturan org + global jadi pilihan override.
+  const campaignRule = must(campRes)?.fee_rule_id ?? null;
+  const feeRows = rows(await db.from('fee_rules').select('id, scope, mgmt_fee_pct, admin_fee_pct')
+    .or(['scope.eq.global', ...[org.fee_rule_id, campaignRule].filter(Boolean).map((r) => `id.eq.${r}`)].join(',')));
+  const pct = (r?: (typeof feeRows)[number]) => ({ mgmt_fee_pct: Number(r?.mgmt_fee_pct ?? 0), admin_fee_pct: Number(r?.admin_fee_pct ?? 0) });
+  const byId = (id: string | null) => feeRows.find((r) => id && r.id === id);
+  const global = feeRows.find((r) => r.scope === 'global');
+  const fee = pct(byId(campaignRule) ?? byId(org.fee_rule_id) ?? global);
 
   const context: BuilderContext = {
     mode: 'admin',
@@ -60,8 +66,7 @@ export default async function AdminBuilderPage({ searchParams }: { searchParams:
     fee,
     taxPct: Number(cfg.get('public.billing.tax_pct') ?? 11),
     managedServiceIdr: Number(cfg.get('public.billing.managed_service_idr') ?? 2_500_000),
-    // Hanya fee global: fee_rule_id org/campaign tidak diekspos api.organizations/api.campaigns.
-    feeRules: global ? [{ id: global.id!, scope: 'global', ...fee }] : [],
+    feeRules: [byId(org.fee_rule_id), global].filter((r) => !!r).map((r) => ({ id: r!.id!, scope: r!.scope!, ...pct(r) })),
   };
   const managed = initial?.service_mode === 'managed';
 

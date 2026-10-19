@@ -25,15 +25,13 @@ interface Detail {
 const list = (v: unknown) => (Array.isArray(v) ? (v as string[]) : []);
 
 /** F-A02 detail campaign in_review: brief, aset (signed URL), budget & rate, status invoice → approve/reject. */
-export async function ReviewDetail({ id, loc, canSeeInvoices }: { id: string; loc: UiLocale; canSeeInvoices: boolean }) {
+export async function ReviewDetail({ id, loc }: { id: string; loc: UiLocale }) {
   const [t, tc, db] = await Promise.all([getTranslations('admin'), getTranslations('common'), coreServer('admin')]);
   const d = must(await db.rpc('campaign_detail', { p_campaign: id })) as unknown as Detail;
   const c = d.campaign;
   const [org, invoices, hrefs] = await Promise.all([
     db.from('organizations').select('id, name, status, org_type').eq('id', c.org_id).maybeSingle(),
-    canSeeInvoices
-      ? db.from('invoices').select('id, number, status, total, kind').eq('campaign_id', id).eq('kind', 'campaign').neq('status', 'void')
-      : Promise.resolve({ data: [], error: null }),
+    db.from('invoices').select('id, number, status, total, kind').eq('campaign_id', id).eq('kind', 'campaign').neq('status', 'void'),
     assetHrefs(db, d.assets),
   ]);
   const o = must(org);
@@ -162,9 +160,7 @@ export async function ReviewDetail({ id, loc, canSeeInvoices }: { id: string; lo
         <div className="flex min-w-0 flex-col gap-5">
           <Card variant="tint" padding="md" className="flex flex-col gap-2">
             <h3 className="text-label text-ink">{t('campaigns.invoice')}</h3>
-            {!canSeeInvoices ? (
-              <p className="text-body-s text-muted">{t('campaigns.invoiceHidden')}</p>
-            ) : inv.length === 0 ? (
+            {inv.length === 0 ? (
               <p className="text-body-s text-muted">{t('campaigns.invoiceNone')}</p>
             ) : (
               inv.map((i) => (

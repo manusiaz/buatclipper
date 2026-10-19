@@ -1,5 +1,9 @@
 {
-  "common": { "pagination": "Navigasi halaman", "previous": "Sebelumnya", "next": "Berikutnya" },
+  "common": {
+    "pagination": "Navigasi halaman",
+    "previous": "Sebelumnya",
+    "next": "Berikutnya"
+  },
   "shell": {
     "product": "Brand",
     "openMenu": "Buka menu",
@@ -22,14 +26,23 @@
     "team": "Tim",
     "settings": "Pengaturan"
   },
-  "roles": { "brand_owner": "Pemilik", "brand_manager": "Manajer", "brand_finance": "Finance", "brand_viewer": "Viewer" },
+  "roles": {
+    "brand_owner": "Pemilik",
+    "brand_manager": "Manajer",
+    "brand_finance": "Finance",
+    "brand_viewer": "Viewer"
+  },
   "roleHelp": {
     "brand_owner": "Semua akses: campaign, billing, anggota.",
     "brand_manager": "Buat & edit campaign, review klip, laporan. Tanpa billing.",
     "brand_finance": "Billing, invoice, top-up, refund. Tanpa edit campaign.",
     "brand_viewer": "Hanya melihat dashboard & laporan."
   },
-  "orgStatus": { "pending_verification": "Menunggu verifikasi", "verified": "Terverifikasi", "suspended": "Ditangguhkan" },
+  "orgStatus": {
+    "pending_verification": "Menunggu verifikasi",
+    "verified": "Terverifikasi",
+    "suspended": "Ditangguhkan"
+  },
   "campaignStatus": {
     "draft": "Draft",
     "in_review": "Direview",
@@ -43,8 +56,19 @@
     "settling": "Diselesaikan",
     "settled": "Selesai"
   },
-  "campaignType": { "clipping": "Clipping", "ugc": "UGC", "music": "Musik/Sound", "logo": "Logo", "text": "Teks" },
-  "ruleKind": { "per_1k_views": "Per 1.000 views", "flat_per_post": "Flat per posting", "milestone_bonus": "Bonus milestone", "tiered_cpm": "CPM bertingkat" },
+  "campaignType": {
+    "clipping": "Clipping",
+    "ugc": "UGC",
+    "music": "Musik/Sound",
+    "logo": "Logo",
+    "text": "Teks"
+  },
+  "ruleKind": {
+    "per_1k_views": "Per 1.000 views",
+    "flat_per_post": "Flat per posting",
+    "milestone_bonus": "Bonus milestone",
+    "tiered_cpm": "CPM bertingkat"
+  },
   "banner": {
     "pendingTitle": "Organisasi menunggu verifikasi",
     "pendingBody": "Kamu tetap bisa menyusun draft campaign. Tombol Ajukan aktif setelah tim memverifikasi data organisasi.",
@@ -53,7 +77,11 @@
     "suspendedTitle": "Organisasi ditangguhkan",
     "suspendedBody": "Campaign baru tidak bisa diajukan. Hubungi tim Clipper untuk detailnya."
   },
-  "notFound": { "title": "Halaman tidak ditemukan", "body": "Organisasi atau campaign ini tidak ada, atau kamu bukan anggotanya.", "action": "Ke daftar organisasi" },
+  "notFound": {
+    "title": "Halaman tidak ditemukan",
+    "body": "Organisasi atau campaign ini tidak ada, atau kamu bukan anggotanya.",
+    "action": "Ke daftar organisasi"
+  },
   "picker": {
     "title": "Pilih organisasi",
     "description": "Organisasi milikmu dan org klien yang terhubung lewat agency.",
@@ -157,10 +185,20 @@
     "notExhausting": "Belum diperkirakan habis",
     "beforeHorizon": "Sebelum batas",
     "alertsLabel": "Riwayat alert budget",
-    "alert": { "used_50": "Terpakai 50%", "used_80": "Terpakai 80%", "used_100": "Terpakai 100%", "projection_low": "Proyeksi < 50%" },
+    "alert": {
+      "used_50": "Terpakai 50%",
+      "used_80": "Terpakai 80%",
+      "used_100": "Terpakai 100%",
+      "projection_low": "Proyeksi < 50%"
+    },
     "lowTitle": "Proyeksi pemakaian budget baru {pct}%",
     "lowBody": "Budget kemungkinan tidak terpakai sampai deadline. Coba salah satu langkah ini:",
-    "suggest": { "raise_rate": "Naikkan rate", "extend": "Perpanjang deadline", "invite": "Undang clipper", "pin": "Pin campaign" },
+    "suggest": {
+      "raise_rate": "Naikkan rate",
+      "extend": "Perpanjang deadline",
+      "invite": "Undang clipper",
+      "pin": "Pin campaign"
+    },
     "pools": "Pool reward",
     "poolType": "Reward",
     "poolTotal": "Total",
@@ -286,7 +324,11 @@
     "colStatus": "Status",
     "colActions": "Aksi",
     "noExpiry": "Tanpa batas",
-    "status": { "active": "Aktif", "expired": "Kedaluwarsa", "revoked": "Dicabut" },
+    "status": {
+      "active": "Aktif",
+      "expired": "Kedaluwarsa",
+      "revoked": "Dicabut"
+    },
     "revoke": "Cabut",
     "revokeTitle": "Cabut link laporan?",
     "revokeBody": "Siapa pun yang membuka link ini akan melihat halaman Link tidak berlaku.",
@@ -319,15 +361,6 @@
     "rejectTitle": "Tolak {count} klip",
     "rejectBody": "Clipper melihat alasan ini dan bisa mengajukan banding sekali.",
     "reason": "Alasan",
-    "reasons": {
-      "off_brief": "Tidak sesuai brief",
-      "missing_tags": "Tag/mention/link wajib kurang",
-      "low_quality": "Kualitas video rendah",
-      "inappropriate": "Konten tidak pantas",
-      "misleading": "Menyesatkan / merugikan brand",
-      "duplicate": "Duplikat / konten ulang",
-      "other": "Lainnya"
-    },
     "message": "Pesan untuk clipper",
     "messageHelp": "Jelaskan apa yang perlu diperbaiki.",
     "optional": "(opsional)",
@@ -353,11 +386,29 @@
     "colRequested": "Diajukan",
     "refunds": "Refund",
     "noRefunds": "Belum ada refund",
-    "refundStatus": { "requested": "Diajukan", "approved": "Disetujui", "paid": "Ditransfer", "cancelled": "Dibatalkan" },
-    "creditGap": "Kredit rollover tercatat di akun kredit organisasi. Saldonya belum bisa ditampilkan di halaman ini.",
-    "status": { "issued": "Belum dibayar", "overdue": "Lewat jatuh tempo", "paid": "Lunas", "void": "Batal" },
-    "kind": { "campaign": "Budget campaign", "topup": "Top-up", "pinned": "Pin campaign", "managed_service": "Paket managed" },
-    "channel": { "qris": "QRIS", "transfer": "Transfer bank" },
+    "refundStatus": {
+      "requested": "Diajukan",
+      "approved": "Disetujui",
+      "paid": "Ditransfer",
+      "cancelled": "Dibatalkan"
+    },
+    "status": {
+      "issued": "Belum dibayar",
+      "overdue": "Lewat jatuh tempo",
+      "paid": "Lunas",
+      "void": "Batal"
+    },
+    "kind": {
+      "campaign": "Budget campaign",
+      "topup": "Top-up",
+      "pinned": "Pin campaign",
+      "managed_service": "Paket managed"
+    },
+    "channel": {
+      "qris": "QRIS",
+      "transfer": "Transfer bank",
+      "credit": "Kredit organisasi"
+    },
     "closeDetail": "Tutup",
     "pinUntil": "pin sampai {date}",
     "issuedAt": "Terbit",
@@ -376,6 +427,7 @@
     "fakturNotYet": "Faktur pajak diterbitkan tim finance setelah pembayaran dicocokkan.",
     "payQris": "Bayar dengan QRIS",
     "payTransfer": "Bayar dengan transfer bank",
+    "payCredit": "Bayar pakai kredit organisasi",
     "qrisLabel": "QRIS untuk invoice {number}, total {total}",
     "qrisHint": "Scan dengan m-banking atau e-wallet. Nominal {total} sudah terisi.",
     "qrisMissingTitle": "QRIS belum dikonfigurasi",
@@ -395,12 +447,12 @@
   "leftover": {
     "title": "Sisa budget campaign",
     "description": "Campaign selesai dengan budget creator tersisa. Pilih rollover ke campaign berikutnya tanpa fee baru, atau refund.",
-    "estimate": "Perkiraan sisa {amount}",
+    "amountLeft": "Sisa {amount}",
     "rollover": "Rollover",
     "refund": "Refund",
     "setupMfa": "Aktifkan MFA",
     "mfaNote": "Rollover dan refund menggerakkan uang, jadi butuh verifikasi dua langkah (TOTP).",
-    "note": "Angka di atas perkiraan dari pool. Sistem menolak kalau melebihi saldo sebenarnya.",
+    "note": "Angka dari saldo ledger pool campaign. Refund dikurangi biaya transfer.",
     "rolloverTitle": "Rollover sisa budget",
     "rolloverBody": "Sisa budget dipindah ke kredit organisasi untuk campaign berikutnya, tanpa fee baru.",
     "refundTitle": "Refund sisa budget",
@@ -408,10 +460,36 @@
     "amount": "Nominal",
     "amountHelp": "Bilangan bulat, maksimal {max}.",
     "amountInvalid": "Nominal tidak valid.",
+    "transferFee": "Biaya transfer",
+    "received": "Diterima",
     "cancel": "Batal",
     "confirm": "Konfirmasi",
     "rolloverDone": "Sisa budget dipindah ke kredit organisasi.",
     "refundDone": "Refund diajukan. Status terlihat di daftar refund."
+  },
+  "credit": {
+    "title": "Kredit organisasi",
+    "description": "Sisa budget yang di-rollover. Bisa dipakai membayar invoice berikutnya tanpa transfer.",
+    "available": "Bisa dipakai",
+    "balance": "Saldo kredit",
+    "held": "Tertahan untuk refund berjalan",
+    "history": "Riwayat kredit",
+    "ref": {
+      "rollover": "Rollover sisa budget",
+      "refund": "Refund",
+      "invoice_payment": "Pembayaran invoice",
+      "other": "Penyesuaian"
+    },
+    "empty": "Belum ada kredit",
+    "emptyBody": "Kredit muncul setelah sisa budget campaign di-rollover.",
+    "pay": "Bayar pakai kredit",
+    "payNeedsMfa": "Aktifkan MFA untuk bayar pakai kredit",
+    "mfaNote": "Bayar pakai kredit menggerakkan uang, jadi butuh verifikasi dua langkah (TOTP).",
+    "payTitle": "Bayar {number} pakai kredit?",
+    "payBody": "Kredit organisasi berkurang {total}. Sisa kredit setelah ini {rest}.",
+    "payConfirm": "Bayar sekarang",
+    "cancel": "Batal",
+    "paid": "Invoice {number} lunas dibayar kredit."
   },
   "rewardTypes": {
     "title": "Reward type",
@@ -426,7 +504,14 @@
     "code": "Kode",
     "codeHelp": "Huruf besar, angka, _ (2–40), mis. DIAMOND.",
     "kind": "Jenis",
-    "kinds": { "cash": "Tunai", "in_game": "Item game", "voucher_code": "Kode voucher", "points": "Poin", "physical": "Barang fisik", "custom": "Lainnya" },
+    "kinds": {
+      "cash": "Tunai",
+      "in_game": "Item game",
+      "voucher_code": "Kode voucher",
+      "points": "Poin",
+      "physical": "Barang fisik",
+      "custom": "Lainnya"
+    },
     "unitLabel": "Label unit",
     "unitHelp": "Tampil di samping angka, mis. Diamonds.",
     "idrValue": "Nilai Rp per unit",
@@ -438,7 +523,12 @@
     "unlimited": "Tidak dibatasi",
     "perUnit": "Rp per {unit}",
     "fulfillment": "Cara pengiriman",
-    "fulfillments": { "payout": "Payout", "manual_export": "Export manual", "code_pool": "Pool kode", "webhook": "Webhook" },
+    "fulfillments": {
+      "payout": "Payout",
+      "manual_export": "Export manual",
+      "code_pool": "Pool kode",
+      "webhook": "Webhook"
+    },
     "fulfillmentHelp": {
       "manual_export": "Tim mengekspor daftar penerima lalu brand mengirim sendiri.",
       "code_pool": "Kode voucher yang diunggah dibagikan otomatis, satu kode per klaim.",
@@ -522,7 +612,11 @@
     "you": "(kamu)",
     "invites": "Link undangan",
     "noInvites": "Belum ada link undangan",
-    "inviteState": { "pending": "Belum dipakai", "accepted": "Diterima", "expired": "Kedaluwarsa" },
+    "inviteState": {
+      "pending": "Belum dipakai",
+      "accepted": "Diterima",
+      "expired": "Kedaluwarsa"
+    },
     "acceptedBy": "Diterima {name} · {date}",
     "expires": "Berlaku sampai {date}",
     "manageNote": "Mengubah role atau mengeluarkan anggota dilakukan lewat tim Clipper."
@@ -533,7 +627,10 @@
     "profile": "Profil organisasi",
     "name": "Nama brand",
     "type": "Jenis",
-    "types": { "badan": "Badan usaha", "perorangan": "Perorangan" },
+    "types": {
+      "badan": "Badan usaha",
+      "perorangan": "Perorangan"
+    },
     "legalName": "Nama legal",
     "npwp": "NPWP",
     "address": "Alamat",
@@ -562,7 +659,11 @@
     "yourOrgId": "ID organisasi ini:",
     "noAgencies": "Tidak ada agency tertaut",
     "unknownOrg": "Organisasi {id}…",
-    "state": { "pending": "Menunggu", "approved": "Tertaut", "revoked": "Dicabut" },
+    "state": {
+      "pending": "Menunggu",
+      "approved": "Tertaut",
+      "revoked": "Dicabut"
+    },
     "approve": "Setujui",
     "reject": "Tolak",
     "revoke": "Cabut",
@@ -571,7 +672,12 @@
     "revokeClientTitle": "Cabut akses agency?",
     "revokeClientBody": "Anggota agency langsung kehilangan akses ke organisasi ini.",
     "cancel": "Batal",
-    "done": { "request": "Permintaan terkirim ke pemilik klien.", "approve": "Agency disetujui.", "reject": "Permintaan ditolak.", "revoke": "Tautan dicabut." }
+    "done": {
+      "request": "Permintaan terkirim ke pemilik klien.",
+      "approve": "Agency disetujui.",
+      "reject": "Permintaan ditolak.",
+      "revoke": "Tautan dicabut."
+    }
   },
   "bell": {
     "label": "Notifikasi",
@@ -580,7 +686,10 @@
     "empty": "Belum ada notifikasi"
   },
   "notif": {
-    "invoice": { "issued": "Invoice {number} terbit · {amount}", "paid": "Pembayaran invoice {number} diterima · {amount}" },
+    "invoice": {
+      "issued": "Invoice {number} terbit · {amount}",
+      "paid": "Pembayaran invoice {number} diterima · {amount}"
+    },
     "campaign": {
       "approved": "Campaign {campaign} disetujui dan dijadwalkan tayang",
       "rejected": "Campaign {campaign} ditolak. Lihat alasannya dan perbaiki.",
@@ -591,15 +700,25 @@
       "used": "Budget {campaign} sudah terpakai {pct}%",
       "projection_low": "Proyeksi budget {campaign} baru {projected}%. Lihat saran di dashboard."
     },
-    "submission": { "pending_review": "Klip baru menunggu review di {campaign}" },
+    "submission": {
+      "pending_review": "Klip baru menunggu review di {campaign}"
+    },
     "org": {
       "verified": "Organisasi {org} terverifikasi. Campaign sudah bisa diajukan.",
       "rejected": "Verifikasi {org} ditolak: {reason}",
       "suspended": "Organisasi {org} ditangguhkan"
     },
-    "agency": { "link_requested": "{agency} minta menautkan {org} sebagai klien", "link_approved": "{client} menyetujui tautan agency" },
-    "refund": { "requested": "Refund {amount} untuk {campaign} diajukan", "paid": "Refund {amount} sudah ditransfer" },
-    "managed": { "draft_ready": "Draft managed {campaign} siap disetujui" }
+    "agency": {
+      "link_requested": "{agency} minta menautkan {org} sebagai klien",
+      "link_approved": "{client} menyetujui tautan agency"
+    },
+    "refund": {
+      "requested": "Refund {amount} untuk {campaign} diajukan",
+      "paid": "Refund {amount} sudah ditransfer"
+    },
+    "managed": {
+      "draft_ready": "Draft managed {campaign} siap disetujui"
+    }
   },
   "errors": {
     "field": {
@@ -624,6 +743,9 @@
       "recipient_schema": "Data penerima tidak valid.",
       "template": "Template tidak bisa dijalankan. Duplikat dulu jadi campaign."
     },
-    "code": { "insufficient_balance": "Nominal melebihi sisa budget campaign." }
+    "code": {
+      "insufficient_balance": "Nominal melebihi sisa budget campaign.",
+      "insufficient_credit": "Kredit organisasi tidak cukup untuk invoice ini."
+    }
   }
 }

@@ -1,4 +1,5 @@
 import Link from 'next/link';
+import type { ReactNode } from 'react';
 import { getLocale, getTranslations } from 'next-intl/server';
 import {
   Alert,
@@ -50,7 +51,20 @@ export function invoiceTone(i: Pick<InvoiceRow, 'status' | 'due_at'>): { tone: '
   return i.due_at && new Date(i.due_at).getTime() < Date.now() ? { tone: 'danger', key: 'overdue' } : { tone: 'warn', key: 'issued' };
 }
 
-export async function InvoiceDetail({ invoice: inv, campaignTitle, orgId, pay }: { invoice: InvoiceRow; campaignTitle: string | null; orgId: string; pay: PaymentConfig }) {
+export async function InvoiceDetail({
+  invoice: inv,
+  campaignTitle,
+  orgId,
+  pay,
+  creditAction,
+}: {
+  invoice: InvoiceRow;
+  campaignTitle: string | null;
+  orgId: string;
+  pay: PaymentConfig;
+  /** Tombol "Bayar pakai kredit" kalau kredit org tersedia ≥ total. */
+  creditAction?: ReactNode;
+}) {
   const [t, locale] = await Promise.all([getTranslations('brand.billing'), getLocale()]);
   const loc = locale === 'en' ? 'en' : 'id';
   const idr = (v: number) => formatIDR(v, { locale: loc, fractionDigits: Number.isInteger(v) ? 0 : 2 });
@@ -143,6 +157,12 @@ export async function InvoiceDetail({ invoice: inv, campaignTitle, orgId, pay }:
 
         {inv.status === 'issued' ? (
           <div className="flex flex-col gap-4 rounded-card-sm bg-subtle p-4">
+            {creditAction ? (
+              <div className="flex flex-col gap-2 border-b border-border pb-4">
+                <p className="text-h6 text-ink">{t('payCredit')}</p>
+                {creditAction}
+              </div>
+            ) : null}
             <p className="text-h6 text-ink">{useQris ? t('payQris') : t('payTransfer')}</p>
             {useQris ? (
               qris ? (

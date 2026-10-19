@@ -11,7 +11,7 @@ type Role = (typeof PLATFORM_ROLES)[number];
 const ORG_ROLES = ['brand_owner', 'brand_manager', 'brand_finance', 'brand_viewer'] as const;
 
 async function identity() {
-  return identityApi((await getAuth('admin')).supabase).schema('api');
+  return identityApi((await getAuth('admin')).supabase);
 }
 
 async function recordKyc(userId: string, decision: 'approve' | 'reject', reason: string | null, message: string | null) {
@@ -125,18 +125,33 @@ export async function adminInvite(fd: FormData): Promise<ActionResult> {
   return settle(error, '/users');
 }
 
-export async function adminSetRole(fd: FormData): Promise<ActionResult> {
+/** userId terikat dari baris daftar admin; null = dari form (user ID ketik manual). */
+export async function adminSetRole(boundUser: string | null, fd: FormData): Promise<ActionResult> {
   await requireAdmin('admin_super');
-  const userId = text(fd, 'user_id');
+  const userId = boundUser ?? text(fd, 'user_id');
   const role = text(fd, 'role') as Role;
   if (!isUuid(userId) || !PLATFORM_ROLES.includes(role)) return { ok: false, error: 'invalid:user_id' };
   const { error } = await (await identity()).rpc('admin_set_role', { p_user_id: userId, p_role: role, p_grant: text(fd, 'grant') !== 'revoke' });
   return settle(error, '/users');
 }
 
-export async function adminResetMfa(fd: FormData): Promise<ActionResult> {
+export async function adminResetMfa(boundUser: string | null, fd: FormData): Promise<ActionResult> {
   await requireAdmin('admin_super');
-  const userId = text(fd, 'user_id');
+  const userId = boundUser ?? text(fd, 'user_id');
   if (!isUuid(userId)) return { ok: false, error: 'invalid:user_id' };
   return settleFn(await invokeFunction('identity', 'admin-auth', { action: 'reset_mfa', user_id: userId }, 'admin'), '/users');
+}
+
+/** F-A07 api.manage_user: trust_override {delta, note} | suspend {days, reason} | unsuspend {note} (admin_ops/admin_moderator). */
+export async function manageUser(userId: string, action: 'trust_override' | 'suspend' | 'unsuspend', fd: FormData): Promise<ActionResult> {
+  await requireAdmin('admin_ops', 'admin_moderator');
+  const params: Record<string, unknown> =
+    action === 'trust_override'
+      ? { delta: Number(text(fd, 'delta')), note: text(fd, 'note') }
+      : action === 'suspend'
+        ? { days: Number(text(fd, 'days')), reason: text(fd, 'reason') }
+        : { note: text(fd, 'note') };
+  const db = await coreServer('admin');
+  const { error } = await db.rpc('manage_user', { p_user: userId, p_action: action, p_params: params as never });
+  return settle(error, '/users');
 }

@@ -115,6 +115,12 @@
       "pending_verification": "Menunggu verifikasi",
       "verified": "Terverifikasi",
       "suspended": "Disuspend"
+    },
+    "profile": {
+      "active": "Aktif",
+      "suspended": "Disuspend",
+      "banned": "Di-ban",
+      "closed": "Ditutup"
     }
   },
   "errors": {
@@ -154,7 +160,8 @@
     "bridge_error": "Gagal menghubungi database core.",
     "config_missing": "Fungsi server belum dikonfigurasi.",
     "corrupt_ciphertext": "Data terenkripsi tidak bisa dibuka (kunci tidak cocok). Hubungi engineering.",
-    "db_error": "Kesalahan database di identity. Coba lagi atau hubungi engineering."
+    "db_error": "Kesalahan database di identity. Coba lagi atau hubungi engineering.",
+    "too_many_codes": "Maksimal 10.000 kode per unggahan."
   },
   "export": {
     "download": "Unduh CSV ({rows} baris)",
@@ -239,7 +246,6 @@
       "invoice": "Invoice",
       "submitted": "Dibuat"
     },
-    "invoiceAtApprove": "Dicek saat approve",
     "backToQueue": "Kembali ke antrean",
     "approve": "Setujui",
     "approveTitle": "Setujui campaign",
@@ -269,7 +275,6 @@
       "internal": "Internal"
     },
     "invoice": "Invoice campaign",
-    "invoiceHidden": "Status invoice hanya terlihat oleh admin finance. Approve ditolak otomatis kalau belum lunas.",
     "invoiceNone": "Belum ada invoice",
     "budget": "Budget",
     "maxPerClip": "maks {v}/klip",
@@ -394,17 +399,6 @@
     "hidePreview": "Tutup",
     "embedTitle": "Klip @{name}",
     "openPost": "Buka postingan",
-    "reasons": {
-      "missing_tags": "Tag/mention wajib tidak ada",
-      "off_brief": "Tidak sesuai brief",
-      "low_quality": "Kualitas rendah",
-      "reused_content": "Konten daur ulang/duplikat",
-      "wrong_account": "Bukan akun yang terhubung",
-      "sponsored_label": "Label sponsor tidak dipasang",
-      "inappropriate": "Konten tidak pantas",
-      "fraud_suspected": "Dugaan views tidak organik",
-      "other": "Lainnya"
-    },
     "decisions": {
       "approve": "Disetujui",
       "reject": "Ditolak",
@@ -474,12 +468,10 @@
     "searchClipper": "Cari clipper",
     "searchClipperHint": "username, nama, atau user ID",
     "noUsers": "User tidak ditemukan",
-    "kycQueueGap": "Antrean KYC belum bisa didaftar (identity tidak punya view antrean). Buka user dari pencarian untuk memeriksa KYC-nya.",
     "back": "Kembali ke daftar",
     "userMissing": "Profil tidak ditemukan.",
     "trustScore": "Trust Score",
     "joined": "Bergabung",
-    "statusGap": "Status akun core (aktif/suspend/ban) tidak terbaca dari view api; suspend/ban di core lewat fraud queue.",
     "ban": "Ban login",
     "banTitle": "Ban login akun",
     "banBody": "Refresh token ditolak identity; token yang sudah terbit tetap sah ≤ 10 menit. Status profil core tidak berubah.",
@@ -502,7 +494,8 @@
       "submission_approved": "Submisi disetujui",
       "submission_rejected": "Submisi ditolak",
       "appeal_failed": "Banding gagal",
-      "fraud_flag": "Fraud flag"
+      "fraud_flag": "Fraud flag",
+      "admin_override": "Diubah admin"
     },
     "flags": "Fraud flag",
     "kyc": "KYC",
@@ -589,7 +582,6 @@
     "feeClear": "Kembali ke fee global",
     "feeSaved": "Fee org disimpan",
     "history": "Riwayat keputusan",
-    "adminListGap": "Daftar admin belum bisa ditampilkan: identity tidak punya view api untuk role platform (E-27).",
     "inviteAdmin": "Undang admin",
     "inviteAdminBody": "Akun admin baru (terpisah dari akun clipper/brand) + role awal.",
     "setRole": "Ubah role",
@@ -600,7 +592,26 @@
     "roleSaved": "Role diperbarui",
     "resetMfa": "Reset MFA",
     "resetMfaBody": "Hapus semua faktor TOTP user; dia mendaftar ulang saat login berikutnya.",
-    "mfaReset": "MFA direset"
+    "mfaReset": "MFA direset",
+    "tabKyc": "KYC",
+    "kycStatus": "Status KYC",
+    "kycQueueEmpty": "Tidak ada KYC di status ini",
+    "user": "User",
+    "decidedAt": "Diputus",
+    "noAdmins": "Belum ada admin",
+    "since": "Sejak",
+    "you": "Kamu",
+    "setRoleById": "Role via user ID",
+    "suspendedUntil": "Sampai {date}",
+    "trustOverride": "Ubah Trust Score",
+    "trustOverrideBody": "Skor sekarang {score}. Delta dicatat di riwayat Trust Score (admin_override).",
+    "delta": "Delta",
+    "deltaHelp": "-100 sampai 100, bukan 0",
+    "userUpdated": "Akun clipper diperbarui",
+    "suspend": "Suspend",
+    "suspendBody": "Claim terbuka dilepas; clipper tidak bisa claim/withdraw sampai masa suspend lewat.",
+    "unsuspend": "Cabut suspend",
+    "days": "Hari (1–365)"
   },
   "finance": {
     "title": "Finance",
@@ -739,9 +750,7 @@
     },
     "exportRecipients": "Export penerima",
     "skipped": "Dilewati",
-    "deliveredGap": "Belum ada aksi admin untuk menandai klaim export manual sebagai terkirim.",
     "freeCodes": "{n} kode tersisa",
-    "codesGap": "Unggah kode hanya bisa oleh owner/manager brand pemilik reward type (api.upload_reward_codes).",
     "empty": "Antrean kosong",
     "user": "Clipper",
     "amount": "Jumlah",
@@ -749,7 +758,19 @@
     "status": "Status",
     "cancel": "Batalkan",
     "cancelBody": "Saldo kembali ke clipper. Kode voucher yang sudah terpasang tidak bisa dibatalkan.",
-    "cancelled": "Klaim dibatalkan"
+    "cancelled": "Klaim dibatalkan",
+    "uploadCodes": "Unggah kode",
+    "uploadCodesBody": "Maks 10.000 kode per unggahan; kode yang sudah ada diabaikan.",
+    "upload": "Unggah",
+    "codesText": "Kode",
+    "codesTextHelp": "Satu kode per baris (atau dipisah koma).",
+    "codesFile": "Atau berkas .txt/.csv",
+    "codesUploaded": "{count} kode baru ditambahkan",
+    "markDelivered": "Tandai terkirim",
+    "markDeliveredBody": "Clipper mendapat notifikasi reward terkirim.",
+    "delivered": "Ditandai terkirim",
+    "ref": "Referensi kiriman",
+    "refHelp": "Nomor resi / nomor voucher"
   },
   "config": {
     "title": "Config",
@@ -829,7 +850,6 @@
   "audit": {
     "title": "Audit log",
     "description": "Semua aksi admin, finance, dan config di core: siapa, apa, kapan, sebelum/sesudah.",
-    "identityGap": "Log akses PII di identity (member.audit_logs) belum punya view api, jadi belum tampil di sini.",
     "action": "Aksi",
     "target": "Target",
     "actor": "Pelaku",
@@ -841,7 +861,10 @@
     "before": "Sebelum",
     "after": "Sesudah",
     "system": "Sistem",
-    "empty": "Tidak ada log di filter ini"
+    "empty": "Tidak ada log di filter ini",
+    "source": "Sumber log",
+    "sourceCore": "Core",
+    "sourceIdentity": "Identity (PII)"
   },
   "broadcast": {
     "title": "Broadcast",

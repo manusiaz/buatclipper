@@ -39,6 +39,7 @@ export default async function CampaignBuilderPage({
   }
 
   let initial: CampaignDraft | null = null;
+  let feeRuleId: string | null = null;
   let rejection: { reason: string; message: string } | null = null;
   if (campaign) {
     if (!isUuid(campaign)) notFound();
@@ -46,6 +47,7 @@ export default async function CampaignBuilderPage({
     if (error || !detail) notFound();
     initial = draftFromDetail(detail);
     if (initial.org_id !== orgId) notFound();
+    feeRuleId = (await ctx.core.from('campaigns').select('fee_rule_id').eq('id', campaign).maybeSingle()).data?.fee_rule_id ?? null;
     if (initial.status === 'rejected') {
       const { data: d } = await ctx.core
         .from('review_decisions')
@@ -71,7 +73,7 @@ export default async function CampaignBuilderPage({
         orgId={orgId}
         renderId={randomUUID()}
         canBilling={can(ctx.role, 'billing')}
-        context={await builderContext(ctx)}
+        context={await builderContext(ctx, feeRuleId)}
         initial={initial}
         save={saveCampaign.bind(null, orgId)}
         uploadUrl={campaignUploadUrl.bind(null, orgId)}

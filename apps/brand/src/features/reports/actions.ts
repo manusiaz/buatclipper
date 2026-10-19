@@ -9,7 +9,7 @@ import { fail, type Result } from '@/lib/result';
 export async function createReportLink(orgId: string, campaignId: string): Promise<Result<{ url: string }>> {
   const { core } = await getOrgContext(orgId);
   const { data, error } = await core.rpc('create_report_link', { p_campaign: campaignId, p_days: 90 });
-  if (error || !data) return fail(error?.code === '42501' ? { message: 'auth:forbidden' } : error);
+  if (error || !data) return fail(error);
   revalidatePath(`/${orgId}/campaigns/${campaignId}`);
   return { ok: true, url: `${hosts.web}/r/${data}` };
 }
@@ -18,7 +18,7 @@ export async function revokeReportLink(orgId: string, campaignId: string, linkId
   const { core } = await getOrgContext(orgId);
   if (!isUuid(linkId)) return { ok: false, error: 'not_found:generic' };
   const { error } = await core.rpc('revoke_report_link', { p_link: linkId });
-  if (error) return fail(error.code === '42501' ? { message: 'auth:forbidden' } : error);
+  if (error) return fail(error);
   revalidatePath(`/${orgId}/campaigns/${campaignId}`);
   return { ok: true };
 }

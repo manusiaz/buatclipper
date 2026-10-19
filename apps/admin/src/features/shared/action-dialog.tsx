@@ -46,13 +46,15 @@ export interface ActionDialogProps {
   submitLabel: string;
   tone?: 'primary' | 'danger' | 'ink';
   success: string;
+  /** Kunci pesan admin.* untuk toast sukses yang memakai data hasil action (mis. {count}). */
+  successKey?: string;
   action: AdminAction;
   /** Konten tambahan di atas field (ringkasan, diff). */
   children?: ReactNode;
   size?: 'sm' | 'md' | 'lg';
 }
 
-export function ActionDialog({ trigger, title, description, fields = [], submitLabel, tone = 'primary', success, action, children, size = 'sm' }: ActionDialogProps) {
+export function ActionDialog({ trigger, title, description, fields = [], submitLabel, tone = 'primary', success, successKey, action, children, size = 'sm' }: ActionDialogProps) {
   const tc = useTranslations('common');
   const ta = useTranslations('admin');
   const errorText = useErrorText();
@@ -74,7 +76,7 @@ export function ActionDialog({ trigger, title, description, fields = [], submitL
     start(async () => {
       const r = await action(fd);
       if (!r.ok) return setError(errorText(r.error));
-      toast.success(success);
+      toast.success(successKey ? ta(successKey, (r.data ?? {}) as Record<string, number>) : success);
       setOpen(false);
     });
   };

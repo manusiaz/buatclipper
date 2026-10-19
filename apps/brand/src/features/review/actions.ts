@@ -2,7 +2,7 @@
 
 import { revalidatePath } from 'next/cache';
 import { getOrgContext, isUuid } from '@/lib/org';
-import { REJECT_REASONS, type RejectReason } from './reasons';
+import { REJECT_REASONS, type RejectReason } from '@clipper/i18n';
 
 /** F-B07 approve/reject massal → api.record_review per submisi (DB: review_mode brand, status in_review, owner/manager). */
 export async function reviewSubmissions(

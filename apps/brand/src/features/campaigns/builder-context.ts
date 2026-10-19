@@ -1,24 +1,31 @@
 import { PLATFORMS, type BuilderContext, type Platform } from '@clipper/campaign-builder';
 import { num, publicSettings, type OrgContext } from '@/lib/org';
 
-/** Konteks builder (F-B02) dari api: kategori, reward type global + org, flag platform, fee efektif, pajak, paket managed. */
-export async function builderContext({ core, org }: Pick<OrgContext, 'core' | 'org'>): Promise<BuilderContext> {
-  const [{ data: categories }, { data: rewardTypes }, { data: rules }, { count: orgCount }, settings] = await Promise.all([
+/**
+ * Konteks builder (F-B02) dari api: kategori, reward type global + org, flag platform, pajak, paket managed, dan fee efektif
+ * dengan urutan sama seperti finance.effective_fee_rule: rule campaign → rule org → global.
+ */
+export async function builderContext(
+  { core, org }: Pick<OrgContext, 'core' | 'org'>,
+  campaignFeeRuleId: string | null = null,
+): Promise<BuilderContext> {
+  const ruleIds = [campaignFeeRuleId, org.fee_rule_id].filter((x): x is string => !!x);
+  const [{ data: categories }, { data: rewardTypes }, { data: rules }, settings] = await Promise.all([
     core.from('categories').select('id, name_id, name_en, sort').eq('active', true).order('sort'),
     core
       .from('reward_types')
       .select('id, code, name, unit_label, kind, idr_value_per_unit, decimals, owner_org_id')
       .or(`owner_org_id.is.null,owner_org_id.eq.${org.id}`)
       .order('code'),
-    core.from('fee_rules').select('scope, mgmt_fee_pct, admin_fee_pct'),
-    core.from('organizations').select('id', { count: 'exact', head: true }),
+    core
+      .from('fee_rules')
+      .select('id, scope, mgmt_fee_pct, admin_fee_pct')
+      .or(ruleIds.length ? `scope.eq.global,id.in.(${ruleIds.join(',')})` : 'scope.eq.global'),
     publicSettings(core, ['public.flags.platforms', 'public.billing.tax_pct', 'public.billing.managed_service_idr']),
   ]);
   const flags = (settings['public.flags.platforms'] ?? {}) as Partial<Record<Platform, boolean>>;
-  const global = (rules ?? []).find((r) => r.scope === 'global');
-  // api.organizations tidak membuka fee_rule_id: rule org yang terlihat hanya pasti milik org ini kalau user cuma melihat satu org.
-  const orgRules = (rules ?? []).filter((r) => r.scope === 'org');
-  const fee = orgRules.length === 1 && orgCount === 1 ? orgRules[0] : global;
+  const byId = (id: string | null | undefined) => (id ? (rules ?? []).find((r) => r.id === id) : undefined);
+  const fee = byId(campaignFeeRuleId) ?? byId(org.fee_rule_id) ?? (rules ?? []).find((r) => r.scope === 'global');
   return {
     mode: 'brand',
     org: { id: org.id, name: org.name, status: org.status ?? 'pending_verification' },

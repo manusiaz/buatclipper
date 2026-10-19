@@ -1,10 +1,30 @@
 import type { Metadata } from 'next';
 import Link from 'next/link';
 import { getLocale, getTranslations } from 'next-intl/server';
+import { hasRole } from '@clipper/auth';
 import { coreServer, requireAdmin } from '@clipper/auth/server';
-import { Alert, Badge, Card, CardDescription, CardHeader, CardTitle, cn, EmptyState, formatNumber, PageHeader, RelativeTime, StatusBadge, Table, TBody, TD, TH, THead, TR, type UiLocale } from '@clipper/ui';
+import {
+  Badge,
+  Card,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+  cn,
+  EmptyState,
+  formatNumber,
+  PageHeader,
+  RelativeTime,
+  StatusBadge,
+  Table,
+  TBody,
+  TD,
+  TH,
+  THead,
+  TR,
+  type UiLocale,
+} from '@clipper/ui';
 import { isUuid, param, rows, uniq, type SearchParams } from '@/lib/data';
-import { cancelFulfillment, exportRecipients } from '@/features/fulfillment/actions';
+import { cancelFulfillment, exportRecipients, markDelivered, uploadCodes } from '@/features/fulfillment/actions';
 import { ActionDialog } from '@/features/shared/action-dialog';
 import { ExportPanel } from '@/features/shared/export-panel';
 import { JsonView } from '@/features/shared/json-view';
@@ -18,19 +38,34 @@ const ACTIVE = ['requested', 'on_hold', 'processing', 'failed'] as const;
 
 // F-A10 / A5.1: antrean klaim reward non-tunai per reward type; export penerima (pii-export, consent share_with_brand); batal.
 export default async function FulfillmentPage({ searchParams }: { searchParams: Promise<SearchParams> }) {
-  await requireAdmin(...rolesFor('fulfillment'));
+  const { claims } = await requireAdmin(...rolesFor('fulfillment'));
   const [t, locale, sp, db] = await Promise.all([getTranslations('admin'), getLocale(), searchParams, coreServer('admin')]);
   const loc = locale as UiLocale;
   const [rtRes, qRes] = await Promise.all([
-    db.from('reward_types').select('id, code, name, unit_label, fulfillment, owner_org_id, stock').neq('fulfillment', 'payout').order('name'),
-    db.from('fulfillments').select('reward_type_id, status').in('status', [...ACTIVE]).limit(10000),
+    db
+      .from('reward_types')
+      .select('id, code, name, unit_label, fulfillment, owner_org_id, stock')
+      .neq('fulfillment', 'payout')
+      .order('name'),
+    db
+      .from('fulfillments')
+      .select('reward_type_id, status')
+      .in('status', [...ACTIVE])
+      .limit(10000),
   ]);
   const types = rows(rtRes);
   const counts = new Map<string, number>();
   for (const f of rows(qRes)) counts.set(f.reward_type_id!, (counts.get(f.reward_type_id!) ?? 0) + 1);
   const pick = param(sp, 'type');
   const selected = types.find((r) => r.id === pick) ?? types.find((r) => counts.get(r.id!)) ?? types[0];
-  const orgs = new Map(rows(await db.from('organizations').select('id, name').in('id', uniq(types.map((r) => r.owner_org_id)))).map((o) => [o.id, o.name]));
+  const orgs = new Map(
+    rows(
+      await db
+        .from('organizations')
+        .select('id, name')
+        .in('id', uniq(types.map((r) => r.owner_org_id))),
+    ).map((o) => [o.id, o.name]),
+  );
 
   return (
     <>
@@ -46,12 +81,16 @@ export default async function FulfillmentPage({ searchParams }: { searchParams: 
                   <Link
                     href={`/fulfillment?type=${r.id}`}
                     aria-current={r.id === selected?.id ? 'page' : undefined}
-                    className={cn('flex min-h-12 items-center gap-2 rounded-[10px] px-3 py-2 text-sm hover:bg-subtle focus-ring', 'aria-[current=page]:bg-primary-tint aria-[current=page]:font-bold')}
+                    className={cn(
+                      'flex min-h-12 items-center gap-2 rounded-[10px] px-3 py-2 text-sm hover:bg-subtle focus-ring',
+                      'aria-[current=page]:bg-primary-tint aria-[current=page]:font-bold',
+                    )}
                   >
                     <span className="min-w-0 flex-1">
                       <span className="block truncate font-semibold text-ink">{r.name}</span>
                       <span className="block truncate text-caption text-muted">
-                        {t(`fulfillment.kinds.${r.fulfillment}`)} · {r.owner_org_id ? (orgs.get(r.owner_org_id) ?? '—') : t('fulfillment.global')}
+                        {t(`fulfillment.kinds.${r.fulfillment}`)} ·{' '}
+                        {r.owner_org_id ? (orgs.get(r.owner_org_id) ?? '—') : t('fulfillment.global')}
                       </span>
                     </span>
                     {counts.get(r.id!) ? <Badge tone="primary">{counts.get(r.id!)}</Badge> : null}
@@ -60,24 +99,45 @@ export default async function FulfillmentPage({ searchParams }: { searchParams: 
               ))}
             </ul>
           </Card>
-          {selected && isUuid(selected.id) ? <TypeQueue rt={selected} loc={loc} /> : null}
+          {selected && isUuid(selected.id) ? <TypeQueue rt={selected} loc={loc} canOps={hasRole(claims, 'admin_ops')} /> : null}
         </div>
       )}
     </>
   );
 }
 
-async function TypeQueue({ rt, loc }: { rt: { id: string | null; name: string | null; fulfillment: string | null; unit_label: string | null; stock: number | null }; loc: UiLocale }) {
+async function TypeQueue({
+  rt,
+  loc,
+  canOps,
+}: {
+  rt: { id: string | null; name: string | null; fulfillment: string | null; unit_label: string | null; stock: number | null };
+  loc: UiLocale;
+  canOps: boolean;
+}) {
   const [t, db] = await Promise.all([getTranslations('admin'), coreServer('admin')]);
   const id = rt.id!;
   const [listRes, freeRes] = await Promise.all([
-    db.from('fulfillments').select('id, user_id, amount, recipient, status, attempts, created_at').eq('reward_type_id', id).in('status', [...ACTIVE]).order('created_at').limit(200),
+    db
+      .from('fulfillments')
+      .select('id, user_id, amount, recipient, status, attempts, created_at')
+      .eq('reward_type_id', id)
+      .in('status', [...ACTIVE])
+      .order('created_at')
+      .limit(200),
     rt.fulfillment === 'code_pool'
       ? db.from('reward_codes').select('id', { count: 'exact', head: true }).eq('reward_type_id', id).is('fulfillment_id', null)
       : Promise.resolve({ count: null }),
   ]);
   const list = rows(listRes);
-  const users = new Map(rows(await db.from('profiles').select('id, username').in('id', uniq(list.map((f) => f.user_id)))).map((p) => [p.id, p.username]));
+  const users = new Map(
+    rows(
+      await db
+        .from('profiles')
+        .select('id, username')
+        .in('id', uniq(list.map((f) => f.user_id))),
+    ).map((p) => [p.id, p.username]),
+  );
 
   return (
     <div className="flex min-w-0 flex-col gap-4">
@@ -87,13 +147,39 @@ async function TypeQueue({ rt, loc }: { rt: { id: string | null; name: string | 
           <CardDescription>{t(`fulfillment.kindHelp.${rt.fulfillment}`)}</CardDescription>
         </CardHeader>
         {rt.fulfillment === 'manual_export' ? (
-          <ExportPanel label={t('fulfillment.exportRecipients')} itemsTitle={t('fulfillment.skipped')} action={exportRecipients.bind(null, id)} />
+          <ExportPanel
+            label={t('fulfillment.exportRecipients')}
+            itemsTitle={t('fulfillment.skipped')}
+            action={exportRecipients.bind(null, id)}
+          />
         ) : null}
-        {rt.fulfillment === 'manual_export' ? <Alert tone="info">{t('fulfillment.deliveredGap')}</Alert> : null}
         {rt.fulfillment === 'code_pool' ? (
           <>
-            <p className="text-body-s text-text-2">{t('fulfillment.freeCodes', { n: formatNumber(freeRes.count ?? 0, loc) })}</p>
-            <Alert tone="info">{t('fulfillment.codesGap')}</Alert>
+            <div className="flex flex-wrap items-center gap-3">
+              <p className="text-body-s text-text-2">{t('fulfillment.freeCodes', { n: formatNumber(freeRes.count ?? 0, loc) })}</p>
+              {canOps ? (
+                <ActionDialog
+                  trigger={{ label: t('fulfillment.uploadCodes'), icon: 'upload', variant: 'primary' }}
+                  title={t('fulfillment.uploadCodes')}
+                  description={t('fulfillment.uploadCodesBody')}
+                  size="md"
+                  submitLabel={t('fulfillment.upload')}
+                  success={t('fulfillment.uploadCodes')}
+                  successKey="fulfillment.codesUploaded"
+                  action={uploadCodes.bind(null, id)}
+                  fields={[
+                    { kind: 'textarea', name: 'codes', label: t('fulfillment.codesText'), helper: t('fulfillment.codesTextHelp') },
+                    {
+                      kind: 'file',
+                      name: 'file',
+                      label: t('fulfillment.codesFile'),
+                      accept: '.txt,.csv,text/plain,text/csv',
+                      maxBytes: 2 * 1024 * 1024,
+                    },
+                  ]}
+                />
+              ) : null}
+            </div>
           </>
         ) : null}
       </Card>
@@ -130,16 +216,38 @@ async function TypeQueue({ rt, loc }: { rt: { id: string | null; name: string | 
                   {Number(f.attempts) > 0 ? <span className="ml-2 text-caption text-muted">×{f.attempts}</span> : null}
                 </TD>
                 <TD align="right">
-                  <ActionDialog
-                    trigger={{ label: t('fulfillment.cancel'), variant: 'ghost', icon: 'cancel' }}
-                    title={t('fulfillment.cancel')}
-                    description={t('fulfillment.cancelBody')}
-                    tone="danger"
-                    submitLabel={t('fulfillment.cancel')}
-                    success={t('fulfillment.cancelled')}
-                    action={cancelFulfillment.bind(null, f.id!)}
-                    fields={[{ kind: 'textarea', name: 'reason', label: t('form.reason'), required: true, maxLength: 500 }]}
-                  />
+                  <div className="flex flex-wrap justify-end gap-2">
+                    {canOps && rt.fulfillment === 'manual_export' && f.status !== 'failed' ? (
+                      <ActionDialog
+                        trigger={{ label: t('fulfillment.markDelivered'), variant: 'secondary', icon: 'check' }}
+                        title={t('fulfillment.markDelivered')}
+                        description={t('fulfillment.markDeliveredBody')}
+                        submitLabel={t('fulfillment.markDelivered')}
+                        success={t('fulfillment.delivered')}
+                        action={markDelivered.bind(null, f.id!)}
+                        fields={[
+                          {
+                            kind: 'text',
+                            name: 'ref',
+                            label: t('fulfillment.ref'),
+                            helper: t('fulfillment.refHelp'),
+                            required: true,
+                            maxLength: 200,
+                          },
+                        ]}
+                      />
+                    ) : null}
+                    <ActionDialog
+                      trigger={{ label: t('fulfillment.cancel'), variant: 'ghost', icon: 'cancel' }}
+                      title={t('fulfillment.cancel')}
+                      description={t('fulfillment.cancelBody')}
+                      tone="danger"
+                      submitLabel={t('fulfillment.cancel')}
+                      success={t('fulfillment.cancelled')}
+                      action={cancelFulfillment.bind(null, f.id!)}
+                      fields={[{ kind: 'textarea', name: 'reason', label: t('form.reason'), required: true, maxLength: 500 }]}
+                    />
+                  </div>
                 </TD>
               </TR>
             ))}

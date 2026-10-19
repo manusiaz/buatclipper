@@ -1,5 +1,9 @@
 {
-  "common": { "pagination": "Pagination", "previous": "Previous", "next": "Next" },
+  "common": {
+    "pagination": "Pagination",
+    "previous": "Previous",
+    "next": "Next"
+  },
   "shell": {
     "product": "Brand",
     "openMenu": "Open menu",
@@ -22,14 +26,23 @@
     "team": "Team",
     "settings": "Settings"
   },
-  "roles": { "brand_owner": "Owner", "brand_manager": "Manager", "brand_finance": "Finance", "brand_viewer": "Viewer" },
+  "roles": {
+    "brand_owner": "Owner",
+    "brand_manager": "Manager",
+    "brand_finance": "Finance",
+    "brand_viewer": "Viewer"
+  },
   "roleHelp": {
     "brand_owner": "Full access: campaigns, billing, members.",
     "brand_manager": "Create & edit campaigns, review clips, reports. No billing.",
     "brand_finance": "Billing, invoices, top-ups, refunds. No campaign editing.",
     "brand_viewer": "View dashboards & reports only."
   },
-  "orgStatus": { "pending_verification": "Pending verification", "verified": "Verified", "suspended": "Suspended" },
+  "orgStatus": {
+    "pending_verification": "Pending verification",
+    "verified": "Verified",
+    "suspended": "Suspended"
+  },
   "campaignStatus": {
     "draft": "Draft",
     "in_review": "In review",
@@ -43,8 +56,19 @@
     "settling": "Settling",
     "settled": "Settled"
   },
-  "campaignType": { "clipping": "Clipping", "ugc": "UGC", "music": "Music/Sound", "logo": "Logo", "text": "Text" },
-  "ruleKind": { "per_1k_views": "Per 1,000 views", "flat_per_post": "Flat per post", "milestone_bonus": "Milestone bonus", "tiered_cpm": "Tiered CPM" },
+  "campaignType": {
+    "clipping": "Clipping",
+    "ugc": "UGC",
+    "music": "Music/Sound",
+    "logo": "Logo",
+    "text": "Text"
+  },
+  "ruleKind": {
+    "per_1k_views": "Per 1,000 views",
+    "flat_per_post": "Flat per post",
+    "milestone_bonus": "Milestone bonus",
+    "tiered_cpm": "Tiered CPM"
+  },
   "banner": {
     "pendingTitle": "Organization pending verification",
     "pendingBody": "You can still draft campaigns. Submitting unlocks once the team verifies your organization details.",
@@ -53,7 +77,11 @@
     "suspendedTitle": "Organization suspended",
     "suspendedBody": "New campaigns cannot be submitted. Contact the Clipper team for details."
   },
-  "notFound": { "title": "Page not found", "body": "This organization or campaign does not exist, or you are not a member.", "action": "Go to organizations" },
+  "notFound": {
+    "title": "Page not found",
+    "body": "This organization or campaign does not exist, or you are not a member.",
+    "action": "Go to organizations"
+  },
   "picker": {
     "title": "Choose an organization",
     "description": "Your organizations and client orgs linked through an agency.",
@@ -157,10 +185,20 @@
     "notExhausting": "Not projected to run out",
     "beforeHorizon": "Before end",
     "alertsLabel": "Budget alert history",
-    "alert": { "used_50": "50% used", "used_80": "80% used", "used_100": "100% used", "projection_low": "Projection < 50%" },
+    "alert": {
+      "used_50": "50% used",
+      "used_80": "80% used",
+      "used_100": "100% used",
+      "projection_low": "Projection < 50%"
+    },
     "lowTitle": "Projected budget usage is only {pct}%",
     "lowBody": "The budget may not be used up by the deadline. Try one of these:",
-    "suggest": { "raise_rate": "Raise the rate", "extend": "Extend the deadline", "invite": "Invite clippers", "pin": "Pin the campaign" },
+    "suggest": {
+      "raise_rate": "Raise the rate",
+      "extend": "Extend the deadline",
+      "invite": "Invite clippers",
+      "pin": "Pin the campaign"
+    },
     "pools": "Reward pools",
     "poolType": "Reward",
     "poolTotal": "Total",
@@ -286,7 +324,11 @@
     "colStatus": "Status",
     "colActions": "Actions",
     "noExpiry": "No expiry",
-    "status": { "active": "Active", "expired": "Expired", "revoked": "Revoked" },
+    "status": {
+      "active": "Active",
+      "expired": "Expired",
+      "revoked": "Revoked"
+    },
     "revoke": "Revoke",
     "revokeTitle": "Revoke report link?",
     "revokeBody": "Anyone opening this link will see a Link no longer valid page.",
@@ -319,15 +361,6 @@
     "rejectTitle": "Reject {count, plural, one {# clip} other {# clips}}",
     "rejectBody": "The clipper sees this reason and can appeal once.",
     "reason": "Reason",
-    "reasons": {
-      "off_brief": "Does not follow the brief",
-      "missing_tags": "Missing required tags/mentions/links",
-      "low_quality": "Low video quality",
-      "inappropriate": "Inappropriate content",
-      "misleading": "Misleading / harmful to the brand",
-      "duplicate": "Duplicate / reused content",
-      "other": "Other"
-    },
     "message": "Message to the clipper",
     "messageHelp": "Explain what needs fixing.",
     "optional": "(optional)",
@@ -353,11 +386,29 @@
     "colRequested": "Requested",
     "refunds": "Refunds",
     "noRefunds": "No refunds yet",
-    "refundStatus": { "requested": "Requested", "approved": "Approved", "paid": "Transferred", "cancelled": "Cancelled" },
-    "creditGap": "Rollover credit is recorded on the organization credit account. Its balance cannot be shown on this page yet.",
-    "status": { "issued": "Unpaid", "overdue": "Overdue", "paid": "Paid", "void": "Void" },
-    "kind": { "campaign": "Campaign budget", "topup": "Top-up", "pinned": "Campaign pin", "managed_service": "Managed package" },
-    "channel": { "qris": "QRIS", "transfer": "Bank transfer" },
+    "refundStatus": {
+      "requested": "Requested",
+      "approved": "Approved",
+      "paid": "Transferred",
+      "cancelled": "Cancelled"
+    },
+    "status": {
+      "issued": "Unpaid",
+      "overdue": "Overdue",
+      "paid": "Paid",
+      "void": "Void"
+    },
+    "kind": {
+      "campaign": "Campaign budget",
+      "topup": "Top-up",
+      "pinned": "Campaign pin",
+      "managed_service": "Managed package"
+    },
+    "channel": {
+      "qris": "QRIS",
+      "transfer": "Bank transfer",
+      "credit": "Organization credit"
+    },
     "closeDetail": "Close",
     "pinUntil": "pinned until {date}",
     "issuedAt": "Issued",
@@ -376,6 +427,7 @@
     "fakturNotYet": "The tax invoice is issued by finance after the payment is matched.",
     "payQris": "Pay with QRIS",
     "payTransfer": "Pay by bank transfer",
+    "payCredit": "Pay with organization credit",
     "qrisLabel": "QRIS for invoice {number}, total {total}",
     "qrisHint": "Scan with mobile banking or an e-wallet. The amount {total} is prefilled.",
     "qrisMissingTitle": "QRIS not configured yet",
@@ -395,12 +447,12 @@
   "leftover": {
     "title": "Leftover campaign budget",
     "description": "Settled campaigns with creator budget left. Roll it over to the next campaign without new fees, or request a refund.",
-    "estimate": "Estimated leftover {amount}",
+    "amountLeft": "{amount} left",
     "rollover": "Rollover",
     "refund": "Refund",
     "setupMfa": "Enable MFA",
     "mfaNote": "Rollovers and refunds move money, so they require two-step verification (TOTP).",
-    "note": "The figures above are estimates from the pools. The system rejects amounts above the actual balance.",
+    "note": "Figures come from the campaign pool ledger balance. Refunds are reduced by the transfer fee.",
     "rolloverTitle": "Roll over leftover budget",
     "rolloverBody": "The leftover moves to the organization credit for the next campaign, without new fees.",
     "refundTitle": "Refund leftover budget",
@@ -408,10 +460,36 @@
     "amount": "Amount",
     "amountHelp": "Whole number, at most {max}.",
     "amountInvalid": "Invalid amount.",
+    "transferFee": "Transfer fee",
+    "received": "Received",
     "cancel": "Cancel",
     "confirm": "Confirm",
     "rolloverDone": "Leftover moved to organization credit.",
     "refundDone": "Refund requested. Track it in the refund list."
+  },
+  "credit": {
+    "title": "Organization credit",
+    "description": "Rolled-over leftover budget. Use it to pay the next invoices without a transfer.",
+    "available": "Available",
+    "balance": "Credit balance",
+    "held": "Held for pending refunds",
+    "history": "Credit history",
+    "ref": {
+      "rollover": "Leftover budget rollover",
+      "refund": "Refund",
+      "invoice_payment": "Invoice payment",
+      "other": "Adjustment"
+    },
+    "empty": "No credit yet",
+    "emptyBody": "Credit appears after a campaign’s leftover budget is rolled over.",
+    "pay": "Pay with credit",
+    "payNeedsMfa": "Enable MFA to pay with credit",
+    "mfaNote": "Paying with credit moves money, so it requires two-step verification (TOTP).",
+    "payTitle": "Pay {number} with credit?",
+    "payBody": "Organization credit decreases by {total}. Credit left afterwards: {rest}.",
+    "payConfirm": "Pay now",
+    "cancel": "Cancel",
+    "paid": "Invoice {number} paid with credit."
   },
   "rewardTypes": {
     "title": "Reward types",
@@ -426,7 +504,14 @@
     "code": "Code",
     "codeHelp": "Uppercase letters, digits, _ (2–40), e.g. DIAMOND.",
     "kind": "Kind",
-    "kinds": { "cash": "Cash", "in_game": "In-game item", "voucher_code": "Voucher code", "points": "Points", "physical": "Physical item", "custom": "Other" },
+    "kinds": {
+      "cash": "Cash",
+      "in_game": "In-game item",
+      "voucher_code": "Voucher code",
+      "points": "Points",
+      "physical": "Physical item",
+      "custom": "Other"
+    },
     "unitLabel": "Unit label",
     "unitHelp": "Shown next to amounts, e.g. Diamonds.",
     "idrValue": "Rupiah value per unit",
@@ -438,7 +523,12 @@
     "unlimited": "Unlimited",
     "perUnit": "Rp per {unit}",
     "fulfillment": "Fulfillment",
-    "fulfillments": { "payout": "Payout", "manual_export": "Manual export", "code_pool": "Code pool", "webhook": "Webhook" },
+    "fulfillments": {
+      "payout": "Payout",
+      "manual_export": "Manual export",
+      "code_pool": "Code pool",
+      "webhook": "Webhook"
+    },
     "fulfillmentHelp": {
       "manual_export": "The team exports the recipient list and the brand delivers.",
       "code_pool": "Uploaded voucher codes are handed out automatically, one code per claim.",
@@ -522,7 +612,11 @@
     "you": "(you)",
     "invites": "Invite links",
     "noInvites": "No invite links yet",
-    "inviteState": { "pending": "Not used", "accepted": "Accepted", "expired": "Expired" },
+    "inviteState": {
+      "pending": "Not used",
+      "accepted": "Accepted",
+      "expired": "Expired"
+    },
     "acceptedBy": "Accepted by {name} · {date}",
     "expires": "Valid until {date}",
     "manageNote": "Changing roles or removing members is done through the Clipper team."
@@ -533,7 +627,10 @@
     "profile": "Organization profile",
     "name": "Brand name",
     "type": "Type",
-    "types": { "badan": "Business entity", "perorangan": "Individual" },
+    "types": {
+      "badan": "Business entity",
+      "perorangan": "Individual"
+    },
     "legalName": "Legal name",
     "npwp": "NPWP (tax ID)",
     "address": "Address",
@@ -562,7 +659,11 @@
     "yourOrgId": "This organization’s ID:",
     "noAgencies": "No linked agencies",
     "unknownOrg": "Organization {id}…",
-    "state": { "pending": "Pending", "approved": "Linked", "revoked": "Revoked" },
+    "state": {
+      "pending": "Pending",
+      "approved": "Linked",
+      "revoked": "Revoked"
+    },
     "approve": "Approve",
     "reject": "Reject",
     "revoke": "Revoke",
@@ -571,7 +672,12 @@
     "revokeClientTitle": "Revoke agency access?",
     "revokeClientBody": "Agency members immediately lose access to this organization.",
     "cancel": "Cancel",
-    "done": { "request": "Request sent to the client owner.", "approve": "Agency approved.", "reject": "Request rejected.", "revoke": "Link revoked." }
+    "done": {
+      "request": "Request sent to the client owner.",
+      "approve": "Agency approved.",
+      "reject": "Request rejected.",
+      "revoke": "Link revoked."
+    }
   },
   "bell": {
     "label": "Notifications",
@@ -580,7 +686,10 @@
     "empty": "No notifications yet"
   },
   "notif": {
-    "invoice": { "issued": "Invoice {number} issued · {amount}", "paid": "Payment received for invoice {number} · {amount}" },
+    "invoice": {
+      "issued": "Invoice {number} issued · {amount}",
+      "paid": "Payment received for invoice {number} · {amount}"
+    },
     "campaign": {
       "approved": "Campaign {campaign} approved and scheduled",
       "rejected": "Campaign {campaign} was rejected. See the reason and fix it.",
@@ -591,15 +700,25 @@
       "used": "{campaign} has used {pct}% of its budget",
       "projection_low": "{campaign} is projected to use only {projected}% of its budget. See suggestions on the dashboard."
     },
-    "submission": { "pending_review": "New clip waiting for review in {campaign}" },
+    "submission": {
+      "pending_review": "New clip waiting for review in {campaign}"
+    },
     "org": {
       "verified": "{org} is verified. You can now submit campaigns.",
       "rejected": "Verification of {org} was rejected: {reason}",
       "suspended": "{org} has been suspended"
     },
-    "agency": { "link_requested": "{agency} asked to link {org} as a client", "link_approved": "{client} approved the agency link" },
-    "refund": { "requested": "Refund of {amount} for {campaign} requested", "paid": "Refund of {amount} transferred" },
-    "managed": { "draft_ready": "Managed draft {campaign} is ready for approval" }
+    "agency": {
+      "link_requested": "{agency} asked to link {org} as a client",
+      "link_approved": "{client} approved the agency link"
+    },
+    "refund": {
+      "requested": "Refund of {amount} for {campaign} requested",
+      "paid": "Refund of {amount} transferred"
+    },
+    "managed": {
+      "draft_ready": "Managed draft {campaign} is ready for approval"
+    }
   },
   "errors": {
     "field": {
@@ -624,6 +743,9 @@
       "recipient_schema": "Invalid recipient fields.",
       "template": "Templates cannot run. Duplicate it into a campaign first."
     },
-    "code": { "insufficient_balance": "Amount exceeds the campaign’s leftover budget." }
+    "code": {
+      "insufficient_balance": "Amount exceeds the campaign’s leftover budget.",
+      "insufficient_credit": "Organization credit is not enough for this invoice."
+    }
   }
 }

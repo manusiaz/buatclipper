@@ -27,3 +27,14 @@ export async function requestRefund(
   revalidatePath(`/${orgId}/billing`);
   return { ok: true, id: data };
 }
+
+/** Bayar invoice penuh dari kredit org (jurnal sama dengan transfer, channel credit). Replay = no-op di DB. */
+export async function payInvoiceWithCredit(orgId: string, invoiceId: string): Promise<Result> {
+  await requireBrandAal2();
+  const { core } = await getOrgContext(orgId);
+  if (!isUuid(invoiceId)) return { ok: false, error: 'not_found:invoice' };
+  const { error } = await core.rpc('pay_invoice_with_credit', { p_invoice: invoiceId });
+  if (error) return fail(error);
+  revalidatePath(`/${orgId}`, 'layout');
+  return { ok: true };
+}

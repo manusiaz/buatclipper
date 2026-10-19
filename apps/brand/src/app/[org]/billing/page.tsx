@@ -18,7 +18,10 @@ import {
   formatIDR,
 } from '@clipper/ui';
 import { InvoiceDetail, invoiceTone, type InvoiceRow, type PaymentConfig } from '@/features/billing/invoice-detail';
+import { CreditCard } from '@/features/billing/credit-card';
+import { canPayWithCredit, parseCredit } from '@/features/billing/credit';
 import { LeftoverPanel, type LeftoverRow } from '@/features/billing/leftover-panel';
+import { PayWithCredit } from '@/features/billing/pay-credit';
 import { can, getOrgContext, isUuid, num, publicSettings } from '@/lib/org';
 
 const PAGE = 25;
@@ -65,28 +68,18 @@ export default async function BillingPage({ params, searchParams }: { params: Pr
 
   const page = Math.max(1, Number.parseInt(sp.page ?? '1', 10) || 1);
   const selectedId = isUuid(sp.invoice) ? sp.invoice : null;
-  const [list, selectedRes, settings, { data: refunds }, { data: settled }, { data: idrType }] = await Promise.all([
+  const [list, selectedRes, settings, { data: refunds }, creditRes] = await Promise.all([
     core.from('invoices').select(INVOICE_COLS, { count: 'exact' }).eq('org_id', orgId).order('issued_at', { ascending: false }).range((page - 1) * PAGE, page * PAGE - 1),
     selectedId ? core.from('invoices').select(INVOICE_COLS).eq('id', selectedId).eq('org_id', orgId).maybeSingle() : null,
-    publicSettings(core, ['public.billing.qris_max_idr', 'public.billing.qris_payload', 'public.billing.bank_account']),
+    publicSettings(core, ['public.billing.qris_max_idr', 'public.billing.qris_payload', 'public.billing.bank_account', 'public.finance.refund_transfer_fee_idr']),
     core.from('org_refunds').select('id, campaign_id, amount, transfer_fee, status, created_at, paid_at').eq('org_id', orgId).order('created_at', { ascending: false }).limit(50),
-    core.from('campaigns').select('id, title').eq('org_id', orgId).eq('status', 'settled').eq('is_template', false),
-    core.from('reward_types').select('id').eq('code', 'IDR').is('owner_org_id', null).maybeSingle(),
+    core.rpc('org_credit', { p_org: orgId }),
   ]);
   const invoices = (list.data ?? []).filter((r) => r.id).map((r) => asInvoice(r as Record<string, unknown>));
   const selected = selectedRes?.data?.id ? asInvoice(selectedRes.data as Record<string, unknown>) : null;
-
-  // Sisa budget campaign settled: sisa pool Rupiah − refund yang sudah diajukan (rollover tidak terlihat dari api; DB tetap mengecek ledger).
-  const settledIds = (settled ?? []).map((c) => c.id).filter(isUuid);
-  const { data: pools } = settledIds.length && idrType?.id
-    ? await core.from('reward_pools').select('campaign_id, remaining').in('campaign_id', settledIds).eq('reward_type_id', idrType.id)
-    : { data: [] };
-  const refunded = new Map<string, number>();
-  for (const r of refunds ?? []) if (r.campaign_id && r.status !== 'cancelled') refunded.set(r.campaign_id, (refunded.get(r.campaign_id) ?? 0) + num(r.amount));
-  const leftover: LeftoverRow[] = (settled ?? []).flatMap((c) => {
-    const rest = (pools ?? []).filter((p) => p.campaign_id === c.id).reduce((s, p) => s + num(p.remaining), 0) - (refunded.get(c.id ?? '') ?? 0);
-    return c.id && rest >= 1 ? [{ campaignId: c.id, title: c.title ?? '', leftover: rest }] : [];
-  });
+  const credit = creditRes.error ? null : parseCredit(creditRes.data);
+  const leftover: LeftoverRow[] = (credit?.leftovers ?? []).map((l) => ({ campaignId: l.campaignId, title: l.title, leftover: l.amount }));
+  const aal2 = claims.aal === 'aal2';
 
   const campaignIds = [...new Set([...invoices, ...(selected ? [selected] : [])].map((i) => i.campaign_id).concat((refunds ?? []).map((r) => r.campaign_id)).filter(isUuid))];
   const { data: titles } = campaignIds.length ? await core.from('campaigns').select('id, title').in('id', campaignIds) : { data: [] };
@@ -104,10 +97,38 @@ export default async function BillingPage({ params, searchParams }: { params: Pr
     <>
       <PageHeader title={t('billing.title')} description={t('billing.description')} />
       <div className="flex flex-col gap-5">
-        {selected ? <InvoiceDetail invoice={selected} campaignTitle={selected.campaign_id ? (titleOf.get(selected.campaign_id) ?? null) : null} orgId={orgId} pay={pay} /> : null}
+        {selected ? (
+          <InvoiceDetail
+            invoice={selected}
+            campaignTitle={selected.campaign_id ? (titleOf.get(selected.campaign_id) ?? null) : null}
+            orgId={orgId}
+            pay={pay}
+            creditAction={
+              canPayWithCredit(credit, selected) ? (
+                <PayWithCredit
+                  orgId={orgId}
+                  invoiceId={selected.id}
+                  number={selected.number}
+                  total={selected.total}
+                  available={credit!.available}
+                  aal2={aal2}
+                  securityHref={securityUrl(`${hosts.brand}${base}?invoice=${selected.id}`)}
+                />
+              ) : undefined
+            }
+          />
+        ) : null}
+
+        {credit && (credit.balance > 0 || credit.history.length) ? <CreditCard credit={credit} /> : null}
 
         {leftover.length ? (
-          <LeftoverPanel orgId={orgId} rows={leftover} aal2={claims.aal === 'aal2'} securityHref={securityUrl(`${hosts.brand}${base}`)} />
+          <LeftoverPanel
+            orgId={orgId}
+            rows={leftover}
+            aal2={aal2}
+            securityHref={securityUrl(`${hosts.brand}${base}`)}
+            refundFee={num(settings['public.finance.refund_transfer_fee_idr'])}
+          />
         ) : null}
 
         {invoices.length === 0 ? (
@@ -191,7 +212,6 @@ export default async function BillingPage({ params, searchParams }: { params: Pr
             )}
           </TBody>
         </Table>
-        <p className="text-caption text-muted">{t('billing.creditGap')}</p>
       </div>
     </>
   );

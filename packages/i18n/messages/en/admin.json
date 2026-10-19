@@ -115,6 +115,12 @@
       "pending_verification": "Pending verification",
       "verified": "Verified",
       "suspended": "Suspended"
+    },
+    "profile": {
+      "active": "Active",
+      "suspended": "Suspended",
+      "banned": "Banned",
+      "closed": "Closed"
     }
   },
   "errors": {
@@ -154,7 +160,8 @@
     "bridge_error": "Could not reach the core database.",
     "config_missing": "Server function is not configured.",
     "corrupt_ciphertext": "Encrypted data cannot be opened (key mismatch). Contact engineering.",
-    "db_error": "Identity database error. Try again or contact engineering."
+    "db_error": "Identity database error. Try again or contact engineering.",
+    "too_many_codes": "At most 10,000 codes per upload."
   },
   "export": {
     "download": "Download CSV ({rows} rows)",
@@ -239,7 +246,6 @@
       "invoice": "Invoice",
       "submitted": "Created"
     },
-    "invoiceAtApprove": "Checked on approve",
     "backToQueue": "Back to queue",
     "approve": "Approve",
     "approveTitle": "Approve campaign",
@@ -269,7 +275,6 @@
       "internal": "Internal"
     },
     "invoice": "Campaign invoice",
-    "invoiceHidden": "Invoice status is visible to finance admins only. Approval is refused automatically while unpaid.",
     "invoiceNone": "No invoice yet",
     "budget": "Budget",
     "maxPerClip": "max {v}/clip",
@@ -394,17 +399,6 @@
     "hidePreview": "Close",
     "embedTitle": "Clip by @{name}",
     "openPost": "Open post",
-    "reasons": {
-      "missing_tags": "Required tag/mention missing",
-      "off_brief": "Does not follow the brief",
-      "low_quality": "Low quality",
-      "reused_content": "Reused/duplicate content",
-      "wrong_account": "Not the connected account",
-      "sponsored_label": "Sponsored label missing",
-      "inappropriate": "Inappropriate content",
-      "fraud_suspected": "Suspected inorganic views",
-      "other": "Other"
-    },
     "decisions": {
       "approve": "Approved",
       "reject": "Rejected",
@@ -474,12 +468,10 @@
     "searchClipper": "Search clippers",
     "searchClipperHint": "username, name, or user ID",
     "noUsers": "No users found",
-    "kycQueueGap": "The KYC queue cannot be listed yet (identity has no queue view). Open a user from search to check their KYC.",
     "back": "Back to list",
     "userMissing": "Profile not found.",
     "trustScore": "Trust Score",
     "joined": "Joined",
-    "statusGap": "Core account status (active/suspended/banned) is not readable from the api views; core suspend/ban goes through the fraud queue.",
     "ban": "Ban sign-in",
     "banTitle": "Ban account sign-in",
     "banBody": "Identity refuses refresh tokens; already-issued tokens stay valid ≤ 10 minutes. The core profile status does not change.",
@@ -502,7 +494,8 @@
       "submission_approved": "Submission approved",
       "submission_rejected": "Submission rejected",
       "appeal_failed": "Appeal failed",
-      "fraud_flag": "Fraud flag"
+      "fraud_flag": "Fraud flag",
+      "admin_override": "Adjusted by admin"
     },
     "flags": "Fraud flags",
     "kyc": "KYC",
@@ -589,7 +582,6 @@
     "feeClear": "Back to the global fee",
     "feeSaved": "Org fee saved",
     "history": "Decision history",
-    "adminListGap": "The admin list cannot be shown yet: identity has no api view for platform roles (E-27).",
     "inviteAdmin": "Invite admin",
     "inviteAdminBody": "A new admin account (separate from clipper/brand accounts) + initial role.",
     "setRole": "Change role",
@@ -600,7 +592,26 @@
     "roleSaved": "Role updated",
     "resetMfa": "Reset MFA",
     "resetMfaBody": "Delete all of the user's TOTP factors; they enrol again at next sign-in.",
-    "mfaReset": "MFA reset"
+    "mfaReset": "MFA reset",
+    "tabKyc": "KYC",
+    "kycStatus": "KYC status",
+    "kycQueueEmpty": "No KYC in this status",
+    "user": "User",
+    "decidedAt": "Decided",
+    "noAdmins": "No admins yet",
+    "since": "Since",
+    "you": "You",
+    "setRoleById": "Role by user ID",
+    "suspendedUntil": "Until {date}",
+    "trustOverride": "Adjust Trust Score",
+    "trustOverrideBody": "Current score {score}. The delta is written to the Trust Score history (admin_override).",
+    "delta": "Delta",
+    "deltaHelp": "-100 to 100, not 0",
+    "userUpdated": "Clipper account updated",
+    "suspend": "Suspend",
+    "suspendBody": "Open claims are released; the clipper cannot claim/withdraw until the suspension ends.",
+    "unsuspend": "Lift suspension",
+    "days": "Days (1–365)"
   },
   "finance": {
     "title": "Finance",
@@ -739,9 +750,7 @@
     },
     "exportRecipients": "Export recipients",
     "skipped": "Skipped",
-    "deliveredGap": "There is no admin action yet to mark manual-export claims as delivered.",
     "freeCodes": "{n} codes left",
-    "codesGap": "Codes can only be uploaded by the owner/manager of the brand that owns the reward type (api.upload_reward_codes).",
     "empty": "Queue is empty",
     "user": "Clipper",
     "amount": "Amount",
@@ -749,7 +758,19 @@
     "status": "Status",
     "cancel": "Cancel",
     "cancelBody": "The balance returns to the clipper. Voucher codes already assigned cannot be cancelled.",
-    "cancelled": "Claim cancelled"
+    "cancelled": "Claim cancelled",
+    "uploadCodes": "Upload codes",
+    "uploadCodesBody": "Up to 10,000 codes per upload; existing codes are ignored.",
+    "upload": "Upload",
+    "codesText": "Codes",
+    "codesTextHelp": "One code per line (or comma-separated).",
+    "codesFile": "Or a .txt/.csv file",
+    "codesUploaded": "{count} new codes added",
+    "markDelivered": "Mark delivered",
+    "markDeliveredBody": "The clipper is notified that the reward was delivered.",
+    "delivered": "Marked delivered",
+    "ref": "Delivery reference",
+    "refHelp": "Tracking number / voucher number"
   },
   "config": {
     "title": "Config",
@@ -829,7 +850,6 @@
   "audit": {
     "title": "Audit log",
     "description": "Every admin, finance, and config action in core: who, what, when, before/after.",
-    "identityGap": "The identity PII access log (member.audit_logs) has no api view yet, so it is not shown here.",
     "action": "Action",
     "target": "Target",
     "actor": "Actor",
@@ -841,7 +861,10 @@
     "before": "Before",
     "after": "After",
     "system": "System",
-    "empty": "No logs in this filter"
+    "empty": "No logs in this filter",
+    "source": "Log source",
+    "sourceCore": "Core",
+    "sourceIdentity": "Identity (PII)"
   },
   "broadcast": {
     "title": "Broadcast",

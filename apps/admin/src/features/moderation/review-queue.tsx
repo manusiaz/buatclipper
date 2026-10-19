@@ -6,10 +6,9 @@ import {
   Badge, Button, Card, Checkbox, EmbedFrame, Field, formatNumber, PlatformChip, RelativeTime, Select, StatusBadge, Textarea, toast,
   type Platform, type UiLocale,
 } from '@clipper/ui';
+import { REJECT_REASONS } from '@clipper/i18n';
 import { useErrorText } from '@/features/shared/use-error-text';
 import { decideSubmissions } from './actions';
-
-export const SUBMISSION_REASONS = ['missing_tags', 'off_brief', 'low_quality', 'reused_content', 'wrong_account', 'sponsored_label', 'inappropriate', 'fraud_suspected', 'other'] as const;
 
 export interface QueueItem {
   id: string;
@@ -26,6 +25,9 @@ export interface QueueItem {
 export function ReviewQueue({ items }: { items: QueueItem[] }) {
   const t = useTranslations('admin.review');
   const ta = useTranslations('admin');
+  const tc = useTranslations('common');
+  // Kode lama di luar REJECT_REASONS (data sebelum daftar bersama) tampil apa adanya.
+  const reasonText = (code: string) => (tc.has(`rejectReasons.${code}`) ? tc(`rejectReasons.${code}`) : code);
   const loc = useLocale() as UiLocale;
   const errorText = useErrorText();
   const [selected, setSelected] = useState<Set<string>>(new Set());
@@ -45,7 +47,7 @@ export function ReviewQueue({ items }: { items: QueueItem[] }) {
     if (decision === 'reject' && !reason) return toast.error(t('reasonRequired'));
     const ids = [...selected];
     start(async () => {
-      const msg = message.trim() || (decision === 'reject' ? t(`reasons.${reason}`) : '');
+      const msg = message.trim() || (decision === 'reject' ? reasonText(reason) : '');
       const r = await decideSubmissions(ids, decision, { reason: decision === 'reject' ? reason : undefined, message: msg });
       if (!r.ok || !r.data) return void toast.error(errorText(r.ok ? 'generic' : r.error));
       const { done, failed } = r.data;
@@ -67,7 +69,7 @@ export function ReviewQueue({ items }: { items: QueueItem[] }) {
           />
         </div>
         <Field label={t('reason')} className="lg:w-60">
-          <Select value={reason || undefined} onValueChange={setReason} placeholder={t('reasonPick')} inputSize="sm" options={SUBMISSION_REASONS.map((r) => ({ value: r, label: t(`reasons.${r}`) }))} />
+          <Select value={reason || undefined} onValueChange={setReason} placeholder={t('reasonPick')} inputSize="sm" options={REJECT_REASONS.map((r) => ({ value: r, label: reasonText(r) }))} />
         </Field>
         <Field label={t('message')} optional className="flex-1">
           <Textarea rows={1} value={message} maxLength={500} onChange={(e) => setMessage(e.target.value)} placeholder={t('messageHint')} />
@@ -115,7 +117,7 @@ export function ReviewQueue({ items }: { items: QueueItem[] }) {
                     <Badge tone={h.decision === 'appeal' ? 'primary' : h.decision === 'reject' || h.decision === 'uphold' ? 'danger' : 'success'} size="sm">
                       {t(`decisions.${h.decision}`)}
                     </Badge>
-                    {h.reason ? <span className="text-text-2">{t.has(`reasons.${h.reason}`) ? t(`reasons.${h.reason}`) : h.reason}</span> : null}
+                    {h.reason ? <span className="text-text-2">{reasonText(h.reason)}</span> : null}
                     {h.message ? <span className="text-muted">“{h.message}”</span> : null}
                     <RelativeTime value={h.at} locale={loc} className="text-caption text-faint" />
                   </li>

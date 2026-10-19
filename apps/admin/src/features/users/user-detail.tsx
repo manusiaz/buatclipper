@@ -6,19 +6,19 @@ import { identityApi } from '@clipper/db-identity';
 import { Alert, Avatar, Badge, Card, CardHeader, CardTitle, formatDateTime, formatNumber, Icon, PlatformChip, RelativeTime, StatusBadge, type Platform, type UiLocale } from '@clipper/ui';
 import { must, rows } from '@/lib/data';
 import { ActionDialog } from '@/features/shared/action-dialog';
-import { banUser, kycDecision, kycNotify, unbanUser } from './actions';
-import { trustScore } from './trust';
+import { banUser, kycDecision, kycNotify, manageUser, unbanUser } from './actions';
 
 export const KYC_REJECT_REASONS = ['photo_unreadable', 'name_mismatch', 'nik_invalid', 'not_ktp', 'duplicate', 'other'] as const;
 
-/** F-A07 / A2.1 detail clipper: profil, Trust Score (riwayat E-40), akun sosmed, KYC identity (admin_read, tercatat E-24). */
-export async function UserDetail({ userId, claims, loc }: { userId: string; claims: Claims; loc: UiLocale }) {
+/** F-A07 / A2.1 detail clipper: profil + status E-01 (api.admin_profiles), Trust Score, akun sosmed, KYC identity (admin_read, tercatat E-24). */
+export async function UserDetail({ userId, claims, loc, back = '/users' }: { userId: string; claims: Claims; loc: UiLocale; back?: string }) {
   const [t, db, { supabase }] = await Promise.all([getTranslations('admin'), coreServer('admin'), getAuth('admin')]);
   const isMod = hasRole(claims, 'admin_moderator');
+  const canManage = hasRole(claims, 'admin_ops', 'admin_moderator');
   const canReadKyc = hasRole(claims, 'admin_moderator', 'admin_support', 'admin_finance');
   const [profRes, scoreRes, acctRes, flagRes, decRes] = await Promise.all([
-    db.from('profiles').select('id, username, display_name, avatar_path, created_at').eq('id', userId).maybeSingle(),
-    db.from('score_events').select('id, delta, reason, created_at').eq('user_id', userId).order('created_at', { ascending: false }).limit(5000),
+    db.from('admin_profiles').select('id, username, display_name, trust_score, status, suspended_until, created_at').eq('id', userId).maybeSingle(),
+    db.from('score_events').select('id, delta, reason, created_at').eq('user_id', userId).order('created_at', { ascending: false }).limit(10),
     db.from('social_accounts').select('id, platform, handle, status, followers, verified_at').eq('user_id', userId),
     db.from('fraud_flags').select('id, signal, status, score, created_at').eq('target_type', 'profile').eq('target_id', userId).order('created_at', { ascending: false }).limit(10),
     db.from('review_decisions').select('decision, reason_code, created_at').eq('target_type', 'kyc').eq('target_id', userId).order('created_at', { ascending: false }).limit(1),
@@ -32,7 +32,7 @@ export async function UserDetail({ userId, claims, loc }: { userId: string; clai
   let kycError: string | null = null;
   let photo: string | null = null;
   if (canReadKyc) {
-    const { data, error } = await identityApi(supabase).schema('api').rpc('admin_read', { p_user_id: userId });
+    const { data, error } = await identityApi(supabase).rpc('admin_read', { p_user_id: userId });
     if (error) kycError = t('users.kycReadFailed');
     else kyc = data?.[0] ?? null;
     if (kyc?.doc_ref && isMod) {
@@ -46,7 +46,7 @@ export async function UserDetail({ userId, claims, loc }: { userId: string; clai
   return (
     <div className="mb-6 grid grid-cols-1 gap-5 lg:grid-cols-2">
       <Card padding="md" className="flex flex-col gap-4">
-        <Link href="/users" className="inline-flex items-center gap-1 text-body-s font-semibold text-link focus-ring">
+        <Link href={back} className="inline-flex items-center gap-1 text-body-s font-semibold text-link focus-ring">
           <Icon name="arrow_back" size={16} />
           {t('users.back')}
         </Link>
@@ -58,13 +58,58 @@ export async function UserDetail({ userId, claims, loc }: { userId: string; clai
           </div>
           <div className="ml-auto text-right">
             <p className="text-caption text-muted">{t('users.trustScore')}</p>
-            <p className="text-h4 tnum text-ink">{trustScore(scores.map((s) => Number(s.delta ?? 0)))}</p>
+            <p className="text-h4 tnum text-ink">{p.trust_score}</p>
           </div>
         </div>
         <p className="text-caption text-muted">
           {t('users.joined')} {formatDateTime(p.created_at!, loc)} · <code className="font-mono">{p.id}</code>
         </p>
-        <Alert tone="info">{t('users.statusGap')}</Alert>
+        <div className="flex flex-wrap items-center gap-2">
+          <StatusBadge kind="profile" status={p.status!} label={t(`status.profile.${p.status}`)} />
+          {p.status === 'suspended' && p.suspended_until ? (
+            <span className="text-caption text-muted">{t('users.suspendedUntil', { date: formatDateTime(p.suspended_until, loc) })}</span>
+          ) : null}
+        </div>
+        {canManage ? (
+          <div className="flex flex-wrap gap-2">
+            <ActionDialog
+              trigger={{ label: t('users.trustOverride'), icon: 'tune' }}
+              title={t('users.trustOverride')}
+              description={t('users.trustOverrideBody', { score: p.trust_score ?? 0 })}
+              submitLabel={t('form.save')}
+              success={t('users.userUpdated')}
+              action={manageUser.bind(null, userId, 'trust_override')}
+              fields={[
+                { kind: 'number', name: 'delta', label: t('users.delta'), helper: t('users.deltaHelp'), required: true, min: -100, max: 100, step: '1' },
+                { kind: 'textarea', name: 'note', label: t('form.reason'), required: true, maxLength: 200 },
+              ]}
+            />
+            {p.status === 'suspended' ? (
+              <ActionDialog
+                trigger={{ label: t('users.unsuspend'), icon: 'play_arrow' }}
+                title={t('users.unsuspend')}
+                submitLabel={t('users.unsuspend')}
+                success={t('users.userUpdated')}
+                action={manageUser.bind(null, userId, 'unsuspend')}
+                fields={[{ kind: 'textarea', name: 'note', label: t('form.reason'), required: true, maxLength: 500 }]}
+              />
+            ) : p.status === 'active' ? (
+              <ActionDialog
+                trigger={{ label: t('users.suspend'), icon: 'pause', variant: 'danger' }}
+                title={t('users.suspend')}
+                description={t('users.suspendBody')}
+                tone="danger"
+                submitLabel={t('users.suspend')}
+                success={t('users.userUpdated')}
+                action={manageUser.bind(null, userId, 'suspend')}
+                fields={[
+                  { kind: 'number', name: 'days', label: t('users.days'), required: true, min: 1, max: 365, step: '1', defaultValue: '30' },
+                  { kind: 'textarea', name: 'reason', label: t('form.reason'), required: true, maxLength: 500 },
+                ]}
+              />
+            ) : null}
+          </div>
+        ) : null}
         {isMod ? (
           <div className="flex flex-wrap gap-2">
             <ActionDialog

@@ -4,11 +4,9 @@ import { getTranslations } from 'next-intl/server';
 import { Alert, Card, EmptyState, PageHeader, Pagination } from '@clipper/ui';
 import { brandReviewCampaigns } from '@/features/review/queries';
 import { ReviewQueue, type QueueItem } from '@/features/review/review-queue';
-import { can, getOrgContext } from '@/lib/org';
+import { can, getOrgContext, num, publicSettings } from '@/lib/org';
 
 const PAGE = 30;
-// market.brand_review_auto_approve_hours bukan config publik; default job = 72 jam.
-const AUTO_HOURS = 72;
 
 export async function generateMetadata(): Promise<Metadata> {
   return { title: (await getTranslations('brand.nav'))('review') };
@@ -19,7 +17,12 @@ export default async function ReviewPage({ params, searchParams }: { params: Pro
   const { core, role } = await getOrgContext(orgId);
   const t = await getTranslations('brand');
   const page = Math.max(1, Number.parseInt(sp.page ?? '1', 10) || 1);
-  const campaigns = await brandReviewCampaigns(core, orgId);
+  const [campaigns, settings] = await Promise.all([
+    brandReviewCampaigns(core, orgId),
+    publicSettings(core, ['public.market.brand_review_auto_approve_hours']),
+  ]);
+  // Sama dengan job trust.auto_approve_overdue: umur dihitung dari created_at submisi.
+  const autoHours = num(settings['public.market.brand_review_auto_approve_hours'], 72);
   const titles = new Map(campaigns.map((c) => [c.id, c.title]));
 
   const { data: subs, count } = campaigns.length
@@ -43,7 +46,7 @@ export default async function ReviewPage({ params, searchParams }: { params: Pro
           platform: s.platform ?? '',
           url: s.url,
           createdAt: s.created_at,
-          autoApproveAt: new Date(new Date(s.created_at).getTime() + AUTO_HOURS * 3600_000).toISOString(),
+          autoApproveAt: new Date(new Date(s.created_at).getTime() + autoHours * 3600_000).toISOString(),
         }]
       : [],
   );
@@ -51,7 +54,7 @@ export default async function ReviewPage({ params, searchParams }: { params: Pro
 
   return (
     <>
-      <PageHeader title={t('review.title')} description={t('review.description', { hours: AUTO_HOURS })} />
+      <PageHeader title={t('review.title')} description={t('review.description', { hours: autoHours })} />
       {!can(role, 'review') ? <Alert tone="info" className="mb-4">{t('review.readOnly')}</Alert> : null}
       {campaigns.length === 0 ? (
         <Card padding="lg">

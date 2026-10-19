@@ -14,7 +14,20 @@ export interface LeftoverRow {
 
 type Mode = 'rollover' | 'refund';
 
-export function LeftoverPanel({ orgId, rows, aal2, securityHref }: { orgId: string; rows: LeftoverRow[]; aal2: boolean; securityHref: string }) {
+export function LeftoverPanel({
+  orgId,
+  rows,
+  aal2,
+  securityHref,
+  refundFee,
+}: {
+  orgId: string;
+  rows: LeftoverRow[];
+  aal2: boolean;
+  securityHref: string;
+  /** public.finance.refund_transfer_fee_idr */
+  refundFee: number;
+}) {
   const t = useTranslations('brand.leftover');
   const errText = useErrorText();
   const locale = useLocale() === 'en' ? 'en' : 'id';
@@ -22,7 +35,7 @@ export function LeftoverPanel({ orgId, rows, aal2, securityHref }: { orgId: stri
   const [amount, setAmount] = useState('');
   const [pending, start] = useTransition();
   const value = Number(amount);
-  const valid = dialog != null && Number.isInteger(value) && value > 0 && value <= Math.floor(dialog.row.leftover);
+  const valid = dialog != null && Number.isInteger(value) && value > 0 && value <= Math.floor(dialog.row.leftover) && (dialog.mode === 'rollover' || value > refundFee);
 
   const openDialog = (row: LeftoverRow, mode: Mode) => {
     setAmount(String(Math.floor(row.leftover)));
@@ -42,7 +55,7 @@ export function LeftoverPanel({ orgId, rows, aal2, securityHref }: { orgId: stri
             <li key={r.campaignId} className="flex flex-col gap-3 py-3 sm:flex-row sm:items-center">
               <div className="min-w-0 flex-1">
                 <p className="truncate text-body-s font-bold text-ink">{r.title}</p>
-                <p className="text-caption text-muted">{t('estimate', { amount: formatIDR(r.leftover, { locale }) })}</p>
+                <p className="text-caption text-muted">{t('amountLeft', { amount: formatIDR(r.leftover, { locale }) })}</p>
               </div>
               <div className="flex gap-2">
                 {aal2 ? (
@@ -87,13 +100,23 @@ export function LeftoverPanel({ orgId, rows, aal2, securityHref }: { orgId: stri
           }
         >
           {dialog ? (
-            <Field
-              label={t('amount')}
-              helper={t('amountHelp', { max: formatIDR(Math.floor(dialog.row.leftover), { locale }) })}
-              error={amount && !valid ? t('amountInvalid') : undefined}
-            >
-              <Input type="number" inputMode="numeric" min={1} max={Math.floor(dialog.row.leftover)} step={1} prefix="Rp" value={amount} onChange={(e) => setAmount(e.target.value)} />
-            </Field>
+            <div className="flex flex-col gap-3">
+              <Field
+                label={t('amount')}
+                helper={t('amountHelp', { max: formatIDR(Math.floor(dialog.row.leftover), { locale }) })}
+                error={amount && !valid ? t('amountInvalid') : undefined}
+              >
+                <Input type="number" inputMode="numeric" min={1} max={Math.floor(dialog.row.leftover)} step={1} prefix="Rp" value={amount} onChange={(e) => setAmount(e.target.value)} />
+              </Field>
+              {dialog.mode === 'refund' ? (
+                <dl className="grid grid-cols-2 gap-2 rounded-card-sm bg-subtle p-3 text-body-s">
+                  <dt className="text-muted">{t('transferFee')}</dt>
+                  <dd className="text-right text-ink tnum">{formatIDR(refundFee, { locale })}</dd>
+                  <dt className="font-semibold text-ink">{t('received')}</dt>
+                  <dd className="text-right font-semibold text-ink tnum">{formatIDR(Math.max(0, (valid ? value : 0) - refundFee), { locale })}</dd>
+                </dl>
+              ) : null}
+            </div>
           ) : null}
         </DialogContent>
       </Dialog>

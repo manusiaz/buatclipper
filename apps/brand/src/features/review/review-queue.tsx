@@ -2,6 +2,7 @@
 
 import { useState, useTransition } from 'react';
 import { useLocale, useTranslations } from 'next-intl';
+import { REJECT_REASONS, type RejectReason } from '@clipper/i18n';
 import {
   Button,
   Card,
@@ -20,7 +21,6 @@ import {
 } from '@clipper/ui';
 import { useErrorText } from '@/lib/use-error';
 import { reviewSubmissions } from './actions';
-import { REJECT_REASONS, type RejectReason } from './reasons';
 
 export interface QueueItem {
   id: string;
@@ -34,6 +34,7 @@ export interface QueueItem {
 
 export function ReviewQueue({ orgId, items, canReview }: { orgId: string; items: QueueItem[]; canReview: boolean }) {
   const t = useTranslations('brand.review');
+  const tc = useTranslations('common');
   const errText = useErrorText();
   const locale = useLocale() === 'en' ? 'en' : 'id';
   const [selected, setSelected] = useState<Set<string>>(new Set());
@@ -147,7 +148,7 @@ export function ReviewQueue({ orgId, items, canReview }: { orgId: string; items:
               <Select
                 value={reason}
                 onValueChange={(v) => setReason(v as RejectReason)}
-                options={REJECT_REASONS.map((r) => ({ value: r, label: t(`reasons.${r}`) }))}
+                options={REJECT_REASONS.map((r) => ({ value: r, label: tc(`rejectReasons.${r}`) }))}
               />
             </Field>
             <Field label={t('message')} helper={t('messageHelp')} optional={t('optional')}>
