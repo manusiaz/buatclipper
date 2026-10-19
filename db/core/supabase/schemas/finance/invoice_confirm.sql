@@ -16,6 +16,7 @@ declare
   pool_idr numeric := 0;
   revenue numeric;
   x record;
+  days int;
 begin
   entries := jsonb_build_array(finance.e(finance.account('tax_payable', null, idr), inv.tax, 'invoice_payment', inv.id::text));
   if inv.total > inv.credit_applied then
@@ -71,11 +72,14 @@ begin
 
   -- Pin berlaku sejak lunas (atau sejak pin yang sedang berjalan habis), selama hari yang dibeli; campaign dikunci supaya
   -- dua invoice pin yang lunas bersamaan saling menyambung, tidak tumpang tindih.
-  -- Invoice terbit sebelum pin_days ada: durasi = periode perkiraannya (pin_until − issued_at, maks 90 hari).
+  -- Invoice terbit sebelum pin_days ada: durasi = periode perkiraannya (pin_until − issued_at), dibatasi minggu yang dibayar
+  -- (service_fee ÷ harga per minggu) karena periode itu ikut memuat sisa pin yang sedang berjalan saat terbit; maks 90 hari.
   if inv.kind = 'pinned' then
-    update market.campaigns set pinned_until = greatest(now(), coalesce(pinned_until, now()))
-             + make_interval(days => coalesce(inv.pin_days,
-                                              least(90, greatest(1, ceil(extract(epoch from inv.pin_until - inv.issued_at) / 86400)))::int))
+    days := coalesce(inv.pin_days, least(90, greatest(1,
+      least(ceil(extract(epoch from inv.pin_until - inv.issued_at) / 86400),
+            7 * round(inv.service_fee / nullif((select (s.value #>> '{}')::numeric from ops.settings s
+                                                where s.key = 'public.billing.pin_price_per_week_idr'), 0))))));
+    update market.campaigns set pinned_until = greatest(now(), coalesce(pinned_until, now())) + make_interval(days => days)
      where id = inv.campaign_id
     returning pinned_until into inv.pin_until;
     update finance.invoices set pin_until = inv.pin_until where id = inv.id;
