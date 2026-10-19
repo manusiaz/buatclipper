@@ -31,6 +31,7 @@ const KEYS = [
   'public.billing.managed_service_idr',
   'public.market.max_accounts_per_platform',
   'public.market.claim_hours',
+  'public.finance.hold_days',
   'public.flags.platforms',
 ];
 

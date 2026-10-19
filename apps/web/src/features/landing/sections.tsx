@@ -134,7 +134,7 @@ export async function Payout({ settings }: { settings: PublicSettings }) {
     >
       <ol className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         {items.map((s, i) => (
-          <StepCard key={s.key} n={i + 1} icon={s.icon} title={t(`payout.${s.key}.title`)} body={t(`payout.${s.key}.body`, { min: idr(settings.minWithdrawIdr) })} />
+          <StepCard key={s.key} n={i + 1} icon={s.icon} title={t(`payout.${s.key}.title`)} body={t(`payout.${s.key}.body`, { min: idr(settings.minWithdrawIdr), days: settings.holdDays })} />
         ))}
       </ol>
     </Section>

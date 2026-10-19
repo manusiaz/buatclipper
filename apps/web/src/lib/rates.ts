@@ -10,6 +10,7 @@ export interface Rule {
   unit_label: string | null;
   decimals: number | null;
   pool_id: string | null;
+  reward_type_id: string | null;
 }
 
 export type ParsedRule =
@@ -87,6 +88,7 @@ export function rulesFromJson(json: unknown): Rule[] {
       unit_label: typeof o.unit_label === 'string' ? o.unit_label : null,
       decimals: num(o.decimals),
       pool_id: typeof o.pool_id === 'string' ? o.pool_id : null,
+      reward_type_id: typeof o.reward_type_id === 'string' ? o.reward_type_id : null,
     };
   });
 }
@@ -95,29 +97,6 @@ export function rulesFromJson(json: unknown): Rule[] {
 export function maxViews(json: unknown): number | null {
   const vals = Object.values(obj(json)).map(num).filter((v): v is number => v != null);
   return vals.length ? Math.max(...vals) : null;
-}
-
-/** Salinan est_remaining_views market.campaign_budget untuk halaman publik (view rate_rules + reward_pools). */
-export function estRemainingViews(
-  pools: ReadonlyArray<{ id: string; remaining: number }>,
-  rules: readonly Rule[],
-  platforms: readonly Platform[],
-): number | null {
-  let best: number | null = null;
-  for (const pool of pools) {
-    for (const p of platforms) {
-      const sum = rules
-        .filter((r) => r.pool_id === pool.id && applies(r, p))
-        .map((r) => ruleRate(r.kind, r.params) ?? 0)
-        .filter((v) => v > 0)
-        .reduce((a, b) => a + b, 0);
-      if (sum > 0) {
-        const views = Math.floor((Math.max(pool.remaining, 0) * 1000) / sum);
-        best = best == null ? views : Math.max(best, views);
-      }
-    }
-  }
-  return best;
 }
 
 /** Rule per_1k_views ber-reward type sama ditumpuk jadi satu baris (rate dijumlah), sama seperti earning dihitung. */

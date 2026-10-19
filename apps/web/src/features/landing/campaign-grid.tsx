@@ -7,7 +7,7 @@ import { num } from '@/lib/settings';
 import { clipperHref } from '@/lib/session';
 import { getLiveCampaigns, type LiveCampaign } from './data';
 
-const GRID = 'grid gap-4 sm:grid-cols-2 lg:grid-cols-3 lg:gap-5';
+const GRID = 'grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 lg:gap-5';
 
 export function CampaignGridSkeleton() {
   return (
@@ -51,12 +51,13 @@ export async function CampaignGrid({ session }: { session: boolean }) {
           const remaining = num(c.remaining_idr) ?? 0;
           const category = categories.find((k) => k.id === c.category_id);
           return (
-            <li key={c.id} className="flex">
+            <li key={c.id} className="flex min-w-0">
               <CampaignCard
                 className="w-full"
                 title={c.title}
                 href={href}
                 coverSrc={cardCoverSrc(c.cover_path)}
+                brand={c.brand_name ? { name: c.brand_name, verified: c.brand_verified } : undefined}
                 category={category ? (locale === 'en' ? category.name_en : category.name_id) : undefined}
                 platforms={c.platforms ?? []}
                 rates={idrRates(rulesFromJson(c.rates), c.platforms ?? [])}

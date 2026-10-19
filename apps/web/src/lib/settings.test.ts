@@ -20,6 +20,7 @@ describe('publicSettings', () => {
       managedServiceIdr: null,
       maxAccountsPerPlatform: 3,
       claimHours: 48,
+      holdDays: 7,
       platforms: ['tiktok', 'instagram', 'youtube'],
     });
   });
@@ -29,8 +30,9 @@ describe('publicSettings', () => {
       { key: 'public.billing.managed_service_idr', value: '2500000' },
       { key: 'public.market.max_accounts_per_platform', value: 2 },
       { key: 'public.market.claim_hours', value: '24' },
+      { key: 'public.finance.hold_days', value: 3 },
       { key: 'public.flags.platforms', value: { tiktok: true, instagram: false, youtube: true, threads: true } },
     ]);
-    expect(s).toEqual({ minWithdrawIdr: 50000, managedServiceIdr: 2500000, maxAccountsPerPlatform: 2, claimHours: 24, platforms: ['tiktok', 'youtube', 'threads'] });
+    expect(s).toEqual({ minWithdrawIdr: 50000, managedServiceIdr: 2500000, maxAccountsPerPlatform: 2, claimHours: 24, holdDays: 3, platforms: ['tiktok', 'youtube', 'threads'] });
   });
 });

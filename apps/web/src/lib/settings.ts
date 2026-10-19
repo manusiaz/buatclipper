@@ -5,6 +5,7 @@ export interface PublicSettings {
   managedServiceIdr: number | null;
   maxAccountsPerPlatform: number;
   claimHours: number;
+  holdDays: number;
   platforms: Platform[];
 }
 
@@ -31,6 +32,7 @@ export function publicSettings(rows: Array<{ key: string | null; value: unknown 
     managedServiceIdr: managed && managed > 0 ? managed : null,
     maxAccountsPerPlatform: num(get('market.max_accounts_per_platform')) ?? 3,
     claimHours: num(get('market.claim_hours')) ?? 48,
+    holdDays: num(get('finance.hold_days')) ?? 7,
     platforms: enabled.length ? enabled : ['tiktok', 'instagram', 'youtube'],
   };
 }

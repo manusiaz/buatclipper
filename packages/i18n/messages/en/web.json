@@ -76,7 +76,7 @@
     "title": "From views to balance to your bank account",
     "description": "Every earning is recorded in your wallet, so you always know when you can withdraw.",
     "pending": { "title": "Pending first", "body": "Earnings from views land as Pending while your clip is still being tracked." },
-    "available": { "title": "Then Available", "body": "Once the clip is locked and passes anti-fraud checks, the balance moves to Available." },
+    "available": { "title": "Then Available", "body": "Once the clip is locked and clears the {days}-day hold with no fraud flag, the balance moves to Available." },
     "withdraw": { "title": "Withdraw to your bank", "body": "Withdraw from {min}. Weekly batches are free." },
     "kyc": { "title": "KYC just once", "body": "ID and bank account verification is only asked on your first withdrawal." }
   },
@@ -141,6 +141,8 @@
   },
   "campaign": {
     "back": "All campaigns",
+    "byBrand": "by {brand}",
+    "brandVerified": "Verified brand",
     "rateTitle": "Rate",
     "per1k": "/ 1,000 views",
     "flat": "{amount} per post",

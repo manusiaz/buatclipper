@@ -3,6 +3,7 @@ import Image from 'next/image';
 import Link from 'next/link';
 import { getLocale, getTranslations } from 'next-intl/server';
 import {
+  Avatar,
   Badge,
   Button,
   Card,
@@ -22,7 +23,7 @@ import {
 } from '@clipper/ui';
 import { Markdown } from '@/components/markdown';
 import { coverUrl } from '@/lib/cover';
-import { estRemainingViews, idrRates, mergeViewRates, parseRule, rateGroups, type Rule } from '@/lib/rates';
+import { idrRates, mergeViewRates, parseRule, rateGroups, type Rule } from '@/lib/rates';
 import { clipperHref } from '@/lib/session';
 import type { PublicCampaign } from './data';
 import { formatAmount, formatWib } from './format';
@@ -87,12 +88,11 @@ export async function CampaignView({ data, session, category }: { data: PublicCa
     getTranslations('web.status'),
     getLocale() as Promise<UiLocale>,
   ]);
-  const { campaign: c, rules, pools, faq, coverPath } = data;
+  const { campaign: c, rules, pools, faq, coverPath, brand, viewsLeft } = data;
   const platforms = c.platforms;
   const cover = coverUrl(coverPath);
   const groups = rateGroups(rules, platforms);
   const topIdr = Math.max(0, ...idrRates(rules, platforms).map((r) => r.ratePer1k));
-  const viewsLeft = estRemainingViews(pools, rules, platforms);
   const closed = closedReason(c, t);
   const href = clipperHref(session, `/campaigns/${c.id}`);
 
@@ -143,7 +143,7 @@ export async function CampaignView({ data, session, category }: { data: PublicCa
         {t('back')}
       </Link>
 
-      <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_360px] lg:items-start">
+      <div className="grid grid-cols-1 gap-6 lg:grid-cols-[minmax(0,1fr)_360px] lg:items-start">
         <header className="flex flex-col gap-5 lg:col-start-1">
           <div className="relative aspect-[16/9] overflow-hidden rounded-media bg-navy shadow-card">
             {cover ? (
@@ -163,6 +163,13 @@ export async function CampaignView({ data, session, category }: { data: PublicCa
               ))}
             </div>
             <h1 className="text-h2 break-words text-ink">{c.title}</h1>
+            {brand ? (
+              <p className="flex min-w-0 items-center gap-2 text-body-s text-text-2">
+                <Avatar name={brand.name} size={24} shape="square" />
+                <span className="truncate font-semibold">{t('byBrand', { brand: brand.name })}</span>
+                {brand.verified ? <Icon name="verified" size={16} filled className="shrink-0 text-primary" title={t('brandVerified')} /> : null}
+              </p>
+            ) : null}
           </div>
         </header>
 

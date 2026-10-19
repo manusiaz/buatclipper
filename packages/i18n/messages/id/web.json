@@ -76,7 +76,7 @@
     "title": "Dari views jadi saldo, lalu ke rekeningmu",
     "description": "Semua earning tercatat di wallet, jadi kamu selalu tahu kapan saldo bisa ditarik.",
     "pending": { "title": "Pending dulu", "body": "Earning dari views masuk sebagai Pending selama klipmu masih dipantau." },
-    "available": { "title": "Lalu Tersedia", "body": "Setelah klip dikunci dan lolos cek anti-fraud, saldo pindah ke Tersedia." },
+    "available": { "title": "Lalu Tersedia", "body": "Setelah klip dikunci dan lolos masa tahan {days} hari tanpa fraud flag, saldo pindah ke Tersedia." },
     "withdraw": { "title": "Tarik ke rekening", "body": "Mulai {min} saldo bisa ditarik. Batch mingguan gratis." },
     "kyc": { "title": "KYC sekali aja", "body": "Verifikasi KTP dan rekening cuma diminta pas kamu tarik saldo pertama kali." }
   },
@@ -141,6 +141,8 @@
   },
   "campaign": {
     "back": "Semua campaign",
+    "byBrand": "oleh {brand}",
+    "brandVerified": "Brand terverifikasi",
     "rateTitle": "Rate",
     "per1k": "/ 1.000 views",
     "flat": "{amount} per posting",
