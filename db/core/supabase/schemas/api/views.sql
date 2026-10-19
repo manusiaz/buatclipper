@@ -114,5 +114,6 @@ grant select on api.my_profile, api.organizations, api.org_members, api.org_invi
                 api.campaign_invites, api.org_links, api.referrals, api.score_events, api.reward_codes, api.broadcasts,
                 api.leaderboard
   to authenticated;
+grant select on api.fee_rules to anon;
 grant update (read_at) on api.notifications to authenticated;
 grant insert (user_id, email_promotions), update (email_promotions, updated_at) on api.notification_prefs to authenticated;

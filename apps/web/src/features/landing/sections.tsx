@@ -16,9 +16,10 @@ import {
   type IconName,
   type UiLocale,
 } from '@clipper/ui';
+import { globalFeeOrDefault } from '@/lib/catalog';
 import type { PublicSettings } from '@/lib/settings';
 import { brandHref, clipperHref } from '@/lib/session';
-import { ADMIN_FEE_PCT, MGMT_FEE_PCT, brandCost } from './fees';
+import { brandCost } from './fees';
 
 const EXAMPLE_VIEWS = 10_000;
 const EXAMPLE_RATE = 2_000;
@@ -172,8 +173,8 @@ export async function Faq({ settings }: { settings: PublicSettings }) {
 }
 
 export async function ForBrand({ session, settings }: { session: boolean; settings: PublicSettings }) {
-  const { t, idr, n } = await ctx();
-  const cost = brandCost(10_000_000);
+  const [{ t, idr, n }, fee] = await Promise.all([ctx(), globalFeeOrDefault()]);
+  const cost = brandCost(10_000_000, fee.mgmt, fee.admin);
   const maxViews = Math.floor((cost.budget / EXAMPLE_RATE) * 1000);
   const ecpm = Math.round((cost.total / maxViews) * 1000);
   const steps: Array<{ key: string; icon: IconName }> = [
@@ -215,14 +216,14 @@ export async function ForBrand({ session, settings }: { session: boolean; settin
         <Card padding="lg" className="flex flex-col gap-4">
           <div className="flex flex-col gap-1.5">
             <h3 className="text-h5 text-ink">{t('brand.feeTitle')}</h3>
-            <p className="text-body-s text-muted">{t('brand.feeBody', { mgmt: MGMT_FEE_PCT, admin: ADMIN_FEE_PCT })}</p>
+            <p className="text-body-s text-muted">{t('brand.feeBody', { mgmt: fee.mgmt, admin: fee.admin })}</p>
           </div>
           <div className="flex flex-col gap-2.5 rounded-card-sm bg-surface-2 p-4">
             <p className="text-overline text-muted uppercase">{t('brand.feeExample')}</p>
             <dl className="flex flex-col gap-2.5">
               {row(t('brand.feeBudget'), idr(cost.budget))}
-              {row(t('brand.feeMgmt', { pct: MGMT_FEE_PCT }), idr(cost.mgmt))}
-              {row(t('brand.feeAdmin', { pct: ADMIN_FEE_PCT }), idr(cost.admin))}
+              {row(t('brand.feeMgmt', { pct: fee.mgmt }), idr(cost.mgmt))}
+              {row(t('brand.feeAdmin', { pct: fee.admin }), idr(cost.admin))}
               {row(t('brand.feeTotal'), idr(cost.total), true)}
             </dl>
           </div>

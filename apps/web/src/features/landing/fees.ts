@@ -1,5 +1,5 @@
 // Contoh hitung brand (§5.2): fee dihitung di atas budget creator; clipper menerima 100% budget creator.
-// Default 15% + 5% (E-21). api.fee_rules hanya terbaca user login, jadi landing memakai default ini.
+// Default 15% + 5% (E-21) = cadangan kalau fee rule global (api.fee_rules, terbaca anon) gagal dibaca.
 export const MGMT_FEE_PCT = 15;
 export const ADMIN_FEE_PCT = 5;
 

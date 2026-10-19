@@ -174,6 +174,7 @@ set local role anon;
 select is((select array_agg(slug::text) from api.campaigns), array['film-satu'], 'anon hanya melihat campaign yang tayang');
 select is((select remaining from api.reward_pools), 1000000::numeric, 'anon melihat sisa budget campaign tayang');
 select throws_ok($$ select * from api.claims $$, '42501', null, 'anon tidak bisa membaca claim');
+select is((select array_agg(scope order by scope) from api.fee_rules), array['global'], 'anon hanya melihat fee rule global (harga publik)');
 select throws_ok($$ select api.ensure_profile('anon', 'Anon') $$, '42501', null, 'anon tidak bisa memanggil ensure_profile');
 reset role;
 

@@ -179,7 +179,7 @@ export async function exportPph21(deps: PiiExportDeps, actor: Actor, body: Recor
   }
   const csv = toCsv(["user_id", "legal_name", "nik", "gross"], rows);
   const { file_ref, url } = await publish(deps, `pph21/${from}_${to}.csv`, csv);
-  await audit(deps, actor, "pii.export_pph21", `pph21:${from}_${to}`, {
+  await audit(deps, actor, "pii.export_tax", `pph21:${from}_${to}`, {
     rows: rows.length,
     missing_kyc: missing.length,
     file_ref,

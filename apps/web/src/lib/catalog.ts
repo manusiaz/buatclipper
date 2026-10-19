@@ -1,5 +1,6 @@
 import { unstable_cache } from 'next/cache';
 import { core, deadline } from './core';
+import { ADMIN_FEE_PCT, MGMT_FEE_PCT } from '../features/landing/fees';
 import { publicSettings, type PublicSettings } from './settings';
 
 export interface Category {
@@ -45,3 +46,16 @@ export const getPublicSettings = unstable_cache(
 );
 
 export const settingsOrDefault = () => getPublicSettings().catch(() => publicSettings([]));
+
+/** Fee rule global (E-21, terbaca anon) untuk kalkulator biaya B1.1. Gagal → default PRD. */
+export const getGlobalFee = unstable_cache(
+  async () => {
+    const { data, error } = await core.from('fee_rules').select('mgmt_fee_pct, admin_fee_pct').eq('scope', 'global').abortSignal(deadline(2500)).maybeSingle();
+    if (error) throw new Error(error.message);
+    return { mgmt: Number(data?.mgmt_fee_pct ?? MGMT_FEE_PCT), admin: Number(data?.admin_fee_pct ?? ADMIN_FEE_PCT) };
+  },
+  ['web:fee'],
+  { revalidate: 300 },
+);
+
+export const globalFeeOrDefault = () => getGlobalFee().catch(() => ({ mgmt: MGMT_FEE_PCT, admin: ADMIN_FEE_PCT }));

@@ -29,3 +29,6 @@ create policy fee_rules_iss on finance.fee_rules as restrictive for all to authe
 create policy fee_rules_read on finance.fee_rules for select to authenticated  -- policy:core.inherit-parent
   using (scope = 'global' or finance.fee_rule_visible(id) or (select ops.has_admin()));
 grant select on finance.fee_rules to authenticated;
+-- Rule global = harga publik (kalkulator biaya landing B1.1); fee negosiasi org/campaign tetap hanya untuk yang berhak.
+create policy fee_rules_public_global on finance.fee_rules for select to anon using (scope = 'global');  -- policy:core.public-read
+grant select (id, scope, mgmt_fee_pct, admin_fee_pct, clipper_fee_pct, instant_withdraw_fee) on finance.fee_rules to anon;
