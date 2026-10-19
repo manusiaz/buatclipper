@@ -32,9 +32,12 @@ export default async function OnboardingPage({ searchParams }: { searchParams: S
   const dest = safeNext(next, fallback);
   if (claims.consent_ok?.[role]) redirect(dest);
 
+  // Versi dari E-31; tautan ke {domain}/legal/<doc> seperti halaman login (URL E-31 menunjuk halaman yang sama di produksi,
+  // dan di lokal web jalan di http sedangkan E-31 wajib https).
   const docs = latestLegal(legal.data ?? []);
-  const tos = docs[role === 'brand' ? 'tos_brand' : 'tos_clipper'];
-  const privacy = docs.privacy;
+  const web = (d: (typeof docs)[keyof typeof docs], slug: string) => d && { ...d, url: `${hosts.web}/legal/${slug}` };
+  const tos = web(docs[role === 'brand' ? 'tos_brand' : 'tos_clipper'], role === 'brand' ? 'tos-brand' : 'tos-clipper');
+  const privacy = web(docs.privacy, 'privacy');
 
   return (
     <AuthShell

@@ -2,6 +2,7 @@ import type { ReactNode } from 'react';
 import Link from 'next/link';
 import { getTranslations } from 'next-intl/server';
 import { Button, PublicShell, ThemeToggle } from '@clipper/ui';
+import { LocaleSwitch } from '@/features/locale/locale-switch';
 import { clipperHref, hasSession } from '@/lib/session';
 
 /** Header + footer {domain} (§6.8 "web"): CTA clipper berubah jadi Buka app kalau cookie sesi SSO ada. */
@@ -21,7 +22,12 @@ export async function SiteShell({ children }: { children: ReactNode }) {
           { href: '/#brand', label: t('nav.brand'), icon: 'storefront' },
           { href: '/#faq', label: t('nav.faq'), icon: 'help' },
         ]}
-        headerExtras={<ThemeToggle labels={{ light: tc('themeLight'), dark: tc('themeDark'), system: tc('themeSystem'), toggle: tc('theme') }} />}
+        headerExtras={
+          <>
+            <LocaleSwitch />
+            <ThemeToggle labels={{ light: tc('themeLight'), dark: tc('themeDark'), system: tc('themeSystem'), toggle: tc('theme') }} />
+          </>
+        }
         secondaryAction={
           session ? undefined : (
             <Button href={clipperHref(false)} variant="ghost" size="sm">
