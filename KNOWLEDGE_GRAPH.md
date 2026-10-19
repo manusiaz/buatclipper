@@ -143,7 +143,7 @@ Wajib tetap benar setiap perubahan (dicek otomatis saat graph ini dibuat; cek ul
 | `api:fn identity/delete-account` | api | db/identity/supabase/functions/delete-account/index.ts | Orkestrasi hapus akun UU PDP (alur 7) |  |
 | `api:fn identity/disburse` | api | db/identity/supabase/functions/disburse/index.ts | Callback penyedia disbursement (POST /disburse/callback, header x-callback-token) → core mark_instant. Pengiriman instant withdraw dimulai core lewat identity/bridge aksi disburse (_shared/disburse.ts: cek pemilik & nama rekening, dekripsi, kirim ke Xendit) |  |
 | `api:fn identity/member-data` | api | db/identity/supabase/functions/member-data/index.ts | Tulis PII milik sendiri: KYC (NIK), rekening, data penerima. Verifikasi JWT, HMAC + enkripsi di fungsi, simpan lewat SQL khusus service role |  |
-| `api:fn identity/pii-export` | api | db/identity/supabase/functions/pii-export/index.ts | CSV ber-PII: payout (rekening) & reward fisik (alur 3) |  |
+| `api:fn identity/pii-export` | api | db/identity/supabase/functions/pii-export/index.ts | CSV ber-PII: payout (rekening) & reward fisik (alur 3); unduh ulang berkas yang sudah diserahkan (payout_csv batch exported, recipients_resign) |  |
 | `api:rpc core.accept_org_invite` | api | db/core/supabase/schemas/api/org.sql | Terima undangan → org_members (alur 5) |  |
 | `api:rpc core.appeal_submission` | api | db/core/supabase/schemas/api/review.sql | hanya dari rejected, 1× (unique index), S-03 rejected → appealed |  |
 | `api:rpc core.approve_payout_batch` | api | db/core/supabase/schemas/finance/payout_flow.sql | approved_by ≠ created_by (constraint) |  |
@@ -186,6 +186,7 @@ Wajib tetap benar setiap perubahan (dicek otomatis saat graph ini dibuat; cek ul
 | `api:rpc core.upload_reward_codes` | api | db/core/supabase/schemas/api/org.sql | kode duplikat diabaikan (unique) |  |
 | `api:view core.admin_profiles` | api | db/core/supabase/schemas/api/views.sql | View status & Trust Score semua profil, hanya admin aal2 (F-A07) |  |
 | `api:view core.managed_briefs` | api | db/core/supabase/schemas/api/views.sql | Brief mentah paket managed untuk anggota org pemilik & admin (J-A7); api.campaigns publik tidak membawanya |  |
+| `api:view core.fulfillment_exports` | api | db/core/supabase/schemas/api/views.sql | CSV penerima reward manual yang sudah diserahkan per reward type + klaim yang masih menunggu, hanya admin (unduh ulang A5.1) |  |
 | `api:rpc identity.admin_kyc_decision` | api | db/identity/supabase/schemas/api/admin_kyc_decision.sql | Admin approve/reject KYC (aal2) |  |
 | `api:rpc identity.admin_kyc_queue` | api | db/identity/supabase/schemas/api/admin_lists.sql | Antrean KYC tanpa PII untuk admin_moderator aal2 (F-A07) |  |
 | `api:rpc identity.admin_list_roles` | api | db/identity/supabase/schemas/api/admin_lists.sql | Daftar pemegang role platform + email, hanya admin_super aal2 (F-A07) |  |
@@ -452,9 +453,10 @@ Arah: `A --tipe--> B` = A bergantung pada B. `?` = belum terverifikasi.
 | `page:admin/fraud` | reads | `table:trust.fraud_flags` | PRD v0.3.1 §14 kg.yaml features.F-A06; kode baris 29 |
 | `page:admin/fraud` | wrapped-by | `layout:admin` | apps/admin/src/app/layout.tsx:20 |
 | `page:admin/fulfillment` | calls | `api:fn identity/pii-export` | apps/admin/src/features/fulfillment/actions.ts:12 |
-| `page:admin/fulfillment` | calls | `api:rpc core.mark_fulfillment_delivered` | apps/admin/src/features/fulfillment/actions.ts:34 |
-| `page:admin/fulfillment` | calls | `api:rpc core.upload_reward_codes` | apps/admin/src/features/fulfillment/actions.ts:47 |
-| `page:admin/fulfillment` | calls | `api:rpc core.cancel_fulfillment` | apps/admin/src/features/fulfillment/actions.ts:22 |
+| `page:admin/fulfillment` | calls | `api:rpc core.mark_fulfillment_delivered` | apps/admin/src/features/fulfillment/actions.ts:44 |
+| `page:admin/fulfillment` | calls | `api:rpc core.upload_reward_codes` | apps/admin/src/features/fulfillment/actions.ts:57 |
+| `page:admin/fulfillment` | calls | `api:rpc core.cancel_fulfillment` | apps/admin/src/features/fulfillment/actions.ts:32 |
+| `page:admin/fulfillment` | reads | `api:view core.fulfillment_exports` | kode: (console)/fulfillment/page.tsx baris 132 (path ber-kurung) |
 | `page:admin/fulfillment` | reads | `table:finance.fulfillments` | PRD v0.3.1 §14 kg.yaml features.F-A10; kode baris 51 |
 | `page:admin/fulfillment` | wrapped-by | `layout:admin` | apps/admin/src/app/layout.tsx:20 |
 | `page:admin/login` | calls | `mod:auth` | apps/admin/src/app/login/page.tsx:6 |
@@ -857,7 +859,7 @@ Arah: `A --tipe--> B` = A bergantung pada B. `?` = belum terverifikasi.
 | `api:fn identity/pii-export` | configured-by | `env:BRIDGE_SECRET_IDENTITY_TO_CORE` | db/identity/supabase/functions/_shared/bridge.ts:136 |
 | `api:fn identity/pii-export` | configured-by | `env:PII_ENC_KEY` | db/identity/supabase/functions/_shared/crypto.ts:97 (PII_ENC_KEYS) |
 | `api:fn identity/pii-export` | guarded-by | `policy:fn-verify-jwt` | db/identity/supabase/functions/pii-export/index.ts:11 |
-| `api:fn identity/pii-export` | guarded-by | `policy:identity.admin-aal2` | db/identity/supabase/functions/pii-export/handler.ts:343 |
+| `api:fn identity/pii-export` | guarded-by | `policy:identity.admin-aal2` | db/identity/supabase/functions/pii-export/handler.ts:356 |
 | `api:fn identity/pii-export` | reads | `table:member.consents` | db/identity/supabase/schemas/api/svc.sql:49 (rpc svc_has_consent, handler.ts baris 237) |
 | `api:fn identity/pii-export` | reads | `table:member.kyc_records` | db/identity/supabase/schemas/api/svc.sql:24 (rpc svc_kyc) |
 | `api:fn identity/pii-export` | reads | `table:member.payout_methods` | db/identity/supabase/schemas/api/svc.sql:13 (rpc svc_payout_methods) |
@@ -934,6 +936,7 @@ Arah: `A --tipe--> B` = A bergantung pada B. `?` = belum terverifikasi.
 | `api:rpc core.mark_fulfillment_delivered` | writes | `table:ops.audit_logs` | db/core/supabase/schemas/finance/fulfillment_admin.sql:29 |
 | `api:rpc core.cancel_payout` | writes | `table:finance.payouts` | db/core/supabase/schemas/finance/payout_flow.sql:319 |
 | `api:rpc core.cancel_fulfillment` | writes | `table:finance.fulfillments` | db/core/supabase/schemas/finance/payout_flow.sql:370 |
+| `api:view core.fulfillment_exports` | reads | `table:finance.fulfillments` | db/core/supabase/schemas/api/views.sql:94 |
 | `api:rpc core.missing_brief_tags` | guarded-by | `policy:core.public-read` | db/core/supabase/schemas/api/brief.sql:4 (security invoker lewat api.campaigns) |
 | `api:rpc core.missing_brief_tags` | guarded-by | `policy:core.rls-org` | db/core/supabase/schemas/api/brief.sql:4 (security invoker lewat api.campaigns) |
 | `api:rpc core.missing_brief_tags` | reads | `table:market.campaigns` | db/core/supabase/schemas/api/brief.sql:15 |
@@ -1045,9 +1048,9 @@ Arah: `A --tipe--> B` = A bergantung pada B. `?` = belum terverifikasi.
 | `fn:accrue_earnings` | reads | `table:market.rate_rules` | db/core/supabase/schemas/finance/earnings.sql:157 |
 | `fn:accrue_earnings` | reads | `table:tracking.submissions` | db/core/supabase/schemas/finance/earnings.sql:132 |
 | `fn:accrue_earnings` | reads | `table:tracking.view_snapshots` | db/core/supabase/schemas/finance/earnings.sql:136 |
-| `fn:accrue_earnings` | writes | `table:finance.ledger_accounts` | db/core/supabase/schemas/finance/earnings.sql:199 (finance.account membuat wallet bila belum ada) |
-| `fn:accrue_earnings` | writes | `table:finance.ledger_entries` | db/core/supabase/schemas/finance/earnings.sql:215 (finance.post) |
-| `fn:accrue_earnings` | writes | `table:finance.reward_pools` | db/core/supabase/schemas/finance/earnings.sql:200 |
+| `fn:accrue_earnings` | writes | `table:finance.ledger_accounts` | db/core/supabase/schemas/finance/earnings.sql:204 (finance.account membuat wallet bila belum ada) |
+| `fn:accrue_earnings` | writes | `table:finance.ledger_entries` | db/core/supabase/schemas/finance/earnings.sql:220 (finance.post) |
+| `fn:accrue_earnings` | writes | `table:finance.reward_pools` | db/core/supabase/schemas/finance/earnings.sql:205 |
 | `fn:accrue_earnings` | writes | `table:tracking.submissions` | db/core/supabase/schemas/finance/earnings.sql:148 |
 | `fn:custom_access_token_hook` | reads | `table:member.consents` | db/identity/supabase/schemas/member/custom_access_token_hook.sql:31 |
 | `fn:custom_access_token_hook` | reads | `table:member.kyc_records` | db/identity/supabase/schemas/member/custom_access_token_hook.sql:25 |
@@ -1056,8 +1059,8 @@ Arah: `A --tipe--> B` = A bergantung pada B. `?` = belum terverifikasi.
 | `fn:enqueue_notification` | emits | `event:queue.email` | db/core/supabase/schemas/ops/enqueue_notification.sql:13 |
 | `fn:enqueue_notification` | reads | `table:ops.notification_prefs` | db/core/supabase/schemas/ops/enqueue_notification.sql:11 |
 | `fn:enqueue_notification` | writes | `table:ops.notifications` | db/core/supabase/schemas/ops/enqueue_notification.sql:10 |
-| `fn:reverse_earning` | writes | `table:finance.ledger_entries` | db/core/supabase/schemas/finance/earnings.sql:301 (finance.post) |
-| `fn:reverse_earning` | writes | `table:finance.reward_pools` | db/core/supabase/schemas/finance/earnings.sql:294 |
+| `fn:reverse_earning` | writes | `table:finance.ledger_entries` | db/core/supabase/schemas/finance/earnings.sql:306 (finance.post) |
+| `fn:reverse_earning` | writes | `table:finance.reward_pools` | db/core/supabase/schemas/finance/earnings.sql:299 |
 | `job:broadcast-dispatch` | calls | `fn:enqueue_notification` | db/core/supabase/schemas/ops/broadcast_dispatch.sql:39 |
 | `job:broadcast-dispatch` | writes | `table:ops.broadcasts` | db/core/supabase/schemas/ops/broadcast_dispatch.sql:45 |
 | `job:broadcast-dispatch` | writes | `table:ops.notifications` | db/core/supabase/schemas/ops/broadcast_dispatch.sql:39 (ops.enqueue_notification) |
@@ -1065,8 +1068,8 @@ Arah: `A --tipe--> B` = A bergantung pada B. `?` = belum terverifikasi.
 | `job:budget-alerts` | writes | `table:ops.notifications` | db/core/supabase/schemas/api/_helpers.sql:58 (market.notify_org → ops.enqueue_notification) |
 | `job:claim-expiry` | calls | `fn:enqueue_notification` | db/core/supabase/schemas/market/claims.sql:37 |
 | `job:claim-expiry` | writes | `table:market.claims` | db/core/supabase/schemas/market/claims.sql:40 |
-| `job:earning-release` | calls | `fn:enqueue_notification` | db/core/supabase/schemas/finance/earnings.sql:422 |
-| `job:earning-release` | writes | `table:finance.ledger_entries` | db/core/supabase/schemas/finance/earnings.sql:420 (finance.post) |
+| `job:earning-release` | calls | `fn:enqueue_notification` | db/core/supabase/schemas/finance/earnings.sql:427 |
+| `job:earning-release` | writes | `table:finance.ledger_entries` | db/core/supabase/schemas/finance/earnings.sql:425 (finance.post) |
 | `job:fraud-device-scan` | calls | `api:fn core/bridge` | db/identity/supabase/functions/bridge/handler.ts:127 |
 | `job:fraud-device-scan` | calls | `api:fn identity/bridge` | db/identity/supabase/schemas/member/cron.sql:15 |
 | `job:fraud-device-scan` | configured-by | `env:BRIDGE_SECRET_IDENTITY_TO_CORE` | db/identity/supabase/functions/_shared/bridge.ts:136 |
@@ -1188,9 +1191,9 @@ Arah: `A --tipe--> B` = A bergantung pada B. `?` = belum terverifikasi.
 | `table:market.claims` | typed-by | `doc:spec/kg.yaml` | db/core/supabase/schemas/ops/state_triggers.sql:1 |
 | `table:market.claims` | typed-by | `table:market.campaigns` | db/core/supabase/schemas/market/claims.sql:5 |
 | `table:market.claims` | typed-by | `table:market.profiles` | db/core/supabase/schemas/market/claims.sql:6 |
-| `table:market.leaderboard_campaign` | guarded-by | `policy:core.api-only` | db/core/supabase/schemas/api/views.sql:113 |
+| `table:market.leaderboard_campaign` | guarded-by | `policy:core.api-only` | db/core/supabase/schemas/api/views.sql:119 |
 | `table:market.leaderboard_campaign` | reads | `table:tracking.submissions` | db/core/supabase/schemas/market/leaderboard.sql:16 |
-| `table:market.leaderboard_weekly` | guarded-by | `policy:core.api-only` | db/core/supabase/schemas/api/views.sql:113 |
+| `table:market.leaderboard_weekly` | guarded-by | `policy:core.api-only` | db/core/supabase/schemas/api/views.sql:119 |
 | `table:market.leaderboard_weekly` | reads | `table:tracking.submissions` | db/core/supabase/schemas/market/leaderboard.sql:8 |
 | `table:market.org_invites` | guarded-by | `policy:core.iss-identity` | db/core/supabase/schemas/market/org_invites.sql:21 |
 | `table:market.org_invites` | guarded-by | `policy:core.org-role` | db/core/supabase/schemas/market/org_invites.sql:23 |
@@ -2131,6 +2134,8 @@ Masalah sistem yang ditemukan saat menyusun PRD v0.2 dan saat dicek ulang (v0.2.
 | 2026-10-19 | `table:finance.fulfillments` | Review Claudex R2–R4: klaim webhook bisa dibatalkan (refund) saat/ sesudah kiriman yang hasilnya tidak pasti (timeout, 5xx, worker mati) → reward terkirim + saldo kembali | diperbaiki: lease 5 menit (leased_until), delivery_uncertain (gagal non-4xx atau lease kedaluwarsa diambil ulang), cancel_fulfillment menolak saat lease hidup (delivery_in_flight) dan butuh konfirmasi tidak terkirim (delivery_unconfirmed); dialog admin punya centang konfirmasi |
 | 2026-10-19 | `api:fn identity/pii-export` | Review Claudex R3–R4: isi CSV batch/penerima bisa beda dengan DB saat serah-terima (tahan, batal), export paralel menimpa berkas yang sudah diterima, respons hilang + retry bridge membuat serah-terima reward manual gagal lalu berkasnya dihapus | diperbaiki: core menerima daftar id persis di CSV (export_stale bila beda), nama berkas unik per percobaan, re-sign memakai file_ref batch, serah-terima reward idempoten untuk berkas yang sama, berkas dihapus hanya bila core menolak (4xx) |
 | 2026-10-19 | `api:rpc core.resolve_fraud_flag` | Review Claudex R4: hold flag payout pada instant requested (sedang dikirim ke penyedia) membuka cancel + refund saat transfer berjalan. Belum terjangkau (belum ada sumber flag bertarget payout) | diperbaiki: hold hanya menahan payout batch |
+| 2026-10-19 | `fn:accrue_earnings` | Review Claudex R5: raise_rate flat_per_post membuat rule baru → once_paid per rule_id kosong → post yang sudah dibayar dibayar lagi penuh | diperbaiki: flat dianggap sudah dibayar bila versi rule mana pun (pool, kind, platform sama) sudah once_paid |
+| 2026-10-19 | `page:admin/fulfillment` | Review Claudex R5: CSV penerima yang sudah diserahkan tidak bisa diunduh ulang (link 15 menit kedaluwarsa / respons hilang) → klaim processing tanpa daftar penerima | diperbaiki: api.fulfillment_exports + aksi pii-export recipients_resign (prefix reward type, tanpa dekripsi ulang, tercatat audit) + tombol Unduh ulang |
 ## Keputusan
 
 Keputusan yang sudah diambil — jangan dibahas ulang tanpa alasan baru.

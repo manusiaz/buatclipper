@@ -24,7 +24,7 @@ import {
   type UiLocale,
 } from '@clipper/ui';
 import { isUuid, param, rows, uniq, type SearchParams } from '@/lib/data';
-import { cancelFulfillment, exportRecipients, markDelivered, uploadCodes } from '@/features/fulfillment/actions';
+import { cancelFulfillment, exportRecipients, markDelivered, resignRecipients, uploadCodes } from '@/features/fulfillment/actions';
 import { ActionDialog } from '@/features/shared/action-dialog';
 import { ExportPanel } from '@/features/shared/export-panel';
 import { JsonView } from '@/features/shared/json-view';
@@ -117,7 +117,7 @@ async function TypeQueue({
 }) {
   const [t, db] = await Promise.all([getTranslations('admin'), coreServer('admin')]);
   const id = rt.id!;
-  const [listRes, freeRes] = await Promise.all([
+  const [listRes, freeRes, exportsRes] = await Promise.all([
     db
       .from('fulfillments')
       .select('id, user_id, amount, recipient, status, attempts, created_at')
@@ -128,8 +128,13 @@ async function TypeQueue({
     rt.fulfillment === 'code_pool'
       ? db.from('reward_codes').select('id', { count: 'exact', head: true }).eq('reward_type_id', id).is('fulfillment_id', null)
       : Promise.resolve({ count: null }),
+    rt.fulfillment === 'manual_export'
+      ? db.from('fulfillment_exports').select('file_ref, pending').eq('reward_type_id', id).gt('pending', 0)
+          .order('file_ref', { ascending: false }).limit(10)
+      : Promise.resolve({ data: [], error: null }),
   ]);
   const list = rows(listRes);
+  const exports = rows(exportsRes);
   const users = new Map(
     rows(
       await db
@@ -153,6 +158,14 @@ async function TypeQueue({
             action={exportRecipients.bind(null, id)}
           />
         ) : null}
+        {exports.map((e) => (
+          <ExportPanel
+            key={e.file_ref}
+            label={t('fulfillment.redownload', { file: e.file_ref!.split('/').pop()!, n: formatNumber(e.pending ?? 0, loc) })}
+            itemsTitle={t('fulfillment.skipped')}
+            action={resignRecipients.bind(null, id, e.file_ref!, e.pending ?? 0)}
+          />
+        ))}
         {rt.fulfillment === 'code_pool' ? (
           <>
             <div className="flex flex-wrap items-center gap-3">

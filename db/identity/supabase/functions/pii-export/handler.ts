@@ -328,6 +328,18 @@ export async function exportRecipients(deps: PiiExportDeps, actor: Actor, reward
   return { url, expires_in: SIGNED_URL_TTL_S, file_ref, rows: records.length, skipped };
 }
 
+/** Link baru untuk CSV penerima yang sudah diserahkan (link kedaluwarsa / respons hilang); tanpa dekripsi ulang. */
+export async function resignRecipients(deps: PiiExportDeps, actor: Actor, rewardTypeId: string, fileRef: string) {
+  const prefix = `${EXPORT_BUCKET}/recipients/${rewardTypeId}/`;
+  const path = fileRef.startsWith(prefix) && !fileRef.includes("..") ? fileRef.slice(EXPORT_BUCKET.length + 1) : "";
+  if (!path || !(await deps.storage.exists(EXPORT_BUCKET, path))) {
+    throw new HttpError(404, "file_missing", "berkas ekspor tidak ditemukan");
+  }
+  const url = await deps.storage.signedUrl(EXPORT_BUCKET, path, SIGNED_URL_TTL_S);
+  await audit(deps, actor, "pii.export_recipients", `reward_type:${rewardTypeId}`, { resign: true, file_ref: fileRef });
+  return { url, expires_in: SIGNED_URL_TTL_S, file_ref: fileRef, rows: 0, skipped: [] };
+}
+
 // ---- entry ----------------------------------------------------------------------------------------------------------
 
 const ROLES: Record<string, readonly AdminRole[]> = {
@@ -335,6 +347,7 @@ const ROLES: Record<string, readonly AdminRole[]> = {
   upload_proof: ["admin_finance"],
   pph21: ["admin_finance"],
   recipients_csv: ["admin_finance", "admin_ops"],
+  recipients_resign: ["admin_finance", "admin_ops"],
 };
 
 export function createPiiExportHandler(deps: PiiExportDeps): (req: Request) => Promise<Response> {
@@ -358,6 +371,10 @@ export function createPiiExportHandler(deps: PiiExportDeps): (req: Request) => P
         return okResponse(await uploadProof(deps, actor, body));
       case "pph21":
         return okResponse(await exportPph21(deps, actor, body));
+      case "recipients_resign":
+        return okResponse(
+          await resignRecipients(deps, actor, uuid(body, "reward_type_id"), str(body, "file_ref", { max: 500 })),
+        );
       default:
         return okResponse(await exportRecipients(deps, actor, uuid(body, "reward_type_id")));
     }

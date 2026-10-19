@@ -190,6 +190,14 @@ export type Database = {
                         Relationships: [
                     
                   ]
+                },"fulfillment_exports": {
+                  Row: {
+                    "file_ref": string | null,"pending": number | null,"reward_type_id": string | null,"rows": number | null
+                  }
+                  ComputedFields: never
+                  Relationships: [
+                    
+                  ]
                 },"fulfillments": {
                   Row: {
                     "amount": number | null,"attempts": number | null,"created_at": string | null,"delivered_at": string | null,"delivered_ref": string | null,"id": string | null,"recipient": Json | null,"reward_type_id": string | null,"status": "requested"|"on_hold"|"processing"|"cancelled"|"delivered"|"failed"|"returned" | null,"user_id": string | null

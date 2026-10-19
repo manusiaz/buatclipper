@@ -87,6 +87,12 @@ create view api.payouts with (security_invoker = true) as
 create view api.fulfillments with (security_invoker = true) as
   select id, user_id, reward_type_id, amount, recipient, status, delivered_ref, attempts, created_at, delivered_at
   from finance.fulfillments;
+-- Admin (A5.1): CSV penerima yang sudah diserahkan ke brand; pending = klaim yang masih menunggu kiriman brand (unduh ulang).
+create view api.fulfillment_exports with (security_invoker = true) as
+  select f.reward_type_id, f.export_ref as file_ref, count(*)::int as rows,
+         (count(*) filter (where f.status = 'processing'))::int as pending
+  from finance.fulfillments f where f.export_ref is not null and (select ops.has_admin())
+  group by f.reward_type_id, f.export_ref;
 create view api.invoices with (security_invoker = true) as
   select id, number, org_id, campaign_id, kind, subtotal, mgmt_fee, admin_fee, service_fee, tax, total, status, payment_channel,
          paid_amount, paid_at, faktur_no, issued_at, due_at, pin_until, pool_topups, credit_applied,
@@ -121,7 +127,7 @@ create view api.leaderboard with (security_invoker = true) as
 grant select on api.my_profile, api.admin_profiles, api.managed_briefs, api.organizations, api.org_members, api.org_invites, api.claims, api.social_accounts,
                 api.submissions, api.view_snapshots, api.review_decisions, api.fraud_flags, api.notifications,
                 api.notification_prefs, api.audit_logs, api.report_links, api.fee_rules, api.wallet_balances,
-                api.wallet_entries, api.payouts, api.fulfillments, api.invoices, api.org_refunds, api.payout_batches,
+                api.wallet_entries, api.payouts, api.fulfillments, api.fulfillment_exports, api.invoices, api.org_refunds, api.payout_batches,
                 api.campaign_invites, api.org_links, api.referrals, api.score_events, api.reward_codes, api.broadcasts,
                 api.leaderboard
   to authenticated;

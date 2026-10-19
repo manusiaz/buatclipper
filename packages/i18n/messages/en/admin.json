@@ -759,6 +759,7 @@
       "webhook": "Sent automatically to the brand's webhook; repeated failures appear as alerts."
     },
     "exportRecipients": "Export recipients",
+    "redownload": "Download {file} again ({n} claims waiting)",
     "skipped": "Skipped",
     "freeCodes": "{n} codes left",
     "empty": "Queue is empty",

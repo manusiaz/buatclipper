@@ -15,6 +15,16 @@ export async function exportRecipients(rewardTypeId: string): Promise<ActionResu
   return { ok: true, data: { url: r.data.url, expires_in: r.data.expires_in, rows: r.data.rows, items: r.data.skipped.map((s) => ({ id: s.fulfillment_id, reason: s.reason })) } };
 }
 
+/** A5.1 link baru untuk CSV penerima yang sudah diserahkan (link 15 menit kedaluwarsa); tidak mengekspor klaim baru. */
+export async function resignRecipients(rewardTypeId: string, fileRef: string, rows: number): Promise<ActionResult<ExportResult>> {
+  await requireAdmin('admin_ops', 'admin_finance');
+  const r = await invokeFunction<{ url: string; expires_in: number }>(
+    'identity', 'pii-export', { action: 'recipients_resign', reward_type_id: rewardTypeId, file_ref: fileRef }, 'admin',
+  );
+  if (!r.ok) return { ok: false, error: r.error };
+  return { ok: true, data: { url: r.data.url, expires_in: r.data.expires_in, rows, items: [] } };
+}
+
 /** S-06 batal/kembalikan klaim (kode voucher yang sudah terpasang tidak bisa → code_assigned). */
 export async function cancelFulfillment(id: string, fd: FormData): Promise<ActionResult> {
   await requireAdmin('admin_ops', 'admin_finance');

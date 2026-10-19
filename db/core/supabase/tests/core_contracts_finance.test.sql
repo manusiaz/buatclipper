@@ -253,6 +253,10 @@ insert into t_ids select 'r_old', pg_temp.mk_rule('55555555-0000-0000-0000-00000
   '{"rate":2000}', now() - interval '30 days', now() - interval '1 day');
 insert into t_ids select 'r_new', pg_temp.mk_rule('55555555-0000-0000-0000-0000000000a5', '66666666-0000-0000-0000-0000000000a5', 'per_1k_views',
   '{"rate":3000}', now() - interval '1 day');
+insert into t_ids select 'rf_old', pg_temp.mk_rule('55555555-0000-0000-0000-0000000000a5', '66666666-0000-0000-0000-0000000000a5', 'flat_per_post',
+  '{"amount":10000}', now() - interval '30 days', now() - interval '1 day');
+insert into t_ids select 'rf_new', pg_temp.mk_rule('55555555-0000-0000-0000-0000000000a5', '66666666-0000-0000-0000-0000000000a5', 'flat_per_post',
+  '{"amount":15000}', now() - interval '1 day');
 insert into t_ids select 's5', pg_temp.mk_sub('55555555-0000-0000-0000-0000000000a5', '11111111-0000-0000-0000-00000000000c', 'v5',
                                               now() - interval '5 days');
 select pg_temp.snap((select v::uuid from t_ids where k = 's5'), 2000, now() - interval '2 days');
@@ -261,6 +265,9 @@ select is(pg_temp.rule_amt((select v::uuid from t_ids where k = 's5'), (select v
           'raise_rate: snapshot sebelum effective_to memakai rate lama');
 select is(pg_temp.rule_amt((select v::uuid from t_ids where k = 's5'), (select v::uuid from t_ids where k = 'r_new')), 9000::numeric,
           'raise_rate: Δ sesudahnya memakai rate baru');
+select is(pg_temp.rule_amt((select v::uuid from t_ids where k = 's5'), (select v::uuid from t_ids where k = 'rf_old'))
+          + pg_temp.rule_amt((select v::uuid from t_ids where k = 's5'), (select v::uuid from t_ids where k = 'rf_new')), 10000::numeric,
+          'regresi R5: flat yang sudah dibayar tidak dibayar lagi setelah raise_rate (rule baru = versi rule yang sama)');
 
 -- K6: views turun saat lock → pending dikoreksi turun (jurnal reversal)
 select pg_temp.mk_campaign('55555555-0000-0000-0000-0000000000a6', 'k6-drop');
@@ -556,6 +563,13 @@ select is((select status::text || ':' || export_ref from finance.fulfillments wh
           'processing:pii-exports/recipients/x.csv', 'CSV diserahkan → klaim processing + export_ref');
 select lives_ok($$ select api.bridge_attach_fulfillment_export('77777777-0000-0000-0000-000000000002', 'pii-exports/recipients/x.csv',
                      array['99999999-0000-0000-0000-0000000000e1'::uuid]) $$, 'serah-terima berkas yang sama diulang (respons hilang) = no-op');
+set local role authenticated;
+select pg_temp.jwt('33333333-0000-0000-0000-0000000000a0', '{"app_roles":["admin_ops"],"aal":"aal2"}');
+select is((select file_ref || ':' || pending from api.fulfillment_exports where reward_type_id = '77777777-0000-0000-0000-000000000002'),
+          'pii-exports/recipients/x.csv:1', 'regresi R5: admin melihat CSV yang sudah diserahkan (unduh ulang)');
+select pg_temp.jwt('11111111-0000-0000-0000-00000000000a', '{}');
+select is((select count(*)::int from api.fulfillment_exports), 0, 'daftar export tidak terbaca clipper');
+reset role;
 select ok(not exists (select 1 from api.bridge_fulfillment_export('77777777-0000-0000-0000-000000000002')
                        where id = '99999999-0000-0000-0000-0000000000e1'), 'klaim yang sudah diserahkan tidak terekspor ulang');
 select throws_ok($$ select api.bridge_attach_fulfillment_export('77777777-0000-0000-0000-000000000002', 'pii-exports/recipients/y.csv',

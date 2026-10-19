@@ -248,6 +248,15 @@ Deno.test("recipients_csv: only users with share_with_brand consent; owner/rewar
     file_ref: fileRef,
     exported: [p(61)],
   });
+  const again = await json(
+    await handler(post({ action: "recipients_resign", reward_type_id: RT, file_ref: fileRef })),
+  );
+  assertEquals([again.status, again.body.data.url], [200, `https://storage.test/${fileRef}?ttl=900`]);
+  assertEquals(rpc.named("svc_audit").at(-1)!.args.p_after, { resign: true, file_ref: fileRef });
+  for (const bad of [`pii-exports/recipients/${m(1)}/x.csv`, `pii-exports/recipients/${RT}/../../payouts/x.csv`]) {
+    const r = await json(await handler(post({ action: "recipients_resign", reward_type_id: RT, file_ref: bad })));
+    assertEquals(r.body.error.code, "file_missing");
+  }
 });
 
 Deno.test("upload_proof: type sniffed from content, stored in payout-proofs, attach_proof called", async () => {

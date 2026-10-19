@@ -162,8 +162,13 @@ begin
     select * into ce from finance.clip_earnings x where x.submission_id = s.id and x.rule_id = r.id;
     view_based := r.kind in ('per_1k_views', 'tiered_cpm');
     raw := case
+      -- raise_rate menutup rule & membuat rule baru: versi lama (pool, kind, platform sama) yang sudah dibayar = sudah dibayar.
       when r.kind = 'flat_per_post' then
-        case when coalesce(ce.once_paid, false) then 0 else (r.params ->> 'amount')::numeric end
+        case when coalesce(ce.once_paid, false) or exists (
+                    select 1 from finance.clip_earnings x join market.rate_rules r2 on r2.id = x.rule_id
+                     where x.submission_id = s.id and x.once_paid and r2.pool_id = r.pool_id and r2.kind = r.kind
+                       and r2.platform is not distinct from r.platform) then 0
+             else (r.params ->> 'amount')::numeric end
       when r.kind = 'milestone_bonus' then
         case when crossed and not coalesce(ce.once_paid, false) and base < (r.params ->> 'threshold')::numeric
                   and v >= (r.params ->> 'threshold')::numeric then (r.params ->> 'amount')::numeric else 0 end

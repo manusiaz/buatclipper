@@ -759,6 +759,7 @@
       "webhook": "Dikirim otomatis ke webhook brand; gagal berulang muncul di alert."
     },
     "exportRecipients": "Export penerima",
+    "redownload": "Unduh ulang {file} ({n} klaim menunggu)",
     "skipped": "Dilewati",
     "freeCodes": "{n} kode tersisa",
     "empty": "Antrean kosong",
