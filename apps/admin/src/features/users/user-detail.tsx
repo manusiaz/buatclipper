@@ -123,6 +123,7 @@ export async function UserDetail({ userId, claims, loc, back = '/users' }: { use
               fields={[
                 { kind: 'select', name: 'duration', label: t('users.banDuration'), required: true, options: ['720h', '2160h', 'permanent', 'custom'].map((v) => ({ value: v, label: t(`users.durations.${v}`) })) },
                 { kind: 'number', name: 'hours', label: t('users.banHours'), helper: t('users.banHoursHelp'), min: 1, max: 876000, step: '1' },
+                { kind: 'textarea', name: 'reason', label: t('form.reason'), required: true, maxLength: 500 },
               ]}
             />
             <ActionDialog

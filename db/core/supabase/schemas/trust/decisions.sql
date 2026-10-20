@@ -74,11 +74,28 @@ begin
 end $$;
 
 -- job:trust-score — E-01.trust_score = 50 + Σ delta E-40, dibatasi 0–100. Hanya baris yang berubah yang ditulis.
+-- Umur akun bersih (§12): tiap 30 hari tanpa reject, banding gagal, atau fraud flag → clean_tenure (config
+-- trust.score_deltas.clean_tenure, default 1), satu kali per periode (ref_id = nomor periode sejak profil dibuat).
 create function trust.recalc_scores() returns int
 language plpgsql security definer set search_path = '' as $$
 declare
   n int;
+  d_clean int := coalesce(((select st.value from ops.settings st where st.key = 'trust.score_deltas') ->> 'clean_tenure')::int, 1);
 begin
+  if d_clean <> 0 then
+    insert into trust.score_events (user_id, delta, reason, ref_id)
+    select pr.id, greatest(least(d_clean, 100), -100), 'clean_tenure', x.period::text
+      from market.profiles pr
+      cross join lateral (select floor(extract(epoch from now() - pr.created_at) / (30 * 86400))::int as period) x
+     where pr.status = 'active' and x.period >= 1
+       and not exists (select 1 from trust.score_events e where e.user_id = pr.id and e.reason = 'clean_tenure' and e.ref_id = x.period::text)
+       and not exists (select 1 from trust.score_events e where e.user_id = pr.id and e.delta < 0
+                        and e.created_at > now() - interval '30 days')
+       and not exists (select 1 from trust.fraud_flags f where f.status in ('open', 'held', 'actioned')
+                        and f.created_at > now() - interval '30 days'
+                        and ((f.target_type = 'profile' and f.target_id = pr.id)
+                          or (f.target_type = 'submission' and f.target_id in (select s.id from tracking.submissions s where s.user_id = pr.id))));
+  end if;
   update market.profiles p set trust_score = x.score
     from (select pr.id, least(100, greatest(0, 50 + coalesce(sum(e.delta), 0)))::smallint as score
             from market.profiles pr left join trust.score_events e on e.user_id = pr.id

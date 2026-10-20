@@ -810,7 +810,7 @@ export type Database = {
                            },
 "worker_dequeue":
 { Args: { "p_qty"?: number,"p_queue": string,"p_vt_seconds"?: number }; Returns: {
-              "message": Json,"msg_id": number
+              "message": Json,"msg_id": number,"read_ct": number
             }[]
                            },
 "worker_fulfillment_result":
@@ -829,6 +829,9 @@ export type Database = {
                            },
 "worker_record_snapshot":
 { Args: { "p_caption": string,"p_comments": number,"p_extra"?: Json,"p_likes": number,"p_raw": Json,"p_shares": number,"p_submission": string,"p_views": number }; Returns: Json
+                           },
+"worker_retry_later":
+{ Args: { "p_msg_id": number,"p_queue": string,"p_seconds": number }; Returns: undefined
                            },
 "worker_submission_context":
 { Args: { "p_submission": string }; Returns: Json

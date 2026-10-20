@@ -88,7 +88,12 @@ export class TokenExpired extends Error {
   }
 }
 export class PostGone extends Error {}
-export class Retryable extends Error {}
+export class Retryable extends Error {
+  /** Retry-After dari penyedia (detik), kalau ada. */
+  constructor(message?: string, public retryAfterSec?: number) {
+    super(message);
+  }
+}
 /** Error bisnis dengan kode stabil (ig_personal, oauth_failed, not_owner, bad_url, scope_missing, page_ambiguous, …). */
 export class AdapterError extends Error {
   constructor(public code: string, message = code, public detail?: unknown) {

@@ -468,13 +468,13 @@ Arah: `A --tipe--> B` = A bergantung pada B. `?` = belum terverifikasi.
 | `page:admin/review` | calls | `api:rpc core.record_review` | apps/admin/src/features/moderation/actions.ts:29 |
 | `page:admin/review` | reads | `table:tracking.submissions` | PRD v0.3.1 §14 kg.yaml features.F-A05; kode baris 25 |
 | `page:admin/review` | wrapped-by | `layout:admin` | apps/admin/src/app/layout.tsx:20 |
-| `page:admin/users` | calls | `api:fn identity/admin-auth` | apps/admin/src/features/users/actions.ts:116 |
-| `page:admin/users` | calls | `api:rpc core.manage_org` | apps/admin/src/features/users/actions.ts:78 |
+| `page:admin/users` | calls | `api:fn identity/admin-auth` | apps/admin/src/features/users/actions.ts:127 |
+| `page:admin/users` | calls | `api:rpc core.manage_org` | apps/admin/src/features/users/actions.ts:89 |
 | `page:admin/users` | calls | `api:rpc core.record_review` | apps/admin/src/features/users/actions.ts:19 |
 | `page:admin/users` | calls | `api:rpc identity.admin_kyc_decision` | apps/admin/src/features/users/actions.ts:37 |
 | `page:admin/users` | calls | `api:rpc identity.admin_read` | apps/admin/src/features/users/user-detail.tsx:35 |
-| `page:admin/users` | calls | `api:rpc identity.admin_set_role` | apps/admin/src/features/users/actions.ts:129 |
-| `page:admin/users` | calls | `api:rpc core.manage_user` | apps/admin/src/features/users/actions.ts:160 |
+| `page:admin/users` | calls | `api:rpc identity.admin_set_role` | apps/admin/src/features/users/actions.ts:140 |
+| `page:admin/users` | calls | `api:rpc core.manage_user` | apps/admin/src/features/users/actions.ts:171 |
 | `page:admin/users` | calls | `api:rpc identity.admin_kyc_queue` | kode: (console)/users/page.tsx baris 138 (path ber-kurung) |
 | `page:admin/users` | calls | `api:rpc identity.admin_list_roles` | kode: (console)/users/page.tsx baris 265 (path ber-kurung) |
 | `page:admin/users` | reads | `api:view core.admin_profiles` | apps/admin/src/features/users/user-detail.tsx:20 |
@@ -771,45 +771,45 @@ Arah: `A --tipe--> B` = A bergantung pada B. `?` = belum terverifikasi.
 | `api:fn core/bridge` | calls | `api:fn identity/bridge` | db/core/supabase/functions/bridge/handler.ts:143 (cron disburse & ban_user → identity) |
 | `api:fn core/fulfill` | calls | `ext:brand-webhook` | db/core/supabase/functions/fulfill/fulfill.ts:115 |
 | `api:fn core/fulfill` | guarded-by | `policy:fn-cron-key` | db/core/supabase/functions/fulfill/index.ts:10 |
-| `api:fn core/fulfill` | reads | `table:finance.fulfillments` | db/core/supabase/schemas/api/worker.sql:472 (rpc worker_fulfillments_due) |
-| `api:fn core/fulfill` | reads | `table:vault.social-tokens` | db/core/supabase/schemas/api/worker.sql:491 (secret webhook reward type di Vault core) |
-| `api:fn core/fulfill` | writes | `table:finance.fulfillments` | db/core/supabase/schemas/api/worker.sql:547 (rpc worker_fulfillment_result) |
-| `api:fn core/fulfill` | writes | `table:finance.reward_codes` | db/core/supabase/schemas/api/worker.sql:526 (rpc worker_assign_code) |
-| `api:fn core/notify` | calls | `api:fn identity/bridge` | db/core/supabase/functions/notify/notify.ts:88 |
+| `api:fn core/fulfill` | reads | `table:finance.fulfillments` | db/core/supabase/schemas/api/worker.sql:486 (rpc worker_fulfillments_due) |
+| `api:fn core/fulfill` | reads | `table:vault.social-tokens` | db/core/supabase/schemas/api/worker.sql:505 (secret webhook reward type di Vault core) |
+| `api:fn core/fulfill` | writes | `table:finance.fulfillments` | db/core/supabase/schemas/api/worker.sql:561 (rpc worker_fulfillment_result) |
+| `api:fn core/fulfill` | writes | `table:finance.reward_codes` | db/core/supabase/schemas/api/worker.sql:540 (rpc worker_assign_code) |
+| `api:fn core/notify` | calls | `api:fn identity/bridge` | db/core/supabase/functions/notify/notify.ts:94 (send_email; send_push sesuai flag kanal pesan) |
 | `api:fn core/notify` | configured-by | `env:BRIDGE_SECRET_CORE_TO_IDENTITY` | db/core/supabase/functions/_shared/bridge.ts:66 |
 | `api:fn core/notify` | configured-by | `env:SUPABASE_DB_URL` | PRD v0.3.1 §15.8 Queue lewat koneksi Postgres langsung (belum di kode: queue dibaca lewat rpc api.worker_dequeue dengan secret key, bukan koneksi Postgres) |
 | `api:fn core/notify` | guarded-by | `policy:fn-cron-key` | db/core/supabase/functions/notify/index.ts:16 |
-| `api:fn core/notify` | subscribes | `event:queue.email` | db/core/supabase/functions/notify/notify.ts:49 |
+| `api:fn core/notify` | subscribes | `event:queue.email` | db/core/supabase/functions/notify/notify.ts:51 |
 | `api:fn core/refresh-tokens` | calls | `api:rpc core.store_social_token` | db/core/supabase/functions/refresh-tokens/refresh.ts:43 |
 | `api:fn core/refresh-tokens` | calls | `mod:social` | db/core/supabase/functions/refresh-tokens/index.ts:5 |
 | `api:fn core/refresh-tokens` | configured-by | `env:GOOGLE_CLIENT_SECRET` | db/core/supabase/functions/_shared/social/mod.ts:19 |
 | `api:fn core/refresh-tokens` | configured-by | `env:META_APP_SECRET` | db/core/supabase/functions/_shared/social/mod.ts:18 |
 | `api:fn core/refresh-tokens` | configured-by | `env:TIKTOK_CLIENT_SECRET` | db/core/supabase/functions/_shared/social/mod.ts:17 |
 | `api:fn core/refresh-tokens` | guarded-by | `policy:fn-cron-key` | db/core/supabase/functions/refresh-tokens/index.ts:11 |
-| `api:fn core/refresh-tokens` | writes | `table:tracking.social_accounts` | db/core/supabase/schemas/api/worker.sql:278 (rpc worker_account_status) |
+| `api:fn core/refresh-tokens` | writes | `table:tracking.social_accounts` | db/core/supabase/schemas/api/worker.sql:289 (rpc worker_account_status) |
 | `api:fn core/refresh-tokens` | writes | `table:vault.social-tokens` | db/core/supabase/functions/refresh-tokens/refresh.ts:43 (store_social_token → Vault) |
 | `api:fn core/social` | calls | `api:rpc core.missing_brief_tags` | db/core/supabase/functions/social/handler.ts:290 |
-| `api:fn core/social` | calls | `api:rpc core.store_social_token` | db/core/supabase/schemas/api/worker.sql:349 (rpc worker_upsert_social_account) |
+| `api:fn core/social` | calls | `api:rpc core.store_social_token` | db/core/supabase/schemas/api/worker.sql:360 (rpc worker_upsert_social_account) |
 | `api:fn core/social` | calls | `mod:social` | db/core/supabase/functions/social/handler.ts:20 |
 | `api:fn core/social` | configured-by | `env:GOOGLE_CLIENT_SECRET` | db/core/supabase/functions/_shared/social/mod.ts:19 |
 | `api:fn core/social` | configured-by | `env:META_APP_SECRET` | db/core/supabase/functions/_shared/social/mod.ts:18 |
 | `api:fn core/social` | configured-by | `env:TIKTOK_CLIENT_SECRET` | db/core/supabase/functions/_shared/social/mod.ts:17 |
 | `api:fn core/social` | guarded-by | `policy:fn-verify-jwt` | db/core/supabase/functions/social/handler.ts:277 |
 | `api:fn core/social` | reads | `table:market.claims` | db/core/supabase/functions/social/handler.ts:282 |
-| `api:fn core/social` | writes | `table:tracking.social_accounts` | db/core/supabase/schemas/api/worker.sql:342 (rpc worker_upsert_social_account) |
-| `api:fn core/social` | writes | `table:tracking.submissions` | db/core/supabase/schemas/api/worker.sql:422 (rpc worker_create_submission) |
-| `api:fn core/social` | writes | `table:vault.social-tokens` | db/core/supabase/schemas/api/worker.sql:349 (api.store_social_token) |
-| `api:fn core/track-worker` | calls | `api:rpc core.missing_brief_tags` | db/core/supabase/schemas/api/worker.sql:152 (rpc worker_record_snapshot) |
-| `api:fn core/track-worker` | calls | `fn:accrue_earnings` | db/core/supabase/schemas/api/worker.sql:214 (rpc worker_record_snapshot) |
-| `api:fn core/track-worker` | calls | `fn:reverse_earning` | db/core/supabase/schemas/api/worker.sql:250 (rpc worker_post_gone) |
+| `api:fn core/social` | writes | `table:tracking.social_accounts` | db/core/supabase/schemas/api/worker.sql:353 (rpc worker_upsert_social_account) |
+| `api:fn core/social` | writes | `table:tracking.submissions` | db/core/supabase/schemas/api/worker.sql:433 (rpc worker_create_submission) |
+| `api:fn core/social` | writes | `table:vault.social-tokens` | db/core/supabase/schemas/api/worker.sql:360 (api.store_social_token) |
+| `api:fn core/track-worker` | calls | `api:rpc core.missing_brief_tags` | db/core/supabase/schemas/api/worker.sql:162 (rpc worker_record_snapshot) |
+| `api:fn core/track-worker` | calls | `fn:accrue_earnings` | db/core/supabase/schemas/api/worker.sql:225 (rpc worker_record_snapshot) |
+| `api:fn core/track-worker` | calls | `fn:reverse_earning` | db/core/supabase/schemas/api/worker.sql:261 (rpc worker_post_gone) |
 | `api:fn core/track-worker` | calls | `mod:social` | db/core/supabase/functions/track-worker/index.ts:6 |
 | `api:fn core/track-worker` | configured-by | `env:SUPABASE_DB_URL` | PRD v0.3.1 §15.8 Queue lewat koneksi Postgres langsung (belum di kode: queue dibaca lewat rpc api.worker_dequeue dengan secret key, bukan koneksi Postgres) |
 | `api:fn core/track-worker` | guarded-by | `policy:fn-cron-key` | db/core/supabase/functions/track-worker/index.ts:12 |
-| `api:fn core/track-worker` | reads | `table:tracking.submissions` | db/core/supabase/schemas/api/worker.sql:47 (rpc worker_submission_context) |
-| `api:fn core/track-worker` | reads | `table:vault.social-tokens` | db/core/supabase/schemas/api/worker.sql:53 (rpc worker_submission_context) |
-| `api:fn core/track-worker` | subscribes | `event:queue.tracking` | db/core/supabase/functions/track-worker/worker.ts:116 |
-| `api:fn core/track-worker` | writes | `table:tracking.view_snapshots` | db/core/supabase/schemas/api/worker.sql:144 (rpc worker_record_snapshot) |
-| `api:fn core/track-worker` | writes | `table:trust.fraud_flags` | db/core/supabase/schemas/api/worker.sql:154 (rpc worker_record_snapshot → trust.raise_flag) |
+| `api:fn core/track-worker` | reads | `table:tracking.submissions` | db/core/supabase/schemas/api/worker.sql:57 (rpc worker_submission_context) |
+| `api:fn core/track-worker` | reads | `table:vault.social-tokens` | db/core/supabase/schemas/api/worker.sql:63 (rpc worker_submission_context) |
+| `api:fn core/track-worker` | subscribes | `event:queue.tracking` | db/core/supabase/functions/track-worker/worker.ts:131 |
+| `api:fn core/track-worker` | writes | `table:tracking.view_snapshots` | db/core/supabase/schemas/api/worker.sql:154 (rpc worker_record_snapshot) |
+| `api:fn core/track-worker` | writes | `table:trust.fraud_flags` | db/core/supabase/schemas/api/worker.sql:164 (rpc worker_record_snapshot → trust.raise_flag) |
 | `api:fn identity/admin-auth` | guarded-by | `policy:identity.admin-aal2` | db/identity/supabase/functions/admin-auth/handler.ts:33 |
 | `api:fn identity/admin-auth` | writes | `table:auth.users` | db/identity/supabase/functions/admin-auth/handler.ts:51 (invite; ban_duration lewat _shared/moderation.ts) |
 | `api:fn identity/bridge` | calls | `api:rpc identity.shared_device_groups` | db/identity/supabase/functions/bridge/handler.ts:113 |
@@ -922,7 +922,7 @@ Arah: `A --tipe--> B` = A bergantung pada B. `?` = belum terverifikasi.
 | `api:rpc core.manage_user` | guarded-by | `policy:core.admin-aal2` | db/core/supabase/schemas/trust/manage_user.sql:14 |
 | `api:rpc core.manage_user` | writes | `table:market.claims` | db/core/supabase/schemas/trust/manage_user.sql:42 |
 | `api:rpc core.manage_user` | writes | `table:market.profiles` | db/core/supabase/schemas/trust/manage_user.sql:41 |
-| `api:rpc core.manage_user` | writes | `table:ops.audit_logs` | db/core/supabase/schemas/trust/manage_user.sql:58 |
+| `api:rpc core.manage_user` | writes | `table:ops.audit_logs` | db/core/supabase/schemas/trust/manage_user.sql:64 |
 | `api:rpc core.manage_user` | writes | `table:trust.score_events` | db/core/supabase/schemas/trust/manage_user.sql:29 |
 | `api:rpc core.mark_batch_paid` | calls | `fn:enqueue_notification` | db/core/supabase/schemas/finance/payout_flow.sql:207 |
 | `api:rpc core.mark_batch_paid` | guarded-by | `policy:core.admin-aal2` | db/core/supabase/schemas/finance/payout_flow.sql:186 |
@@ -932,7 +932,7 @@ Arah: `A --tipe--> B` = A bergantung pada B. `?` = belum terverifikasi.
 | `api:rpc core.mark_batch_paid` | writes | `table:ops.audit_logs` | db/core/supabase/schemas/finance/payout_flow.sql:219 |
 | `api:rpc core.mark_fulfillment_delivered` | guarded-by | `policy:core.admin-aal2` | db/core/supabase/schemas/finance/fulfillment_admin.sql:9 |
 | `api:rpc core.mark_fulfillment_delivered` | reads | `table:market.reward_types` | db/core/supabase/schemas/finance/fulfillment_admin.sql:16 |
-| `api:rpc core.mark_fulfillment_delivered` | writes | `table:finance.fulfillments` | db/core/supabase/schemas/finance/fulfillment_admin.sql:12, db/core/supabase/schemas/api/worker.sql:547 (api.worker_fulfillment_result, baris 28) |
+| `api:rpc core.mark_fulfillment_delivered` | writes | `table:finance.fulfillments` | db/core/supabase/schemas/finance/fulfillment_admin.sql:12, db/core/supabase/schemas/api/worker.sql:561 (api.worker_fulfillment_result, baris 28) |
 | `api:rpc core.mark_fulfillment_delivered` | writes | `table:ops.audit_logs` | db/core/supabase/schemas/finance/fulfillment_admin.sql:29 |
 | `api:rpc core.cancel_payout` | writes | `table:finance.payouts` | db/core/supabase/schemas/finance/payout_flow.sql:319 |
 | `api:rpc core.cancel_fulfillment` | writes | `table:finance.fulfillments` | db/core/supabase/schemas/finance/payout_flow.sql:370 |
@@ -1057,9 +1057,9 @@ Arah: `A --tipe--> B` = A bergantung pada B. `?` = belum terverifikasi.
 | `fn:custom_access_token_hook` | reads | `table:member.kyc_records` | db/identity/supabase/schemas/member/custom_access_token_hook.sql:25 |
 | `fn:custom_access_token_hook` | reads | `table:member.legal_versions` | db/identity/supabase/schemas/member/custom_access_token_hook.sql:10 |
 | `fn:custom_access_token_hook` | reads | `table:member.platform_roles` | db/identity/supabase/schemas/member/custom_access_token_hook.sql:24 |
-| `fn:enqueue_notification` | emits | `event:queue.email` | db/core/supabase/schemas/ops/enqueue_notification.sql:13 |
-| `fn:enqueue_notification` | reads | `table:ops.notification_prefs` | db/core/supabase/schemas/ops/enqueue_notification.sql:11 |
-| `fn:enqueue_notification` | writes | `table:ops.notifications` | db/core/supabase/schemas/ops/enqueue_notification.sql:10 |
+| `fn:enqueue_notification` | emits | `event:queue.email` | db/core/supabase/schemas/ops/enqueue_notification.sql:20 |
+| `fn:enqueue_notification` | reads | `table:ops.notification_prefs` | db/core/supabase/schemas/ops/enqueue_notification.sql:17 (hanya email promosi; push tetap) |
+| `fn:enqueue_notification` | writes | `table:ops.notifications` | db/core/supabase/schemas/ops/enqueue_notification.sql:14 |
 | `fn:reverse_earning` | writes | `table:finance.ledger_entries` | db/core/supabase/schemas/finance/earnings.sql:306 (finance.post) |
 | `fn:reverse_earning` | writes | `table:finance.reward_pools` | db/core/supabase/schemas/finance/earnings.sql:299 |
 | `job:broadcast-dispatch` | calls | `fn:enqueue_notification` | db/core/supabase/schemas/ops/broadcast_dispatch.sql:39 |
@@ -1077,7 +1077,7 @@ Arah: `A --tipe--> B` = A bergantung pada B. `?` = belum terverifikasi.
 | `job:fraud-device-scan` | configured-by | `env:BRIDGE_SECRET_IDENTITY_TO_CORE` | db/identity/supabase/functions/_shared/bridge.ts:136 |
 | `job:fraud-device-scan` | reads | `table:auth.sessions` | db/identity/supabase/schemas/api/shared_device_groups.sql:6 (dipanggil bridge/handler.ts baris 113) |
 | `job:fulfillment-retry` | calls | `api:fn core/fulfill` | db/core/supabase/schemas/finance/cron.sql:12 |
-| `job:fulfillment-retry` | configured-by | `env:CORE_SECRET_KEY` | db/core/supabase/schemas/ops/enqueue_notification.sql:29 (ops.invoke_function → header apikey) |
+| `job:fulfillment-retry` | configured-by | `env:CORE_SECRET_KEY` | db/core/supabase/schemas/ops/enqueue_notification.sql:36 (ops.invoke_function → header apikey) |
 | `job:leaderboard-refresh` | writes | `table:market.leaderboard_campaign` | db/core/supabase/schemas/market/leaderboard.sql:27 |
 | `job:leaderboard-refresh` | writes | `table:market.leaderboard_weekly` | db/core/supabase/schemas/market/leaderboard.sql:26 |
 | `job:lifecycle` | calls | `fn:accrue_earnings` | db/core/supabase/schemas/market/lifecycle.sql:71 |
@@ -1086,21 +1086,23 @@ Arah: `A --tipe--> B` = A bergantung pada B. `?` = belum terverifikasi.
 | `job:lifecycle` | writes | `table:tracking.submissions` | db/core/supabase/schemas/market/lifecycle.sql:72 |
 | `job:lifecycle` | writes | `table:trust.review_decisions` | db/core/supabase/schemas/market/lifecycle.sql:106 (trust.auto_approve_overdue) |
 | `job:notify-drain` | calls | `api:fn core/notify` | db/core/supabase/schemas/ops/cron.sql:8 |
-| `job:notify-drain` | configured-by | `env:CORE_SECRET_KEY` | db/core/supabase/schemas/ops/enqueue_notification.sql:29 (ops.invoke_function → header apikey) |
+| `job:notify-drain` | configured-by | `env:CORE_SECRET_KEY` | db/core/supabase/schemas/ops/enqueue_notification.sql:36 (ops.invoke_function → header apikey) |
 | `job:reconcile-daily` | calls | `api:fn core/bridge` | db/core/supabase/schemas/finance/cron.sql:7 |
 | `job:reconcile-daily` | calls | `api:fn identity/bridge` | db/core/supabase/functions/bridge/handler.ts:108 |
 | `job:reconcile-daily` | configured-by | `env:BRIDGE_SECRET_CORE_TO_IDENTITY` | db/core/supabase/functions/_shared/bridge.ts:66 |
 | `job:reconcile-daily` | reads | `table:finance.ledger_entries` | db/core/supabase/schemas/finance/reconcile.sql:15 |
-| `job:referral-bonus` | writes | `table:finance.ledger_entries` | db/core/supabase/schemas/finance/referral_bonus.sql:29 (finance.post) |
+| `job:referral-bonus` | writes | `table:finance.ledger_entries` | db/core/supabase/schemas/finance/referral_bonus.sql:34 (finance.post) |
 | `job:referral-bonus` | reads | `table:market.referrals` | db/core/supabase/schemas/finance/referral_bonus.sql:19 |
+| `job:referral-bonus` | reads | `table:trust.fraud_flags` | db/core/supabase/schemas/finance/referral_bonus.sql:25 (FR-04/FR-05 teman ↔ pengundang → bonus batal) |
 | `job:token-refresh` | calls | `api:fn core/refresh-tokens` | db/core/supabase/schemas/tracking/cron.sql:5 |
-| `job:token-refresh` | configured-by | `env:CORE_SECRET_KEY` | db/core/supabase/schemas/ops/enqueue_notification.sql:29 (ops.invoke_function → header apikey) |
+| `job:token-refresh` | configured-by | `env:CORE_SECRET_KEY` | db/core/supabase/schemas/ops/enqueue_notification.sql:36 (ops.invoke_function → header apikey) |
 | `job:track-due` | calls | `api:fn core/track-worker` | db/core/supabase/schemas/tracking/cron.sql:4 |
-| `job:track-due` | configured-by | `env:CORE_SECRET_KEY` | db/core/supabase/schemas/ops/enqueue_notification.sql:29 (ops.invoke_function → header apikey); cron track-worker, tracking/cron.sql baris 4 |
+| `job:track-due` | configured-by | `env:CORE_SECRET_KEY` | db/core/supabase/schemas/ops/enqueue_notification.sql:36 (ops.invoke_function → header apikey); cron track-worker, tracking/cron.sql baris 4 |
 | `job:track-due` | emits | `event:queue.tracking` | db/core/supabase/schemas/tracking/submissions.sql:57 |
 | `job:track-due` | reads | `table:tracking.submissions` | db/core/supabase/schemas/tracking/submissions.sql:53 |
-| `job:trust-score` | reads | `table:trust.score_events` | db/core/supabase/schemas/trust/decisions.sql:84 |
-| `job:trust-score` | writes | `table:market.profiles` | db/core/supabase/schemas/trust/decisions.sql:82 |
+| `job:trust-score` | reads | `table:trust.score_events` | db/core/supabase/schemas/trust/decisions.sql:101 |
+| `job:trust-score` | writes | `table:trust.score_events` | db/core/supabase/schemas/trust/decisions.sql:86 (clean_tenure per 30 hari bersih) |
+| `job:trust-score` | writes | `table:market.profiles` | db/core/supabase/schemas/trust/decisions.sql:99 |
 | `table:auth.sessions` | guarded-by | `policy:identity.api-only` | PRD v0.3.1 §15.4 kolom Akses |
 | `table:auth.users` | guarded-by | `policy:identity.api-only` | PRD v0.3.1 §15.4 kolom Akses |
 | `table:bucket.avatars` | guarded-by | `policy:core.public-read` | db/core/supabase/config.toml:49 |
@@ -1258,11 +1260,11 @@ Arah: `A --tipe--> B` = A bergantung pada B. `?` = belum terverifikasi.
 | `table:ops.audit_logs` | guarded-by | `policy:core.iss-identity` | db/core/supabase/schemas/ops/audit_logs.sql:17 |
 | `table:ops.broadcasts` | guarded-by | `policy:core.admin-aal2` | db/core/supabase/schemas/ops/broadcasts.sql:21 |
 | `table:ops.broadcasts` | guarded-by | `policy:core.iss-identity` | db/core/supabase/schemas/ops/broadcasts.sql:19 |
-| `table:ops.notification_prefs` | guarded-by | `policy:core.iss-identity` | db/core/supabase/schemas/ops/notifications.sql:29 |
-| `table:ops.notification_prefs` | guarded-by | `policy:core.rls-self` | db/core/supabase/schemas/ops/notifications.sql:31 |
+| `table:ops.notification_prefs` | guarded-by | `policy:core.iss-identity` | db/core/supabase/schemas/ops/notifications.sql:30 |
+| `table:ops.notification_prefs` | guarded-by | `policy:core.rls-self` | db/core/supabase/schemas/ops/notifications.sql:32 |
 | `table:ops.notification_prefs` | typed-by | `table:market.profiles` | db/core/supabase/schemas/ops/notifications.sql:4 |
-| `table:ops.notifications` | guarded-by | `policy:core.iss-identity` | db/core/supabase/schemas/ops/notifications.sql:14 |
-| `table:ops.notifications` | guarded-by | `policy:core.rls-self` | db/core/supabase/schemas/ops/notifications.sql:17 |
+| `table:ops.notifications` | guarded-by | `policy:core.iss-identity` | db/core/supabase/schemas/ops/notifications.sql:15 |
+| `table:ops.notifications` | guarded-by | `policy:core.rls-self` | db/core/supabase/schemas/ops/notifications.sql:18 |
 | `table:ops.notifications` | typed-by | `table:market.profiles` | db/core/supabase/schemas/ops/notifications.sql:4 |
 | `table:ops.settings` | guarded-by | `policy:core.admin-aal2` | db/core/supabase/schemas/ops/settings.sql:14 |
 | `table:ops.settings` | guarded-by | `policy:core.iss-identity` | db/core/supabase/schemas/ops/settings.sql:11 |
@@ -1298,7 +1300,7 @@ Arah: `A --tipe--> B` = A bergantung pada B. `?` = belum terverifikasi.
 | `policy:core.iss-identity` | reads | `table:ops.settings` | db/core/supabase/schemas/ops/_auth.sql:9 |
 | `policy:core.org-role` | reads | `table:market.org_members` | db/core/supabase/schemas/ops/_auth.sql:28 |
 | `policy:core.rls-org` | reads | `table:market.org_members` | db/core/supabase/schemas/ops/_auth.sql:28 (ops.org_role, dipanggil is_org_member baris 38) |
-| `policy:fn-cron-key` | configured-by | `env:CORE_SECRET_KEY` | db/core/supabase/schemas/ops/enqueue_notification.sql:29 |
+| `policy:fn-cron-key` | configured-by | `env:CORE_SECRET_KEY` | db/core/supabase/schemas/ops/enqueue_notification.sql:36 |
 | `policy:fn-verify-jwt` | calls | `api:GET identity/.well-known/openid-configuration` | db/core/supabase/functions/_shared/auth.ts:22 |
 | `policy:fn-verify-jwt` | configured-by | `env:IDENTITY_ISSUER` | db/core/supabase/functions/_shared/auth.ts:38 |
 | `policy:identity.admin-aal2` | reads | `table:member.platform_roles` | db/identity/supabase/schemas/member/_auth.sql:10 |
@@ -1352,12 +1354,12 @@ Arah: `A --tipe--> B` = A bergantung pada B. `?` = belum terverifikasi.
 | `test:member-data.integrity` | tests | `table:member.push_subscriptions` | db/identity/supabase/tests/identity_access.test.sql:160 |
 | `test:pwa.ios-login` | tests | `mod:auth` | PRD v0.3.1 R-17 sesi diset dari server |
 | `test:pwa.ios-login` | tests | `page:app/login` | PRD v0.3.1 R-17 |
-| `test:rls.access-matrix` | tests | `job:broadcast-dispatch` | db/core/supabase/tests/core_access.test.sql:280 |
-| `test:rls.access-matrix` | tests | `job:budget-alerts` | db/core/supabase/tests/core_access.test.sql:280 (job terdaftar; perilaku dites core_contracts_market.test.sql) |
-| `test:rls.access-matrix` | tests | `job:earning-release` | db/core/supabase/tests/core_access.test.sql:280 |
-| `test:rls.access-matrix` | tests | `job:lifecycle` | db/core/supabase/tests/core_access.test.sql:280 |
-| `test:rls.access-matrix` | tests | `job:referral-bonus` | db/core/supabase/tests/core_access.test.sql:280 (job terdaftar; perilaku dites core_contracts_finance.test.sql) |
-| `test:rls.access-matrix` | tests | `job:trust-score` | db/core/supabase/tests/core_access.test.sql:280 (job terdaftar; perilaku dites core_contracts_market.test.sql) |
+| `test:rls.access-matrix` | tests | `job:broadcast-dispatch` | db/core/supabase/tests/core_access.test.sql:288 |
+| `test:rls.access-matrix` | tests | `job:budget-alerts` | db/core/supabase/tests/core_access.test.sql:288 (job terdaftar; perilaku dites core_contracts_market.test.sql) |
+| `test:rls.access-matrix` | tests | `job:earning-release` | db/core/supabase/tests/core_access.test.sql:288 |
+| `test:rls.access-matrix` | tests | `job:lifecycle` | db/core/supabase/tests/core_access.test.sql:288 |
+| `test:rls.access-matrix` | tests | `job:referral-bonus` | db/core/supabase/tests/core_access.test.sql:288 (job terdaftar; perilaku dites core_contracts_finance.test.sql) |
+| `test:rls.access-matrix` | tests | `job:trust-score` | db/core/supabase/tests/core_access.test.sql:288 (job terdaftar; perilaku dites core_contracts_market.test.sql) |
 | `test:rls.access-matrix` | tests | `policy:core.admin-aal2` | db/core/supabase/tests/core_access.test.sql:222 |
 | `test:rls.access-matrix` | tests | `policy:core.iss-identity` | db/core/supabase/tests/core_access.test.sql:183 |
 | `test:rls.access-matrix` | tests | `policy:core.org-role` | db/core/supabase/tests/core_access.test.sql:213 |
@@ -2152,6 +2154,11 @@ Masalah sistem yang ditemukan saat menyusun PRD v0.2 dan saat dicek ulang (v0.2.
 | 2026-10-19 | `api:rpc core.record_review` | Review Claudex R13: campaign managed bisa di-approve & tayang walau invoice managed_service belum lunas; halaman review admin hanya menampilkan invoice budget | diperbaiki: approve butuh managed_service lunas (invoice_unpaid); review-detail admin menampilkan invoice paket managed |
 | 2026-10-19 | `api:rpc core.buy_pin` | Review Claudex R14: invoice pin yang terbit sebelum pin_days ada tetap memakai pin_until absolut → dibayar telat = tanpa pin | diperbaiki: settle_invoice memakai pin_days, atau periode perkiraan invoice (pin_until − issued_at) dibatasi minggu yang dibayar (R15: periode itu memuat sisa pin berjalan), maks 90 hari; selalu sejak lunas |
 | 2026-10-19 | `page:admin/users` | Review Claudex R14: Cabut ban hanya membuka ban login identity; profil core yang di-ban fraud queue tetap banned → user tidak bisa claim/submit/withdraw | diperbaiki: api.manage_user aksi unban (wajib alasan, audit; profil closed ditolak); server action unbanUser memanggil identity lalu core, aman diulang |
+| 2026-10-20 | `api:fn core/social` | Audit PRD (Codex G-17/G-3): submisi review auto langsung tracking tanpa keputusan → tanpa notifikasi submission.approved & tanpa kenaikan Trust Score; clean_tenure tidak pernah diberikan | diperbaiki: worker_create_submission melewati trust.apply_submission_decision('auto_approve'); job trust-score memberi clean_tenure tiap 30 hari bersih |
+| 2026-10-20 | `api:fn core/track-worker` | Audit PRD (G-6, G-16): FR-03 hanya untuk akun baru (cabang follower sangat sedikit hilang); error API/rate limit diulang tiap 5 menit tetap tanpa backoff | diperbaiki: FR-03 juga follower < trust.fraud.low_followers (100); backoff 5 mnt × 2^(n−1) maks 6 jam lewat api.worker_retry_later (pgmq set_vt), Retry-After penyedia didahulukan |
+| 2026-10-20 | `job:referral-bonus` | Audit PRD (G-7, C5.3): teman satu NIK/rekening/perangkat dengan pengundang tetap dibayar bonus | diperbaiki: bonus dilewati selama ada flag FR-04/FR-05 (belum dismissed) yang menghubungkan keduanya |
+| 2026-10-20 | `fn:enqueue_notification` | Audit PRD (G-13, A6.1/C2.5): kanal broadcast diabaikan (selalu email + push + in-app); mematikan email promosi ikut mematikan push | diperbaiki: payload.channels menentukan in_app/email/push (kolom ops.notifications.in_app, view menyaring); preferensi email promosi hanya untuk email; worker notify menghormati flag pesan |
+| 2026-10-20 | `page:admin/users` | Audit PRD (G-14, F-A07): ban dari manajemen user hanya ban login → JWT yang masih berlaku tetap bisa claim/submit, status core salah | diperbaiki: banUser juga manage_user core (≤ 365 hari = suspend durasi sama, lebih = ban); unban mencabut ban & suspend; dialog ban wajib alasan |
 ## Keputusan
 
 Keputusan yang sudah diambil — jangan dibahas ulang tanpa alasan baru.

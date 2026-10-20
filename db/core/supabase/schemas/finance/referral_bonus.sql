@@ -21,6 +21,11 @@ begin
              join finance.ledger_accounts a on a.owner_type = 'user_wallet' and a.owner_id = r.referred_id and a.reward_type_id = idr
              join finance.ledger_entries le on le.account_id = a.id and le.state = 'available' and le.ref_type = 'release'
             where r.qualified_at is not null and r.bonus_until is not null and le.amount > 0
+              -- C5.3: teman satu NIK/rekening/perangkat dengan pengundang → bonus batal (flag FR-04/FR-05 belum di-dismiss)
+              and not exists (select 1 from trust.fraud_flags f
+                               where f.target_type = 'profile' and f.signal in ('FR-04', 'FR-05') and f.status <> 'dismissed'
+                                 and ((f.target_id = r.referred_id and f.details -> 'related_user_ids' ? r.referrer_id::text)
+                                   or (f.target_id = r.referrer_id and f.details -> 'related_user_ids' ? r.referred_id::text)))
               and le.created_at >= r.qualified_at and le.created_at < r.bonus_until
               and not exists (select 1 from finance.ledger_entries b where b.ref_type = 'referral_bonus' and b.ref_id = le.id::text)
             order by le.id loop

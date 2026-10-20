@@ -264,8 +264,16 @@ reset role;
 insert into ops.notification_prefs (user_id, email_promotions) values ('11111111-0000-0000-0000-00000000000a', false);
 select ops.enqueue_notification('11111111-0000-0000-0000-00000000000a', 'campaign.new', '{}');
 select ops.enqueue_notification('11111111-0000-0000-0000-00000000000a', 'payout.paid', '{}');
-select is((select array_agg(message ->> 'event') from pgmq.q_email), array['payout.paid'],
+select is((select array_agg(message ->> 'event') from pgmq.q_email where (message ->> 'email')::boolean), array['payout.paid'],
           'email promosi dilewati kalau dimatikan; email transaksional tetap dikirim');
+select is((select (message ->> 'push')::boolean from pgmq.q_email where message ->> 'event' = 'campaign.new'), true,
+          'regresi G-13: push promosi tetap terkirim walau email promosi dimatikan (push diatur per perangkat, C2.5)');
+-- G-13: kanal broadcast (A6.1) dihormati — email saja: tidak tampil in-app, tanpa push
+select ops.enqueue_notification('11111111-0000-0000-0000-00000000000b', 'broadcast.sent', '{"channels":["email"]}');
+select is((select array[(message ->> 'email')::boolean, (message ->> 'push')::boolean] from pgmq.q_email
+            where message ->> 'event' = 'broadcast.sent'), array[true, false], 'broadcast email saja → hanya email');
+select is((select in_app from ops.notifications where event = 'broadcast.sent' and user_id = '11111111-0000-0000-0000-00000000000b'),
+          false, 'broadcast tanpa kanal in-app tidak tampil di app');
 insert into market.claims (id, campaign_id, user_id, expires_at, created_at) values
   ('88888888-0000-0000-0000-000000000003', '55555555-0000-0000-0000-000000000001', '11111111-0000-0000-0000-00000000000b',
    now() + interval '2 hours', now() - interval '46 hours');

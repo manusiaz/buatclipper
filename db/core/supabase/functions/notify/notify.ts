@@ -44,7 +44,9 @@ export async function runNotify(deps: NotifyDeps): Promise<NotifySummary> {
   const ack = (id: number) => deps.rpc("worker_ack", { p_queue: "email", p_msg_id: id });
 
   while (now() < deadline - 5_000) {
-    const msgs = (await deps.rpc<{ msg_id: number; message: { notification_id?: number } }[] | null>(
+    const msgs = (await deps.rpc<
+      { msg_id: number; message: { notification_id?: number; email?: boolean; push?: boolean } }[] | null
+    >(
       "worker_dequeue",
       { p_queue: "email", p_qty: 20, p_vt_seconds: 120 },
     )) ?? [];
@@ -55,7 +57,8 @@ export async function runNotify(deps: NotifyDeps): Promise<NotifySummary> {
       while (i < msgs.length) {
         const m = msgs[i++];
         try {
-          await deliver(m.msg_id, m.message?.notification_id);
+          // Pesan lama tanpa flag = email + push.
+          await deliver(m.msg_id, m.message?.notification_id, m.message?.email !== false, m.message?.push !== false);
         } catch (e) {
           console.error("notify failed", m.msg_id, e instanceof Error ? e.message : e);
           s.retried++; // tidak di-ack → muncul lagi setelah visibility timeout
@@ -65,7 +68,7 @@ export async function runNotify(deps: NotifyDeps): Promise<NotifySummary> {
   }
   return s;
 
-  async function deliver(msgId: number, notificationId: number | undefined): Promise<void> {
+  async function deliver(msgId: number, notificationId: number | undefined, wantEmail: boolean, wantPush: boolean) {
     const n = notificationId
       ? await deps.rpc<Notification | null>("worker_notification", { p_id: notificationId })
       : null;
@@ -82,29 +85,35 @@ export async function runNotify(deps: NotifyDeps): Promise<NotifySummary> {
       payload: n.payload ?? {},
       promo: !!n.promo,
     };
-    if (n.promo) email.unsubscribe_url = await unsubscribeUrl(deps.unsubscribeBase, deps.unsubscribeSecret, n.user_id);
     let emailed = false;
-    try {
-      await deps.bridge("send_email", email);
-      emailed = true;
-    } catch (e) {
-      if (!(e instanceof BridgeError && e.permanent)) throw e; // 5xx/jaringan → coba lagi nanti
-      console.error("send_email rejected", msgId, e.code); // 4xx (user dihapus, tanpa email) → tidak diulang
+    if (wantEmail) {
+      if (n.promo) {
+        email.unsubscribe_url = await unsubscribeUrl(deps.unsubscribeBase, deps.unsubscribeSecret, n.user_id);
+      }
+      try {
+        await deps.bridge("send_email", email);
+        emailed = true;
+      } catch (e) {
+        if (!(e instanceof BridgeError && e.permanent)) throw e; // 5xx/jaringan → coba lagi nanti
+        console.error("send_email rejected", msgId, e.code); // 4xx (user dihapus, tanpa email) → tidak diulang
+      }
     }
-    try {
-      await deps.bridge("send_push", {
-        notification_id: notificationId,
-        user_id: n.user_id,
-        event: n.event,
-        payload: n.payload ?? {},
-      });
-      s.pushed++;
-    } catch (e) {
-      console.error("send_push failed", msgId, e instanceof BridgeError ? e.code : e); // push best-effort
+    if (wantPush) {
+      try {
+        await deps.bridge("send_push", {
+          notification_id: notificationId,
+          user_id: n.user_id,
+          event: n.event,
+          payload: n.payload ?? {},
+        });
+        s.pushed++;
+      } catch (e) {
+        console.error("send_push failed", msgId, e instanceof BridgeError ? e.code : e); // push best-effort
+      }
     }
     await ack(msgId);
     if (emailed) s.sent++;
-    else s.dropped++;
+    else if (wantEmail) s.dropped++;
   }
 }
 

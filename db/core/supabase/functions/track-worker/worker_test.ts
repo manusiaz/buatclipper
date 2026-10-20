@@ -10,7 +10,8 @@ import {
   type StoredToken,
   TokenExpired,
 } from "../_shared/social/mod.ts";
-import { runTrackWorker, type SubmissionContext, xDue } from "./worker.ts";
+import { backoffSec, runTrackWorker, type SubmissionContext, xDue } from "./worker.ts";
+import { retryAfter } from "../_shared/social/net.ts";
 
 const H = 3_600_000;
 const NOW = Date.parse("2026-10-19T12:00:00Z");
@@ -89,6 +90,7 @@ function setup(
     worker_post_gone: () => null,
     worker_account_status: () => null,
     worker_ack: () => true,
+    worker_retry_later: () => null,
     store_social_token: () => "secret-id",
   });
 }
@@ -112,7 +114,7 @@ Deno.test("track-worker: dequeue → snapshot/gone → ack; Retryable tidak di-a
       ),
   );
   const yt = fakeAdapter("youtube", () => {
-    throw new Retryable("quotaExceeded");
+    throw new Retryable("quotaExceeded", 120);
   });
   const s = await runTrackWorker({
     rpc: f.rpc,
@@ -141,6 +143,10 @@ Deno.test("track-worker: dequeue → snapshot/gone → ack; Retryable tidak di-a
   assert.deepEqual(acked, [1, 2]); // msg 3 (Retryable) tidak di-ack → kembali setelah visibility timeout
   assert.ok(f.calls.every((c) => c.fn !== "worker_ack" || c.args.p_queue === "tracking"));
   assert.deepEqual([s.recorded, s.gone, s.retried, s.acked], [1, 1, 1, 2]);
+  // §11 backoff: Retry-After penyedia (120 dtk) dipakai untuk pesan yang gagal
+  assert.deepEqual(f.calls.filter((c) => c.fn === "worker_retry_later").map((c) => c.args), [
+    { p_queue: "tracking", p_msg_id: 3, p_seconds: 120 },
+  ]);
   assert.deepEqual(f.calls[0].args, { p_queue: "tracking", p_qty: 20, p_vt_seconds: 300 });
 });
 
@@ -216,6 +222,14 @@ Deno.test("track-worker: token hampir kedaluwarsa di-refresh & disimpan sebelum 
   const store = f.calls.find((x) => x.fn === "store_social_token")!;
   assert.equal(store.args.p_account_id, "a1");
   assert.equal(JSON.parse(store.args.p_token as string).access_token, "fresh");
+});
+
+Deno.test("track-worker: backoff eksponensial per percobaan, maks 6 jam; Retry-After header", () => {
+  assert.deepEqual([1, 2, 3, 7, 20].map((n) => backoffSec(n)), [300, 600, 1200, 19_200, 21_600]);
+  assert.equal(backoffSec(5, 30), 30);
+  assert.equal(retryAfter("45"), 45);
+  assert.equal(retryAfter(new Date(NOW + 90_000).toUTCString(), NOW), 90);
+  assert.equal(retryAfter("x"), undefined);
 });
 
 Deno.test("track-worker: X hanya di checkpoint 24 jam, 7 hari, lock", () => {

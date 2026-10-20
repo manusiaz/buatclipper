@@ -5,6 +5,7 @@ create table ops.notifications (
   event text not null check (event ~ '^[a-z_]+(\.[a-z_]+)+$'),
   payload jsonb not null default '{}',
   read_at timestamptz,
+  in_app boolean not null default true,  -- broadcast tanpa kanal in-app: baris tetap ada untuk email/push, tidak tampil di app
   created_at timestamptz not null default now()
 );
 create index notifications_user_idx on ops.notifications (user_id, created_at desc);

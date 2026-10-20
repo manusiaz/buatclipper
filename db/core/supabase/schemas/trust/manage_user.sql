@@ -1,5 +1,5 @@
 -- F-A07 admin (admin_ops/admin_moderator aal2) atas clipper: trust_override {delta, note} (E-40 admin_override; skor dihitung
--- ulang langsung, rumus = job trust-score) | suspend {days 1–365, reason} | unsuspend {note} | unban {note}: profil yang di-ban
+-- ulang langsung, rumus = job trust-score) | suspend {days 1–365, reason} | unsuspend {note} | ban {reason} | unban {note}: profil yang di-ban
 -- fraud queue kembali active (earning yang sudah di-reverse tetap). Ban/unban login lewat Edge Function identity admin-auth
 -- (+ bridge); halaman admin memanggil unban di keduanya. Semua tercatat audit log.
 create function api.manage_user(p_user uuid, p_action text, p_params jsonb default '{}') returns void
@@ -47,11 +47,17 @@ begin
       perform market.fail('invalid_state:' || pr.status);
     end if;
     update market.profiles set status = 'active', suspended_until = null where id = pr.id;
+  elsif p_action = 'ban' then
+    if pr.status = 'closed' then
+      perform market.fail('invalid_state:' || pr.status);
+    end if;
+    update market.profiles set status = 'banned' where id = pr.id;
+    update market.claims set status = 'released' where user_id = pr.id and status = 'open';
   elsif p_action = 'unban' then
     if pr.status = 'closed' then
       perform market.fail('invalid_state:' || pr.status);
     end if;
-    update market.profiles set status = 'active', suspended_until = null where id = pr.id and status = 'banned';
+    update market.profiles set status = 'active', suspended_until = null where id = pr.id and status in ('banned', 'suspended');
   else
     perform market.fail('invalid:action', p_action);
   end if;

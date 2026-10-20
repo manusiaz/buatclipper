@@ -1121,6 +1121,11 @@ select is((select array_agg(username || ':' || trust_score order by username) fr
             where username in ('andi', 'budi', 'citra', 'eko')),
           array['andi:51', 'budi:0', 'citra:50', 'eko:100'], 'skor = 50 + Σ delta, dibatasi 0–100');
 select is(trust.recalc_scores(), 0, 'dijalankan ulang tanpa perubahan');
+-- Regresi G-3: umur akun bersih (30 hari tanpa reject/fraud) menaikkan skor sekali per periode.
+update market.profiles set created_at = now() - interval '31 days' where username = 'citra';
+select is(trust.recalc_scores(), 1, 'regresi G-3: clean_tenure menaikkan skor profil bersih');
+select is((select trust_score from market.profiles where username = 'citra'), 51::smallint, 'citra 50 → 51');
+select is(trust.recalc_scores(), 0, 'clean_tenure sekali per periode 30 hari');
 
 -- ---------- Perbaikan integrasi 2026-10-19 ----------
 reset role;

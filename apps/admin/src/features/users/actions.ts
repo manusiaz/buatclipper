@@ -52,13 +52,24 @@ export async function kycNotify(userId: string, decision: 'approve' | 'reject', 
 }
 
 /** F-A07 ban_duration lewat identity admin-auth (refresh token ditolak). Status E-01 core tidak ikut berubah. */
+/**
+ * F-A07: ban login (identity ban_duration) + status profil core (E-01) supaya JWT yang masih berlaku tidak bisa claim/submit.
+ * Ban berdurasi ≤ 365 hari = suspend core dengan durasi sama (habis sendiri); lebih lama/permanen = banned (dicabut lewat Unban).
+ */
 export async function banUser(userId: string, fd: FormData): Promise<ActionResult> {
   await requireAdmin('admin_moderator');
   const choice = text(fd, 'duration');
-  const hours = text(fd, 'hours');
-  const duration = choice === 'custom' ? `${Number(hours) | 0}h` : choice;
+  const hours = choice === 'custom' ? Number(text(fd, 'hours')) | 0 : choice === 'permanent' ? Infinity : parseInt(choice, 10);
+  const duration = choice === 'custom' ? `${hours}h` : choice;
   const r = await invokeFunction('identity', 'admin-auth', { action: 'ban_user', user_id: userId, duration }, 'admin');
-  return settleFn(r, '/users');
+  if (!r.ok) return settleFn(r, '/users');
+  const reason = text(fd, 'reason');
+  const days = Math.ceil(hours / 24);
+  const db = await coreServer('admin');
+  const { error } = await db.rpc('manage_user', days <= 365
+    ? { p_user: userId, p_action: 'suspend', p_params: { days, reason } }
+    : { p_user: userId, p_action: 'ban', p_params: { reason } });
+  return settle(error, '/users');
 }
 
 /** Cabut ban login (identity) lalu profil core yang di-ban fraud queue; diulang aman bila langkah core gagal. */

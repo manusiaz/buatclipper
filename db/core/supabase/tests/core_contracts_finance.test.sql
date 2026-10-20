@@ -917,6 +917,12 @@ insert into t_ids select 's10', api.worker_create_submission('11111111-0000-0000
 select is((select status::text || ':' || (next_poll_at <= now())::text from tracking.submissions where id = (select v::uuid from t_ids where k = 's10')),
           'tracking:true', 'review auto → tracking + langsung dijadwalkan poll');
 select is((select status::text from market.claims where id = '88888888-0000-0000-0000-0000000000b0'), 'submitted', 'claim → submitted');
+select is((select array[d.decision, coalesce(d.note, '')] from trust.review_decisions d where d.target_id = (select v::uuid from t_ids where k = 's10')),
+          array['auto_approve', 'auto'], 'regresi G-17: review auto tercatat sebagai keputusan auto_approve');
+select ok(exists (select 1 from trust.score_events e where e.reason = 'submission_approved' and e.ref_id = (select v from t_ids where k = 's10'))
+          and exists (select 1 from ops.notifications n where n.event = 'submission.approved'
+                        and n.payload ->> 'submission_id' = (select v from t_ids where k = 's10')),
+          'regresi G-3/G-17: review auto menaikkan Trust Score dan mengabari clipper (submission.approved)');
 select throws_ok($$ select api.worker_create_submission('11111111-0000-0000-0000-00000000000d', '88888888-0000-0000-0000-0000000000b1',
                     '99999999-0000-0000-0000-00000000000d', 'vid-10', 'https://tiktok.com/x', now() - interval '1 hour', '#mplid', 30) $$, 'P0001',
                  'already_submitted', 'submit: video sama di campaign sama');
@@ -1040,8 +1046,8 @@ select is((select status::text from tracking.submissions where user_id = '111111
           'submisi yang menunggu review dihentikan');
 
 -- ========== M. Hak akses RPC service_role ==========
-select is((select count(*)::int from pg_proc p where p.pronamespace = 'api'::regnamespace and p.proname ~ '^(worker|bridge)_'), 29,
-          '29 RPC worker/bridge');
+select is((select count(*)::int from pg_proc p where p.pronamespace = 'api'::regnamespace and p.proname ~ '^(worker|bridge)_'), 30,
+          '30 RPC worker/bridge');
 select is((select count(*)::int from pg_proc p where p.pronamespace = 'api'::regnamespace and p.proname ~ '^(worker|bridge)_'
             and (has_function_privilege('authenticated', p.oid, 'execute') or has_function_privilege('anon', p.oid, 'execute'))), 0,
           'authenticated/anon tidak bisa EXECUTE RPC worker/bridge');
@@ -1107,7 +1113,7 @@ select is((select array_agg(p.username order by p.username) from ops.notificatio
 select is((select payload from ops.notifications where event = 'campaign.new' and user_id = '11111111-0000-0000-0000-00000000000a'),
           '{"campaign_id":"55555555-0000-0000-0000-0000000000b3","campaign_title":"Terjadwal","campaign_slug":"k13-sched",
             "org_name":"Studio Satu","platforms":["tiktok"]}'::jsonb, 'payload campaign.new');
-select is((select count(*)::int from pgmq.q_email where message ->> 'event' = 'campaign.new'), 1,
+select is((select count(*)::int from pgmq.q_email where message ->> 'event' = 'campaign.new' and (message ->> 'email')::boolean), 1,
           'email promosi campaign.new dilewati untuk yang unsubscribe');
 select is((select status::text || ':' || (locked_at is not null)::text from tracking.submissions where id = (select v::uuid from t_ids where k = 's14')),
           'locked:true', 'akhir view window + snapshot final → locked');
@@ -1302,6 +1308,50 @@ select is((select status::text from market.profiles where id = '11111111-0000-00
           'regresi R14: profil yang di-ban fraud queue kembali active');
 select ok(exists (select 1 from ops.audit_logs where action = 'user.unban' and target = 'profile:11111111-0000-0000-0000-00000000000e'),
           'cabut ban tercatat audit log');
+
+-- Regresi G-6: FR-03 juga untuk akun lama dengan follower sangat sedikit (config trust.fraud.low_followers, default 100).
+insert into market.profiles (id, username, display_name) values ('11111111-0000-0000-0000-0000000000f3', 'sedikit_f3', 'Sedikit');
+insert into tracking.social_accounts (user_id, platform, external_id, handle, followers, platform_created_at)
+values ('11111111-0000-0000-0000-0000000000f3', 'tiktok', 'tt-f3', '@sedikit', 20, now() - interval '400 days');
+select pg_temp.mk_campaign('55555555-0000-0000-0000-0000000000f3', 'low-follower', 0);
+select pg_temp.mk_pool('55555555-0000-0000-0000-0000000000f3', '66666666-0000-0000-0000-0000000000f3', 1000000, 1000000);
+select pg_temp.mk_rule('55555555-0000-0000-0000-0000000000f3', '66666666-0000-0000-0000-0000000000f3', 'per_1k_views', '{"rate":10}');
+insert into t_ids select 'sf3', pg_temp.mk_sub('55555555-0000-0000-0000-0000000000f3', '11111111-0000-0000-0000-0000000000f3', 'vf3');
+select api.worker_record_snapshot((select v::uuid from t_ids where k = 'sf3'), 150000, 20000, 900, 300, '#x', '{}', '{}');
+select ok(exists (select 1 from trust.fraud_flags where signal = 'FR-03' and target_id = (select v::uuid from t_ids where k = 'sf3')),
+          'regresi G-6: akun lama follower 20 dengan 150rb views → FR-03');
+
+-- Regresi G-7: teman satu perangkat dengan pengundang (FR-05) → bonus referral batal selama flag belum di-dismiss.
+insert into market.profiles (id, username, display_name) values
+  ('11111111-0000-0000-0000-0000000000f4', 'teman_f4', 'Teman'), ('11111111-0000-0000-0000-0000000000f5', 'pengundang_f5', 'Pengundang');
+insert into market.referrals (referred_id, referrer_id, code, qualified_at, bonus_until) values
+  ('11111111-0000-0000-0000-0000000000f4', '11111111-0000-0000-0000-0000000000f5', 'f5code', now() - interval '1 day', now() + interval '30 days');
+select finance.post(gen_random_uuid(), jsonb_build_array(  -- jalan pintas: earning teman Rp10.000 jadi Tersedia
+  finance.e(finance.account('platform_revenue', null, finance.idr()), -10000, 'release', 'fixture-f4'),
+  finance.e(finance.account('user_wallet', '11111111-0000-0000-0000-0000000000f4', finance.idr()), 10000, 'release', 'fixture-f4', 'available')));
+insert into t_pay select 'fl_f5', trust.raise_flag('profile', '11111111-0000-0000-0000-0000000000f4', 'FR-05', 60,
+  '{"related_user_ids":["11111111-0000-0000-0000-0000000000f5"]}');
+select finance.accrue_referral_bonus();
+select is(pg_temp.bal('11111111-0000-0000-0000-0000000000f5', 'available'), 0::numeric, 'regresi G-7: satu perangkat → bonus tidak dibayar');
+update trust.fraud_flags set status = 'dismissed', resolved_by = '33333333-0000-0000-0000-0000000000e1', resolved_at = now()
+ where id = (select id from t_pay where k = 'fl_f5');
+select finance.accrue_referral_bonus();
+select is(pg_temp.bal('11111111-0000-0000-0000-0000000000f5', 'available'), 500::numeric, 'flag di-dismiss → bonus berjalan lagi (5%)');
+
+-- Regresi G-14: ban dari manajemen user mengubah status profil core (JWT lama tidak bisa claim/submit); unban mencabut ban & suspend.
+set local role authenticated;
+select pg_temp.jwt('33333333-0000-0000-0000-0000000000e1', '{"app_roles":["admin_moderator"],"aal":"aal2"}');
+select lives_ok($$ select api.manage_user('11111111-0000-0000-0000-0000000000f4', 'ban', '{"reason":"spam"}') $$, 'admin ban profil core');
+reset role;
+select is((select status::text from market.profiles where id = '11111111-0000-0000-0000-0000000000f4'), 'banned', 'regresi G-14: profil core banned');
+set local role authenticated;
+select pg_temp.jwt('33333333-0000-0000-0000-0000000000e1', '{"app_roles":["admin_moderator"],"aal":"aal2"}');
+select api.manage_user('11111111-0000-0000-0000-0000000000f4', 'unban', '{"note":"salah orang"}');
+select api.manage_user('11111111-0000-0000-0000-0000000000f4', 'suspend', '{"days":30,"reason":"ban 30 hari"}');
+select api.manage_user('11111111-0000-0000-0000-0000000000f4', 'unban', '{"note":"banding diterima"}');
+reset role;
+select is((select status::text || ':' || coalesce(suspended_until::text, 'null') from market.profiles where id = '11111111-0000-0000-0000-0000000000f4'),
+          'active:null', 'unban juga mencabut suspend hasil ban berdurasi');
 
 -- ========== Invarian akhir ==========
 select is((select count(*)::int from (select 1 from finance.ledger_entries e group by e.txn_id, e.reward_type_id having sum(e.amount) <> 0) x),

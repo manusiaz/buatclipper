@@ -4,14 +4,24 @@
 
 -- ---------- queue (Supabase Queues) ----------
 create function api.worker_dequeue(p_queue text, p_qty int default 20, p_vt_seconds int default 300)
-returns table (msg_id bigint, message jsonb)
+returns table (msg_id bigint, message jsonb, read_ct int)
 language plpgsql security definer set search_path = '' as $$
 begin
   if p_queue is null or p_queue not in ('tracking', 'email') then
     raise exception 'invalid:queue' using errcode = 'P0001';
   end if;
-  return query select q.msg_id, q.message
+  return query select q.msg_id, q.message, q.read_ct
                  from pgmq.read(p_queue, greatest(coalesce(p_vt_seconds, 300), 1), least(greatest(coalesce(p_qty, 20), 1), 100)) q;
+end $$;
+
+-- §11: API error / rate limit → coba lagi dengan backoff (bukan visibility timeout tetap). 1 detik–6 jam.
+create function api.worker_retry_later(p_queue text, p_msg_id bigint, p_seconds int) returns void
+language plpgsql security definer set search_path = '' as $$
+begin
+  if p_queue is null or p_queue not in ('tracking', 'email') then
+    raise exception 'invalid:queue' using errcode = 'P0001';
+  end if;
+  perform pgmq.set_vt(p_queue, p_msg_id, least(greatest(coalesce(p_seconds, 300), 1), 21600));
 end $$;
 
 create function api.worker_ack(p_queue text, p_msg_id bigint) returns void
@@ -171,7 +181,8 @@ begin
               is not null or raised;
     hold := true;
   end if;
-  if a.platform_created_at > now() - make_interval(days => (ops.cfg('trust.fraud.new_account_days', '14'))::int)
+  if (a.platform_created_at > now() - make_interval(days => (ops.cfg('trust.fraud.new_account_days', '14'))::int)
+      or coalesce(a.followers, 0) < (ops.cfg('trust.fraud.low_followers', '100'))::int)
      and p_views >= (ops.cfg('trust.fraud.new_account_views', '100000'))::bigint then
     raised := trust.raise_flag('submission', s.id, 'FR-03', 60,
                                jsonb_build_object('views', p_views, 'account_created_at', a.platform_created_at,
@@ -427,7 +438,10 @@ begin
   st := case when c.review_mode in ('manual', 'brand')
                   or (p_duration_sec is null and (c.min_duration_sec is not null or c.max_duration_sec is not null))
              then 'in_review' else 'tracking' end;
-  update tracking.submissions set status = st, next_poll_at = case when st = 'tracking' then now() end where id = sid;
+  update tracking.submissions set status = 'in_review' where id = sid;
+  if st = 'tracking' then  -- review auto: keputusan tercatat seperti review biasa (Trust Score naik, notifikasi submission.approved)
+    perform trust.apply_submission_decision(sid, 'auto_approve', null, null, null, 'auto');
+  end if;
   update market.claims set status = 'submitted' where id = cl.id;
   if c.review_mode = 'brand' and st = 'in_review' then
     perform market.notify_org(c.org_id, array['brand_owner', 'brand_manager']::market.org_role[], 'submission.pending_review',
@@ -563,7 +577,8 @@ begin
   end if;
 end $$;
 
-revoke execute on function api.worker_dequeue(text, int, int), api.worker_ack(text, bigint), tracking.final_due(uuid),
+revoke execute on function api.worker_dequeue(text, int, int), api.worker_ack(text, bigint), api.worker_retry_later(text, bigint, int),
+  tracking.final_due(uuid),
   api.worker_account_token(uuid), api.worker_defer(uuid, timestamptz),
   api.worker_submission_context(uuid), api.worker_record_snapshot(uuid, bigint, bigint, bigint, bigint, text, jsonb, jsonb),
   api.worker_post_gone(uuid, text), api.worker_account_status(uuid, text), api.worker_accounts_to_refresh(interval),
@@ -572,7 +587,7 @@ revoke execute on function api.worker_dequeue(text, int, int), api.worker_ack(te
   api.worker_unsubscribe(uuid), api.worker_fulfillments_due(int), api.worker_assign_code(uuid),
   api.worker_fulfillment_result(uuid, boolean, text, text)
   from public, anon, authenticated;
-grant execute on function api.worker_dequeue(text, int, int), api.worker_ack(text, bigint),
+grant execute on function api.worker_dequeue(text, int, int), api.worker_ack(text, bigint), api.worker_retry_later(text, bigint, int),
   api.worker_account_token(uuid), api.worker_defer(uuid, timestamptz),
   api.worker_submission_context(uuid), api.worker_record_snapshot(uuid, bigint, bigint, bigint, bigint, text, jsonb, jsonb),
   api.worker_post_gone(uuid, text), api.worker_account_status(uuid, text), api.worker_accounts_to_refresh(interval),

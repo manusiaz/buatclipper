@@ -62,7 +62,7 @@ create view api.review_decisions with (security_invoker = true) as
 create view api.fraud_flags with (security_invoker = true) as
   select id, target_type, target_id, signal, score, status, details, resolved_by, resolved_at, created_at from trust.fraud_flags;
 create view api.notifications with (security_invoker = true) as
-  select id, user_id, event, payload, read_at, created_at from ops.notifications;
+  select id, user_id, event, payload, read_at, created_at from ops.notifications where in_app;
 create view api.notification_prefs with (security_invoker = true) as
   select user_id, email_promotions, updated_at from ops.notification_prefs;
 create view api.audit_logs with (security_invoker = true) as

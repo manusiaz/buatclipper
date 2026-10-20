@@ -18,7 +18,12 @@ import {
 export interface QueueMsg {
   msg_id: number;
   message: { submission_id?: string; platform?: string };
+  read_ct?: number;
 }
+
+/** §11 backoff: 5 menit × 2^(percobaan−1), maks 6 jam; Retry-After penyedia didahulukan. */
+export const backoffSec = (readCt: number, retryAfterSec?: number) =>
+  Math.min(retryAfterSec ?? 300 * 2 ** Math.max(0, (readCt || 1) - 1), 21_600);
 
 export interface SubmissionContext {
   submission: {
@@ -110,6 +115,16 @@ export async function runTrackWorker(deps: TrackDeps): Promise<TrackSummary> {
     }
   };
   let flags: Record<string, boolean> | null = null;
+  const readCt = new Map<number, number>();
+  const retryLater = async (ids: number[], retryAfterSec?: number) => {
+    for (const id of ids) {
+      await rpc("worker_retry_later", {
+        p_queue: "tracking",
+        p_msg_id: id,
+        p_seconds: backoffSec(readCt.get(id) ?? 1, retryAfterSec),
+      });
+    }
+  };
 
   while (now() < deadline - 5_000) {
     const msgs = (await rpc<QueueMsg[] | null>("worker_dequeue", {
@@ -119,6 +134,7 @@ export async function runTrackWorker(deps: TrackDeps): Promise<TrackSummary> {
     })) ?? [];
     if (!msgs.length) break;
     s.dequeued += msgs.length;
+    for (const m of msgs) readCt.set(m.msg_id, m.read_ct ?? 1);
     flags ??= await deps.flags(); // gagal → seluruh run berhenti, pesan kembali setelah visibility timeout
 
     // Satu submisi bisa muncul dua kali (lease enqueue lewat sebelum pesan lama di-ack): proses sekali, ack semua.
@@ -215,6 +231,7 @@ export async function runTrackWorker(deps: TrackDeps): Promise<TrackSummary> {
     }
     if (e instanceof Retryable) {
       s.retried += items.length;
+      await retryLater(items.flatMap((it) => it.msgIds), e.retryAfterSec);
       return false;
     }
     console.error("track batch failed", accountId, e instanceof Error ? e.message : e);
@@ -244,6 +261,7 @@ export async function runTrackWorker(deps: TrackDeps): Promise<TrackSummary> {
         s.gone++;
       } else if ("retry" in r) {
         s.retried++;
+        await retryLater(it.msgIds);
         return;
       } else {
         console.error("track post failed", subId, r.reason);

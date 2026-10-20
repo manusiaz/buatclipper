@@ -8,7 +8,10 @@ const U = "6f1c2d3e-4b5a-4c6d-8e7f-001122334455";
 const BASE = "https://core.test/functions/v1/notify/unsubscribe";
 const SECRET = "unsub-secret";
 
-function setup(notifs: Record<number, unknown>, msgs: { msg_id: number; message: { notification_id: number } }[]) {
+function setup(
+  notifs: Record<number, unknown>,
+  msgs: { msg_id: number; message: { notification_id: number; email?: boolean; push?: boolean } }[],
+) {
   let n = 0;
   return fakeRpc({
     worker_dequeue: () => (n++ === 0 ? msgs : []),
@@ -52,6 +55,28 @@ Deno.test("notify: email + push lewat bridge identity; promo membawa unsubscribe
     { p_queue: "email", p_msg_id: 11 },
   ]);
   assert.equal(s.sent, 2);
+});
+
+Deno.test("notify: kanal per pesan — email saja / push saja (broadcast A6.1, email promosi dimatikan)", async () => {
+  const f = setup({
+    1: { user_id: U, event: "broadcast.sent", payload: {}, promo: true },
+    2: { user_id: U, event: "broadcast.sent", payload: {}, promo: true },
+  }, [
+    { msg_id: 10, message: { notification_id: 1, email: true, push: false } },
+    { msg_id: 11, message: { notification_id: 2, email: false, push: true } },
+  ]);
+  const sent: { action: string; payload: Record<string, unknown> }[] = [];
+  const s = await runNotify({
+    rpc: f.rpc,
+    bridge: (action, payload) => {
+      sent.push({ action, payload });
+      return Promise.resolve({ ok: true });
+    },
+    unsubscribeSecret: SECRET,
+    unsubscribeBase: BASE,
+  });
+  assert.deepEqual(sent.map((x) => `${x.action}:${x.payload.notification_id}`).sort(), ["send_email:1", "send_push:2"]);
+  assert.deepEqual([s.sent, s.pushed, s.dropped], [1, 1, 0]);
 });
 
 Deno.test("notify: identity 5xx → tidak di-ack; 4xx permanen → di-ack (tidak diulang)", async () => {

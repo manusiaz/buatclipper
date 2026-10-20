@@ -36,9 +36,22 @@ export async function request(http: Http, url: string, init: RequestInit = {}, m
   } catch {
     body = null;
   }
-  if (!res.ok) throw map?.(res.status, body) ?? defaultError(res.status, body);
+  if (!res.ok) {
+    const err = map?.(res.status, body) ?? defaultError(res.status, body);
+    if (err instanceof Retryable && err.retryAfterSec === undefined) {
+      err.retryAfterSec = retryAfter(res.headers.get("retry-after"));
+    }
+    throw err;
+  }
   if (body === null) throw new Retryable("respons bukan JSON");
   return body;
+}
+
+/** Retry-After: detik atau tanggal HTTP (RFC 9110 §10.2.3). */
+export function retryAfter(v: string | null, now = Date.now()): number | undefined {
+  if (!v) return undefined;
+  const sec = /^\d+$/.test(v.trim()) ? Number(v.trim()) : (Date.parse(v) - now) / 1000;
+  return Number.isFinite(sec) && sec > 0 ? Math.ceil(sec) : undefined;
 }
 
 export const form = (o: Record<string, string | undefined>): URLSearchParams => {
