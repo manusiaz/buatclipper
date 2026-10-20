@@ -1612,6 +1612,13 @@ select api.worker_retry_later('tracking', 0, 3600, (select v::uuid from t_ids wh
 select tracking.enqueue_due_submissions();
 select ok(not exists (select 1 from pgmq.q_tracking where message ->> 'submission_id' = (select v from t_ids where k = 'sf6')),
           'regresi R17: penjadwal menunggu retry_after (poll final di ujung window tidak memotong backoff)');
+-- Regresi audit 2 AA-6: worker mati → pesan menumpuk di antrean, next_poll_at terus digeser lease → tetap terdeteksi macet.
+update tracking.submissions set retry_after = null, next_poll_at = now() - interval '1 minute' where id = (select v::uuid from t_ids where k = 'sf6');
+select tracking.enqueue_due_submissions();
+update pgmq.q_tracking set enqueued_at = now() - interval '90 minutes' where message ->> 'submission_id' = (select v from t_ids where k = 'sf6');
+select is((select count(*)::int from tracking.submissions where id = (select v::uuid from t_ids where k = 'sf6')
+             and next_poll_at < now() - interval '2 hours'), 0, 'next_poll_at sudah digeser lease (metrik lama tidak melihatnya)');
+select ok(tracking.lagging_count() >= 1, 'regresi AA-6: antrean tracking tidak diproses > 1 jam = tracking macet (alert & overview)');
 
 -- Regresi G-7: teman satu perangkat dengan pengundang (FR-05) → bonus referral batal selama flag belum di-dismiss.
 insert into market.profiles (id, username, display_name) values

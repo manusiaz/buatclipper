@@ -1,6 +1,6 @@
 -- F-A01 overview admin (admin apa pun, aal2). Bulan = bulan kalender WIB. Revenue = mutasi akun platform_revenue Rupiah (fee
--- invoice, layanan, biaya instant & transfer refund, dikurangi bonus referral). Kesehatan tracking: submisi terlambat > 2 jam
--- dari jadwal poll dan umur snapshot terakhir.
+-- invoice, layanan, biaya instant & transfer refund, dikurangi bonus referral). Kesehatan tracking: submisi macet
+-- (tracking.lagging_count) dan umur snapshot terakhir.
 create function api.admin_overview() returns jsonb
 language plpgsql stable security definer set search_path = '' as $$
 declare
@@ -23,8 +23,7 @@ begin
                          from finance.payouts p where p.status in ('requested', 'on_hold', 'processing')),
     'fraud_queue', (select count(*) from trust.fraud_flags f where f.status in ('open', 'held')),
     'tracking', jsonb_build_object(
-      'overdue', (select count(*) from tracking.submissions s
-                   where s.status in ('tracking', 'flagged') and s.next_poll_at < now() - interval '2 hours'),
+      'overdue', tracking.lagging_count(),
       'last_snapshot_age_seconds', (select floor(extract(epoch from now() - max(v.taken_at))) from tracking.view_snapshots v)),
     'open_alerts', (select count(*) from ops.alerts a where a.resolved_at is null));
 end $$;

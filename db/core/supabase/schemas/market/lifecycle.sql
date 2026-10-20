@@ -98,9 +98,8 @@ begin
                   from finance.reward_pools rp where rp.campaign_id = r.id), '[]')));
   end loop;
 
-  -- Kesehatan job tracking (F-A01): submisi terlambat > 2 jam dari jadwal poll → alert (maks satu per 6 jam).
-  select count(*) into n from tracking.submissions s
-   where s.status in ('tracking', 'flagged') and s.next_poll_at < now() - interval '2 hours';
+  -- Kesehatan job tracking (F-A01): submisi macet (tracking.lagging_count, termasuk worker mati) → alert (maks satu per 6 jam).
+  n := tracking.lagging_count();
   if n > 0 then
     perform ops.raise_alert('tracking.lag', 'warning', jsonb_build_object('overdue', n), interval '6 hours');
   end if;

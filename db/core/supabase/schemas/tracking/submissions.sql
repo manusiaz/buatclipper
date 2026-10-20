@@ -65,3 +65,17 @@ begin
   return n;
 end $$;
 revoke execute on function tracking.enqueue_due_submissions(int) from public;
+
+-- F-A01/F-X01 kesehatan tracking: submisi macet = jatuh tempo > 2 jam belum diantre, ATAU sudah diantre > 1 jam tapi belum
+-- diproses worker. enqueue_due_submissions menggeser next_poll_at sebagai lease, jadi worker mati tidak terlihat dari
+-- next_poll_at saja (AA-6). plpgsql: antrean pgmq dibuat pgmq.create di ops/cron.sql.
+create function tracking.lagging_count() returns int
+language plpgsql stable security definer set search_path = '' as $$
+begin
+  return (select count(*)::int from (
+            select s.id from tracking.submissions s
+             where s.status in ('tracking', 'flagged') and s.next_poll_at < now() - interval '2 hours'
+            union
+            select (q.message ->> 'submission_id')::uuid from pgmq.q_tracking q where q.enqueued_at < now() - interval '1 hour') x);
+end $$;
+revoke execute on function tracking.lagging_count() from public;
