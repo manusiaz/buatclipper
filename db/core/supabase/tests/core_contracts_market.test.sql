@@ -349,14 +349,22 @@ select pg_temp.jwt('11111111-0000-0000-0000-0000000000f3');
 select throws_ok($$ select api.accept_org_invite((select tok from t_ids where k = 'invite2')) $$, 'P0002', 'not_found:invite',
                  'link undangan yang dicabut tidak bisa dipakai');
 select pg_temp.jwt('22222222-0000-0000-0000-0000000000a1');
+select lives_ok($$ select api.manage_team('44444444-0000-0000-0000-000000000001', 'set_role', '11111111-0000-0000-0000-0000000000f2',
+                                          'brand_owner') $$, 'owner menambah owner kedua');
+select pg_temp.jwt('11111111-0000-0000-0000-0000000000f2');
+insert into t_ids (k, tok) select 'invite_f2', api.create_org_invite('44444444-0000-0000-0000-000000000001', 'brand_owner');
+select pg_temp.jwt('22222222-0000-0000-0000-0000000000a1');
 select lives_ok($$ select api.manage_team('44444444-0000-0000-0000-000000000001', 'remove', '11111111-0000-0000-0000-0000000000f2') $$,
                 'regresi AB-5: owner mengeluarkan anggota');
+select pg_temp.jwt('11111111-0000-0000-0000-0000000000f3');
+select throws_ok($$ select api.accept_org_invite((select tok from t_ids where k = 'invite_f2')) $$, 'P0002', 'not_found:invite',
+                 'regresi R23-1: link undangan owner yang dikeluarkan ikut dicabut (bukan jalan kembali)');
 select pg_temp.jwt('11111111-0000-0000-0000-0000000000f2');
 select is((select count(*)::int from api.organizations where id = '44444444-0000-0000-0000-000000000001'), 0,
           'anggota yang dikeluarkan langsung kehilangan akses org');
 reset role;
 select is((select array_agg(action order by id) from ops.audit_logs where action like 'org.team.%'),
-          array['org.team.set_role', 'org.team.revoke_invite', 'org.team.remove'], 'kelola anggota tercatat di audit');
+          array['org.team.set_role', 'org.team.revoke_invite', 'org.team.set_role', 'org.team.remove'], 'kelola anggota tercatat di audit');
 
 -- Agency: request → approve (brand_owner klien) → akses → revoke
 set local role authenticated;

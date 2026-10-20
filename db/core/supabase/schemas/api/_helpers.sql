@@ -29,11 +29,15 @@ begin
 end $$;
 
 -- Anggota langsung org (bukan lewat agency): dipakai aksi pengelolaan anggota & persetujuan tautan agency.
+-- FOR SHARE: pemanggil yang sedang dikeluarkan/diturunkan oleh transaksi lain menunggu commit-nya lalu ditolak (R23-1),
+-- bukan lolos memakai otoritas lama. Fungsi yang juga mengunci org (manage_team, update_org) mengunci org dulu.
 create function market.is_direct_member(p_org uuid, p_user uuid, variadic p_roles market.org_role[] default '{}') returns boolean
-language plpgsql stable security definer set search_path = '' as $$
+language plpgsql security definer set search_path = '' as $$
 begin
-  return exists (select 1 from market.org_members m where m.org_id = p_org and m.user_id = p_user
-                 and (cardinality(p_roles) = 0 or m.role = any (p_roles)));
+  perform 1 from market.org_members m where m.org_id = p_org and m.user_id = p_user
+                                         and (cardinality(p_roles) = 0 or m.role = any (p_roles))
+     for share;
+  return found;
 end $$;
 
 -- fn:notify_org — notifikasi ke anggota org (langsung + agency tertaut) dengan role tertentu (NULL/kosong = semua).

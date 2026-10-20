@@ -903,9 +903,9 @@ Arah: `A --tipe--> B` = A bergantung pada B. `?` = belum terverifikasi.
 | `api:fn identity/pii-export` | writes | `table:bucket.payout-proofs` | db/identity/supabase/functions/pii-export/handler.ts:179 |
 | `api:fn identity/pii-export` | writes | `table:bucket.pii-exports` | db/identity/supabase/functions/pii-export/handler.ts:46 |
 | `api:fn identity/pii-export` | writes | `table:member.audit_logs` | db/identity/supabase/schemas/api/svc.sql:183 (rpc svc_audit, handler.ts baris 42) |
-| `api:rpc core.accept_org_invite` | reads | `table:market.org_invites` | db/core/supabase/schemas/api/org.sql:231 |
-| `api:rpc core.accept_org_invite` | writes | `table:market.org_invites` | db/core/supabase/schemas/api/org.sql:249 |
-| `api:rpc core.accept_org_invite` | writes | `table:market.org_members` | db/core/supabase/schemas/api/org.sql:248 |
+| `api:rpc core.accept_org_invite` | reads | `table:market.org_invites` | db/core/supabase/schemas/api/org.sql:235 |
+| `api:rpc core.accept_org_invite` | writes | `table:market.org_invites` | db/core/supabase/schemas/api/org.sql:253 |
+| `api:rpc core.accept_org_invite` | writes | `table:market.org_members` | db/core/supabase/schemas/api/org.sql:252 |
 | `api:rpc core.accept_org_invite` | writes | `table:market.profiles` | db/core/supabase/schemas/api/org.sql:20 (market.ensure_member_profile) |
 | `api:rpc core.appeal_submission` | writes | `table:tracking.submissions` | db/core/supabase/schemas/api/review.sql:32 |
 | `api:rpc core.appeal_submission` | writes | `table:trust.review_decisions` | db/core/supabase/schemas/api/review.sql:27 |
@@ -913,7 +913,7 @@ Arah: `A --tipe--> B` = A bergantung pada B. `?` = belum terverifikasi.
 | `api:rpc core.buy_pin` | writes | `table:finance.invoices` | db/core/supabase/schemas/api/campaigns.sql:691 (finance.issue_invoice) |
 | `api:rpc core.my_clip_terms` | reads | `table:market.profiles` | db/core/supabase/schemas/api/read_models.sql:153 (trust_score dari market.profiles) |
 | `api:rpc core.claim_campaign` | reads | `table:market.campaigns` | db/core/supabase/schemas/api/campaigns.sql:136 |
-| `api:rpc core.claim_campaign` | reads | `table:market.profiles` | db/core/supabase/schemas/api/_helpers.sql:182 (market.claim_check) |
+| `api:rpc core.claim_campaign` | reads | `table:market.profiles` | db/core/supabase/schemas/api/_helpers.sql:186 (market.claim_check) |
 | `api:rpc core.claim_campaign` | writes | `table:market.claims` | db/core/supabase/schemas/api/campaigns.sql:150 |
 | `api:rpc core.confirm_invoice_payment` | guarded-by | `policy:core.admin-aal2` | db/core/supabase/schemas/finance/invoice_confirm.sql:98 |
 | `api:rpc core.confirm_invoice_payment` | writes | `table:finance.invoices` | db/core/supabase/schemas/finance/invoice_confirm.sql:126 |
@@ -926,13 +926,13 @@ Arah: `A --tipe--> B` = A bergantung pada B. `?` = belum terverifikasi.
 | `api:rpc core.control_campaign` | writes | `table:market.rate_rules` | db/core/supabase/schemas/api/campaigns.sql:547 |
 | `api:rpc core.create_org` | writes | `table:market.org_members` | db/core/supabase/schemas/api/org.sql:97 |
 | `api:rpc core.create_org` | writes | `table:market.organizations` | db/core/supabase/schemas/api/org.sql:93 |
-| `api:rpc core.manage_team` | guarded-by | `policy:core.org-role` | db/core/supabase/schemas/api/org.sql:186 |
+| `api:rpc core.manage_team` | guarded-by | `policy:core.org-role` | db/core/supabase/schemas/api/org.sql:187 |
 | `api:rpc core.manage_team` | writes | `table:market.org_invites` | db/core/supabase/schemas/api/org.sql:191 |
 | `api:rpc core.manage_team` | writes | `table:market.org_members` | db/core/supabase/schemas/api/org.sql:211 |
-| `api:rpc core.manage_team` | writes | `table:ops.audit_logs` | db/core/supabase/schemas/api/org.sql:218 |
-| `api:rpc core.update_org` | guarded-by | `policy:core.org-role` | db/core/supabase/schemas/api/org.sql:470 |
-| `api:rpc core.update_org` | writes | `table:market.organizations` | db/core/supabase/schemas/api/org.sql:492 |
-| `api:rpc core.update_org` | writes | `table:ops.audit_logs` | db/core/supabase/schemas/api/org.sql:499 |
+| `api:rpc core.manage_team` | writes | `table:ops.audit_logs` | db/core/supabase/schemas/api/org.sql:222 |
+| `api:rpc core.update_org` | guarded-by | `policy:core.org-role` | db/core/supabase/schemas/api/org.sql:475 |
+| `api:rpc core.update_org` | writes | `table:market.organizations` | db/core/supabase/schemas/api/org.sql:496 |
+| `api:rpc core.update_org` | writes | `table:ops.audit_logs` | db/core/supabase/schemas/api/org.sql:503 |
 | `api:rpc core.create_org_invite` | guarded-by | `policy:core.org-role` | db/core/supabase/schemas/api/org.sql:165 |
 | `api:rpc core.create_org_invite` | writes | `table:market.org_invites` | db/core/supabase/schemas/api/org.sql:172 |
 | `api:rpc core.create_payout_batch` | guarded-by | `policy:core.admin-aal2` | db/core/supabase/schemas/finance/payout_flow.sql:143 |
@@ -948,20 +948,20 @@ Arah: `A --tipe--> B` = A bergantung pada B. `?` = belum terverifikasi.
 | `api:rpc core.duplicate_campaign` | writes | `table:market.rate_rules` | db/core/supabase/schemas/api/campaigns.sql:620 |
 | `api:rpc core.ensure_profile` | writes | `table:market.profiles` | db/core/supabase/schemas/api/ensure_profile.sql:21 |
 | `api:rpc core.ensure_profile` | writes | `table:market.referrals` | db/core/supabase/schemas/api/ensure_profile.sql:35 |
-| `api:rpc core.invite_preview` | reads | `table:market.org_invites` | db/core/supabase/schemas/api/org.sql:259 |
-| `api:rpc core.invite_preview` | reads | `table:market.organizations` | db/core/supabase/schemas/api/org.sql:259 |
+| `api:rpc core.invite_preview` | reads | `table:market.org_invites` | db/core/supabase/schemas/api/org.sql:263 |
+| `api:rpc core.invite_preview` | reads | `table:market.organizations` | db/core/supabase/schemas/api/org.sql:263 |
 | `api:rpc core.invite_to_campaign` | writes | `table:market.campaign_invites` | db/core/supabase/schemas/api/campaigns.sql:654 |
 | `api:rpc core.link_agency` | writes | `table:market.org_links` | db/core/supabase/schemas/api/org.sql:123 |
 | `api:rpc core.list_campaigns` | reads | `table:finance.reward_pools` | db/core/supabase/schemas/api/campaigns.sql:82 |
 | `api:rpc core.list_campaigns` | reads | `table:market.campaigns` | db/core/supabase/schemas/api/campaigns.sql:90 |
-| `api:rpc core.list_campaigns` | reads | `table:market.claims` | db/core/supabase/schemas/api/_helpers.sql:163 (market.claim_check) |
-| `api:rpc core.list_campaigns` | reads | `table:market.profiles` | db/core/supabase/schemas/api/_helpers.sql:182 (market.claim_check) |
-| `api:rpc core.list_campaigns` | reads | `table:tracking.social_accounts` | db/core/supabase/schemas/api/_helpers.sql:206 (market.claim_check) |
-| `api:rpc core.manage_org` | guarded-by | `policy:core.admin-aal2` | db/core/supabase/schemas/api/org.sql:279 |
-| `api:rpc core.manage_org` | writes | `table:market.org_members` | db/core/supabase/schemas/api/org.sql:318 |
-| `api:rpc core.manage_org` | writes | `table:market.organizations` | db/core/supabase/schemas/api/org.sql:294 |
+| `api:rpc core.list_campaigns` | reads | `table:market.claims` | db/core/supabase/schemas/api/_helpers.sql:167 (market.claim_check) |
+| `api:rpc core.list_campaigns` | reads | `table:market.profiles` | db/core/supabase/schemas/api/_helpers.sql:186 (market.claim_check) |
+| `api:rpc core.list_campaigns` | reads | `table:tracking.social_accounts` | db/core/supabase/schemas/api/_helpers.sql:210 (market.claim_check) |
+| `api:rpc core.manage_org` | guarded-by | `policy:core.admin-aal2` | db/core/supabase/schemas/api/org.sql:283 |
+| `api:rpc core.manage_org` | writes | `table:market.org_members` | db/core/supabase/schemas/api/org.sql:322 |
+| `api:rpc core.manage_org` | writes | `table:market.organizations` | db/core/supabase/schemas/api/org.sql:298 |
 | `api:rpc core.manage_org` | writes | `table:market.profiles` | db/core/supabase/schemas/api/org.sql:20 (add_member → market.ensure_member_profile) |
-| `api:rpc core.manage_org` | writes | `table:ops.audit_logs` | db/core/supabase/schemas/api/org.sql:296 |
+| `api:rpc core.manage_org` | writes | `table:ops.audit_logs` | db/core/supabase/schemas/api/org.sql:300 |
 | `api:rpc core.manage_user` | calls | `fn:enqueue_notification` | db/core/supabase/schemas/trust/manage_user.sql:54 |
 | `api:rpc core.manage_user` | guarded-by | `policy:core.admin-aal2` | db/core/supabase/schemas/trust/manage_user.sql:15 |
 | `api:rpc core.manage_user` | writes | `table:market.claims` | db/core/supabase/schemas/trust/manage_user.sql:52 |
@@ -1041,8 +1041,8 @@ Arah: `A --tipe--> B` = A bergantung pada B. `?` = belum terverifikasi.
 | `api:rpc core.save_campaign` | writes | `table:market.campaign_assets` | db/core/supabase/schemas/api/campaigns.sql:390 |
 | `api:rpc core.save_campaign` | writes | `table:market.campaigns` | db/core/supabase/schemas/api/campaigns.sql:286 |
 | `api:rpc core.save_campaign` | writes | `table:market.rate_rules` | db/core/supabase/schemas/api/campaigns.sql:370 |
-| `api:rpc core.save_reward_type` | guarded-by | `policy:core.org-role` | db/core/supabase/schemas/api/org.sql:366 |
-| `api:rpc core.save_reward_type` | writes | `table:market.reward_types` | db/core/supabase/schemas/api/org.sql:395 |
+| `api:rpc core.save_reward_type` | guarded-by | `policy:core.org-role` | db/core/supabase/schemas/api/org.sql:370 |
+| `api:rpc core.save_reward_type` | writes | `table:market.reward_types` | db/core/supabase/schemas/api/org.sql:399 |
 | `api:rpc core.send_broadcast` | writes | `table:ops.broadcasts` | db/core/supabase/schemas/api/config.sql:156 |
 | `api:rpc core.store_social_token` | guarded-by | `policy:core.definer-only` | db/core/supabase/schemas/tracking/vault.sql:4 (security definer; EXECUTE hanya service_role, baris 23) |
 | `api:rpc core.store_social_token` | writes | `table:tracking.social_accounts` | db/core/supabase/schemas/tracking/vault.sql:14 |
@@ -1053,7 +1053,7 @@ Arah: `A --tipe--> B` = A bergantung pada B. `?` = belum terverifikasi.
 | `api:rpc core.update_config` | writes | `table:market.categories` | db/core/supabase/schemas/api/config.sql:36 |
 | `api:rpc core.update_config` | writes | `table:ops.audit_logs` | db/core/supabase/schemas/api/config.sql:118 |
 | `api:rpc core.update_config` | writes | `table:ops.settings` | db/core/supabase/schemas/api/config.sql:113 |
-| `api:rpc core.upload_reward_codes` | writes | `table:finance.reward_codes` | db/core/supabase/schemas/api/org.sql:448 |
+| `api:rpc core.upload_reward_codes` | writes | `table:finance.reward_codes` | db/core/supabase/schemas/api/org.sql:452 |
 | `api:view core.admin_profiles` | guarded-by | `policy:core.admin-aal2` | db/core/supabase/schemas/api/views.sql:42 |
 | `api:view core.admin_profiles` | reads | `table:market.profiles` | db/core/supabase/schemas/api/views.sql:42 |
 | `api:rpc identity.admin_kyc_decision` | guarded-by | `policy:identity.admin-aal2` | db/identity/supabase/schemas/api/admin_kyc_decision.sql:11 |
@@ -1110,8 +1110,8 @@ Arah: `A --tipe--> B` = A bergantung pada B. `?` = belum terverifikasi.
 | `job:broadcast-dispatch` | calls | `fn:enqueue_notification` | db/core/supabase/schemas/ops/broadcast_dispatch.sql:39 |
 | `job:broadcast-dispatch` | writes | `table:ops.broadcasts` | db/core/supabase/schemas/ops/broadcast_dispatch.sql:45 |
 | `job:broadcast-dispatch` | writes | `table:ops.notifications` | db/core/supabase/schemas/ops/broadcast_dispatch.sql:39 (ops.enqueue_notification) |
-| `job:budget-alerts` | calls | `fn:enqueue_notification` | db/core/supabase/schemas/api/_helpers.sql:58 (market.notify_org, dipanggil market/jobs.sql baris 92) |
-| `job:budget-alerts` | writes | `table:ops.notifications` | db/core/supabase/schemas/api/_helpers.sql:58 (market.notify_org → ops.enqueue_notification) |
+| `job:budget-alerts` | calls | `fn:enqueue_notification` | db/core/supabase/schemas/api/_helpers.sql:62 (market.notify_org, dipanggil market/jobs.sql baris 92) |
+| `job:budget-alerts` | writes | `table:ops.notifications` | db/core/supabase/schemas/api/_helpers.sql:62 (market.notify_org → ops.enqueue_notification) |
 | `job:claim-expiry` | calls | `fn:enqueue_notification` | db/core/supabase/schemas/market/claims.sql:37 |
 | `job:claim-expiry` | writes | `table:market.claims` | db/core/supabase/schemas/market/claims.sql:40 |
 | `job:earning-release` | calls | `fn:enqueue_notification` | db/core/supabase/schemas/finance/earnings.sql:473 |
@@ -2240,6 +2240,7 @@ Masalah sistem yang ditemukan saat menyusun PRD v0.2 dan saat dicek ulang (v0.2.
 | 2026-10-20 | `page:brand/[org]/team` | Audit PRD ulang (brand AB-5, E-03 "owner kelola member"): owner tidak bisa mengubah role, mengeluarkan anggota (mis. karyawan keluar tetap pegang akses billing), atau mencabut link undangan — halaman menyuruh lewat tim Clipper | diperbaiki: api.manage_team (set_role/remove/revoke_invite, brand_owner langsung, org dikunci, last_owner) + kontrol per baris di halaman Tim; tercatat org.team.* di audit |
 | 2026-10-20 | `api:rpc core.pay_invoice_with_credit` | Review Claudex R22: (1) melepas kredit setelah fee rollover dibebaskan membiarkan fee tetap terhapus (invoice bisa dilunasi transfer dengan diskon tanpa rollover); (2) jumlah default UI = total sebelum bebas fee → insufficient_credit, bayar penuh pakai kredit selalu gagal | diperbaiki: fee_gross menyimpan fee awal, bebas fee dihitung ulang tiap cadangan berubah (lepas → fee penuh kembali, rollover milik invoice itu tetap tersedia untuknya); permintaan ≥ total dengan kredit cukup = bayar penuh |
 | 2026-10-20 | `page:brand/[org]/billing` | Audit PRD ulang (brand AB-4, B1.8 "unduh faktur setelah lunas"): faktur_no tidak pernah diisi siapa pun, tombol Unduh faktur selalu nonaktif | diperbaiki: bucket invoice-docs + api.attach_faktur (admin_finance, invoice lunas, nomor unik, berkas wajib ada); tab Pembayaran masuk admin menampilkan invoice ber-PPN yang menunggu faktur + unggah; brand billing mengunduh lewat signed URL |
+| 2026-10-20 | `api:rpc core.manage_team` | Review Claudex R23: owner B yang sedang dikeluarkan owner A lolos cek owner sebelum hapus A commit lalu mempromosikan anggota lain jadi owner (dibuktikan 2 sesi psql: kode lama C=brand_owner); link undangan yang dibuat owner lama tetap bisa dipakai kembali | diperbaiki di akar: market.is_direct_member membaca baris anggota FOR SHARE (menunggu hapus/ubah role yang belum commit lalu ditolak), manage_team & update_org mengunci org sebelum cek (tanpa deadlock), undangan pending milik owner yang dikeluarkan/diturunkan ikut dicabut |
 | 2026-10-20 | `api:fn core/social` | Audit PRD (G-1, F-C02/D-11): YouTube hanya bisa dihubungkan lewat OAuth Google; fallback kode di deskripsi channel tidak ada (YOUTUBE_API_KEY tak dipakai) | diperbaiki: aksi youtube_code / youtube_verify (kode CLIP-… per user+channel harus ada di deskripsi) → akun terverifikasi dengan token mode api_key; adapter memakai ?key= (tanpa Analytics, tanpa refresh); dialog di halaman Akun sosmed |
 ## Keputusan
 

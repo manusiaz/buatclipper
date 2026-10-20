@@ -183,10 +183,10 @@ declare
   m market.org_members;
   r market.org_role;
 begin
+  perform 1 from market.organizations where id = p_org for update;
   if not market.is_direct_member(p_org, uid, 'brand_owner') then
     perform market.fail('auth:forbidden', 'hanya brand_owner org ini', '42501');
   end if;
-  perform 1 from market.organizations where id = p_org for update;
   if p_action = 'revoke_invite' then
     delete from market.org_invites where id = p_target and org_id = p_org and accepted_at is null;
     if not found then
@@ -211,6 +211,10 @@ begin
       delete from market.org_members where org_id = p_org and user_id = m.user_id;
     else
       update market.org_members set role = r where org_id = p_org and user_id = m.user_id;
+    end if;
+    -- link undangan yang dibuat owner itu tidak boleh jadi jalan kembali setelah dikeluarkan/diturunkan
+    if m.role = 'brand_owner' and r is distinct from 'brand_owner' then
+      delete from market.org_invites where org_id = p_org and created_by = m.user_id and accepted_at is null;
     end if;
   else
     perform market.fail('invalid:action', coalesce(p_action, 'null'));
@@ -467,10 +471,10 @@ declare
   v_npwp text := nullif(regexp_replace(coalesce(p_npwp, ''), '[^0-9]', '', 'g'), '');
   legal_changed boolean;
 begin
+  select * into o from market.organizations where id = p_org for update;
   if not market.is_direct_member(p_org, uid, 'brand_owner') then
     perform market.fail('auth:forbidden', 'hanya brand_owner org ini', '42501');
   end if;
-  select * into o from market.organizations where id = p_org for update;
   if char_length(btrim(coalesce(p_name, ''))) not between 2 and 100 then
     perform market.fail('invalid:name', 'nama 2–100 karakter');
   end if;
