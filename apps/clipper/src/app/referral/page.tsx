@@ -1,4 +1,5 @@
 import type { Metadata } from 'next';
+import Link from 'next/link';
 import { getTranslations } from 'next-intl/server';
 import { hosts } from '@clipper/auth';
 import { requireClipper } from '@clipper/auth/server';
@@ -56,6 +57,11 @@ export default async function ReferralPage() {
           value={totals.size ? [...totals].map(([id, v]) => formatAmount(v, units.get(id), locale)).join(' + ') : formatAmount(0, null, locale)}
           icon="payments"
           hint={t('bonusHint')}
+          footer={
+            <Link href="/wallet" className="text-body-s font-semibold text-link hover:underline focus-ring">
+              {t('toWallet')}
+            </Link>
+          }
         />
       </div>
       <Card>

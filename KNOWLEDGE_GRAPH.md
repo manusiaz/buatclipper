@@ -539,9 +539,9 @@ Arah: `A --tipe--> B` = A bergantung pada B. `?` = belum terverifikasi.
 | `page:app/profile` | reads | `table:trust.score_events` | apps/clipper/src/app/profile/page.tsx:37 |
 | `page:app/profile` | routes-to | `page:app/leaderboard` | apps/clipper/src/app/profile/page.tsx:186 |
 | `page:app/profile` | wrapped-by | `layout:clipper` | apps/clipper/src/app/layout.tsx:31 |
-| `page:app/referral` | calls | `api:rpc core.my_referral_code` | apps/clipper/src/app/referral/page.tsx:20 |
-| `page:app/referral` | reads | `table:market.referrals` | apps/clipper/src/app/referral/page.tsx:21 |
-| `page:app/referral` | routes-to | `page:app/wallet` | PRD v0.3.1 §6 C5.3 (belum di kode: bonus referral tampil di halaman ini, tanpa link ke /wallet) |
+| `page:app/referral` | calls | `api:rpc core.my_referral_code` | apps/clipper/src/app/referral/page.tsx:21 |
+| `page:app/referral` | reads | `table:market.referrals` | apps/clipper/src/app/referral/page.tsx:22 |
+| `page:app/referral` | routes-to | `page:app/wallet` | apps/clipper/src/app/referral/page.tsx:61 (C5.3 link wallet di kartu total bonus) |
 | `page:app/referral` | routes-to | `page:www/` | PRD v0.3.1 §6 C5.1; kode baris 27 (link hosts.web/?ref=) |
 | `page:app/referral` | wrapped-by | `layout:clipper` | apps/clipper/src/app/layout.tsx:31 |
 | `page:app/settings` | calls | `api:rpc identity.save_push_subscription` | apps/clipper/src/features/settings/actions.ts:47 |

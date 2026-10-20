@@ -611,7 +611,8 @@
     "statusDone": "Bonus selesai",
     "emptyTitle": "Belum ada teman",
     "emptyBody": "Bagikan link kamu ke grup atau media sosial.",
-    "errorTitle": "Kode referral belum bisa dibuat"
+    "errorTitle": "Kode referral belum bisa dibuat",
+    "toWallet": "Lihat di wallet"
   },
   "settings": {
     "title": "Pengaturan",

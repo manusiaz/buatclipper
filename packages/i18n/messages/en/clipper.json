@@ -611,7 +611,8 @@
     "statusDone": "Bonus ended",
     "emptyTitle": "No friends yet",
     "emptyBody": "Share your link in groups or on social media.",
-    "errorTitle": "Your referral code is not ready yet"
+    "errorTitle": "Your referral code is not ready yet",
+    "toWallet": "View in wallet"
   },
   "settings": {
     "title": "Settings",
