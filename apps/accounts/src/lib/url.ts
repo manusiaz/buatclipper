@@ -1,5 +1,3 @@
-import { coreServer } from '@clipper/auth/server';
-
 export type SearchParams = Promise<Record<string, string | string[] | undefined>>;
 
 /** Nilai query pertama (Next memberi array kalau parameter berulang). */
@@ -14,11 +12,3 @@ export function withParams(target: string, params: Record<string, string | null 
 }
 
 export const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-
-/** public.community.links.support (core, terbaca anon) → link https kontak bantuan; selain https → null. */
-export async function supportUrl(): Promise<string | null> {
-  const db = await coreServer();
-  const { data } = await db.from('settings').select('value').eq('key', 'public.community.links').maybeSingle();
-  const v = (data?.value as Record<string, unknown> | null)?.support;
-  return typeof v === 'string' && /^https:\/\/\S+$/.test(v) ? v : null;
-}

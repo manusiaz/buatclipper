@@ -32,6 +32,7 @@ describe('notificationValues', () => {
     expect(notificationValues({ total: 1000 }, idr).amount).toBe('Rp1000');
     expect(notificationValues({ amount: 8, reward_type: 'DIAMOND', unit_label: 'Diamonds' }, idr).amount).toBe('8 Diamonds');
     expect(notificationValues({ number: 'INV-1' }, idr).number).toBe('INV-1');
+    expect(notificationValues({ title: 'Insiden data', body: 'Ganti kata sandi.' }, idr).body).toBe('Ganti kata sandi.');
   });
   it('knows brand events', () => {
     expect(isBrandEvent('campaign.live')).toBe(true);

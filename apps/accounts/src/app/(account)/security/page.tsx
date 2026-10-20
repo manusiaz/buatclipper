@@ -4,7 +4,8 @@ import { mfaStatus } from '@clipper/auth/actions';
 import { requireAccount } from '@clipper/auth/server';
 import { Card, Icon, PageHeader } from '@clipper/ui';
 import { MfaSection } from '@/features/security/mfa-section';
-import { one, supportUrl, type SearchParams } from '@/lib/url';
+import { supportUrl } from '@/lib/support';
+import { one, type SearchParams } from '@/lib/url';
 
 export async function generateMetadata(): Promise<Metadata> {
   return { title: (await getTranslations('accounts.meta'))('security') };

@@ -79,5 +79,6 @@ export function notificationValues(payload: Payload, formatIdr: (n: number) => s
     client: s(payload.client_org_name),
     reason: s(payload.reason),
     title: s(payload.title),
+    body: s(payload.body),
   };
 }

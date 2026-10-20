@@ -6,7 +6,8 @@ import { requireAccount } from '@clipper/auth/server';
 import { Alert, Button, Card, EmptyState, PageHeader, StatusBadge, formatDateTime } from '@clipper/ui';
 import { KycForm } from '@/features/kyc/kyc-form';
 import { identityDb } from '@/lib/identity';
-import { one, supportUrl, withParams, type SearchParams } from '@/lib/url';
+import { supportUrl } from '@/lib/support';
+import { one, withParams, type SearchParams } from '@/lib/url';
 
 export async function generateMetadata(): Promise<Metadata> {
   return { title: (await getTranslations('accounts.meta'))('kyc') };

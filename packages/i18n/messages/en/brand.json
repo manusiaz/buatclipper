@@ -761,7 +761,7 @@
       "draft_ready": "Managed draft {campaign} is ready for approval"
     },
     "security": {
-      "notice": "{title}"
+      "notice": "{title}: {body}"
     }
   },
   "errors": {
