@@ -1,5 +1,6 @@
 // Jalankan: pnpm e2e (butuh scripts/dev-stack.sh + 4 app di port 3000–3003, build produksi atau dev).
-// Deploy self-hosted (deploy/deploy.sh): E2E_WEB/E2E_ACC/E2E_APP/E2E_BRAND, E2E_CORE_DB, E2E_MAILPIT menimpa default lokal.
+// Deploy self-hosted (deploy/deploy.sh): E2E_WEB/E2E_ACC/E2E_APP/E2E_BRAND, E2E_CORE_DB, E2E_MAILPIT menimpa default lokal;
+// E2E_HOST_RULES = --host-resolver-rules Chromium (mis. "MAP auth.x 10.0.0.11") bila DNS host uji belum mengarah ke server.
 // Journey lintas host: web → accounts (OTP Mailpit, onboarding + avatar) → app (kartu + brand, claim) → accounts/invite → brand.
 const { chromium } = require('playwright');
 const { execFileSync } = require('child_process');
@@ -29,7 +30,9 @@ async function otp(addr, since) {
 }
 
 (async () => {
-  const browser = await chromium.launch();
+  const browser = await chromium.launch(
+    process.env.E2E_HOST_RULES ? { args: [`--host-resolver-rules=${process.env.E2E_HOST_RULES}`] } : {},
+  );
   const ctx = await browser.newContext({ viewport: { width: 390, height: 844 }, locale: 'id-ID' });
   const page = await ctx.newPage();
   const errors = [];

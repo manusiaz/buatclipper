@@ -3,9 +3,10 @@
 # - Nama container per stack (resmi: supabase-*), supaya dua stack bisa jalan di satu host.
 # - Port hanya di 127.0.0.1: publik lewat Caddy (deploy/Caddyfile, path API saja). Studio = SSH tunnel ke GW_PORT.
 # - Realtime & Supavisor tidak dipakai platform (tidak ada .channel()/pooler) → dimatikan lewat profile.
-# - Network eksternal "clipper" hanya untuk gateway (alias identity-gw / core-gw, dipakai Caddy). Service lain TIDAK ikut:
-#   nama service kedua stack sama (auth, functions, api-gw) → DNS docker jadi ambigu. Panggilan lintas stack (bridge,
-#   JWKS, template email) memakai URL publik yang dipetakan ke Caddy di host (extra_hosts host-gateway).
+# - Network eksternal "clipper" hanya untuk gateway (alias identity-gw / core-gw, dipakai Caddy server ini). Service lain
+#   TIDAK ikut: nama service kedua stack sama (auth, functions, api-gw) → DNS docker jadi ambigu. Panggilan lintas stack
+#   (bridge, JWKS, template email) memakai URL publik; extra_hosts-nya ditulis deploy.sh ke clipper.hosts.yml (host milik
+#   server ini → Caddy lokal, host server lain → PEER_HOSTS atau DNS publik).
 services:
   studio:
     container_name: ${STACK}-studio
@@ -22,9 +23,6 @@ services:
     environment:
       GOTRUE_JWT_VALID_METHODS: HS256,ES256
       GOTRUE_RATE_LIMIT_EMAIL_SENT: ${AUTH_EMAIL_RATE_LIMIT:-1000}
-    extra_hosts:
-      - ${AUTH_HOST}:host-gateway
-      - ${API_HOST}:host-gateway
   rest:
     container_name: ${STACK}-rest
   realtime:
@@ -42,9 +40,6 @@ services:
     container_name: ${STACK}-functions
     environment:
       SUPABASE_JWKS: ${JWT_JWKS}
-    extra_hosts:
-      - ${AUTH_HOST}:host-gateway
-      - ${API_HOST}:host-gateway
   db:
     container_name: ${STACK}-db
     ports:

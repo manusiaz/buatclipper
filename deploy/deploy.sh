@@ -1,39 +1,110 @@
 #!/usr/bin/env bash
-# Deploy self-hosted Clipper Platform di satu server Docker: 2 stack Supabase resmi (identity, core) + 5 app Next.js +
-# Caddy (HTTPS otomatis Let's Encrypt). Idempoten: jalankan ulang untuk update (migration baru, fungsi, app).
+# Deploy self-hosted Clipper Platform: stack Supabase resmi identity & core + 5 app Next.js + Caddy (HTTPS otomatis Let's
+# Encrypt). Tiga server terpisah (disarankan: data PII identity tidak satu mesin dengan data bisnis core) atau satu server.
+# Idempoten: jalankan ulang untuk update (migration baru, fungsi, app).
 #
-#   cp deploy/config.env.example deploy/config.env && $EDITOR deploy/config.env
-#   deploy/deploy.sh up       # secret (sekali) → stack Supabase → migration + seed + bucket + Vault → fungsi → app + Caddy
-#   deploy/deploy.sh down     # matikan semua; data tetap di deploy/stack/*/volumes
-#   deploy/deploy.sh status
+#   Mesin admin (sekali):  deploy/deploy.sh secrets   → secrets.env (lengkap, simpan offline) +
+#                          secrets.identity.env / secrets.core.env / secrets.apps.env (hanya yang dibutuhkan server itu)
+#   Server A (identity):   salin secrets.identity.env → deploy/secrets.env, isi deploy/config.env, deploy/deploy.sh up identity
+#   Server B (core):       salin secrets.core.env     → deploy/secrets.env, isi deploy/config.env, deploy/deploy.sh up core
+#   Server C (app):        salin secrets.apps.env     → deploy/secrets.env, isi deploy/config.env, deploy/deploy.sh up apps
+#   Satu server:           deploy/deploy.sh up all   (secret dibuat otomatis bila belum ada)
+#   deploy/deploy.sh down [peran] · deploy/deploy.sh status
 #
-# Syarat server: Docker Engine + compose ≥ 2.24, git, port 80/443 terbuka, DNS A {DOMAIN} dan
-# accounts./app./brand./admin./auth./api.{DOMAIN} → IP server. Backup: deploy/secrets.env + deploy/stack/*/volumes/db/data.
-# Studio (dashboard DB) tidak publik: ssh -L 8001:127.0.0.1:8001 server → http://localhost:8001 (user supabase,
-# password {IDENTITY|CORE}_DASHBOARD_PASSWORD di secrets.env); core di port 8002.
+# DNS A: auth.{DOMAIN} → server identity, api.{DOMAIN} → server core, {DOMAIN} + accounts./app./brand./admin. → server app.
+# Syarat tiap server: Docker Engine + compose ≥ 2.24, git, port 80/443 terbuka. Backup: deploy/secrets.env +
+# deploy/stack/*/volumes/db/data (+ dump otomatis di deploy/stack/*/backups). Studio (dashboard DB) tidak publik:
+# ssh -L 8001:127.0.0.1:8001 server-identity (core: 8002) → http://localhost:800x (user supabase, password
+# {IDENTITY|CORE}_DASHBOARD_PASSWORD di secrets.env).
 set -euo pipefail
 cd "$(dirname "$0")"
 DEPLOY=$PWD ROOT=$(cd .. && pwd)
 # supabase/supabase docker/ (compose self-hosted resmi) yang diuji dengan deploy ini.
 SUPABASE_REF=${SUPABASE_REF:-d897e1462ad33ee9c7daba8cfee8f14e303c0cf5}
 
-[ -f config.env ] || { echo "deploy/config.env belum ada: cp deploy/config.env.example deploy/config.env lalu isi"; exit 1; }
-chmod 600 config.env   # berisi kredensial SMTP/OAuth
-set -a; . ./config.env; set +a
-SCHEME=${SCHEME:-https}
-[[ "${DOMAIN:-}" =~ ^[a-z0-9]([a-z0-9.-]*[a-z0-9])?$ ]] || { echo "DOMAIN tidak valid: '${DOMAIN:-}'"; exit 1; }
-[[ "$SCHEME" =~ ^https?$ ]] || { echo "SCHEME harus https atau http"; exit 1; }
-[ -n "${SMTP_PASS:-}" ] || echo "PERINGATAN: SMTP_PASS kosong — email kode login (OTP) tidak akan terkirim"
-[ -n "${RESEND_API_KEY:-}" ] || echo "PERINGATAN: RESEND_API_KEY kosong — email notifikasi platform tidak akan terkirim"
-WEB="$SCHEME://$DOMAIN" ACC="$SCHEME://accounts.$DOMAIN" APP="$SCHEME://app.$DOMAIN" BRAND="$SCHEME://brand.$DOMAIN"
-ADMIN="$SCHEME://admin.$DOMAIN" AUTH="$SCHEME://auth.$DOMAIN" API="$SCHEME://api.$DOMAIN"
+CMD=${1:-} ROLE=${2:-all}
+case "$ROLE" in all | identity | core | apps) ;; *) echo "peran tidak dikenal: $ROLE (all|identity|core|apps)"; exit 1 ;; esac
+case "$ROLE" in all) STACKS="identity core" SITES="apps identity core" ;; apps) STACKS="" SITES=apps ;; *) STACKS=$ROLE SITES=$ROLE ;; esac
+
+load_config() {
+  [ -f config.env ] || { echo "deploy/config.env belum ada: cp deploy/config.env.example deploy/config.env lalu isi"; exit 1; }
+  chmod 600 config.env   # berisi kredensial SMTP/OAuth
+  set -a; . ./config.env; set +a
+  SCHEME=${SCHEME:-https}
+  [[ "${DOMAIN:-}" =~ ^[a-z0-9]([a-z0-9.-]*[a-z0-9])?$ ]] || { echo "DOMAIN tidak valid: '${DOMAIN:-}'"; exit 1; }
+  [[ "$SCHEME" =~ ^https?$ ]] || { echo "SCHEME harus https atau http"; exit 1; }
+  if [ "$CMD" = up ] && [[ " $STACKS " == *" identity "* ]]; then
+    [ -n "${SMTP_PASS:-}" ] || echo "PERINGATAN: SMTP_PASS kosong — email kode login (OTP) tidak akan terkirim"
+    [ -n "${RESEND_API_KEY:-}" ] || echo "PERINGATAN: RESEND_API_KEY kosong — email notifikasi platform tidak akan terkirim"
+  fi
+  WEB="$SCHEME://$DOMAIN" ACC="$SCHEME://accounts.$DOMAIN" APP="$SCHEME://app.$DOMAIN" BRAND="$SCHEME://brand.$DOMAIN"
+  ADMIN="$SCHEME://admin.$DOMAIN" AUTH="$SCHEME://auth.$DOMAIN" API="$SCHEME://api.$DOMAIN"
+}
 
 node_run() { docker run --rm -u "$(id -u):$(id -g)" -v "$DEPLOY":/w -v "$ROOT/db":/db:ro -w /w node:22-alpine node "$@"; }
 
+# Kunci per peran (least privilege): server identity tidak memegang kunci core, server core tidak memegang kunci PII /
+# private key token user, server app hanya kunci publik (anon key, VAPID publik).
+role_keys() {
+  case "$1" in
+    identity) echo '^(IDENTITY_[A-Z0-9_]+|BRIDGE_SECRET_[A-Z_]+|PII_[A-Z_]+|VAPID_PUBLIC_KEY|VAPID_PRIVATE_KEY|DISBURSE_CALLBACK_TOKEN)=' ;;
+    core) echo '^(CORE_[A-Z0-9_]+|BRIDGE_SECRET_[A-Z_]+|UNSUBSCRIBE_SECRET)=' ;;
+    apps) echo '^(IDENTITY_ANON_KEY|CORE_ANON_KEY|VAPID_PUBLIC_KEY)=' ;;
+  esac
+}
+make_secrets() {
+  [ -f secrets.env ] || node_run keys.mjs secrets.env
+  local r
+  for r in identity core apps; do (umask 077 && grep -E "$(role_keys "$r")" secrets.env > "secrets.$r.env"); done
+}
 # secrets.env = KEY=value literal (JSON/JWT), dibaca tanpa evaluasi shell.
 load_secrets() {
-  [ -f secrets.env ] || node_run keys.mjs secrets.env
+  if [ ! -f secrets.env ]; then
+    [ "$ROLE" = all ] || { echo "deploy/secrets.env belum ada: jalankan 'deploy.sh secrets' di mesin admin lalu salin secrets.$ROLE.env ke sini sebagai deploy/secrets.env"; exit 1; }
+    make_secrets
+  fi
+  chmod 600 secrets.env
   while IFS='=' read -r k v; do [ -n "$k" ] && export "$k=$v"; done < secrets.env
+  local r need stack_keys="POSTGRES_PASSWORD JWT_SECRET ANON_KEY SERVICE_ROLE_KEY JWT_JWKS SECRET_KEY_BASE VAULT_ENC_KEY
+    PG_META_CRYPTO_KEY DASHBOARD_PASSWORD S3_PROTOCOL_ACCESS_KEY_ID S3_PROTOCOL_ACCESS_KEY_SECRET"
+  for r in identity core apps; do
+    [ "$ROLE" = all ] || [ "$ROLE" = "$r" ] || continue
+    case $r in
+      identity) need="$(printf 'IDENTITY_%s ' $stack_keys) IDENTITY_JWT_KEYS BRIDGE_SECRET_CORE_TO_IDENTITY BRIDGE_SECRET_IDENTITY_TO_CORE
+                      PII_HMAC_KEY PII_ENC_KEYS PII_ENC_KEY_VERSION VAPID_PUBLIC_KEY VAPID_PRIVATE_KEY DISBURSE_CALLBACK_TOKEN" ;;
+      core) need="$(printf 'CORE_%s ' $stack_keys) BRIDGE_SECRET_CORE_TO_IDENTITY BRIDGE_SECRET_IDENTITY_TO_CORE UNSUBSCRIBE_SECRET" ;;
+      apps) need="IDENTITY_ANON_KEY CORE_ANON_KEY VAPID_PUBLIC_KEY" ;;
+    esac
+    for k in $need; do [ -n "${!k:-}" ] || { echo "secrets.env kurang $k untuk peran $r"; exit 1; }; done
+  done
+  if [ "$ROLE" != all ] && grep -qvE "$(role_keys "$ROLE")" secrets.env; then
+    echo "PERINGATAN: secrets.env berisi kunci peran lain — di server $ROLE pakai secrets.$ROLE.env saja"
+  fi
+}
+
+# PEER_HOSTS (config.env) "host=ip ..." → alamat host publik server lain lewat jaringan privat; kosong = DNS publik.
+peer_ip() { local x; for x in ${PEER_HOSTS:-}; do [ "${x%%=*}" = "$1" ] && { echo "${x#*=}"; return; }; done; }
+# Host publik → tujuan extra_hosts container: dilayani Caddy server ini, server lain (PEER_HOSTS), atau DNS (kosong).
+host_target() {
+  if [[ " $(served_hosts) " == *" $1 "* ]]; then echo "${CADDY_BIND:-host-gateway}"; else peer_ip "$1"; fi
+}
+served_hosts() {
+  local s
+  for s in $SITES; do
+    case $s in
+      apps) echo "$DOMAIN accounts.$DOMAIN app.$DOMAIN brand.$DOMAIN admin.$DOMAIN" ;;
+      identity) echo "auth.$DOMAIN" ;;
+      core) echo "api.$DOMAIN" ;;
+    esac
+  done | tr '\n' ' '
+}
+extra_hosts_yaml() { # service... — blok compose extra_hosts untuk auth./api. (dipakai fungsi, Auth, dan app server-side)
+  local svc h t lines=
+  for h in "auth.$DOMAIN" "api.$DOMAIN"; do t=$(host_target "$h"); [ -n "$t" ] && lines+="      - $h:$t"$'\n'; done
+  echo "services:"
+  for svc in "$@"; do
+    if [ -n "$lines" ]; then printf '  %s:\n    extra_hosts:\n%s' "$svc" "$lines"; else printf '  %s: {}\n' "$svc"; fi
+  done
 }
 
 setenv() { # file key value — ganti/tambah baris tanpa menafsirkan isi value; file pengganti 0600 sejak dibuat
@@ -68,7 +139,8 @@ prepare_stack() { # identity|core
   done < "$dir/.env.example"
   [ "$p" = identity ] && pub=$AUTH || pub=$API
   # EXTRA_COMPOSE_FILES (config.env, pisah ':'): override tambahan, mis. docker-compose.s3.yml resmi untuk storage S3.
-  setenv "$e" COMPOSE_FILE "docker-compose.yml:clipper.common.yml:clipper.$p.yml${EXTRA_COMPOSE_FILES:+:$EXTRA_COMPOSE_FILES}"
+  extra_hosts_yaml auth functions > "$dir/clipper.hosts.yml"
+  setenv "$e" COMPOSE_FILE "docker-compose.yml:clipper.common.yml:clipper.$p.yml:clipper.hosts.yml${EXTRA_COMPOSE_FILES:+:$EXTRA_COMPOSE_FILES}"
   setenv "$e" COMPOSE_PROJECT_NAME "clipper-$p"
   setenv "$e" STACK "$p"
   for k in POSTGRES_PASSWORD JWT_SECRET ANON_KEY SERVICE_ROLE_KEY JWT_JWKS SECRET_KEY_BASE VAULT_ENC_KEY PG_META_CRYPTO_KEY \
@@ -85,7 +157,6 @@ prepare_stack() { # identity|core
   setenv "$e" STUDIO_DEFAULT_PROJECT "$p"
   setenv "$e" POOLER_TENANT_ID "clipper-$p"
   setenv "$e" APP_ORIGINS "$ACC,$APP,$BRAND,$ADMIN"
-  setenv "$e" AUTH_HOST "auth.$DOMAIN"; setenv "$e" API_HOST "api.$DOMAIN"
   setenv "$e" IDENTITY_PUBLIC_URL "$AUTH"; setenv "$e" CORE_PUBLIC_URL "$API"
   setenv "$e" BRIDGE_SECRET_CORE_TO_IDENTITY "$BRIDGE_SECRET_CORE_TO_IDENTITY"
   setenv "$e" BRIDGE_SECRET_IDENTITY_TO_CORE "$BRIDGE_SECRET_IDENTITY_TO_CORE"
@@ -187,10 +258,10 @@ SQL
     fi
     echo "  $p: migration $v $n"
     { cat "$f"; printf "\ninsert into supabase_migrations.schema_migrations (version, name) values ('%s', '%s');\n" "$v" "$n"; } \
-      | psql_db "$p" -1
+      | psql_db "$p" -1 -o /dev/null   # hasil select (mis. cron.schedule) tidak dicetak; error tetap ke stderr
   done
-  psql_db "$p" < "$ROOT/db/$p/supabase/seed.sql"
-  node_run buckets.mjs "/db/$p/supabase/config.toml" | psql_db "$p"
+  psql_db "$p" -o /dev/null < "$ROOT/db/$p/supabase/seed.sql"
+  node_run buckets.mjs "/db/$p/supabase/config.toml" | psql_db "$p" -o /dev/null
   if [ "$p" = core ]; then
     psql_db core -v iss="$AUTH/auth/v1" <<'SQL'
 update ops.settings set value = to_jsonb(:'iss'::text) where key = 'auth.identity_issuer';
@@ -205,7 +276,7 @@ SQL
 
 apps_env() {
   {
-    echo "DOMAIN=$DOMAIN"; echo "SCHEME=$SCHEME"; echo "ACME_EMAIL=${ACME_EMAIL:-}"
+    echo "APP_IMAGE=${APP_IMAGE:-}"
     echo "NEXT_PUBLIC_IDENTITY_URL=$AUTH"; echo "NEXT_PUBLIC_IDENTITY_PUBLISHABLE_KEY=$IDENTITY_ANON_KEY"
     echo "NEXT_PUBLIC_CORE_URL=$API"; echo "NEXT_PUBLIC_CORE_PUBLISHABLE_KEY=$CORE_ANON_KEY"
     echo "NEXT_PUBLIC_COOKIE_DOMAIN=.$DOMAIN"
@@ -214,14 +285,49 @@ apps_env() {
     echo "NEXT_PUBLIC_VAPID_PUBLIC_KEY=$VAPID_PUBLIC_KEY"; echo "NEXT_PUBLIC_TURNSTILE_SITE_KEY=${NEXT_PUBLIC_TURNSTILE_SITE_KEY:-}"
   } > apps.env
 }
-apps() { docker compose -f apps.yml --env-file apps.env -p clipper-apps "$@"; }
+apps() { docker compose -f apps.yml -f .generated/apps.hosts.yml --env-file apps.env -p clipper-apps "$@"; }
 
-case "${1:-}" in
+# Caddy server ini: hanya situs peran server (base + apps/identity/core), alias network = host yang dilayani di sini
+# supaya fetch server-side app ke host lokal tidak keluar ke internet.
+caddy_up() {
+  local bind=${CADDY_BIND:+$CADDY_BIND:} h s
+  mkdir -p .generated
+  { cat caddy/base.caddy; for s in $SITES; do echo; cat "caddy/$s.caddy"; done; } > .generated/Caddyfile
+  {
+    echo "name: clipper-caddy-$ROLE"
+    echo "services:"
+    echo "  caddy:"
+    echo "    image: caddy:2.10.2"
+    echo "    restart: unless-stopped"
+    echo "    ports: [\"${bind}80:80\", \"${bind}443:443\", \"${bind}443:443/udp\"]"
+    echo "    environment: [DOMAIN, SCHEME, ACME_EMAIL]   # dari config.env (diekspor)"
+    echo "    volumes:"
+    echo "      - $DEPLOY/.generated/Caddyfile:/etc/caddy/Caddyfile:ro"
+    [[ " $SITES " == *" identity "* ]] && echo "      - $ROOT/db/identity/supabase/templates:/srv/email:ro"
+    echo "      - caddy-data:/data"
+    echo "      - caddy-config:/config"
+    echo "    networks:"
+    echo "      clipper:"
+    echo "        aliases:"
+    for h in $(served_hosts); do echo "          - $h"; done
+    echo "volumes: {caddy-data: {}, caddy-config: {}}"
+    echo "networks: {clipper: {external: true, name: clipper}}"
+  } > .generated/caddy.yml
+  docker compose -f .generated/caddy.yml up -d --remove-orphans
+  docker compose -f .generated/caddy.yml restart caddy >/dev/null   # muat ulang Caddyfile
+}
+
+case "$CMD" in
+  secrets)
+    make_secrets
+    echo "secrets.env (lengkap, simpan offline) + secrets.identity.env / secrets.core.env / secrets.apps.env dibuat"
+    ;;
   up)
+    load_config
     load_secrets
     docker network inspect clipper >/dev/null 2>&1 || docker network create clipper >/dev/null
-    fetch_supabase
-    for p in identity core; do
+    [ -n "$STACKS" ] && fetch_supabase
+    for p in $STACKS; do
       prepare_stack "$p"
       echo "stack $p: start"
       # PostgREST baru sehat setelah schema api ada (migration) → --wait hanya setelah migrate.
@@ -231,19 +337,31 @@ case "${1:-}" in
       compose "$p" restart functions rest >/dev/null   # muat ulang fungsi, env, dan schema cache
       compose "$p" up -d --wait
     done
-    apps_env
-    echo "app: build + start"
-    apps build
-    apps up -d --remove-orphans
-    echo "siap: $WEB · $ACC · $APP · $BRAND · $ADMIN (API: $AUTH, $API)"
+    if [[ " $SITES " == *" apps "* ]]; then
+      apps_env
+      mkdir -p .generated && extra_hosts_yaml web accounts clipper brand admin > .generated/apps.hosts.yml
+      if [ -n "${APP_IMAGE:-}" ]; then   # image dari CI: tarik bila belum ada, jangan dibangun ulang dari Dockerfile
+        docker image inspect "$APP_IMAGE" >/dev/null 2>&1 || docker pull "$APP_IMAGE"
+      else
+        echo "app: build"; apps build
+      fi
+      apps up -d --no-build --remove-orphans
+    fi
+    caddy_up
+    echo "siap ($ROLE): $(served_hosts)"
     ;;
   down)
-    apps down 2>/dev/null || true
-    for p in core identity; do [ -d "stack/$p" ] && compose "$p" down; done
+    load_config
+    [ -f .generated/caddy.yml ] && docker compose -f .generated/caddy.yml down
+    [[ " $SITES " == *" apps "* ]] && [ -f .generated/apps.hosts.yml ] && apps down
+    for p in $STACKS; do [ -d "stack/$p" ] && compose "$p" down; done
+    true
     ;;
   status)
     for p in identity core; do [ -d "stack/$p" ] && compose "$p" ps --format 'table {{.Name}}\t{{.Status}}'; done
-    [ -f apps.env ] && apps ps --format 'table {{.Name}}\t{{.Status}}'
+    [ -f .generated/apps.hosts.yml ] && apps ps --format 'table {{.Name}}\t{{.Status}}'
+    [ -f .generated/caddy.yml ] && docker compose -f .generated/caddy.yml ps --format 'table {{.Name}}\t{{.Status}}'
+    true
     ;;
-  *) sed -n '2,15p' "$0"; exit 1 ;;
+  *) sed -n '2,22p' "$0"; exit 1 ;;
 esac

@@ -1,7 +1,8 @@
-# 5 app Next.js (satu image monorepo, deploy/app.Dockerfile) + Caddy. Env dari deploy/apps.env (ditulis deploy.sh,
-# semua NEXT_PUBLIC_*: app tidak memegang secret, §15.7).
+# 5 app Next.js (satu image monorepo, deploy/app.Dockerfile). Env dari deploy/apps.env (ditulis deploy.sh, semua
+# NEXT_PUBLIC_*: app tidak memegang secret, §15.7). Caddy terpisah (deploy/.generated/caddy.yml, per peran server).
+# APP_IMAGE (config.env) = image yang sudah dibangun di tempat lain (mis. CI); kosong = dibangun di server ini.
 x-app: &app
-  image: clipper-apps:latest
+  image: ${APP_IMAGE:-clipper-apps:latest}
   restart: unless-stopped
   env_file: apps.env
   networks: [clipper]
@@ -38,37 +39,6 @@ services:
   admin:
     <<: *app
     command: [pnpm, --filter, ./apps/admin, start]
-
-  caddy:
-    image: caddy:2.10.2
-    restart: unless-stopped
-    ports:
-      - 80:80
-      - 443:443
-      - 443:443/udp
-    environment:
-      DOMAIN: ${DOMAIN}
-      SCHEME: ${SCHEME}
-      ACME_EMAIL: ${ACME_EMAIL}
-    volumes:
-      - ./Caddyfile:/etc/caddy/Caddyfile:ro
-      - ../db/identity/supabase/templates:/srv/email:ro
-      - caddy-data:/data
-      - caddy-config:/config
-    networks:
-      clipper:
-        aliases:
-          - ${DOMAIN}
-          - accounts.${DOMAIN}
-          - app.${DOMAIN}
-          - brand.${DOMAIN}
-          - admin.${DOMAIN}
-          - auth.${DOMAIN}
-          - api.${DOMAIN}
-
-volumes:
-  caddy-data:
-  caddy-config:
 
 networks:
   clipper:

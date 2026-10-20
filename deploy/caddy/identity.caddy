@@ -1,0 +1,8 @@
+# Server identity: API Supabase identity + template email GoTrue (GOTRUE_MAILER_TEMPLATES_*, HTML statis tanpa data user).
+{$SCHEME}://auth.{$DOMAIN} {
+	handle /email/* {
+		root * /srv
+		file_server
+	}
+	import supabase_api identity-gw:8000
+}

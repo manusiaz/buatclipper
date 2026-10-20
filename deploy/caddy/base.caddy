@@ -1,0 +1,16 @@
+# Bagian bersama Caddyfile yang dirangkai deploy.sh per server (base + apps/identity/core sesuai peran server).
+# HTTPS otomatis Let's Encrypt saat SCHEME=https.
+{
+	email {$ACME_EMAIL}
+}
+
+# API Supabase: hanya path yang dipakai platform; Studio, /pg (postgres-meta), /graphql, dan /realtime tidak publik.
+(supabase_api) {
+	@api path /auth/v1/* /rest/v1/* /storage/v1/* /functions/v1/*
+	handle @api {
+		reverse_proxy {args[0]}
+	}
+	handle {
+		respond 404
+	}
+}

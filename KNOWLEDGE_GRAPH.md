@@ -13,7 +13,7 @@ Last verified: 6a084ab — audit PRD 2 (high/medium/low terverifikasi) selesai; 
 - Next.js 16 App Router + TypeScript (`proxy.ts` per app), Tailwind + shadcn/ui, next-intl, next-themes, Recharts. Hosting: Vercel Pro, 1 project per app, region Functions sin1.
 - Supabase ×2 di ap-southeast-1, compute Small + PITR: **identity** (Auth + MFA, schema `member`, Storage privat, Edge Functions `bridge`, `member-data`, `pii-export`, `delete-account`, `admin-auth`, `disburse`) dan **core** (schema `market`, `tracking`, `finance`, `trust`, `ops`, `api`; Vault; pg_cron; Queues `tracking` & `email`; Edge Functions `social`, `track-worker`, `refresh-tokens`, `notify`, `bridge`, `fulfill`). Core percaya JWT identity lewat Third-Party Auth → Custom OIDC; core tidak memegang private key identity.
 - Sumber kebenaran schema: `db/<project>/supabase/schemas/` (declarative, wajib pg-delta lewat `[experimental.pgdelta]`; engine migra membuang security_invoker) → `migrations/`. Registri entitas & state: `spec/kg.yaml` (fields dibangkitkan dari katalog DB). Struktur domain/URL/folder: `spec/structure.yaml`. Journey: `spec/journeys.yaml`. Kontrak fungsi (PRD Lampiran A.3; semua sudah ditulis di `db/**`, berkas belum dipangkas): `spec/contracts.yaml`. Types: `packages/db-core`, `packages/db-identity` (supabase gen types).
-- Alternatif hosting: self-hosted satu server Docker (`deploy/`, `doc:deploy/deploy.sh`) — compose resmi Supabase ×2 (identity, core) + 5 app + Caddy; token user ES256 dari identity diverifikasi core lewat JWKS bersama, anon/service key HS256 per stack.
+- Alternatif hosting: self-hosted (`deploy/`, `doc:deploy/deploy.sh`) — tiga server: identity (auth.{domain}), core (api.{domain}), 5 app ({domain} + subdomain app), masing-masing Caddy sendiri; atau satu server (`up all`). Token user ES256 dari identity diverifikasi core lewat JWKS bersama; anon/service key HS256 per stack; secret dipecah per peran.
 - Sumber kebenaran token desain: `packages/ui`. Copy: `packages/i18n`. Path alias: `@/` → `apps/<app>/src/`.
 
 ## Entry points
@@ -29,7 +29,8 @@ Urut murah → mahal. `.github/workflows/ci.yml` menjalankan perintah yang sama:
 
 ```bash
 scripts/dev-stack.sh            # stack lokal: identity :54321 + core :55321, secret dev, Vault pg_cron, apps/*/.env.local (--reset = db reset)
-deploy/deploy.sh up             # server sendiri (self-hosted): isi deploy/config.env dulu; idempoten, juga untuk update
+deploy/deploy.sh secrets        # self-hosted, mesin admin: secret lengkap + secrets.{identity,core,apps}.env per server
+deploy/deploy.sh up identity    # per server: identity | core | apps (atau all = satu server); idempoten, juga untuk update
 pnpm install --frozen-lockfile
 pnpm lint && pnpm typecheck && pnpm test && pnpm build      # lint = scripts/check-arch.mjs
 (cd db/identity/supabase/functions && deno fmt --check && deno lint && deno task check && deno task test)
@@ -378,7 +379,7 @@ Wajib tetap benar setiap perubahan (dicek otomatis saat graph ini dibuat; cek ul
 | `test:rls.access-matrix` | test | db/core/supabase/tests/core_access.test.sql | pgTAP core: RLS per role (anon, clipper, anggota org, admin aal1/aal2, iss lain), state machine, ledger, constraint uang, link laporan, storage, job; bagian identity di db/identity/supabase/tests/identity_access.test.sql |  |
 | `test:spike.oidc-cross-project` | test |  | Spike Fase 0: discovery identity terbaca; JWT identity diterima REST, RLS, Storage core; iss lain ditolak | Fase 0 manual di project hosted (Custom OIDC tidak ada di CLI); lokal: kunci signing sama, iss lain ditolak di core_access.test.sql |
 | `doc:scripts/dev-stack.sh` | doc | scripts/dev-stack.sh | Stack lokal penuh: 2 project Supabase, secret dev Edge Function, Vault pg_cron, apps/*/.env.local |  |
-| `doc:deploy/deploy.sh` | doc | deploy/deploy.sh | Deploy self-hosted satu server Docker: compose resmi Supabase (dipin) ×2 + override deploy/supabase/*.yml, secret produksi (keys.mjs), migration + seed + bucket (dari config.toml) + Vault + issuer, 5 app (app.Dockerfile) + Caddy HTTPS |  |
+| `doc:deploy/deploy.sh` | doc | deploy/deploy.sh | Deploy self-hosted per peran server: `up identity` / `up core` / `up apps` (tiga server, disarankan) atau `up all`; compose resmi Supabase (dipin) + override deploy/supabase/*.yml, `deploy.sh secrets` memecah secret per peran (core tanpa PII/private key, app hanya kunci publik), migration + seed + bucket + Vault + issuer, 5 app (app.Dockerfile / APP_IMAGE), Caddy per server (deploy/caddy/*.caddy) |  |
 | `doc:spec/contracts.yaml` | doc | spec/contracts.yaml | Kontrak fungsi SQL & Edge Function (PRD Lampiran A.3); semua sudah ditulis di db/**, berkas belum dipangkas |  |
 | `doc:spec/journeys.yaml` | doc | spec/journeys.yaml | Journey per layar J-C1–C6, J-B1–B3, J-A1–A7, aturan pindah host, menu per app (PRD §6) |  |
 | `doc:spec/kg.yaml` | doc | spec/kg.yaml | Registri 42 entitas (fields = salinan kolom SQL) + state machine S-01–S-06; trigger state machine dibangkitkan spec/gen_states.py |  |
@@ -1446,15 +1447,15 @@ Arah: `A --tipe--> B` = A bergantung pada B. `?` = belum terverifikasi.
 | `test:core.full-product` | tests | `table:trust.score_events` | db/core/supabase/tests/core_full_product.test.sql:141 |
 | `test:e2e.cross-host` | configured-by | `doc:scripts/dev-stack.sh` | e2e/journey.cjs:1 |
 | `test:e2e.cross-host` | configured-by | `doc:deploy/deploy.sh` | e2e/journey.cjs:2 (E2E_* menimpa host & DB untuk stack self-hosted) |
-| `test:e2e.cross-host` | tests | `page:accounts/invite/[token]` | e2e/journey.cjs:99 |
-| `test:e2e.cross-host` | tests | `page:accounts/login` | e2e/journey.cjs:52 |
-| `test:e2e.cross-host` | tests | `page:accounts/onboarding` | e2e/journey.cjs:59 |
-| `test:e2e.cross-host` | tests | `page:app/campaigns` | e2e/journey.cjs:72 |
-| `test:e2e.cross-host` | tests | `page:app/campaigns/[id]` | e2e/journey.cjs:83 |
-| `test:e2e.cross-host` | tests | `page:app/tasks` | e2e/journey.cjs:91 |
-| `test:e2e.cross-host` | tests | `page:brand/` | e2e/journey.cjs:113 |
-| `test:e2e.cross-host` | tests | `page:www/` | e2e/journey.cjs:41 |
-| `test:e2e.cross-host` | tests | `page:www/c/[slug]` | e2e/journey.cjs:46 |
+| `test:e2e.cross-host` | tests | `page:accounts/invite/[token]` | e2e/journey.cjs:102 |
+| `test:e2e.cross-host` | tests | `page:accounts/login` | e2e/journey.cjs:55 |
+| `test:e2e.cross-host` | tests | `page:accounts/onboarding` | e2e/journey.cjs:62 |
+| `test:e2e.cross-host` | tests | `page:app/campaigns` | e2e/journey.cjs:75 |
+| `test:e2e.cross-host` | tests | `page:app/campaigns/[id]` | e2e/journey.cjs:86 |
+| `test:e2e.cross-host` | tests | `page:app/tasks` | e2e/journey.cjs:94 |
+| `test:e2e.cross-host` | tests | `page:brand/` | e2e/journey.cjs:116 |
+| `test:e2e.cross-host` | tests | `page:www/` | e2e/journey.cjs:44 |
+| `test:e2e.cross-host` | tests | `page:www/c/[slug]` | e2e/journey.cjs:49 |
 | `test:member-data.integrity` | tests | `api:fn identity/member-data` | db/identity/supabase/tests/identity_access.test.sql:69 (SQL di balik member-data; handler dites Deno member-data/handler_test.ts) |
 | `test:member-data.integrity` | tests | `api:rpc identity.store_kyc` | db/identity/supabase/tests/identity_access.test.sql:72 |
 | `test:member-data.integrity` | tests | `fn:custom_access_token_hook` | db/identity/supabase/tests/identity_access.test.sql:46 |
@@ -1489,7 +1490,7 @@ Arah: `A --tipe--> B` = A bergantung pada B. `?` = belum terverifikasi.
 | `doc:deploy/deploy.sh` | documents | `env:PII_HMAC_KEY` | deploy/keys.mjs:60 |
 | `doc:deploy/deploy.sh` | documents | `env:PII_ENC_KEY` | deploy/keys.mjs:61 (PII_ENC_KEYS) |
 | `doc:deploy/deploy.sh` | documents | `env:VAPID_PRIVATE_KEY` | deploy/keys.mjs:66 |
-| `doc:deploy/deploy.sh` | documents | `env:IDENTITY_ISSUER` | deploy/deploy.sh:117 |
+| `doc:deploy/deploy.sh` | documents | `env:IDENTITY_ISSUER` | deploy/deploy.sh:188 |
 | `doc:deploy/deploy.sh` | documents | `fn:custom_access_token_hook` | deploy/supabase/identity.yml:17 (GOTRUE_HOOK_CUSTOM_ACCESS_TOKEN_URI) |
 | `doc:scripts/dev-stack.sh` | documents | `env:BRIDGE_SECRET_IDENTITY_TO_CORE` | scripts/dev-stack.sh:18 |
 | `doc:scripts/dev-stack.sh` | documents | `env:IDENTITY_ISSUER` | scripts/dev-stack.sh:39 |
@@ -2332,6 +2333,7 @@ Masalah sistem yang ditemukan saat menyusun PRD v0.2 dan saat dicek ulang (v0.2.
 | 2026-10-20 | `table:tracking.social_accounts` | Review Claudex R36: trigger batas akun per platform ikut memeriksa setiap perubahan status, jadi setelah admin menurunkan public.market.max_accounts_per_platform semua polling 401, refresh, reset admin, dan sambung ulang akun lama gagal 23514 | diperbaiki: tracking.check_account_limit hanya membatasi insert, disconnected → aktif, dan pindah user/platform |
 | 2026-10-20 | `doc:deploy/deploy.sh` | Deploy self-hosted (permintaan user: server sendiri): compose resmi Supabase mengisi SUPABASE_SECRET_KEYS={"default":""} → firstKey core mengembalikan "" (?? tidak jatuh ke service_role) sehingga semua Edge Function core gagal misconfigured; migration init `CREATE EXTENSION "pg_net"` tanpa IF NOT EXISTS gagal di image yang sudah memasang pg_net (self-hosted webhooks.sql, juga project hosted yang mengaktifkan pg_net) | diperbaiki: firstKey core mengabaikan key kosong (+ tes); CREATE EXTENSION IF NOT EXISTS di kedua init migration. Deploy diuji di sandbox: 18 container sehat, pgTAP core 972 + identity 119 di DB self-hosted, e2e lintas host 9/9 lewat Caddy, bridge identity↔core, service key core ditolak identity (401) |
 | 2026-10-20 | `doc:deploy/deploy.sh` | Review Claudex R38 + cek sendiri: (1) .dockerignore hanya mengecualikan .env di root → apps/*/.env.local ikut ke image; (2) setenv membuat file .env sementara 0644 → secret stack terbaca user lain selama deploy, config.env tidak dibatasi; (3) login Google identity tidak dikonfigurasi di GoTrue self-hosted; (4) .env stack disalin sekali → variabel baru compose resmi hilang saat SUPABASE_REF dinaikkan; (5) migration baru dijalankan tanpa backup | diperbaiki: **/.env*; umask 077 di setenv + chmod 600 config.env; GOTRUE_EXTERNAL_GOOGLE_* dari GOOGLE_LOGIN_CLIENT_ID/SECRET; kunci baru .env.example ditambahkan tiap deploy; pg_dump -Fc ke deploy/stack/<p>/backups sebelum migration pertama yang tertunda (diuji: backup 84 tabel, hanya stack yang punya migration baru) |
+| 2026-10-20 | `doc:deploy/deploy.sh` | Koreksi user: deploy sebelumnya menaruh identity & core (dua Postgres terpisah) di satu mesin → host yang kebobol membuka data PII dan data bisnis sekaligus | diubah: deploy per peran (identity / core / apps di server terpisah), secret dipecah per peran, Caddy & extra_hosts per server (PEER_HOSTS opsional untuk jaringan privat), APP_IMAGE dari CI (ditarik bila belum ada, tidak dibangun ulang — bug yang ditemukan simulasi). Diuji: simulasi 3 server (IP berbeda, salinan repo & secret terpisah) e2e 9/9, pgTAP identity 119 + core 972, bridge A→B, server core tidak memegang kunci identity; mode satu server e2e 9/9 |
 
 ## Keputusan
 
