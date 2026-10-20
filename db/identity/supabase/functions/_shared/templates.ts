@@ -41,6 +41,7 @@ export const EVENTS = [
   "refund.requested",
   "refund.paid",
   "managed.draft_ready",
+  "admin.alert",
 ] as const;
 
 export type NotificationEvent = (typeof EVENTS)[number];
@@ -52,6 +53,8 @@ export interface Links {
   app: string;
   brand: string;
   accounts: string;
+  /** Kosong bila ADMIN_URL belum diisi (env baru): email alert admin lalu menautkan ke app, email lain tidak terpengaruh. */
+  admin: string;
 }
 
 export interface Rendered {
@@ -104,6 +107,7 @@ export function linksFromEnv(get: (n: string) => string | undefined = (n) => Den
     app: safeBaseUrl(get("APP_URL"), "APP_URL"),
     brand: safeBaseUrl(get("BRAND_URL"), "BRAND_URL"),
     accounts: safeBaseUrl(get("ACCOUNTS_URL"), "ACCOUNTS_URL"),
+    admin: get("ADMIN_URL") ? safeBaseUrl(get("ADMIN_URL"), "ADMIN_URL") : "",
   };
 }
 
@@ -238,6 +242,16 @@ const budgetUsed: Def = {
       ],
   cta: "Buka dashboard campaign",
   url: brandCampaign,
+};
+
+const ALERT_LABEL: Record<string, string> = {
+  "tracking.lag": "job tracking tertinggal",
+  "tracking.final_missing": "snapshot final tidak tercatat",
+  "fraud.flag_spike": "lonjakan fraud flag",
+  "payout.failed": "payout gagal",
+  "payout.instant_stuck": "instant withdraw macet",
+  "reconcile.ledger": "selisih rekonsiliasi ledger",
+  "reconcile.orphans": "selisih rekonsiliasi ID lintas DB",
 };
 
 const DEFS: Record<NotificationEvent, Def> = {
@@ -514,6 +528,18 @@ const DEFS: Record<NotificationEvent, Def> = {
       const id = seg(p.campaign_id);
       return id && seg(p.org_id) ? `${base}?campaign=${encodeURIComponent(id)}` : base;
     },
+  }, // F-X01 admin: alert operasional (ops.raise_alert → core bridge → identity notify_admins). Tanpa PII, hanya jenis + id.
+  "admin.alert": {
+    title: (p) =>
+      `Alert ${txt(p, "severity", 20) === "critical" ? "kritis" : "peringatan"}: ${
+        ALERT_LABEL[txt(p, "kind", 60)] ?? txt(p, "kind", 60)
+      }`,
+    lines: (p) => [
+      `Jenis: ${txt(p, "kind", 60)} (alert #${txt(p, "alert_id", 20)}).`,
+      "Detail dan tombol selesaikan ada di overview admin.",
+    ],
+    cta: "Buka admin",
+    url: (_p, l) => `${l.admin || l.app}/`,
   },
 };
 

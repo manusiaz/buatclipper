@@ -45,7 +45,7 @@ export APP_ORIGINS="$ACC,$APP,$BRAND,$ADMIN"
 export SOCIAL_REDIRECT_ALLOWLIST=$(for p in tiktok instagram youtube threads facebook x; do printf '%s/api/oauth/%s/callback,' "$APP" "$p"; done | sed 's/,$//')
 export UNSUBSCRIBE_BASE_URL="http://127.0.0.1:55321/functions/v1/notify/unsubscribe"
 export EMAIL_FROM="Clipper <no-reply@notif.$DOMAIN>" RESEND_API_KEY="" MAILPIT_URL="http://supabase_inbucket_clipper-identity:8025"
-export APP_URL="$APP" BRAND_URL="$BRAND" ACCOUNTS_URL="$ACC" VAPID_SUBJECT="mailto:dev@$DOMAIN"
+export APP_URL="$APP" BRAND_URL="$BRAND" ACCOUNTS_URL="$ACC" ADMIN_URL="$ADMIN" VAPID_SUBJECT="mailto:dev@$DOMAIN"
 export DISBURSE_PROVIDER=mock XENDIT_SECRET_KEY=""
 for v in TIKTOK_CLIENT_KEY TIKTOK_CLIENT_SECRET META_APP_ID META_APP_SECRET GOOGLE_CLIENT_ID GOOGLE_CLIENT_SECRET \
          THREADS_APP_ID THREADS_APP_SECRET FACEBOOK_APP_ID FACEBOOK_APP_SECRET X_CLIENT_ID X_CLIENT_SECRET; do

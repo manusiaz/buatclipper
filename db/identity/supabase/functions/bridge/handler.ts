@@ -86,6 +86,40 @@ async function sendEmail(deps: BridgeDeps, p: Record<string, unknown>) {
   return { sent: true, id: res.id };
 }
 
+/** Alert operasional → role admin terkait + admin_super. Idempoten per (alert, admin): retry tidak mengirim dobel. */
+const ALERT_ROLE: Record<string, string> = {
+  tracking: "admin_ops",
+  fraud: "admin_moderator",
+  payout: "admin_finance",
+  reconcile: "admin_finance",
+};
+export async function notifyAdmins(
+  deps: Pick<BridgeDeps, "rpc" | "authAdmin" | "email" | "links">,
+  p: Record<string, unknown>,
+) {
+  const kind = str(p, "kind", { max: 60, pattern: /^[a-z_]+\.[a-z_]+$/ });
+  const role = ALERT_ROLE[kind.split(".")[0]];
+  if (!role) throw new HttpError(400, "invalid_kind", "jenis alert tidak dikirim ke admin");
+  const alertId = String(p.alert_id ?? "").replace(/\D/g, "").slice(0, 20);
+  const data = { kind, severity: p.severity === "critical" ? "critical" : "warning", alert_id: alertId };
+  const ids = (await deps.rpc.invoke<string[] | null>("svc_admin_ids", { p_roles: [role, "admin_super"] })) ?? [];
+  const r = render("admin.alert", data, deps.links());
+  let sent = 0;
+  for (const id of ids) {
+    const user = await deps.authAdmin.getUser(id);
+    if (!user?.email) continue;
+    await deps.email().send({
+      to: user.email,
+      subject: r.subject,
+      text: r.text,
+      html: r.html,
+      idempotencyKey: `alert-${alertId || kind}-${id}`,
+    });
+    sent++;
+  }
+  return { sent };
+}
+
 async function sendPush(deps: BridgeDeps, p: Record<string, unknown>) {
   const userId = uuid(p, "user_id");
   const event = eventOf(p);
@@ -165,6 +199,8 @@ export function createBridgeHandler(deps: BridgeDeps): (req: Request) => Promise
           return okResponse(await sendPush(deps, payload));
         case "check_ids":
           return okResponse(await checkIds(deps, payload));
+        case "notify_admins":
+          return okResponse(await notifyAdmins(deps, payload));
         case "disburse":
           return okResponse(await runDisburse(deps, uuid(payload, "payout_id")));
         case "ban_user":

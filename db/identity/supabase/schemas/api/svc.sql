@@ -60,6 +60,15 @@ language sql stable security definer set search_path = '' as $$
   where pr.user_id = p_user;
 $$;
 
+-- F-X01 admin: penerima email alert operasional = admin dengan salah satu role ini.
+create function api.svc_admin_ids(p_roles text[])
+returns uuid[]
+language sql stable security definer set search_path = '' as $$
+  select coalesce(array_agg(distinct pr.user_id order by pr.user_id), '{}')
+  from member.platform_roles pr
+  where pr.role::text = any (p_roles);
+$$;
+
 -- Web push (alur 4): langganan per user, buang endpoint mati (404/410), catat terakhir dipakai.
 create function api.svc_push_subscriptions(p_user uuid)
 returns table (endpoint text, p256dh text, auth_secret text)
@@ -215,6 +224,7 @@ revoke execute on function api.svc_kyc(uuid[]) from public, anon, authenticated;
 revoke execute on function api.svc_recipients(uuid[]) from public, anon, authenticated;
 revoke execute on function api.svc_has_consent(uuid, text) from public, anon, authenticated;
 revoke execute on function api.svc_platform_roles(uuid) from public, anon, authenticated;
+revoke execute on function api.svc_admin_ids(text[]) from public, anon, authenticated;
 revoke execute on function api.svc_push_subscriptions(uuid) from public, anon, authenticated;
 revoke execute on function api.svc_delete_push(text) from public, anon, authenticated;
 revoke execute on function api.svc_touch_push(text) from public, anon, authenticated;
@@ -227,6 +237,7 @@ grant execute on function api.svc_kyc(uuid[]) to service_role;
 grant execute on function api.svc_recipients(uuid[]) to service_role;
 grant execute on function api.svc_has_consent(uuid, text) to service_role;
 grant execute on function api.svc_platform_roles(uuid) to service_role;
+grant execute on function api.svc_admin_ids(text[]) to service_role;
 grant execute on function api.svc_push_subscriptions(uuid) to service_role;
 grant execute on function api.svc_delete_push(text) to service_role;
 grant execute on function api.svc_touch_push(text) to service_role;

@@ -107,12 +107,17 @@ Deno.test("bridge: cron apikey → disburse/ban_user diteruskan ke identity; tan
   assert.equal((await h(cron({ action: "disburse", payout_id: "p1" }))).status, 200);
   assert.equal((await h(cron({ action: "ban_user", payload: { user_id: "u1" } }))).status, 200);
   assert.equal((await h(cron({ action: "ban_user", user_id: "u2", unban: true }))).status, 200);
+  assert.equal(
+    (await h(cron({ action: "notify_admins", kind: "payout.failed", severity: "warning", alert_id: 7 }))).status,
+    200,
+  );
   assert.equal((await h(cron({ action: "disburse", payout_id: "p1" }, "wrong"))).status, 401);
   assert.equal((await h(cron({ action: "get_batch", batch_id: "b" }))).status, 400); // aksi identity tidak bisa lewat apikey
   assert.deepEqual(sent, [
     ["disburse", { payout_id: "p1" }],
     ["ban_user", { user_id: "u1", duration: "876000h" }],
     ["ban_user", { user_id: "u2", duration: "none" }],
+    ["notify_admins", { kind: "payout.failed", severity: "warning", alert_id: 7 }],
   ]);
 });
 

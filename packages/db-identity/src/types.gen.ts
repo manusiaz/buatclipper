@@ -141,6 +141,9 @@ export type Database = {
 "store_recipient":
 { Args: { "p_data_enc": string,"p_key_version": number,"p_reward_type_id": string,"p_user_id": string }; Returns: string
                            },
+"svc_admin_ids":
+{ Args: { "p_roles": (string)[] }; Returns: (string)[]
+                           },
 "svc_audit":
 { Args: { "p_action": string,"p_actor": string,"p_after"?: Json,"p_target": string }; Returns: undefined
                            },

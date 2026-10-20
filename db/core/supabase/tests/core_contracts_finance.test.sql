@@ -391,6 +391,15 @@ select is((select status::text from finance.payouts where id = (select id from t
 select is(pg_temp.bal('11111111-0000-0000-0000-00000000000a', 'available'), 802502::numeric, 'instant gagal: dana + biaya kembali ke Tersedia');
 select is(pg_temp.acct('platform_revenue', null) - (-1000000), 0::numeric, 'instant gagal: biaya dikembalikan');
 select ok(exists (select 1 from ops.alerts where kind = 'payout.failed' and payload ->> 'error' = 'rekening tidak valid'), 'alert payout gagal');
+select is((select count(*)::int from net.http_request_queue q where convert_from(q.body, 'UTF8')::jsonb ->> 'action' = 'notify_admins'
+            and convert_from(q.body, 'UTF8')::jsonb ->> 'kind' = 'payout.failed'), 1,
+          'regresi G-12: alert payout gagal → email admin lewat bridge (F-X01 admin)');
+select ops.raise_alert('payout.failed', 'warning', '{"payout_id":"x"}');
+select is((select count(*)::int from net.http_request_queue q where convert_from(q.body, 'UTF8')::jsonb ->> 'action' = 'notify_admins'
+            and convert_from(q.body, 'UTF8')::jsonb ->> 'kind' = 'payout.failed'), 1, 'alert beruntun dalam 1 jam tidak mengirim email lagi');
+select ops.raise_alert('payout.on_hold', 'warning', '{}');
+select is((select count(*)::int from net.http_request_queue q where convert_from(q.body, 'UTF8')::jsonb ->> 'action' = 'notify_admins'
+            and convert_from(q.body, 'UTF8')::jsonb ->> 'kind' = 'payout.on_hold'), 0, 'alert di luar daftar F-X01 admin tidak dikirim email');
 select is((select count(*)::int from ops.notifications where event = 'payout.failed'), 1, 'notifikasi payout gagal');
 select api.bridge_mark_instant((select id from t_pay where k = 'i1'), 'failed', null, null);
 select is(pg_temp.bal('11111111-0000-0000-0000-00000000000a', 'available'), 802502::numeric, 'mark_instant failed diulang = no-op');

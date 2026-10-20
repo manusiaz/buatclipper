@@ -10,6 +10,7 @@ const LINKS = {
   app: "https://app.clipper.test",
   brand: "https://brand.clipper.test",
   accounts: "https://accounts.clipper.test",
+  admin: "https://admin.clipper.test",
 };
 
 function setup(over: Partial<BridgeDeps> = {}) {
@@ -22,6 +23,8 @@ function setup(over: Partial<BridgeDeps> = {}) {
     svc_check_ids: (a) => ({ user_ids: a.p_user_ids, method_ids: [], recipient_refs: [] }),
     svc_platform_roles: (a) => (a.p_user === "00000000-0000-0000-0000-0000000000ad" ? ["admin_super"] : []),
     svc_audit: () => null,
+    svc_admin_ids: (a) =>
+      (a.p_roles as string[]).includes("admin_finance") ? [USER, "00000000-0000-0000-0000-0000000000ad"] : [],
     shared_device_groups: () => [
       {
         ip: "203.0.113.7",
@@ -198,4 +201,23 @@ Deno.test("fraud_device_scan (cron apikey): one FR-05 flag per account, no IP or
     (await json(await s.handler(post({ action: "fraud_device_scan" }, { apikey: "sb_publishable_x" })))).status,
     401,
   );
+});
+
+Deno.test("bridge notify_admins: alert payout → admin_finance + admin_super, idempoten per alert & admin; jenis lain ditolak", async () => {
+  const s = setup();
+  s.authAdmin.users.set("00000000-0000-0000-0000-0000000000ad", {
+    id: "00000000-0000-0000-0000-0000000000ad",
+    email: "su@contoh.id",
+  });
+  const res = await json(
+    await s.handler(await signed("notify_admins", { kind: "payout.failed", severity: "warning", alert_id: 42 })),
+  );
+  assertEquals([res.status, res.body.data.sent], [200, 2]);
+  assertEquals(s.rpc.named("svc_admin_ids")[0].args, { p_roles: ["admin_finance", "admin_super"] });
+  assertEquals(s.emails.map((e) => e.body.to).sort(), [["andi@contoh.id"], ["su@contoh.id"]]);
+  assertEquals(s.emails[0].headers.get("Idempotency-Key")?.startsWith("alert-42-"), true);
+  assert(String(s.emails[0].body.subject).includes("payout gagal"));
+  assert(String(s.emails[0].body.html).includes("https://admin.clipper.test"));
+  const bad = await json(await s.handler(await signed("notify_admins", { kind: "budget.used", alert_id: 1 })));
+  assertEquals([bad.status, bad.body.error.code], [400, "invalid_kind"]);
 });

@@ -24,8 +24,8 @@ insert into member.legal_versions (kind, version, published_at, url) values
   ('privacy', '2026-10-01', now() - interval '1 day', 'https://contoh.id/legal/privacy');
 
 -- Hak akses: semua svc_* hanya untuk service_role, security definer, search_path kosong.
-select is((select count(*)::int from pg_proc p where p.pronamespace = 'api'::regnamespace and p.proname like 'svc\_%'), 12,
-          '12 fungsi svc_* ada');
+select is((select count(*)::int from pg_proc p where p.pronamespace = 'api'::regnamespace and p.proname like 'svc\_%'), 13,
+          '13 fungsi svc_* ada');
 select is((select count(*)::int from pg_proc p where p.pronamespace = 'api'::regnamespace and p.proname like 'svc\_%'
             and has_function_privilege('authenticated', p.oid, 'execute')), 0, 'authenticated tidak bisa EXECUTE svc_*');
 select is((select count(*)::int from pg_proc p where p.pronamespace = 'api'::regnamespace and p.proname like 'svc\_%'
@@ -88,6 +88,9 @@ select is((select row(user_id, reward_type_id, data_enc)::text from api.svc_reci
 select is(api.svc_platform_roles('00000000-0000-0000-0000-0000000000f1'), array['admin_moderator', 'admin_finance'],
           'svc_platform_roles: role admin target');
 select is(api.svc_platform_roles('00000000-0000-0000-0000-0000000000b1'), '{}'::text[], 'svc_platform_roles: user biasa kosong');
+select is(api.svc_admin_ids(array['admin_finance']), array['00000000-0000-0000-0000-0000000000f1'::uuid],
+          'G-12 svc_admin_ids: penerima alert = admin dengan role itu');
+select is(api.svc_admin_ids(array['admin_ops']), '{}'::uuid[], 'svc_admin_ids: role tanpa admin → kosong');
 reset role;
 
 -- Consent: share_with_brand dicek belum dicabut; dokumen legal harus versi terbaru.

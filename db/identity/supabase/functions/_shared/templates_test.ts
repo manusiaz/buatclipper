@@ -5,17 +5,18 @@ const L = {
   app: "https://app.clipper.test",
   brand: "https://brand.clipper.test",
   accounts: "https://accounts.clipper.test",
+  admin: "https://admin.clipper.test",
 };
 const ORG = "00000000-0000-0000-0000-0000000000aa";
 const CAMP = "00000000-0000-0000-0000-0000000000cc";
 
-Deno.test("templates: one template per F-X01 event (31), all render with an empty payload", () => {
-  assertEquals(EVENTS.length, 35);
-  assertEquals(new Set(EVENTS).size, 35);
+Deno.test("templates: one template per F-X01 event (+ admin.alert), all render with an empty payload", () => {
+  assertEquals(EVENTS.length, 36);
+  assertEquals(new Set(EVENTS).size, 36);
   for (const e of EVENTS) {
     const r = render(e, {}, L, { unsubscribeUrl: PROMO_EVENTS.has(e) ? "https://app.clipper.test/u/1" : null });
     assert(r.subject.length > 0 && r.text.length > 0 && r.html.startsWith("<!doctype html>"), e);
-    assert(/^https:\/\/(app|brand|accounts)\.clipper\.test\//.test(r.push.url), `${e} → ${r.push.url}`);
+    assert(/^https:\/\/(app|brand|accounts|admin)\.clipper\.test\//.test(r.push.url), `${e} → ${r.push.url}`);
     assert(r.push.title.length <= 80 && r.push.body.length <= 180, e);
   }
   assertThrows(() => render("payout.unknown", {}, L));
@@ -91,9 +92,12 @@ Deno.test("templates: unsubscribe URL and base URL validation", () => {
     APP_URL: "https://app.clipper.test/",
     BRAND_URL: "https://brand.clipper.test",
     ACCOUNTS_URL: "http://accounts.clipper.localhost:3000",
+    ADMIN_URL: "https://admin.clipper.test",
   };
   assertEquals(linksFromEnv((n) => env[n]).app, "https://app.clipper.test");
   assertEquals(linksFromEnv((n) => env[n]).accounts, "http://accounts.clipper.localhost:3000");
+  // ADMIN_URL baru: belum diisi tidak boleh mematikan email lain
+  assertEquals(linksFromEnv((n) => ({ ...env, ADMIN_URL: undefined })[n]).admin, "");
   assertThrows(() => linksFromEnv((n) => ({ ...env, APP_URL: "http://app.clipper.test" })[n]));
 });
 

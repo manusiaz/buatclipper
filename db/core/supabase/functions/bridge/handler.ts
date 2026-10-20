@@ -2,7 +2,8 @@
 //  - identity (HMAC BRIDGE_SECRET_IDENTITY_TO_CORE): get_batch, attach_export, attach_proof, raise_fraud_flag, close_account,
 //    get_payout, mark_instant, pph21, fulfillment_export, attach_fulfillment_export,
 //    fulfillment_export_accepted → RPC bridge_* 1:1.
-//  - pg_cron/pg_net (header apikey): reconcile_ids (alur 10), disburse (alur 11), ban_user → diteruskan ke bridge identity.
+//  - pg_cron/pg_net (header apikey): reconcile_ids (alur 10), disburse (alur 11), ban_user, notify_admins (alert F-X01)
+//    → diteruskan ke bridge identity.
 import { verifyBridge } from "../_shared/bridge.ts";
 import { type Rpc, RpcError } from "../_shared/db.ts";
 import { HttpError, json } from "../_shared/http.ts";
@@ -141,6 +142,12 @@ export function createBridgeHandler(deps: BridgeDeps): (req: Request) => Promise
   const cron: Record<string, (p: Payload) => Promise<unknown>> = {
     reconcile_ids: () => reconcileIds(deps),
     disburse: (p) => deps.identity("disburse", { payout_id: pick(p, "payout_id") }),
+    notify_admins: (p) =>
+      deps.identity("notify_admins", {
+        kind: pick(p, "kind"),
+        severity: opt(p, "severity", "warning"),
+        alert_id: opt(p, "alert_id"),
+      }),
     ban_user: (p) =>
       deps.identity("ban_user", {
         user_id: pick(p, "user_id"),
