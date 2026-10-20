@@ -1653,10 +1653,16 @@ select ok(not exists (select 1 from pgmq.q_tracking where message ->> 'submissio
 -- Regresi audit 2 AA-6: worker mati → pesan menumpuk di antrean, next_poll_at terus digeser lease → tetap terdeteksi macet.
 update tracking.submissions set retry_after = null, next_poll_at = now() - interval '1 minute' where id = (select v::uuid from t_ids where k = 'sf6');
 select tracking.enqueue_due_submissions();
-update pgmq.q_tracking set enqueued_at = now() - interval '90 minutes' where message ->> 'submission_id' = (select v from t_ids where k = 'sf6');
+update pgmq.q_tracking set enqueued_at = now() - interval '90 minutes', vt = now() - interval '90 minutes' where message ->> 'submission_id' = (select v from t_ids where k = 'sf6');
 select is((select count(*)::int from tracking.submissions where id = (select v::uuid from t_ids where k = 'sf6')
              and next_poll_at < now() - interval '2 hours'), 0, 'next_poll_at sudah digeser lease (metrik lama tidak melihatnya)');
 select ok(tracking.lagging_count() >= 1, 'regresi AA-6: antrean tracking tidak diproses > 1 jam = tracking macet (alert & overview)');
+create temp table t_lag as select tracking.lagging_count() as n;
+update pgmq.q_tracking set vt = now() + interval '6 hours' where message ->> 'submission_id' = (select v from t_ids where k = 'sf6');
+select is(tracking.lagging_count(), (select n - 1 from t_lag), 'regresi R29-1: pesan yang sengaja ditunda (retry_later) bukan tanda macet');
+update pgmq.q_tracking set vt = now() - interval '1 minute' where message ->> 'submission_id' = (select v from t_ids where k = 'sf6');
+update tracking.submissions set status = 'forfeited', next_poll_at = null where id = (select v::uuid from t_ids where k = 'sf6');
+select is(tracking.lagging_count(), (select n - 1 from t_lag), 'regresi R29-1: submisi yang sudah berhenti dilacak tidak dihitung');
 
 -- Regresi G-7: teman satu perangkat dengan pengundang (FR-05) → bonus referral batal selama flag belum di-dismiss.
 insert into market.profiles (id, username, display_name) values
