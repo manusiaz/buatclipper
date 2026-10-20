@@ -83,7 +83,7 @@ load_secrets() {
 }
 
 # PEER_HOSTS (config.env) "host=ip ..." → alamat host publik server lain lewat jaringan privat; kosong = DNS publik.
-peer_ip() { local x; for x in ${PEER_HOSTS:-}; do [ "${x%%=*}" = "$1" ] && { echo "${x#*=}"; return; }; done; }
+peer_ip() { local x; for x in ${PEER_HOSTS:-}; do [ "${x%%=*}" = "$1" ] && { echo "${x#*=}"; return; }; done; return 0; }
 # Host publik → tujuan extra_hosts container: dilayani Caddy server ini, server lain (PEER_HOSTS), atau DNS (kosong).
 host_target() {
   if [[ " $(served_hosts) " == *" $1 "* ]]; then echo "${CADDY_BIND:-host-gateway}"; else peer_ip "$1"; fi
