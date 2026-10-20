@@ -1,4 +1,5 @@
 import type { Platform } from '@clipper/ui';
+import { parseHomeBanners, type HomeBanner } from '@clipper/ui/banners';
 
 export interface PublicSettings {
   minWithdrawIdr: number;
@@ -7,6 +8,7 @@ export interface PublicSettings {
   claimHours: number;
   holdDays: number;
   platforms: Platform[];
+  banners: HomeBanner[];
 }
 
 const ALL: Platform[] = ['tiktok', 'instagram', 'youtube', 'threads', 'facebook', 'x'];
@@ -34,5 +36,6 @@ export function publicSettings(rows: Array<{ key: string | null; value: unknown 
     claimHours: num(get('market.claim_hours')) ?? 48,
     holdDays: num(get('finance.hold_days')) ?? 7,
     platforms: enabled.length ? enabled : ['tiktok', 'instagram', 'youtube'],
+    banners: parseHomeBanners(get('home.banners')),
   };
 }

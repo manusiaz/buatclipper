@@ -38,6 +38,8 @@ export { CopyField, type CopyFieldProps } from './components/copy-field';
 export { Card, CardHeader, CardTitle, CardDescription, CardContent, CardFooter, cardVariants, type CardProps, type CardVariant } from './components/card';
 export { CampaignCard, type CampaignCardProps, type CampaignCtaState, type CampaignRate, type CampaignCardLabels } from './components/campaign-card';
 export { StatCard, type StatCardProps, type StatDelta } from './components/stat-card';
+export { HomeBanners } from './components/home-banners';
+export { parseHomeBanners, type HomeBanner } from './lib/banners';
 export {
   Badge,
   StatusBadge,

@@ -2167,6 +2167,7 @@ Masalah sistem yang ditemukan saat menyusun PRD v0.2 dan saat dicek ulang (v0.2.
 | 2026-10-20 | `page:brand/[org]/campaigns/[id]` | Audit PRD (G-9, F-B08): tidak ada intervensi "notif ke clipper eligible" untuk campaign yang underspend | diperbaiki: control_campaign notify_eligible + tombol & saran di dashboard; announce_campaign sekali per clipper per campaign |
 | 2026-10-20 | `page:admin/finance` | Audit PRD (G-10, F-A08): ledger tidak bisa diperiksa dari back-office | diperbaiki: api.admin_ledger (admin_finance) + tab Ledger dengan pencarian transaksi/referensi/pemilik |
 | 2026-10-20 | `api:fn core/track-worker` | Review Claudex R17: di ujung view window worker_defer mentok batas window → penjadwal tetap membuat pesan baru, backoff terpotong | diperbaiki: tracking.submissions.retry_after diisi worker_retry_later; enqueue_due_submissions menunggu retry_after |
+| 2026-10-20 | `page:www/` | Audit PRD (G-15, A6.2): banner beranda disimpan admin (public.home.banners) tapi tidak pernah dirender | diperbaiki: HomeBanners + parser aman di @clipper/ui (subpath ./banners tanpa JSX) — landing web & daftar campaign clipper; path tanpa "/" dinormalkan supaya sama dengan validasi admin |
 ## Keputusan
 
 Keputusan yang sudah diambil — jangan dibahas ulang tanpa alasan baru.

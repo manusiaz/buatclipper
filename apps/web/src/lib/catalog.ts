@@ -33,6 +33,7 @@ const KEYS = [
   'public.market.claim_hours',
   'public.finance.hold_days',
   'public.flags.platforms',
+  'public.home.banners',
 ];
 
 /** Config publik (ops.settings public.*, terbaca anon). Gagal → default PRD. */

@@ -22,6 +22,7 @@ describe('publicSettings', () => {
       claimHours: 48,
       holdDays: 7,
       platforms: ['tiktok', 'instagram', 'youtube'],
+      banners: [],
     });
   });
   it('reads values and enabled platform flags', () => {
@@ -32,7 +33,22 @@ describe('publicSettings', () => {
       { key: 'public.market.claim_hours', value: '24' },
       { key: 'public.finance.hold_days', value: 3 },
       { key: 'public.flags.platforms', value: { tiktok: true, instagram: false, youtube: true, threads: true } },
+      {
+        key: 'public.home.banners',
+        value: [
+          { img: 'https://cdn.example/b1.webp', href: '/c/mpl', alt: 'MPL' },
+          { img: 'javascript:alert(1)', href: '/x', alt: 'x' }, // img bukan https/path → dibuang
+          { img: '/banners/b2.png', href: '//evil.example', alt: 'y' }, // href protocol-relative → dibuang
+          { img: 'banners/b3.png', href: 'https://brand.example/promo', alt: 'z' }, // path tanpa "/" → dinormalkan
+        ],
+      },
     ]);
-    expect(s).toEqual({ minWithdrawIdr: 50000, managedServiceIdr: 2500000, maxAccountsPerPlatform: 2, claimHours: 24, holdDays: 3, platforms: ['tiktok', 'youtube', 'threads'] });
+    expect(s).toEqual({
+      minWithdrawIdr: 50000, managedServiceIdr: 2500000, maxAccountsPerPlatform: 2, claimHours: 24, holdDays: 3, platforms: ['tiktok', 'youtube', 'threads'],
+      banners: [
+        { img: 'https://cdn.example/b1.webp', href: '/c/mpl', alt: 'MPL' },
+        { img: '/banners/b3.png', href: 'https://brand.example/promo', alt: 'z' },
+      ],
+    });
   });
 });

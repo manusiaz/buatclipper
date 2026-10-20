@@ -2,7 +2,7 @@ import type { Metadata } from 'next';
 import Link from 'next/link';
 import { getTranslations } from 'next-intl/server';
 import { requireClipper } from '@clipper/auth/server';
-import { Alert, EmptyState, ErrorState, type Platform } from '@clipper/ui';
+import { Alert, EmptyState, ErrorState, HomeBanners, parseHomeBanners, type Platform } from '@clipper/ui';
 import { categoryNames, fetchCampaignPage } from '@/features/campaigns/cards';
 import { CampaignFeed } from '@/features/campaigns/feed';
 import { FilterBar } from '@/features/campaigns/filter-bar';
@@ -24,7 +24,7 @@ export default async function CampaignsPage({ searchParams }: Props) {
     getTranslations('clipper.campaigns'),
     fetchCampaignPage(filters, null),
     categoryNames(),
-    readSettings(['public.flags.platforms']),
+    readSettings(['public.flags.platforms', 'public.home.banners']),
     db.from('social_accounts').select('id', { count: 'exact', head: true }).eq('user_id', claims.sub).eq('status', 'verified'),
   ]);
   const platforms = enabledPlatforms(settings['public.flags.platforms']) as Platform[];
@@ -41,6 +41,7 @@ export default async function CampaignsPage({ searchParams }: Props) {
           {t('connectBody')}
         </Alert>
       ) : null}
+      <HomeBanners banners={parseHomeBanners(settings['public.home.banners'])} />
       <InstallBanner />
       <FilterBar filters={filters} platforms={platforms} categories={[...categories].map(([id, name]) => ({ id, name }))} />
       {!page.ok ? (

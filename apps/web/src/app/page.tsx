@@ -1,7 +1,7 @@
 import { Suspense } from 'react';
 import type { Metadata } from 'next';
 import { getTranslations } from 'next-intl/server';
-import { Section } from '@clipper/ui';
+import { HomeBanners, Section } from '@clipper/ui';
 import { settingsOrDefault } from '@/lib/catalog';
 import { hasSession } from '@/lib/session';
 import { CampaignGrid, CampaignGridSkeleton } from '@/features/landing/campaign-grid';
@@ -16,6 +16,7 @@ export default async function LandingPage() {
     <>
       <Hero session={session} settings={settings} />
       <Section id="campaigns" spacing="page" contained eyebrow={t('eyebrow')} title={t('title')} description={t('description')} className="scroll-mt-16 pt-4 md:pt-8">
+        <HomeBanners banners={settings.banners} className="mb-6" />
         <Suspense fallback={<CampaignGridSkeleton />}>
           <CampaignGrid session={session} />
         </Suspense>
