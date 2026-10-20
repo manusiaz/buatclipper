@@ -92,5 +92,6 @@
   "refund_name_mismatch": "Nama pemilik rekening harus sama dengan nama legal organisasi.",
   "refund_dest_missing": "Rekening tujuan refund belum diisi brand.",
   "refund_dest_invalid": "Rekening tujuan tidak valid (pemilik/nama KYC/status). Minta brand memperbaruinya.",
-  "refund_not_approved": "Refund belum disetujui."
+  "refund_not_approved": "Refund belum disetujui.",
+  "org_unverified": "Rekening refund bisa diisi setelah data legal organisasi terverifikasi."
 }

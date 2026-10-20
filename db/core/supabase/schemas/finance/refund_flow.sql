@@ -111,6 +111,10 @@ begin
   end if;
   select * into o from market.organizations x where x.id = r.org_id;
   if o.org_type = 'badan' then
+    -- nama legal yang baru diubah belum terverifikasi tidak boleh jadi dasar rekening tujuan (R25-2)
+    if o.status <> 'verified' then
+      raise exception 'org_unverified' using errcode = 'P0001', detail = 'rekening refund menunggu nama legal org terverifikasi';
+    end if;
     if length(btrim(coalesce(p_dest ->> 'bank', ''))) not between 2 and 40 then
       raise exception 'invalid:bank' using errcode = 'P0001';
     end if;

@@ -819,6 +819,19 @@ select pg_temp.jwt('22222222-0000-0000-0000-0000000000c1', '{"aal":"aal2"}');
 select throws_ok($$ select api.set_refund_dest((select id from t_pay where k = 'cancel_refund'),
                                                '{"bank":"BCA","account_no":"1234567890","account_name":"Budi Santoso"}') $$,
                  'P0001', 'refund_name_mismatch', 'rekening refund badan usaha harus atas nama legal org (bukan rekening pribadi)');
+reset role;
+update market.organizations set status = 'pending_verification', verified_at = null, verified_by = null
+ where id = '44444444-0000-0000-0000-000000000001';
+set local role authenticated;
+select pg_temp.jwt('22222222-0000-0000-0000-0000000000c1', '{"aal":"aal2"}');
+select throws_ok($$ select api.set_refund_dest((select id from t_pay where k = 'cancel_refund'),
+                                               '{"bank":"BCA","account_no":"1234567890","account_name":"PT Studio Satu"}') $$,
+                 'P0001', 'org_unverified', 'regresi R25-2: nama legal yang belum (ulang) diverifikasi bukan dasar rekening refund');
+reset role;
+update market.organizations set status = 'verified', verified_at = now(), verified_by = '33333333-0000-0000-0000-0000000000f1'
+ where id = '44444444-0000-0000-0000-000000000001';
+set local role authenticated;
+select pg_temp.jwt('22222222-0000-0000-0000-0000000000c1', '{"aal":"aal2"}');
 select lives_ok($$ select api.set_refund_dest((select id from t_pay where k = 'cancel_refund'),
                                               '{"bank":"BCA","account_no":"123-456-7890","account_name":"PT. STUDIO SATU"}') $$,
                 'regresi AB-6: brand billing mengisi rekening perusahaan untuk refund batal');
@@ -1259,6 +1272,19 @@ reset role;
 select is(api.bridge_get_refund((select id from t_pay where k = 'ref_p')) - 'id' - 'requested_by',
           '{"status":"requested","approved_by":null,"company_account":false,"dest_set_by":"22222222-0000-0000-0000-0000000000a1","amount":100000.00,"fee":2500.00}'::jsonb,
           'bridge_get_refund: identity membuka rekening pribadi dest_set_by');
+-- R25-1: owner yang dikeluarkan tidak boleh tetap jadi tujuan refund: rekening dikosongkan, persetujuan batal
+update market.org_members set role = 'brand_owner' where org_id = '44444444-0000-0000-0000-0000000000e7'
+   and user_id = '22222222-0000-0000-0000-0000000000c1';
+set local role authenticated;
+select pg_temp.jwt('33333333-0000-0000-0000-0000000000f1', '{"app_roles":["admin_finance"],"aal":"aal2"}');
+select api.approve_refund((select id from t_pay where k = 'ref_p'));
+reset role;
+delete from market.org_members where org_id = '44444444-0000-0000-0000-0000000000e7' and user_id = '22222222-0000-0000-0000-0000000000a1';
+select is((select status || ':' || coalesce(dest_set_by::text, '-') || ':' || coalesce(approved_by::text, '-') from finance.org_refunds
+            where id = (select id from t_pay where k = 'ref_p')), 'requested:-:-',
+          'regresi R25-1: owner dikeluarkan → rekening pribadinya lepas dari refund, persetujuan batal');
+select ok(exists (select 1 from ops.audit_logs where action = 'refund.dest_reset' and target = 'refund:' || (select id from t_pay where k = 'ref_p')),
+          'reset rekening refund tercatat di audit');
 select throws_ok($$ select api.bridge_attach_proof('refund', (select id from t_pay where k = 'refund'), 'payout-proofs/refund-1.pdf') $$,
                  'P0001', 'invalid:bank_ref', 'regresi C20-2: refund tidak bisa ditandai dibayar tanpa referensi mutasi bank');
 set local role authenticated;

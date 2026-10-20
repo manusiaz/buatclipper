@@ -108,5 +108,6 @@
   "refund_name_mismatch": "The account holder name must match the organization’s legal name.",
   "refund_dest_missing": "The brand hasn’t added a refund destination account.",
   "refund_dest_invalid": "The destination account is not valid (owner/KYC name/status). Ask the brand to update it.",
-  "refund_not_approved": "The refund isn’t approved yet."
+  "refund_not_approved": "The refund isn’t approved yet.",
+  "org_unverified": "You can add the refund account once the organization’s legal details are verified."
 }

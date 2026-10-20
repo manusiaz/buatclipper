@@ -22,18 +22,28 @@ end $$;
 create trigger org_members_keep_owner before update or delete on market.org_members
   for each row execute function market.keep_one_owner();
 
--- Owner yang dikeluarkan/diturunkan lewat jalur mana pun (manage_team, admin manage_org add_member, tutup akun): link undangan
--- belum dipakai yang ia buat dicabut, supaya tidak jadi jalan kembali (R23-1, R24-2).
-create function market.revoke_owner_invites() returns trigger
+-- Owner yang dikeluarkan/diturunkan lewat jalur mana pun (manage_team, admin manage_org add_member, tutup akun) kehilangan
+-- otoritasnya: link undangan belum dipakai yang ia buat dicabut (R23-1, R24-2), dan refund belum dibayar yang memakai rekening
+-- pribadinya (org perorangan) dikosongkan + persetujuannya batal → owner sekarang memilih ulang, finance menyetujui ulang (R25-1).
+create function market.on_owner_lost() returns trigger
 language plpgsql set search_path = '' as $$
 begin
   if old.role = 'brand_owner' and (tg_op = 'DELETE' or new.role <> 'brand_owner') then
     delete from market.org_invites where org_id = old.org_id and created_by = old.user_id and accepted_at is null;
+    with r as (
+      update finance.org_refunds x
+         set dest_set_by = null, status = 'requested', approved_by = null
+       where x.org_id = old.org_id and x.dest_set_by = old.user_id and x.dest_account is null
+         and x.status in ('requested', 'approved')
+      returning x.id)
+    insert into ops.audit_logs (actor_id, action, target, after)
+    select (select auth.uid()), 'refund.dest_reset', 'refund:' || r.id, jsonb_build_object('reason', 'owner_lost', 'user_id', old.user_id)
+      from r;
   end if;
   return null;
 end $$;
-create trigger org_members_revoke_owner_invites after update or delete on market.org_members
-  for each row execute function market.revoke_owner_invites();
+create trigger org_members_owner_lost after update or delete on market.org_members
+  for each row execute function market.on_owner_lost();
 
 alter table market.org_members enable row level security;
 create policy org_members_iss on market.org_members as restrictive for all to authenticated  -- policy:core.iss-identity
