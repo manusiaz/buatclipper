@@ -6,6 +6,7 @@ import { settle, settleFn, text, type ActionResult } from '@/lib/action';
 import { numeric } from '@/lib/data';
 import { wibToIso } from '@/lib/wib';
 import type { ExportResult } from '@/features/shared/export-panel';
+import { MAX_BANK_LINES, parseBankCsv } from './bank';
 
 const MAX_PROOF = 10 * 1024 * 1024; // bucket payout-proofs (pii-export MAX_PROOF_BYTES)
 const PROOF_TYPES = ['application/pdf', 'image/jpeg', 'image/png'];
@@ -108,4 +109,24 @@ export async function exportPph21(fd: FormData): Promise<ActionResult<ExportResu
   );
   if (!r.ok) return { ok: false, error: r.error };
   return { ok: true, data: { url: r.data.url, expires_in: r.data.expires_in, rows: r.data.rows, items: r.data.missing_kyc.map((id) => ({ id, reason: 'missing_kyc' })) } };
+}
+
+/** A3.5: CSV mutasi internet banking → api.import_bank_lines (cocok per referensi; selisih → alert reconcile.bank). */
+export async function importBankStatement(fd: FormData): Promise<ActionResult<{ inserted: number }>> {
+  const db = await finance();
+  const file = fd.get('file');
+  const { lines, badRows } = file instanceof File && file.size > 0 ? parseBankCsv(await file.text()) : { lines: [], badRows: [1] };
+  if (badRows.length || !lines.length) return { ok: false, error: `bank_csv:${(badRows.length ? badRows : [1]).slice(0, 10).join(',')}` };
+  if (lines.length > MAX_BANK_LINES) return { ok: false, error: 'too_many_lines' };
+  const { data, error } = await db.rpc('import_bank_lines', { p_lines: lines.map((l) => ({ ...l })) });
+  if (error) return settle(error);
+  settle(null, '/finance', '/');
+  return { ok: true, data: { inserted: Number((data as { inserted?: number } | null)?.inserted ?? 0) } };
+}
+
+/** Baris bank yang bukan transaksi sistem (biaya bank, bunga, setoran QRIS gabungan) ditutup dengan catatan. */
+export async function resolveBankLine(id: number, fd: FormData): Promise<ActionResult> {
+  const db = await finance();
+  const { error } = await db.rpc('resolve_bank_line', { p_id: id, p_note: text(fd, 'note') });
+  return settle(error, '/finance');
 }

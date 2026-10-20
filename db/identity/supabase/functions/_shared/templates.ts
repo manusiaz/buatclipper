@@ -252,6 +252,7 @@ const ALERT_LABEL: Record<string, string> = {
   "payout.instant_stuck": "instant withdraw macet",
   "reconcile.ledger": "selisih rekonsiliasi ledger",
   "reconcile.orphans": "selisih rekonsiliasi ID lintas DB",
+  "reconcile.bank": "selisih rekonsiliasi mutasi bank",
 };
 
 const DEFS: Record<NotificationEvent, Def> = {

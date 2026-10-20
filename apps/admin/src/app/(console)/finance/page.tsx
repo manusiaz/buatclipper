@@ -10,7 +10,8 @@ import type { Claims } from '@clipper/auth';
 import { isUuid, param, rows, uniq, type SearchParams } from '@/lib/data';
 import { isoToWibDate, isoToWibInput } from '@/lib/wib';
 import {
-  approveBatch, approveRefund, cancelPayout, confirmInvoice, createBatch, exportPayoutCsv, exportPph21, uploadProof,
+  approveBatch, approveRefund, cancelPayout, confirmInvoice, createBatch, exportPayoutCsv, exportPph21, importBankStatement, resolveBankLine,
+  uploadProof,
 } from '@/features/finance/actions';
 import { BatchResults } from '@/features/finance/batch-results';
 import { ActionButton, ActionDialog, type FieldSpec } from '@/features/shared/action-dialog';
@@ -22,7 +23,7 @@ export async function generateMetadata(): Promise<Metadata> {
   return { title: (await getTranslations('admin'))('nav.finance') };
 }
 
-const TABS = ['incoming', 'payout', 'instant', 'refund', 'pph21', 'ledger'] as const;
+const TABS = ['incoming', 'payout', 'instant', 'refund', 'pph21', 'ledger', 'bank'] as const;
 type Tab = (typeof TABS)[number];
 const idr = (v: unknown, loc: UiLocale) => formatIDR(Number(v ?? 0), { locale: loc });
 const PROOF: FieldSpec = { kind: 'file', name: 'file', label: '', accept: 'application/pdf,image/jpeg,image/png', required: true, maxBytes: 10 * 1024 * 1024 };
@@ -49,6 +50,7 @@ export default async function FinancePage({ searchParams }: { searchParams: Prom
       {tab === 'refund' ? <Refunds loc={loc} me={claims.sub} /> : null}
       {tab === 'pph21' ? <Pph21 /> : null}
       {tab === 'ledger' ? <Ledger loc={loc} q={param(sp, 'q')} /> : null}
+      {tab === 'bank' ? <Bank loc={loc} /> : null}
     </>
   );
 }
@@ -440,6 +442,86 @@ async function Ledger({ loc, q }: { loc: UiLocale; q: string }) {
                 </TD>
                 <TD align="right" muted>
                   <RelativeTime value={e.created_at!} locale={loc} />
+                </TD>
+              </TR>
+            ))}
+          </TBody>
+        </Table>
+      )}
+    </div>
+  );
+}
+
+/** A3.5 / §16: mutasi rekening bank (CSV internet banking) vs kas sistem per referensi; selisih → alert reconcile.bank. */
+async function Bank({ loc }: { loc: UiLocale }) {
+  const [t, db] = await Promise.all([getTranslations('admin'), coreServer('admin')]);
+  const [lineRes, alertRes] = await Promise.all([
+    db.from('bank_lines').select('id, value_date, amount, reference, description, status, note').order('value_date', { ascending: false }).order('id', { ascending: false }).limit(200),
+    db.from('alerts').select('payload, created_at').eq('kind', 'reconcile.bank').is('resolved_at', null).order('id', { ascending: false }).limit(1),
+  ]);
+  const lines = rows(lineRes).sort((a, b) => Number(b.status === 'open') - Number(a.status === 'open'));
+  const missing = ((rows(alertRes)[0]?.payload as { missing_in_bank?: string[] } | undefined)?.missing_in_bank ?? []).slice(0, 50);
+  return (
+    <div className="flex flex-col gap-4">
+      <Alert tone="info" title={t('finance.bankTitle')}>{t('finance.bankHint')}</Alert>
+      <ActionDialog
+        trigger={{ label: t('finance.bankImport'), icon: 'upload', variant: 'primary' }}
+        title={t('finance.bankImport')}
+        description={t('finance.bankImportBody')}
+        size="md"
+        submitLabel={t('finance.bankImport')}
+        success={t('finance.bankImport')}
+        successKey="finance.bankImported"
+        action={importBankStatement}
+        fields={[{ kind: 'file', name: 'file', label: t('finance.bankFile'), accept: '.csv,text/csv,text/plain', required: true, maxBytes: 5 * 1024 * 1024 }]}
+      />
+      {missing.length ? (
+        <Alert tone="danger" title={t('finance.bankMissing', { n: missing.length })}>
+          <ul className="flex flex-wrap gap-x-3 gap-y-1">
+            {missing.map((k) => (
+              <li key={k}>
+                <Link href={`/finance?tab=ledger&q=${k.split(':')[1] ?? ''}`} className="font-mono text-[11px] text-link hover:underline">{k}</Link>
+              </li>
+            ))}
+          </ul>
+        </Alert>
+      ) : null}
+      {lines.length === 0 ? (
+        <EmptyState icon="account_balance" title={t('finance.bankEmpty')} />
+      ) : (
+        <Table card caption={t('finance.tabs.bank')}>
+          <THead>
+            <TR>
+              <TH>{t('finance.bankRef')}</TH>
+              <TH align="right">{t('finance.ledgerAmount')}</TH>
+              <TH>{t('finance.bankStatus')}</TH>
+              <TH align="right" />
+            </TR>
+          </THead>
+          <TBody>
+            {lines.map((l) => (
+              <TR key={l.id}>
+                <TD>
+                  <span className="font-mono text-caption font-semibold text-ink">{l.reference}</span>
+                  <span className="block text-caption text-muted">{formatDateTime(`${l.value_date}T00:00:00+07:00`, loc, { dateStyle: 'medium' })} · {l.description}</span>
+                </TD>
+                <TD numeric className={Number(l.amount) < 0 ? 'text-danger-fg' : undefined}>{idr(l.amount, loc)}</TD>
+                <TD>
+                  <Badge tone={l.status === 'matched' ? 'success' : l.status === 'manual' ? 'neutral' : 'danger'} size="sm">{t(`finance.bankLine.${l.status}`)}</Badge>
+                  {l.note ? <span className="block text-caption text-muted">{l.note}</span> : null}
+                </TD>
+                <TD align="right">
+                  {l.status === 'open' ? (
+                    <ActionDialog
+                      trigger={{ label: t('finance.bankResolve'), variant: 'secondary', size: 'sm' }}
+                      title={t('finance.bankResolve')}
+                      description={t('finance.bankResolveBody')}
+                      submitLabel={t('finance.bankResolve')}
+                      success={t('finance.bankResolved')}
+                      action={resolveBankLine.bind(null, l.id!)}
+                      fields={[{ kind: 'text', name: 'note', label: t('finance.bankNote'), required: true }]}
+                    />
+                  ) : null}
                 </TD>
               </TR>
             ))}

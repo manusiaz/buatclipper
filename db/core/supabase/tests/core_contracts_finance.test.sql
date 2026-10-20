@@ -1334,6 +1334,53 @@ select ok(finance.reconcile_ledger() ? 'pool_cache', 'selisih cache pool vs jurn
 select ok(exists (select 1 from ops.alerts where kind = 'reconcile.ledger' and severity = 'critical'), 'alert rekonsiliasi ledger');
 update finance.reward_pools set allocated = allocated - 1 where id = '66666666-0000-0000-0000-0000000000a1';
 
+-- Regresi G-11 (F-A08, A3.5, §16): mutasi rekening bank vs kas sistem per referensi; selisih → alert reconcile.bank.
+create temp table t_bank on commit drop as
+  select 'inv'::text k, i.payment_ref ref, i.paid_amount amt, i.id from finance.invoices i
+   where i.status = 'paid' and i.payment_channel = 'transfer' order by i.paid_at, i.id limit 1;
+insert into t_bank select 'po', p.bank_ref, -(p.amount - p.fee), p.id from finance.payouts p
+ where p.status = 'paid' and p.channel = 'batch' and p.bank_ref is not null order by p.paid_at, p.id limit 1;
+select is((select count(*)::int from t_bank), 2, 'fixture rekonsiliasi bank: invoice transfer & payout batch dibayar');
+create temp table t_bank_in on commit drop as
+  select jsonb_build_array(
+    jsonb_build_object('date', (now() at time zone 'Asia/Jakarta')::date, 'amount', (select amt from t_bank where k = 'inv'),
+                       'reference', (select ref from t_bank where k = 'inv'), 'description', 'TRF BRAND'),
+    jsonb_build_object('date', (now() at time zone 'Asia/Jakarta')::date, 'amount', (select amt from t_bank where k = 'po'),
+                       'reference', (select ref from t_bank where k = 'po'), 'description', 'TRF MASSAL'),
+    jsonb_build_object('date', (now() at time zone 'Asia/Jakarta')::date, 'amount', -6500, 'reference', 'BIAYA-ADM', 'description', 'biaya admin'),
+    jsonb_build_object('date', (now() at time zone 'Asia/Jakarta')::date, 'amount', 1000000, 'reference', 'TAK-DIKENAL', 'description', '')) v;
+grant select on t_bank, t_bank_in to authenticated;
+set local role authenticated;
+select pg_temp.jwt('33333333-0000-0000-0000-0000000000e1', '{"app_roles":["admin_moderator"],"aal":"aal2"}');
+select throws_ok($$ select api.import_bank_lines((select v from t_bank_in)) $$, '42501', 'auth:forbidden', 'impor mutasi bank hanya admin_finance');
+select pg_temp.jwt('33333333-0000-0000-0000-0000000000f1', '{"app_roles":["admin_finance"],"aal":"aal2"}');
+select throws_ok($$ select api.import_bank_lines('[{"date":"20-10-2026","amount":1,"reference":"x"}]') $$, 'P0001', 'invalid:bank_lines',
+                 'baris mutasi tidak valid ditolak');
+select is((api.import_bank_lines((select v from t_bank_in)) ->> 'inserted')::int, 4, 'impor 4 baris mutasi');
+select is((api.import_bank_lines((select v from t_bank_in)) ->> 'inserted')::int, 0, 'unggah ulang file yang sama tidak menggandakan baris');
+reset role;
+select is((select array_agg(b.status order by b.reference) from finance.bank_lines b where b.reference in (select ref from t_bank)),
+          array['matched', 'matched'], 'kredit invoice (payment_ref + nominal) dan debit payout (bank_ref + nett) cocok');
+select ok((select (payload -> 'bank_unmatched') @> (select jsonb_agg(b.id) from finance.bank_lines b where b.reference in ('BIAYA-ADM', 'TAK-DIKENAL'))
+             from ops.alerts where kind = 'reconcile.bank' order by id desc limit 1),
+          'baris bank tanpa transaksi sistem → alert reconcile.bank');
+set local role authenticated;
+select pg_temp.jwt('33333333-0000-0000-0000-0000000000f1', '{"app_roles":["admin_finance"],"aal":"aal2"}');
+select lives_ok($$ select api.resolve_bank_line((select id from api.bank_lines where reference = 'BIAYA-ADM'), 'biaya admin bulanan bank') $$,
+                'baris biaya bank ditutup manual dengan catatan');
+select is((api.import_bank_lines(jsonb_build_array(jsonb_build_object('date', (now() at time zone 'Asia/Jakarta')::date,
+             'amount', (select amt from t_bank where k = 'inv'), 'reference', (select ref from t_bank where k = 'inv'), 'description', 'TRF ULANG')))
+           ->> 'inserted')::int, 1, 'kredit kedua dengan referensi invoice yang sama');
+reset role;
+select is((select array_agg(distinct b.status) from finance.bank_lines b where b.reference = (select ref from t_bank where k = 'inv')),
+          array['open'], 'dana masuk dua kali untuk satu invoice → selisih (tidak dianggap cocok)');
+update finance.payouts set bank_ref = 'REF-SALAH' where id = (select id from t_bank where k = 'po');
+update finance.payouts set paid_at = now() where id = (select id from t_bank where k = 'po');
+select ok(finance.reconcile_bank() -> 'missing_in_bank' ? ('payout:' || (select id from t_bank where k = 'po')),
+          'payout dibayar di rentang mutasi tanpa baris bank → selisih');
+select is((select status from finance.bank_lines where reference = (select ref from t_bank where k = 'po')), 'open',
+          'baris bank yang tadinya cocok dibuka lagi saat kas sistem berubah');
+
 -- Regresi review R14: ban dari fraud queue bisa dicabut admin (profil core kembali active, bukan cuma login).
 set local role authenticated;
 select pg_temp.jwt('33333333-0000-0000-0000-0000000000e1', '{"app_roles":["admin_moderator"],"aal":"aal2"}');

@@ -162,7 +162,9 @@
     "corrupt_ciphertext": "Data terenkripsi tidak bisa dibuka (kunci tidak cocok). Hubungi engineering.",
     "db_error": "Kesalahan database di identity. Coba lagi atau hubungi engineering.",
     "too_many_codes": "Maksimal 10.000 kode per unggahan.",
-    "file_missing": "Berkas CSV tidak ditemukan lagi. Hubungi engineering."
+    "file_missing": "Berkas CSV tidak ditemukan lagi. Hubungi engineering.",
+    "bank_csv": "CSV mutasi tidak terbaca di baris {param}. Wajib: tanggal, nominal (atau debit & kredit), referensi.",
+    "too_many_lines": "Maksimal 5.000 baris per unggahan."
   },
   "export": {
     "download": "Unduh CSV ({rows} baris)",
@@ -630,7 +632,8 @@
       "instant": "Instant",
       "refund": "Refund",
       "pph21": "PPh 21",
-      "ledger": "Ledger"
+      "ledger": "Ledger",
+      "bank": "Mutasi bank"
     },
     "incomingHint": "Cocokkan dengan mutasi rekening di internet banking. Nominal harus sama dengan total; nomor referensi tidak boleh dipakai dua kali.",
     "noInvoices": "Tidak ada invoice belum lunas",
@@ -704,7 +707,7 @@
     "result": "Hasil",
     "paid": "Berhasil",
     "failed": "Gagal",
-    "bankRef": "Ref. bank",
+    "bankRef": "Referensi · tanggal · keterangan",
     "markSubmit": "Simpan hasil ({paid} berhasil, {failed} gagal)",
     "markHint": "Gagal → saldo kembali ke clipper.",
     "markedDone": "Hasil transfer disimpan",
@@ -748,7 +751,25 @@
     "failReason": "Alasan gagal (dari bank)",
     "providerRef": "Ref. penyedia",
     "noProviderRef": "Belum ada",
-    "refundOwn": "Kamu yang meminta refund ini — butuh admin finance lain."
+    "refundOwn": "Kamu yang meminta refund ini — butuh admin finance lain.",
+    "bankTitle": "Rekonsiliasi harian vs mutasi rekening",
+    "bankHint": "Unggah CSV mutasi dari internet banking setiap hari. Baris dicocokkan per nomor referensi dengan kas sistem: invoice lunas (nomor referensi konfirmasi), payout batch & refund (referensi bank saat ditandai dibayar). Selisih memicu alert ke admin finance.",
+    "bankImport": "Unggah mutasi",
+    "bankImportBody": "CSV dengan baris judul: tanggal, nominal (+ masuk, − keluar) atau kolom debit & kredit, referensi, keterangan (opsional). Unggah ulang file yang sama aman.",
+    "bankImported": "{inserted} baris mutasi baru diimpor dan dicocokkan",
+    "bankFile": "File CSV mutasi",
+    "bankMissing": "{n} transaksi sistem belum ada di mutasi bank",
+    "bankEmpty": "Belum ada mutasi bank yang diunggah",
+    "bankStatus": "Status",
+    "bankLine": {
+      "open": "Selisih",
+      "matched": "Cocok",
+      "manual": "Ditutup manual"
+    },
+    "bankResolve": "Tutup dengan catatan",
+    "bankResolveBody": "Untuk baris yang memang bukan transaksi platform (biaya admin bank, bunga, setoran QRIS gabungan). Tercatat di audit log.",
+    "bankResolved": "Baris mutasi ditutup",
+    "bankNote": "Catatan"
   },
   "fulfillment": {
     "title": "Fulfillment non-tunai",

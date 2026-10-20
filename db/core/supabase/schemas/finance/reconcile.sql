@@ -3,7 +3,7 @@
 --   negative_wallet         saldo Pending/Tersedia clipper < 0
 --   invoice_unposted        invoice lunas yang kaki sumbernya (kas + kredit org, Rupiah) ≠ −total di jurnal invoice_payment
 --   journal_without_invoice jurnal invoice_payment tanpa invoice lunas
--- Mutasi rekening bank sungguhan (di luar sistem) dicocokkan finance dengan payment_ref/bank_ref.
+-- Mutasi rekening bank (CSV yang diunggah finance) dicocokkan per referensi di finance.reconcile_bank (bank_lines.sql).
 create function finance.reconcile_ledger() returns jsonb
 language plpgsql security definer set search_path = '' as $$
 declare

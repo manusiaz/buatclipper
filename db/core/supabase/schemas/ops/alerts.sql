@@ -56,7 +56,7 @@ declare
 begin
   for r in select distinct on (a.kind) a.id, a.kind, a.severity from ops.alerts a
             where a.kind in ('tracking.lag', 'tracking.final_missing', 'fraud.flag_spike', 'payout.failed', 'payout.instant_stuck',
-                             'reconcile.ledger', 'reconcile.orphans')
+                             'reconcile.ledger', 'reconcile.orphans', 'reconcile.bank')
               and (p_kind is null or a.kind = p_kind)
               and a.notified_at is null and a.resolved_at is null and a.created_at > now() - interval '1 day'
               and not exists (select 1 from ops.alerts b where b.kind = a.kind and b.notified_at > now() - interval '1 hour')

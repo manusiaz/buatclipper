@@ -58,6 +58,20 @@ export type Database = {
                         Relationships: [
                     
                   ]
+                },"bank_lines": {
+                  Row: {
+                    "amount": number | null,"description": string | null,"id": number | null,"imported_at": string | null,"note": string | null,"reference": string | null,"resolved_at": string | null,"status": string | null,"value_date": string | null
+                  }
+                  ComputedFields: never
+                  Insert: {
+                           "amount"?: number | null,"description"?: string | null,"id"?: number | null,"imported_at"?: string | null,"note"?: string | null,"reference"?: string | null,"resolved_at"?: string | null,"status"?: string | null,"value_date"?: string | null
+                         }
+                        Update: {
+                           "amount"?: number | null,"description"?: string | null,"id"?: number | null,"imported_at"?: string | null,"note"?: string | null,"reference"?: string | null,"resolved_at"?: string | null,"status"?: string | null,"value_date"?: string | null
+                         }
+                        Relationships: [
+                    
+                  ]
                 },"broadcasts": {
                   Row: {
                     "body": string | null,"channels": (string)[] | null,"created_by": string | null,"id": string | null,"recipient_count": number | null,"scheduled_at": string | null,"segment": Json | null,"sent_at": string | null,"title": string | null
@@ -701,6 +715,9 @@ export type Database = {
               "created": boolean,"display_name": string,"id": string,"username": string
             }[]
                            },
+"import_bank_lines":
+{ Args: { "p_lines": Json }; Returns: Json
+                           },
 "invite_preview":
 { Args: { "p_token": string }; Returns: {
               "expired": boolean,"is_agency": boolean,"org_name": string,"role": string,"used": boolean
@@ -774,6 +791,9 @@ export type Database = {
                            },
 "resolve_alert":
 { Args: { "p_id": number }; Returns: undefined
+                           },
+"resolve_bank_line":
+{ Args: { "p_id": number,"p_note": string }; Returns: undefined
                            },
 "resolve_fraud_flag":
 { Args: { "p_action": string,"p_flag": string,"p_note": string }; Returns: undefined

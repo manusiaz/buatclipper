@@ -162,7 +162,9 @@
     "corrupt_ciphertext": "Encrypted data cannot be opened (key mismatch). Contact engineering.",
     "db_error": "Identity database error. Try again or contact engineering.",
     "too_many_codes": "At most 10,000 codes per upload.",
-    "file_missing": "The CSV file is no longer available. Contact engineering."
+    "file_missing": "The CSV file is no longer available. Contact engineering.",
+    "bank_csv": "Statement CSV unreadable at row {param}. Required: date, amount (or debit & credit), reference.",
+    "too_many_lines": "At most 5,000 lines per upload."
   },
   "export": {
     "download": "Download CSV ({rows} rows)",
@@ -630,7 +632,8 @@
       "instant": "Instant",
       "refund": "Refunds",
       "pph21": "PPh 21",
-      "ledger": "Ledger"
+      "ledger": "Ledger",
+      "bank": "Bank statement"
     },
     "incomingHint": "Match against the bank statement in internet banking. The amount must equal the total; a reference number cannot be used twice.",
     "noInvoices": "No unpaid invoices",
@@ -704,7 +707,7 @@
     "result": "Result",
     "paid": "Succeeded",
     "failed": "Failed",
-    "bankRef": "Bank ref.",
+    "bankRef": "Reference · date · description",
     "markSubmit": "Save results ({paid} succeeded, {failed} failed)",
     "markHint": "Failed → balance returns to the clipper.",
     "markedDone": "Transfer results saved",
@@ -748,7 +751,25 @@
     "failReason": "Failure reason (from the bank)",
     "providerRef": "Provider ref.",
     "noProviderRef": "None yet",
-    "refundOwn": "You requested this refund — another finance admin must approve."
+    "refundOwn": "You requested this refund — another finance admin must approve.",
+    "bankTitle": "Daily reconciliation vs bank statement",
+    "bankHint": "Upload the internet-banking statement CSV every day. Lines are matched by reference number against system cash: paid invoices (confirmation reference), batch payouts and refunds (bank reference entered when marked paid). Differences raise an alert to finance admins.",
+    "bankImport": "Upload statement",
+    "bankImportBody": "CSV with a header row: date, amount (+ in, − out) or debit & credit columns, reference, description (optional). Re-uploading the same file is safe.",
+    "bankImported": "{inserted} new statement lines imported and matched",
+    "bankFile": "Statement CSV file",
+    "bankMissing": "{n} system transactions are not on the bank statement",
+    "bankEmpty": "No bank statement uploaded yet",
+    "bankStatus": "Status",
+    "bankLine": {
+      "open": "Mismatch",
+      "matched": "Matched",
+      "manual": "Closed manually"
+    },
+    "bankResolve": "Close with note",
+    "bankResolveBody": "For lines that are not platform transactions (bank fees, interest, combined QRIS settlement). Recorded in the audit log.",
+    "bankResolved": "Statement line closed",
+    "bankNote": "Note"
   },
   "fulfillment": {
     "title": "Non-cash fulfillment",
