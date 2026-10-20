@@ -41,7 +41,7 @@ create view api.admin_profiles with (security_invoker = true) as
   select id, username, display_name, avatar_path, trust_score, status, suspended_until, created_at
   from market.profiles where (select ops.has_admin());
 create view api.organizations with (security_invoker = true) as
-  select id, name, org_type, legal_name, npwp, address, is_agency, fee_rule_id, status, verified_at, created_at from market.organizations;
+  select id, name, org_type, legal_name, npwp, address, is_agency, fee_rule_id, status, verified_at, created_at, updated_at from market.organizations;
 create view api.org_members with (security_invoker = true) as
   select org_id, user_id, role, created_at from market.org_members;
 create view api.org_invites with (security_invoker = true) as

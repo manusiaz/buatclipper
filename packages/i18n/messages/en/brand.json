@@ -107,7 +107,6 @@
     "npwpInvalid": "NPWP must be 15 or 16 digits.",
     "digits": "{count} digits",
     "address": "Address",
-    "optional": "(optional)",
     "peroranganTitle": "Individual details come from KYC",
     "peroranganBody": "Name, ID number and address are not entered here. After creating the organization you are taken to the KYC page in Account.",
     "peroranganKycDone": "Your KYC is approved. KYC data is used to verify the organization.",
@@ -658,9 +657,19 @@
     "created": "Created",
     "verifiedAt": "Verified",
     "peroranganNote": "Name, ID number and address of an individual organization come from the owner’s KYC in Account.",
-    "editNote": "Changing the legal name, NPWP or address requires re-verification. Contact the Clipper team to change them.",
+    "editNote": "Changing the legal name, NPWP, or address sends the organization back to verification; new campaigns can't be submitted until it is verified.",
     "rejectedTitle": "Verification rejected",
-    "rejectedFix": "Fix the details through the Clipper team, then ask for verification again."
+    "rejectedFix": "Fix the data with Edit details, then the Clipper team reviews it again.",
+    "resubmittedTitle": "Fix submitted",
+    "resubmittedBody": "Details updated {date}. The Clipper team will review again.",
+    "edit": "Edit details",
+    "editTitle": "Edit organization details",
+    "editHint": "The brand name can change freely. Legal name, NPWP, and address must match the business documents.",
+    "reverifyWarn": "Legal details changed: the organization will be verified again.",
+    "cancel": "Cancel",
+    "save": "Save",
+    "saved": "Organization details saved",
+    "savedReverify": "Saved. The organization is awaiting re-verification."
   },
   "agency": {
     "title": "Agency",
@@ -759,7 +768,8 @@
       "fulfillment": "This reward type is not a code pool.",
       "reason": "Choose a rejection reason.",
       "recipient_schema": "Invalid recipient fields.",
-      "template": "Templates cannot run. Duplicate it into a campaign first."
+      "template": "Templates cannot run. Duplicate it into a campaign first.",
+      "address": "Business address is required (used on tax invoices)."
     },
     "code": {
       "insufficient_balance": "Amount exceeds the campaign’s leftover budget.",

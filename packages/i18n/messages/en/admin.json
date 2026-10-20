@@ -622,7 +622,8 @@
     "suspend": "Suspend",
     "suspendBody": "Open claims are released; the clipper cannot claim/withdraw until the suspension ends.",
     "unsuspend": "Lift suspension",
-    "days": "Days (1–365)"
+    "days": "Days (1–365)",
+    "updatedAt": "Edited by brand"
   },
   "finance": {
     "ledgerSearch": "Find transactions",

@@ -50,7 +50,7 @@ export function CreateOrgForm({ kycApproved }: { kycApproved: boolean }) {
             >
               <Input name="npwp" inputMode="numeric" value={npwp} onChange={(e) => setNpwp(e.target.value)} maxLength={20} />
             </Field>
-            <Field label={t('address')} optional={t('optional')}>
+            <Field label={t('address')} error={fieldErr('address')} required>
               <Textarea name="address" rows={3} maxLength={500} />
             </Field>
           </>

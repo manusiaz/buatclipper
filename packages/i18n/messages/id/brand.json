@@ -107,7 +107,6 @@
     "npwpInvalid": "NPWP harus 15 atau 16 digit.",
     "digits": "{count} digit",
     "address": "Alamat",
-    "optional": "(opsional)",
     "peroranganTitle": "Data perorangan diambil dari KYC",
     "peroranganBody": "Nama, NIK, dan alamat tidak diisi di sini. Setelah organisasi dibuat, kamu diarahkan ke halaman KYC di Akun.",
     "peroranganKycDone": "KYC kamu sudah disetujui. Data dari KYC dipakai untuk verifikasi organisasi.",
@@ -658,9 +657,19 @@
     "created": "Dibuat",
     "verifiedAt": "Diverifikasi",
     "peroranganNote": "Nama, NIK, dan alamat organisasi perorangan diambil dari KYC pemilik di Akun.",
-    "editNote": "Perubahan nama legal, NPWP, atau alamat perlu verifikasi ulang. Hubungi tim Clipper untuk mengubahnya.",
+    "editNote": "Mengubah nama legal, NPWP, atau alamat membuat organisasi diverifikasi ulang; campaign baru tidak bisa diajukan sampai terverifikasi.",
     "rejectedTitle": "Verifikasi ditolak",
-    "rejectedFix": "Perbaiki data lewat tim Clipper, lalu minta verifikasi ulang."
+    "rejectedFix": "Perbaiki data lewat tombol Ubah data, lalu tim Clipper mereview ulang.",
+    "resubmittedTitle": "Perbaikan terkirim",
+    "resubmittedBody": "Data diperbarui {date}. Tim Clipper akan mereview ulang.",
+    "edit": "Ubah data",
+    "editTitle": "Ubah data organisasi",
+    "editHint": "Nama brand bebas diubah. Nama legal, NPWP, dan alamat harus sesuai dokumen badan usaha.",
+    "reverifyWarn": "Data legal berubah: organisasi akan diverifikasi ulang.",
+    "cancel": "Batal",
+    "save": "Simpan",
+    "saved": "Data organisasi disimpan",
+    "savedReverify": "Disimpan. Organisasi menunggu verifikasi ulang."
   },
   "agency": {
     "title": "Agency",
@@ -759,7 +768,8 @@
       "fulfillment": "Reward type ini bukan pool kode.",
       "reason": "Pilih alasan penolakan.",
       "recipient_schema": "Data penerima tidak valid.",
-      "template": "Template tidak bisa dijalankan. Duplikat dulu jadi campaign."
+      "template": "Template tidak bisa dijalankan. Duplikat dulu jadi campaign.",
+      "address": "Alamat badan usaha wajib diisi (dipakai di faktur)."
     },
     "code": {
       "insufficient_balance": "Nominal melebihi sisa budget campaign.",

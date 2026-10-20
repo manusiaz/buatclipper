@@ -80,6 +80,9 @@ begin
     if npwp is null or npwp !~ '^[0-9]{15,16}$' then
       perform market.fail('invalid:npwp', 'NPWP 15/16 digit');
     end if;
+    if nullif(btrim(p_address), '') is null then  -- B1.4 / F-B01: alamat badan dipakai di faktur
+      perform market.fail('invalid:address', 'badan usaha wajib alamat');
+    end if;
   elsif p_org_type = 'perorangan' then
     if coalesce(p_legal_name, p_npwp, p_address) is not null then
       perform market.fail('invalid:perorangan_pii', 'org perorangan: nama legal/NIK/alamat diambil dari KYC pemilik');
@@ -406,11 +409,58 @@ begin
   return n;
 end $$;
 
+-- B1.5 cabang ditolak / F-B01: brand_owner memperbaiki data org. Nama legal, NPWP, atau alamat berubah pada org verified →
+-- verifikasi ulang (pending_verification, masuk antrean admin lagi); org yang ditolak tetap pending = sudah diajukan ulang.
+create function api.update_org(p_org uuid, p_name text, p_legal_name text default null, p_npwp text default null,
+                               p_address text default null) returns void
+language plpgsql security definer set search_path = '' as $$
+declare
+  uid uuid := market.session_uid();
+  o market.organizations;
+  v_npwp text := nullif(regexp_replace(coalesce(p_npwp, ''), '[^0-9]', '', 'g'), '');
+  legal_changed boolean;
+begin
+  if not market.is_direct_member(p_org, uid, 'brand_owner') then
+    perform market.fail('auth:forbidden', 'hanya brand_owner org ini', '42501');
+  end if;
+  select * into o from market.organizations where id = p_org for update;
+  if char_length(btrim(coalesce(p_name, ''))) not between 2 and 100 then
+    perform market.fail('invalid:name', 'nama 2–100 karakter');
+  end if;
+  if o.org_type = 'badan' then
+    if nullif(btrim(p_legal_name), '') is null then
+      perform market.fail('invalid:legal_name', 'badan usaha wajib nama legal');
+    end if;
+    if v_npwp is null or v_npwp !~ '^[0-9]{15,16}$' then
+      perform market.fail('invalid:npwp', 'NPWP 15/16 digit');
+    end if;
+    if nullif(btrim(p_address), '') is null then
+      perform market.fail('invalid:address', 'badan usaha wajib alamat');
+    end if;
+  elsif coalesce(p_legal_name, p_npwp, p_address) is not null then
+    perform market.fail('invalid:perorangan_pii', 'org perorangan: nama legal/NIK/alamat diambil dari KYC pemilik');
+  end if;
+  legal_changed := o.org_type = 'badan' and (o.legal_name is distinct from btrim(p_legal_name) or o.npwp is distinct from v_npwp
+                                             or o.address is distinct from btrim(p_address));
+  update market.organizations
+     set name = btrim(p_name), legal_name = nullif(btrim(p_legal_name), ''), npwp = v_npwp, address = nullif(btrim(p_address), ''),
+         updated_at = now(),
+         status = case when legal_changed and status = 'verified' then 'pending_verification' else status end,
+         verified_at = case when legal_changed and status = 'verified' then null else verified_at end,
+         verified_by = case when legal_changed and status = 'verified' then null else verified_by end
+   where id = o.id;
+  insert into ops.audit_logs (actor_id, action, target, before, after)
+  values (uid, 'org.update', 'org:' || o.id,
+          jsonb_build_object('name', o.name, 'legal_name', o.legal_name, 'npwp', o.npwp, 'address', o.address, 'status', o.status),
+          jsonb_build_object('name', btrim(p_name), 'legal_name', nullif(btrim(p_legal_name), ''), 'npwp', v_npwp,
+                             'address', nullif(btrim(p_address), ''), 'reverify', legal_changed));
+end $$;
+
 revoke execute on function market.ensure_member_profile(uuid, text, text),
   market.decide_org(uuid, text, uuid, text, text, text) from public;
 revoke execute on function api.create_org(text, text, text, text, text, boolean), api.link_agency(uuid, uuid, text),
   api.create_org_invite(uuid, text), api.accept_org_invite(text), api.manage_org(uuid, text, jsonb),
-  api.save_reward_type(jsonb), api.upload_reward_codes(uuid, text[]) from public;
+  api.save_reward_type(jsonb), api.upload_reward_codes(uuid, text[]), api.update_org(uuid, text, text, text, text) from public;
 grant execute on function api.create_org(text, text, text, text, text, boolean), api.link_agency(uuid, uuid, text),
   api.create_org_invite(uuid, text), api.accept_org_invite(text), api.manage_org(uuid, text, jsonb),
-  api.save_reward_type(jsonb), api.upload_reward_codes(uuid, text[]) to authenticated;
+  api.save_reward_type(jsonb), api.upload_reward_codes(uuid, text[]), api.update_org(uuid, text, text, text, text) to authenticated;

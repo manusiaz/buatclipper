@@ -214,6 +214,8 @@ select throws_ok($$ select api.create_org('PT Baru', 'badan', 'PT Baru Jaya', '1
                  'badan usaha wajib NPWP 15/16 digit');
 select throws_ok($$ select api.create_org('Toko Tiga', 'perorangan', null, '3171012345670001') $$, 'P0001', 'invalid:perorangan_pii',
                  'org perorangan tidak menyimpan NIK/alamat di core');
+select throws_ok($$ select api.create_org('PT Tanpa Alamat', 'badan', 'PT Tanpa Alamat', '012345678901234') $$, 'P0001', 'invalid:address',
+                 'regresi AB-12: badan usaha wajib alamat (dipakai di faktur)');
 insert into t_ids (k, id) select 'org_new', api.create_org('PT Baru', 'badan', 'PT Baru Jaya', '01.234.567.8-901.234', 'Jakarta');
 reset role;
 select is((select status::text || ':' || npwp from market.organizations where id = (select id from t_ids where k = 'org_new')),
@@ -234,6 +236,32 @@ select throws_ok($$ select api.manage_org('44444444-0000-0000-0000-000000000002'
                  'tolak org wajib alasan');
 select lives_ok($$ select api.manage_org((select id from t_ids where k = 'org_new'), 'reject',
                                          '{"reason":"npwp_invalid","message":"NPWP tidak cocok"}') $$, 'admin_ops menolak org');
+select pg_temp.jwt('22222222-0000-0000-0000-0000000000a1');
+select throws_ok($$ select api.update_org((select id from t_ids where k = 'org_new'), 'PT Baru', 'PT Baru Jaya', '0123456789012345', 'Jakarta') $$,
+                 '42501', 'auth:forbidden', 'hanya brand_owner org itu yang bisa mengubah data org');
+select pg_temp.jwt('22222222-0000-0000-0000-0000000000a2');
+select lives_ok($$ select api.update_org((select id from t_ids where k = 'org_new'), 'PT Baru', 'PT Baru Jaya Abadi', '0123456789012345',
+                                         'Jl. Sudirman 1, Jakarta') $$,
+                'regresi AB-1: org ditolak diperbaiki brand_owner sendiri (tetap pending = diajukan ulang ke antrean admin)');
+select pg_temp.jwt('33333333-0000-0000-0000-0000000000ad', '{admin_ops}', 'aal2');
+select lives_ok($$ select api.manage_org((select id from t_ids where k = 'org_new'), 'verify') $$, 'admin memverifikasi data perbaikan');
+select pg_temp.jwt('22222222-0000-0000-0000-0000000000a2');
+select api.update_org((select id from t_ids where k = 'org_new'), 'PT Baru Jaya', 'PT Baru Jaya Abadi', '0123456789012345', 'Jl. Sudirman 1, Jakarta');
+reset role;
+select is((select status::text from market.organizations where id = (select id from t_ids where k = 'org_new')), 'verified',
+          'ganti nama tampilan saja tidak perlu verifikasi ulang');
+set local role authenticated;
+select pg_temp.jwt('22222222-0000-0000-0000-0000000000a2');
+select api.update_org((select id from t_ids where k = 'org_new'), 'PT Baru Jaya', 'PT Baru Jaya Abadi', '0123456789012345', 'Jl. Thamrin 2, Jakarta');
+reset role;
+select is((select status::text || ':' || (verified_at is null)::text from market.organizations where id = (select id from t_ids where k = 'org_new')),
+          'pending_verification:true', 'regresi AB-1: ubah alamat/NPWP/nama legal org verified → verifikasi ulang');
+select ok(exists (select 1 from ops.audit_logs where action = 'org.update' and target = 'org:' || (select id from t_ids where k = 'org_new')),
+          'perubahan data org tercatat di audit');
+select ok((select updated_at is not null from market.organizations where id = (select id from t_ids where k = 'org_new')),
+          'updated_at = tanda diajukan ulang (banner brand + detail admin)');
+set local role authenticated;
+select pg_temp.jwt('33333333-0000-0000-0000-0000000000ad', '{admin_ops}', 'aal2');
 select lives_ok($$ select api.manage_org('44444444-0000-0000-0000-000000000002', 'verify') $$, 'admin_ops aal2 memverifikasi org');
 select lives_ok($$ select api.manage_org('44444444-0000-0000-0000-000000000002', 'set_fee', '{"mgmt_fee_pct": 10}') $$,
                 'admin_ops memasang fee custom org');
@@ -243,10 +271,11 @@ select lives_ok($$ select api.manage_org('44444444-0000-0000-0000-000000000002',
 reset role;
 select is((select status::text from market.organizations where id = '44444444-0000-0000-0000-000000000002'), 'verified',
           'org2 verified (verified_by, verified_at)');
-select is((select count(*)::int from ops.notifications where event = 'org.verified' and user_id = '22222222-0000-0000-0000-0000000000a2'), 1,
+select is((select count(*)::int from ops.notifications where event = 'org.verified' and user_id = '22222222-0000-0000-0000-0000000000a2'
+             and payload ->> 'org_id' = '44444444-0000-0000-0000-000000000002'), 1,
           'notifikasi org.verified ke brand_owner');
 select is((select payload - 'reason' - 'message' from ops.notifications where event = 'org.verified'
-             and user_id = '22222222-0000-0000-0000-0000000000a2'),
+             and user_id = '22222222-0000-0000-0000-0000000000a2' and payload ->> 'org_id' = '44444444-0000-0000-0000-000000000002'),
           '{"org_id":"44444444-0000-0000-0000-000000000002","org_name":"Toko Dua"}'::jsonb, 'payload org.*: org_id + org_name');
 select is((select count(*)::int from ops.notifications where event = 'org.rejected' and user_id = '22222222-0000-0000-0000-0000000000a2'
              and payload ->> 'reason' = 'npwp_invalid'), 1, 'notifikasi org.rejected + alasan');
@@ -256,7 +285,7 @@ select is((select f.mgmt_fee_pct from market.organizations o join finance.fee_ru
             where o.id = '44444444-0000-0000-0000-000000000002'), 10.00::numeric, 'fee rule org baru (scope org) terpasang');
 select is((select p.username || ':' || m.role from market.profiles p join market.org_members m on m.user_id = p.id
             where p.id = '11111111-0000-0000-0000-0000000000f1'), 'pic_toko:brand_manager', 'add_member membuat profil + anggota');
-select is((select count(*)::int from trust.review_decisions where target_type = 'org'), 2, 'keputusan org tercatat di E-19');
+select is((select count(*)::int from trust.review_decisions where target_type = 'org'), 3, 'keputusan org tercatat di E-19');
 
 -- Undangan anggota (token sekali tampil, hanya hash)
 set local role authenticated;

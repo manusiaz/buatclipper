@@ -3,6 +3,7 @@ import { getLocale, getTranslations } from 'next-intl/server';
 import { hosts, kycUrl } from '@clipper/auth';
 import { Alert, Card, CardContent, CardHeader, CardTitle, PageHeader, StatusBadge, formatDate, formatDateTime } from '@clipper/ui';
 import { AgencyPanel, type AgencyLink } from '@/features/org/agency-panel';
+import { EditOrgDialog } from '@/features/org/edit-org-dialog';
 import { getOrgContext } from '@/lib/org';
 
 export async function generateMetadata(): Promise<Metadata> {
@@ -38,6 +39,9 @@ export default async function SettingsPage({ params }: { params: Promise<{ org: 
   const asAgency = all.filter((l) => l.agencyId === orgId).map((l) => ({ ...l, otherName: names.get(l.clientId) ?? '' }));
   const asClient = all.filter((l) => l.clientId === orgId).map((l) => ({ ...l, otherName: names.get(l.agencyId) ?? '' }));
   const ownerDirect = direct && role === 'brand_owner';
+  const rejected = org.status === 'pending_verification' && decision?.decision === 'reject';
+  // update_org setelah penolakan = diajukan ulang (B1.5); admin melihat "Diubah brand" di detail org.
+  const resubmitted = rejected && !!org.updated_at && !!decision.created_at && new Date(org.updated_at) > new Date(decision.created_at);
   const rows: [string, string][] = [
     [t('settings.name'), org.name],
     [t('settings.type'), t(`settings.types.${org.org_type ?? 'badan'}`)],
@@ -57,10 +61,14 @@ export default async function SettingsPage({ params }: { params: Promise<{ org: 
     <>
       <PageHeader title={t('settings.title')} description={t('settings.description')} />
       <div className="flex flex-col gap-5">
-        {org.status === 'pending_verification' && decision?.decision === 'reject' ? (
+        {resubmitted ? (
+          <Alert tone="info" title={t('settings.resubmittedTitle')}>
+            {t('settings.resubmittedBody', { date: formatDateTime(org.updated_at!, loc) })}
+          </Alert>
+        ) : rejected ? (
           <Alert tone="danger" title={t('settings.rejectedTitle')}>
             {[decision.reason_code, decision.message].filter(Boolean).join(' — ')}
-            <span className="mt-1 block">{t('settings.rejectedFix')}</span>
+            {ownerDirect ? <span className="mt-1 block">{t('settings.rejectedFix')}</span> : null}
           </Alert>
         ) : null}
         <Card>
@@ -81,7 +89,17 @@ export default async function SettingsPage({ params }: { params: Promise<{ org: 
                 {t('settings.peroranganNote')}
               </Alert>
             ) : null}
-            <p className="text-caption text-muted">{t('settings.editNote')}</p>
+            {ownerDirect ? (
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                <p className="text-caption text-muted">{org.org_type === 'badan' ? t('settings.editNote') : null}</p>
+                <EditOrgDialog
+                  orgId={orgId}
+                  badan={org.org_type === 'badan'}
+                  verified={org.status === 'verified'}
+                  initial={{ name: org.name, legal_name: org.legal_name ?? '', npwp: org.npwp ?? '', address: org.address ?? '' }}
+                />
+              </div>
+            ) : null}
           </CardContent>
         </Card>
         <section aria-labelledby="agency" className="flex flex-col gap-3">

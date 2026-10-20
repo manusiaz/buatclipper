@@ -14,6 +14,7 @@ create table market.organizations (
   verified_at timestamptz,
   created_by uuid not null,
   created_at timestamptz not null default now(),
+  updated_at timestamptz,
   constraint organizations_perorangan_no_pii check (org_type = 'badan' or (legal_name is null and npwp is null and address is null)),
   constraint organizations_verified_complete check (status <> 'verified' or (verified_at is not null and verified_by is not null))
 );

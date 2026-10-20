@@ -370,14 +370,14 @@ export type Database = {
                   ]
                 },"organizations": {
                   Row: {
-                    "address": string | null,"created_at": string | null,"fee_rule_id": string | null,"id": string | null,"is_agency": boolean | null,"legal_name": string | null,"name": string | null,"npwp": string | null,"org_type": string | null,"status": "pending_verification"|"verified"|"suspended" | null,"verified_at": string | null
+                    "address": string | null,"created_at": string | null,"fee_rule_id": string | null,"id": string | null,"is_agency": boolean | null,"legal_name": string | null,"name": string | null,"npwp": string | null,"org_type": string | null,"status": "pending_verification"|"verified"|"suspended" | null,"updated_at": string | null,"verified_at": string | null
                   }
                   ComputedFields: never
                   Insert: {
-                           "address"?: string | null,"created_at"?: string | null,"fee_rule_id"?: string | null,"id"?: string | null,"is_agency"?: boolean | null,"legal_name"?: string | null,"name"?: string | null,"npwp"?: string | null,"org_type"?: string | null,"status"?: "pending_verification"|"verified"|"suspended" | null,"verified_at"?: string | null
+                           "address"?: string | null,"created_at"?: string | null,"fee_rule_id"?: string | null,"id"?: string | null,"is_agency"?: boolean | null,"legal_name"?: string | null,"name"?: string | null,"npwp"?: string | null,"org_type"?: string | null,"status"?: "pending_verification"|"verified"|"suspended" | null,"updated_at"?: string | null,"verified_at"?: string | null
                          }
                         Update: {
-                           "address"?: string | null,"created_at"?: string | null,"fee_rule_id"?: string | null,"id"?: string | null,"is_agency"?: boolean | null,"legal_name"?: string | null,"name"?: string | null,"npwp"?: string | null,"org_type"?: string | null,"status"?: "pending_verification"|"verified"|"suspended" | null,"verified_at"?: string | null
+                           "address"?: string | null,"created_at"?: string | null,"fee_rule_id"?: string | null,"id"?: string | null,"is_agency"?: boolean | null,"legal_name"?: string | null,"name"?: string | null,"npwp"?: string | null,"org_type"?: string | null,"status"?: "pending_verification"|"verified"|"suspended" | null,"updated_at"?: string | null,"verified_at"?: string | null
                          }
                         Relationships: [
                     
@@ -827,6 +827,9 @@ export type Database = {
                            },
 "update_config":
 { Args: { "p_key": string,"p_value": Json }; Returns: undefined
+                           },
+"update_org":
+{ Args: { "p_address"?: string,"p_legal_name"?: string,"p_name": string,"p_npwp"?: string,"p_org": string }; Returns: undefined
                            },
 "upload_reward_codes":
 { Args: { "p_codes": (string)[],"p_reward_type": string }; Returns: number

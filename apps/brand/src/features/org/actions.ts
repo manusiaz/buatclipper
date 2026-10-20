@@ -21,13 +21,14 @@ export async function createOrg(_prev: CreateOrgState, form: FormData): Promise<
   if (type === 'badan') {
     if (!text(form, 'legal_name')) return { error: 'invalid:legal_name', field: 'legal_name' };
     if (!/^\d{15,16}$/.test(npwp)) return { error: 'invalid:npwp', field: 'npwp' };
+    if (!text(form, 'address')) return { error: 'invalid:address', field: 'address' };
   }
   const core = await coreServer();
   const { data: id, error } = await core.rpc('create_org', {
     p_name: name,
     p_org_type: type,
     p_is_agency: form.get('is_agency') === 'on',
-    ...(type === 'badan' ? { p_legal_name: text(form, 'legal_name'), p_npwp: npwp, p_address: text(form, 'address') || undefined } : {}),
+    ...(type === 'badan' ? { p_legal_name: text(form, 'legal_name'), p_npwp: npwp, p_address: text(form, 'address') } : {}),
   });
   if (error || !id) return { error: error?.message ?? 'generic', field: error?.message?.startsWith('invalid:') ? error.message.slice(8) : undefined };
   revalidatePath('/');
@@ -51,6 +52,20 @@ export async function linkAgency(orgId: string, agency: string, client: string, 
   const { error } = await core.rpc('link_agency', { p_agency: agency, p_client: client, p_action: action });
   if (error) return fail(error);
   revalidatePath(`/${orgId}/settings`);
+  revalidatePath('/');
+  return { ok: true };
+}
+
+/** B1.5/F-B01 api.update_org: data legal org verified berubah → verifikasi ulang (dicek ulang di DB). */
+export async function updateOrg(orgId: string, input: { name: string; legal_name: string; npwp: string; address: string }): Promise<Result> {
+  const { core, org } = await getOrgContext(orgId);
+  const { error } = await core.rpc('update_org', {
+    p_org: orgId,
+    p_name: input.name.trim(),
+    ...(org.org_type === 'badan' ? { p_legal_name: input.legal_name.trim(), p_npwp: input.npwp.replace(/\D/g, ''), p_address: input.address.trim() } : {}),
+  });
+  if (error) return fail(error);
+  revalidatePath(`/${orgId}`, 'layout');
   revalidatePath('/');
   return { ok: true };
 }

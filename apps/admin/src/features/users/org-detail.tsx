@@ -16,7 +16,7 @@ export async function OrgDetail({ orgId, claims, loc }: { orgId: string; claims:
   const [t, db] = await Promise.all([getTranslations('admin'), coreServer('admin')]);
   const canAct = hasRole(claims, 'admin_ops');
   const [orgRes, memRes, decRes] = await Promise.all([
-    db.from('organizations').select('id, name, org_type, legal_name, npwp, address, is_agency, status, verified_at, created_at').eq('id', orgId).maybeSingle(),
+    db.from('organizations').select('id, name, org_type, legal_name, npwp, address, is_agency, status, verified_at, created_at, updated_at').eq('id', orgId).maybeSingle(),
     db.from('org_members').select('user_id, role, created_at').eq('org_id', orgId),
     db.from('review_decisions').select('id, decision, reason_code, message, created_at').eq('target_type', 'org').eq('target_id', orgId).order('created_at', { ascending: false }).limit(10),
   ]);
@@ -41,6 +41,7 @@ export async function OrgDetail({ orgId, claims, loc }: { orgId: string; claims:
     [t('users.agency'), o.is_agency ? t('common.yes') : t('common.no')],
     [t('users.created'), formatDateTime(o.created_at!, loc)],
     [t('users.verifiedAt'), o.verified_at ? formatDateTime(o.verified_at, loc) : '—'],
+    [t('users.updatedAt'), o.updated_at ? formatDateTime(o.updated_at, loc) : '—'],
   ];
 
   return (

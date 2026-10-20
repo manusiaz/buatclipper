@@ -46,7 +46,7 @@ export const getOrgContext = cache(async (orgId: string) => {
   const core = await coreServer();
   const { data: org } = await core
     .from('organizations')
-    .select('id, name, org_type, legal_name, npwp, address, is_agency, status, verified_at, created_at, fee_rule_id')
+    .select('id, name, org_type, legal_name, npwp, address, is_agency, status, verified_at, created_at, updated_at, fee_rule_id')
     .eq('id', orgId)
     .maybeSingle();
   if (!org?.id || !org.name) notFound();

@@ -622,7 +622,8 @@
     "suspend": "Suspend",
     "suspendBody": "Claim terbuka dilepas; clipper tidak bisa claim/withdraw sampai masa suspend lewat.",
     "unsuspend": "Cabut suspend",
-    "days": "Hari (1–365)"
+    "days": "Hari (1–365)",
+    "updatedAt": "Diubah brand"
   },
   "finance": {
     "ledgerSearch": "Cari transaksi",
