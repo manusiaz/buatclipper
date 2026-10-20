@@ -10,6 +10,7 @@ create table ops.notifications (
 );
 create index notifications_user_idx on ops.notifications (user_id, created_at desc);
 create index notifications_unread_idx on ops.notifications (user_id) where read_at is null;
+create index notifications_campaign_new_idx on ops.notifications (user_id, (payload ->> 'campaign_id')) where event = 'campaign.new';
 
 alter table ops.notifications enable row level security;
 create policy notifications_iss on ops.notifications as restrictive for all to authenticated  -- policy:core.iss-identity

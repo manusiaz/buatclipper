@@ -390,11 +390,17 @@ async function BatchDetail({ b, loc, me }: { b: { id: string | null; status: str
 async function Ledger({ loc, q }: { loc: UiLocale; q: string }) {
   const [t, db] = await Promise.all([getTranslations('admin'), coreServer('admin')]);
   const term = q.trim();
-  const prefix = term.replace(/[%_,()]/g, '');
-  let query = db.from('admin_ledger').select('id, txn_id, created_at, owner_type, owner_id, reward_type, amount, state, ref_type, ref_id');
-  if (isUuid(term)) query = query.or(`txn_id.eq.${term},ref_id.eq.${term},owner_id.eq.${term}`);
-  else if (prefix) query = query.like('ref_id', `${prefix}%`);
-  const list = rows(await query.order('id', { ascending: false }).limit(200));
+  const prefix = term.replace(/[%_,()*\\]/g, '');
+  const cols = 'id, txn_id, created_at, owner_type, owner_id, reward_type, amount, state, ref_type, ref_id';
+  const base = () => db.from('admin_ledger').select(cols).order('id', { ascending: false }).limit(200);
+  // Satu query per kolom supaya tiap pencarian memakai indeksnya (txn_id, ref_id text_pattern_ops, akun pemilik); UUID juga
+  // dicari sebagai awalan ref (release/fee "<submisi>:<pool>", refund "<id>:paid", …).
+  const parts = isUuid(term)
+    ? await Promise.all([base().eq('txn_id', term), base().like('ref_id', `${term}%`), base().eq('owner_id', term)])
+    : prefix ? [await base().like('ref_id', `${prefix}%`)] : [await base()];
+  const seen = new Set<number>();
+  const list = parts.flatMap((r) => rows(r)).filter((e) => !seen.has(e.id!) && seen.add(e.id!))
+    .sort((a, b) => b.id! - a.id!).slice(0, 200);
   return (
     <div className="flex flex-col gap-4">
       <form className="flex flex-col gap-3 sm:flex-row sm:items-end" action="/finance">

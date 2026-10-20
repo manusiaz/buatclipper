@@ -24,6 +24,7 @@ create table finance.ledger_entries (
 );
 create index ledger_entries_txn_idx on finance.ledger_entries (txn_id);
 create index ledger_entries_account_idx on finance.ledger_entries (account_id, state);
+create index ledger_entries_ref_idx on finance.ledger_entries (ref_id text_pattern_ops);  -- tab Ledger admin: ref persis & awalan
 
 create trigger ledger_entries_append_only before update or delete on finance.ledger_entries
   for each row execute function ops.reject_mutation();

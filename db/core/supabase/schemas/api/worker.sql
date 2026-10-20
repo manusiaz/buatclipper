@@ -15,7 +15,8 @@ begin
 end $$;
 
 -- §11: API error / rate limit → coba lagi dengan backoff (bukan visibility timeout tetap). 1 detik–6 jam. p_submission:
--- penjadwal (enqueue_due_submissions) menahan pesan baru untuk submisi itu sampai pesan yang ditunda muncul lagi (+5 menit),
+-- penjadwal (enqueue_due_submissions) menahan pesan baru untuk submisi itu sampai pesan yang ditunda muncul lagi (+1 jam = lease
+-- penjadwal, supaya pembacaan ulang yang tidak di-ack pun tetap tertutup),
 -- termasuk poll final di ujung view window.
 create function api.worker_retry_later(p_queue text, p_msg_id bigint, p_seconds int, p_submission uuid default null) returns void
 language plpgsql security definer set search_path = '' as $$
@@ -27,7 +28,7 @@ begin
   end if;
   perform pgmq.set_vt(p_queue, p_msg_id, sec);
   if p_submission is not null then
-    update tracking.submissions set retry_after = greatest(coalesce(retry_after, now()), now() + make_interval(secs => sec + 300))
+    update tracking.submissions set retry_after = greatest(coalesce(retry_after, now()), now() + make_interval(secs => sec + 3600))
      where id = p_submission;
   end if;
 end $$;

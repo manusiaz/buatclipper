@@ -989,6 +989,14 @@ select pg_temp.jwt('11111111-0000-0000-0000-00000000000a');
 select throws_ok($$ select api.campaign_stats('55555555-0000-0000-0000-000000000006') $$, '42501', 'auth:forbidden',
                  'dashboard campaign hanya untuk anggota org');
 insert into t_json (k, j) select 'my_a', api.my_stats();
+reset role;
+-- Fee yang ditagih (C18-4): invoice campaign lunas, fee 15% + 5% dari budget Rp1 jt → Rp200.000, diprorata ke spend.
+insert into finance.invoices (number, org_id, campaign_id, kind, subtotal, mgmt_fee, admin_fee, service_fee, tax, total, status,
+                              payment_channel, payment_ref, paid_amount, paid_at, confirmed_by)
+select 'INV-L6', c.org_id, c.id, 'campaign', 1000000, 150000, 50000, 0, 0, 1200000, 'paid', 'transfer', 'REF-L6', 1200000, now(),
+       '33333333-0000-0000-0000-0000000000ad'
+  from market.campaigns c where c.id = '55555555-0000-0000-0000-000000000006';
+set local role authenticated;
 select pg_temp.jwt('22222222-0000-0000-0000-0000000000c1');
 insert into t_json (k, j) select 'stats_l6', api.campaign_stats('55555555-0000-0000-0000-000000000006');
 reset role;
@@ -998,7 +1006,14 @@ select is((select array[j ->> 'views_valid', j ->> 'spent_idr', j ->> 'ecpm_idr'
                         j #>> '{daily,0,views}', j #>> '{daily,1,views}', j #>> '{pools,0,remaining}']
              from t_json where k = 'stats_l6'),
           array['25000', '50000', '2400', '5', '25000', '10000', '15000', '950000'],
-          'dashboard: views valid, spend, eCPM (G-8: total bayar brand = spend + fee 15% + 5%), utilisasi, split platform, kurva harian, sisa pool');
+          'dashboard: views valid, spend, eCPM (G-8: total bayar brand = spend + fee yang ditagih, prorata), utilisasi, split platform, kurva harian, sisa pool');
+reset role;
+update finance.fee_rules set mgmt_fee_pct = 30 where scope = 'global';
+select is((select market.campaign_report('55555555-0000-0000-0000-000000000006') ->> 'ecpm_idr'), '2400',
+          'C18-4: fee rule berubah belakangan tidak mengubah eCPM campaign yang sudah ditagih');
+update finance.fee_rules set mgmt_fee_pct = 15 where scope = 'global';
+set local role authenticated;
+select pg_temp.jwt('22222222-0000-0000-0000-0000000000c1');
 select is((select (j #>> '{projection,projected_utilization_pct}')::numeric < 50 from t_json where k = 'stats_l6'), true,
           'proyeksi pemakaian budget < 50% (dasar alert & saran)');
 select is((select array[j ->> 'total_views', j ->> 'approved', j ->> 'approval_rate', j ->> 'trust_score', j #>> '{earnings,0,pending}',

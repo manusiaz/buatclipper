@@ -63,16 +63,20 @@ begin
                                    where s.campaign_id = c.id and s.status = any (counted)
                                    order by s.counted_views desc limit 10) t), '[]'::jsonb),
       -- eCPM delivered (§3 metrik) = total bayar brand ÷ (views valid ÷ 1.000): nilai Rupiah semua pool yang terpakai
-      -- (non-tunai pakai nilai Rp per unit, dasar fee) + fee manajemen & admin dari fee rule campaign; tanpa pajak.
+      -- (non-tunai pakai nilai Rp per unit) + fee manajemen & admin yang benar-benar ditagih (invoice campaign/top-up lunas),
+      -- diprorata ke bagian budget yang terpakai; tanpa pajak. Fee rule yang berubah belakangan tidak mengubah angka lama.
       'spent_idr', trim_scale(round(x.spent, 2)),
-      'ecpm_idr', case when x.views > 0 then trim_scale(round(x.spent * (1 + (coalesce(fr.mgmt_fee_pct, 0) + coalesce(fr.admin_fee_pct, 0)) / 100)
+      'ecpm_idr', case when x.views > 0 then trim_scale(round((x.spent + case when x.budget > 0 then x.fees * x.spent / x.budget else 0 end)
                                                              / x.views * 1000, 2)) end)
     from market.campaigns c
-    cross join lateral (select coalesce((select sum(p.allocated * rt.idr_value_per_unit) from finance.reward_pools p
-                                          join market.reward_types rt on rt.id = p.reward_type_id where p.campaign_id = c.id), 0) as spent,
+    cross join lateral (select coalesce(sum(p.allocated * rt.idr_value_per_unit), 0) as spent,
+                               coalesce(sum(p.total * rt.idr_value_per_unit), 0) as budget,
+                               coalesce((select sum(i.mgmt_fee + i.admin_fee) from finance.invoices i
+                                          where i.campaign_id = c.id and i.kind in ('campaign', 'topup') and i.status = 'paid'), 0) as fees,
                                coalesce((select sum(s.counted_views) from tracking.submissions s
-                                          where s.campaign_id = c.id and s.status = any (counted)), 0) as views) x
-    cross join lateral (select * from finance.effective_fee_rule(c.org_id, c.id)) fr
+                                          where s.campaign_id = c.id and s.status = any (counted)), 0) as views
+                          from finance.reward_pools p join market.reward_types rt on rt.id = p.reward_type_id
+                         where p.campaign_id = c.id) x
    where c.id = p_campaign);
 end $$;
 revoke execute on function market.campaign_report(uuid) from public;
