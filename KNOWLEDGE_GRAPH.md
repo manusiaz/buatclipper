@@ -798,7 +798,7 @@ Arah: `A --tipe--> B` = A bergantung pada B. `?` = belum terverifikasi.
 | `api:GET brand/[org]/campaigns/[id]/report.csv` | reads | `table:tracking.view_snapshots` | apps/brand/src/app/[org]/campaigns/[id]/report.csv/route.ts:42 |
 | `api:GET identity/.well-known/openid-configuration` | reads | `config:identity-signing-key` | PRD v0.3.1 §15.6 public key di JWKS |
 | `api:fn core/bridge` | configured-by | `env:BRIDGE_SECRET_IDENTITY_TO_CORE` | db/core/supabase/functions/bridge/index.ts:10 |
-| `api:fn core/bridge` | guarded-by | `policy:bridge-hmac` | db/core/supabase/functions/bridge/handler.ts:171 |
+| `api:fn core/bridge` | guarded-by | `policy:bridge-hmac` | db/core/supabase/functions/bridge/handler.ts:173 |
 | `api:fn core/bridge` | reads | `table:finance.fulfillments` | db/core/supabase/schemas/api/bridge.sql:274 (rpc bridge_fulfillment_export), db/core/supabase/schemas/api/bridge.sql:261 (rpc bridge_pph21: reward non-tunai terkirim, §5.4) |
 | `api:fn core/bridge` | writes | `table:finance.fulfillments` | db/core/supabase/schemas/api/bridge.sql:295 (rpc bridge_attach_fulfillment_export: klaim di CSV → processing + export_ref) |
 | `api:fn core/bridge` | reads | `table:finance.ledger_entries` | db/core/supabase/schemas/api/bridge.sql:129 (rpc bridge_close_account: cek saldo) |
@@ -807,11 +807,12 @@ Arah: `A --tipe--> B` = A bergantung pada B. `?` = belum terverifikasi.
 | `api:fn core/bridge` | reads | `table:finance.payouts` | db/core/supabase/schemas/api/bridge.sql:25 (rpc bridge_get_batch) |
 | `api:fn core/bridge` | writes | `table:finance.payout_batches` | db/core/supabase/schemas/api/bridge.sql:74 (rpc bridge_attach_export) |
 | `api:fn core/bridge` | writes | `table:finance.payouts` | db/core/supabase/schemas/api/bridge.sql:66 (hold, bridge_attach_export), db/core/supabase/schemas/api/bridge.sql:97 (bridge_attach_proof) |
+| `api:fn core/bridge` | writes | `table:bucket.avatars` | db/core/supabase/functions/bridge/index.ts:14 (close_account: foto profil dihapus lewat Storage API) |
 | `api:fn core/bridge` | writes | `table:market.profiles` | db/core/supabase/schemas/api/bridge.sql:150 (rpc bridge_close_account: anonimkan) |
 | `api:fn core/bridge` | writes | `table:tracking.social_accounts` | db/core/supabase/schemas/api/bridge.sql:148 (rpc bridge_close_account) |
 | `api:fn core/bridge` | writes | `table:trust.fraud_flags` | db/core/supabase/schemas/api/bridge.sql:111 (rpc bridge_raise_fraud_flag → trust.raise_flag) |
 | `api:fn core/bridge` | writes | `table:vault.social-tokens` | db/core/supabase/schemas/api/bridge.sql:145 (rpc bridge_close_account: hapus token) |
-| `api:fn core/bridge` | calls | `api:fn identity/bridge` | db/core/supabase/functions/bridge/handler.ts:149 (cron disburse & ban_user → identity) |
+| `api:fn core/bridge` | calls | `api:fn identity/bridge` | db/core/supabase/functions/bridge/handler.ts:151 (cron disburse & ban_user → identity) |
 | `api:fn core/fulfill` | calls | `ext:brand-webhook` | db/core/supabase/functions/fulfill/fulfill.ts:115 |
 | `api:fn core/fulfill` | guarded-by | `policy:fn-cron-key` | db/core/supabase/functions/fulfill/index.ts:10 |
 | `api:fn core/fulfill` | reads | `table:finance.fulfillments` | db/core/supabase/schemas/api/worker.sql:512 (rpc worker_fulfillments_due) |
@@ -1148,7 +1149,7 @@ Arah: `A --tipe--> B` = A bergantung pada B. `?` = belum terverifikasi.
 | `job:notify-drain` | calls | `api:fn core/notify` | db/core/supabase/schemas/ops/cron.sql:8 |
 | `job:notify-drain` | configured-by | `env:CORE_SECRET_KEY` | db/core/supabase/schemas/ops/enqueue_notification.sql:36 (ops.invoke_function → header apikey) |
 | `job:reconcile-daily` | calls | `api:fn core/bridge` | db/core/supabase/schemas/finance/cron.sql:9 |
-| `job:reconcile-daily` | calls | `api:fn identity/bridge` | db/core/supabase/functions/bridge/handler.ts:114 |
+| `job:reconcile-daily` | calls | `api:fn identity/bridge` | db/core/supabase/functions/bridge/handler.ts:116 |
 | `job:reconcile-daily` | configured-by | `env:BRIDGE_SECRET_CORE_TO_IDENTITY` | db/core/supabase/functions/_shared/bridge.ts:66 |
 | `job:reconcile-daily` | reads | `table:finance.ledger_entries` | db/core/supabase/schemas/finance/reconcile.sql:15 |
 | `job:referral-bonus` | writes | `table:finance.ledger_entries` | db/core/supabase/schemas/finance/referral_bonus.sql:34 (finance.post) |
@@ -2265,6 +2266,7 @@ Masalah sistem yang ditemukan saat menyusun PRD v0.2 dan saat dicek ulang (v0.2.
 | 2026-10-20 | `api:fn identity/disburse` | Audit PRD ulang (AA-5, A3.7 "tindak lanjuti yang menggantung", R-18): instant processing yang sudah punya provider_ref tapi callback-nya hilang menggantung selamanya tanpa alert (retry hanya untuk yang tanpa provider_ref) | diperbaiki: retry_instant_payouts juga mengirim processing ber-ref > 1 jam ke disburse + alert payout.instant_stuck; disburse membaca status di penyedia (provider.status, GET /v2/payouts/{id}) untuk payout ber-ref — tidak pernah mengirim ulang (cegah transfer ganda); bridge_get_payout membawa provider_ref |
 | 2026-10-20 | `api:rpc core.mark_fulfillment_delivered` | Review Claudex R27: webhook macet yang sedang dikirim ulang worker (lease aktif / retry terjadwal) tetap bisa ditandai terkirim manual → reward bisa sampai dua kali | diperbaiki: tandai terkirim ditolak selama lease aktif (delivery_in_flight) atau kirim ulang terjadwal (invalid_state:retrying); api.fulfillments membawa next_retry_at, admin hanya menampilkan Kirim ulang/Tandai terkirim untuk webhook yang benar-benar berhenti |
 | 2026-10-20 | `job:track-due` | Audit PRD ulang (AA-6, F-A01/F-X01 kesehatan tracking): saat track-worker mati, enqueue_due_submissions terus menggeser next_poll_at (+1 jam lease) sehingga alert tracking.lag & kartu overview "Tracking terlambat" tetap 0 — pesan cuma menumpuk di antrean | diperbaiki: tracking.lagging_count = submisi jatuh tempo > 2 jam ATAU pesan antrean tracking > 1 jam belum diproses; dipakai alert lifecycle dan api.admin_overview |
+| 2026-10-20 | `api:fn core/bridge` | Audit PRD ulang (AA-16, alur 7 hapus akun UU PDP): close_account hanya mengosongkan avatar_path; file foto profil di bucket publik avatars/{user_id}/ tetap bisa diakses lewat URL publik | diperbaiki: setelah close_account ok (baru/sudah tertutup), bridge menghapus semua objek avatars/{user_id}/ lewat Storage API (gagal → error, identity mengulang; close_account idempoten); diverifikasi ke storage lokal: URL publik tidak melayani file lagi |
 | 2026-10-20 | `api:fn core/social` | Audit PRD (G-1, F-C02/D-11): YouTube hanya bisa dihubungkan lewat OAuth Google; fallback kode di deskripsi channel tidak ada (YOUTUBE_API_KEY tak dipakai) | diperbaiki: aksi youtube_code / youtube_verify (kode CLIP-… per user+channel harus ada di deskripsi) → akun terverifikasi dengan token mode api_key; adapter memakai ?key= (tanpa Analytics, tanpa refresh); dialog di halaman Akun sosmed |
 ## Keputusan
 
