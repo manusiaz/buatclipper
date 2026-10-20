@@ -448,7 +448,8 @@
     "bankMissingBody": "Hubungi tim Clipper untuk instruksi pembayaran.",
     "copy": "Salin",
     "copied": "Tersalin",
-    "confirmNote": "Tim finance mencocokkan pembayaran secara manual (biasanya di hari kerja yang sama). Status berubah jadi Lunas setelah cocok."
+    "confirmNote": "Tim finance mencocokkan pembayaran secara manual (biasanya di hari kerja yang sama). Status berubah jadi Lunas setelah cocok.",
+    "feeExempt": "Tanpa fee baru untuk {amount} budget dari kredit rollover (sisa campaign sebelumnya)."
   },
   "leftover": {
     "title": "Sisa budget campaign",

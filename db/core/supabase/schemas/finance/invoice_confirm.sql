@@ -174,12 +174,28 @@ end $$;
 -- Pakai kredit org untuk invoice (brand_owner/brand_finance aal2). p_amount = kredit yang dicadangkan (null = sebanyak mungkin,
 -- 0 = lepas cadangan). Kredit menutup penuh → lunas (kanal credit, jurnal sama dengan transfer); sisanya dibayar transfer/QRIS
 -- dan confirm_invoice_payment menagih total − credit_applied. Hasil: {credit_applied, due, paid}.
+-- D-09 rollover "tanpa fee baru": kredit rollover (jurnal ref_type rollover ke org_credit) yang belum dipakai membebaskan fee
+-- invoice campaign/top-up berikutnya; dikurangi fee_exempt invoice yang tidak void (void = kembali tersedia).
+create function finance.rollover_available(p_org uuid) returns numeric
+language sql stable security definer set search_path = '' as $$
+  select greatest(
+    coalesce((select sum(e.amount) from finance.ledger_entries e join finance.ledger_accounts a on a.id = e.account_id
+               where a.owner_type = 'org_credit' and a.owner_id = p_org and a.reward_type_id = finance.idr()
+                 and e.ref_type = 'rollover' and e.amount > 0), 0)
+    - coalesce((select sum(i.fee_exempt) from finance.invoices i where i.org_id = p_org and i.status <> 'void'), 0), 0);
+$$;
+
 create function api.pay_invoice_with_credit(p_invoice uuid, p_amount numeric default null) returns jsonb
 language plpgsql security definer set search_path = '' as $$
 declare
   uid uuid := market.session_uid();
   inv finance.invoices;
   want numeric;
+  ex numeric;
+  base numeric;
+  new_mgmt numeric;
+  new_adm numeric;
+  new_tax numeric;
 begin
   select * into inv from finance.invoices i where i.id = p_invoice for update;
   if not found or not ops.is_org_member(inv.org_id, 'brand_owner', 'brand_finance') then
@@ -202,6 +218,22 @@ begin
     perform market.fail('campaign_already_funded');
   end if;
   perform pg_advisory_xact_lock(hashtextextended('org_credit:' || inv.org_id, 0));
+  -- Porsi budget yang didanai rollover tidak dikenai fee lagi (sekali per invoice): fee mgmt/admin dihitung ulang atas dasar
+  -- dikurangi porsi itu, pajak ikut, total turun sebelum kredit diterapkan.
+  if inv.kind in ('campaign', 'topup') and inv.fee_exempt = 0 then
+    ex := least(finance.rollover_available(inv.org_id), finance.org_credit_available(inv.org_id) + inv.credit_applied, inv.subtotal,
+                coalesce(p_amount, inv.subtotal));
+    base := inv.subtotal + finance.noncash_value_idr(inv.campaign_id, case when inv.kind = 'topup' then inv.pool_topups end);
+    if ex > 0 and base > 0 then
+      new_mgmt := round((base - ex) * inv.mgmt_fee / base, 2);
+      new_adm := round((base - ex) * inv.admin_fee / base, 2);
+      new_tax := round((new_mgmt + new_adm + inv.service_fee)
+                       * coalesce((select (st.value #>> '{}')::numeric from ops.settings st where st.key = 'public.billing.tax_pct'), 11) / 100, 2);
+      update finance.invoices set fee_exempt = ex, mgmt_fee = new_mgmt, admin_fee = new_adm, tax = new_tax,
+             total = subtotal + new_mgmt + new_adm + service_fee + new_tax
+       where id = inv.id returning * into inv;
+    end if;
+  end if;
   -- tersedia + cadangan invoice ini sendiri = yang boleh dipakai untuk invoice ini
   want := least(inv.total, finance.org_credit_available(inv.org_id) + inv.credit_applied);
   if p_amount is not null then
@@ -225,6 +257,6 @@ end $$;
 
 
 revoke execute on function api.confirm_invoice_payment(uuid, numeric, timestamptz, text, text), finance.settle_invoice(finance.invoices),
-  finance.org_credit_available(uuid), api.org_credit(uuid), api.pay_invoice_with_credit(uuid, numeric) from public;
+  finance.org_credit_available(uuid), finance.rollover_available(uuid), api.org_credit(uuid), api.pay_invoice_with_credit(uuid, numeric) from public;
 grant execute on function api.confirm_invoice_payment(uuid, numeric, timestamptz, text, text), api.org_credit(uuid),
   api.pay_invoice_with_credit(uuid, numeric) to authenticated;

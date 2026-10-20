@@ -31,6 +31,8 @@ export interface InvoiceRow {
   total: number;
   /** Kredit org yang dicadangkan/dipakai (D-09). */
   credit_applied: number;
+  /** Porsi budget dari kredit rollover yang dibebaskan dari fee (D-09). */
+  fee_exempt: number;
   /** total − credit_applied: yang dibayar lewat transfer/QRIS dan dikonfirmasi finance. */
   amount_due: number;
   status: string;
@@ -133,6 +135,11 @@ export async function InvoiceDetail({
                   </tr>
                 ) : null,
               )}
+              {inv.fee_exempt > 0 ? (
+                <tr className="border-b border-border">
+                  <td colSpan={2} className="py-2 text-caption text-success-fg">{t('feeExempt', { amount: idr(inv.fee_exempt) })}</td>
+                </tr>
+              ) : null}
               <tr>
                 <th scope="row" className="pt-3 text-left text-h6 text-ink">{t('total')}</th>
                 <td className="pt-3 text-right text-h5 text-ink tnum">{idr(inv.total)}</td>

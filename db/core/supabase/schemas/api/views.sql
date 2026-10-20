@@ -101,7 +101,7 @@ create view api.fulfillment_exports with (security_invoker = true) as
   group by f.reward_type_id, f.export_ref;
 create view api.invoices with (security_invoker = true) as
   select id, number, org_id, campaign_id, kind, subtotal, mgmt_fee, admin_fee, service_fee, tax, total, status, payment_channel,
-         paid_amount, paid_at, faktur_no, issued_at, due_at, pin_until, pool_topups, credit_applied,
+         paid_amount, paid_at, faktur_no, issued_at, due_at, pin_until, pool_topups, credit_applied, fee_exempt,
          total - credit_applied as amount_due  -- yang ditagih lewat transfer/QRIS setelah kredit org
   from finance.invoices;
 create view api.org_refunds with (security_invoker = true) as

@@ -1625,6 +1625,27 @@ reset role;
 select ok(exists (select 1 from ops.notifications where user_id = '11111111-0000-0000-0000-000000000f10' and event = 'account.banned'),
           'regresi AA-7: ban dari manajemen user mengabari clipper (paritas dengan ban fraud queue)');
 
+-- Regresi audit 2 AB-2 (§5.3 D-09): budget campaign baru yang didanai kredit rollover tidak dikenai fee lagi.
+select pg_temp.mk_campaign('55555555-0000-0000-0000-0000000000fa', 'roll-fee', 0);
+select pg_temp.mk_pool('55555555-0000-0000-0000-0000000000fa', '66666666-0000-0000-0000-0000000000fa', 1000000, 100000);
+select finance.post(gen_random_uuid(), jsonb_build_array(
+  finance.e(finance.account('bank_clearing', null, finance.idr()), -1000000, 'rollover', 'fixture:roll-fee'),
+  finance.e(finance.account('org_credit', '44444444-0000-0000-0000-000000000001', finance.idr()), 1000000, 'rollover', 'fixture:roll-fee')));
+insert into t_pay select 'inv_roll', (finance.issue_invoice('44444444-0000-0000-0000-000000000001', '55555555-0000-0000-0000-0000000000fa',
+                                                            'campaign', 1000000)).id;
+select is((select mgmt_fee + admin_fee + tax from finance.invoices where id = (select id from t_pay where k = 'inv_roll')), 222000::numeric,
+          'invoice campaign terbit dengan fee 15% + 5% + pajak 11% (belum tahu sumber dana)');
+set local role authenticated;
+select pg_temp.jwt('22222222-0000-0000-0000-0000000000c1', '{"aal":"aal2"}');
+select is(api.pay_invoice_with_credit((select id from t_pay where k = 'inv_roll')) ->> 'paid', 'true',
+          'kredit rollover membayar budget penuh');
+reset role;
+select is((select array[fee_exempt, mgmt_fee, admin_fee, tax, total] from finance.invoices where id = (select id from t_pay where k = 'inv_roll')),
+          array[1000000, 0, 0, 0, 1000000]::numeric[],
+          'regresi AB-2: porsi budget dari rollover tanpa fee baru (fee & pajaknya dihapus, total = budget)');
+select is(finance.rollover_available('44444444-0000-0000-0000-000000000001'),
+          300000::numeric, 'rollover terpakai tercatat di fee_exempt (1 jt), sisa rollover lama 300 rb; tidak membebaskan fee dua kali');
+
 -- ========== Invarian akhir ==========
 select is((select count(*)::int from (select 1 from finance.ledger_entries e group by e.txn_id, e.reward_type_id having sum(e.amount) <> 0) x),
           0, 'akhir: ledger seimbang per transaksi per reward type');

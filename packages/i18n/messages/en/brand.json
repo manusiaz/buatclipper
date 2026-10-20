@@ -448,7 +448,8 @@
     "bankMissingBody": "Contact the Clipper team for payment instructions.",
     "copy": "Copy",
     "copied": "Copied",
-    "confirmNote": "Finance matches payments manually (usually the same business day). The status changes to Paid once matched."
+    "confirmNote": "Finance matches payments manually (usually the same business day). The status changes to Paid once matched.",
+    "feeExempt": "No new fees on {amount} of budget funded by rollover credit (previous campaign leftover)."
   },
   "leftover": {
     "title": "Leftover campaign budget",

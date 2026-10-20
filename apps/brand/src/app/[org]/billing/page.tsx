@@ -25,7 +25,7 @@ import { InvoiceCredit } from '@/features/billing/pay-credit';
 import { can, getOrgContext, isUuid, num, publicSettings } from '@/lib/org';
 
 const PAGE = 25;
-const INVOICE_COLS = 'id, number, kind, campaign_id, subtotal, mgmt_fee, admin_fee, service_fee, tax, total, credit_applied, amount_due, status, payment_channel, paid_amount, paid_at, faktur_no, issued_at, due_at, pin_until';
+const INVOICE_COLS = 'id, number, kind, campaign_id, subtotal, mgmt_fee, admin_fee, service_fee, tax, total, credit_applied, fee_exempt, amount_due, status, payment_channel, paid_amount, paid_at, faktur_no, issued_at, due_at, pin_until';
 
 export async function generateMetadata(): Promise<Metadata> {
   return { title: (await getTranslations('brand.nav'))('billing') };
@@ -43,6 +43,7 @@ const asInvoice = (r: Record<string, unknown>): InvoiceRow => ({
   tax: num(r.tax),
   total: num(r.total),
   credit_applied: num(r.credit_applied),
+  fee_exempt: num(r.fee_exempt),
   amount_due: r.amount_due == null ? num(r.total) - num(r.credit_applied) : num(r.amount_due),
   status: String(r.status ?? 'issued'),
   payment_channel: (r.payment_channel as string | null) ?? null,

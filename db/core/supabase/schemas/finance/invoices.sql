@@ -18,6 +18,8 @@ create table finance.invoices (
   paid_amount numeric(18, 2) check (paid_amount > 0),
   -- Kredit org yang dicadangkan untuk invoice ini (api.pay_invoice_with_credit); dijurnal saat lunas, lepas sendiri kalau void.
   credit_applied numeric(18, 2) not null default 0 check (credit_applied >= 0),
+  -- D-09: porsi budget yang didanai kredit rollover (sisa budget campaign lama, fee-nya sudah dibayar) → tanpa fee baru.
+  fee_exempt numeric(18, 2) not null default 0 check (fee_exempt >= 0),
   paid_at timestamptz,
   confirmed_by uuid,
   faktur_no text,

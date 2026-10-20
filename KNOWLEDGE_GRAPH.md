@@ -589,11 +589,11 @@ Arah: `A --tipe--> B` = A bergantung pada B. `?` = belum terverifikasi.
 | `page:brand/` | reads | `table:market.org_members` | apps/brand/src/app/page.tsx:20 |
 | `page:brand/` | wrapped-by | `layout:brand` | apps/brand/src/app/layout.tsx:20 |
 | `page:brand/[org]/billing` | calls | `api:rpc core.request_refund` | apps/brand/src/features/billing/actions.ts:19 |
-| `page:brand/[org]/billing` | calls | `api:rpc core.org_credit` | apps/brand/src/app/[org]/billing/page.tsx:78 |
+| `page:brand/[org]/billing` | calls | `api:rpc core.org_credit` | apps/brand/src/app/[org]/billing/page.tsx:79 |
 | `page:brand/[org]/billing` | calls | `api:rpc core.pay_invoice_with_credit` | apps/brand/src/features/billing/actions.ts:44 |
-| `page:brand/[org]/billing` | reads | `table:finance.invoices` | apps/brand/src/app/[org]/billing/page.tsx:74 |
-| `page:brand/[org]/billing` | reads | `table:finance.org_refunds` | apps/brand/src/app/[org]/billing/page.tsx:77 |
-| `page:brand/[org]/billing` | routes-to | `page:accounts/security` | apps/brand/src/app/[org]/billing/page.tsx:119 |
+| `page:brand/[org]/billing` | reads | `table:finance.invoices` | apps/brand/src/app/[org]/billing/page.tsx:75 |
+| `page:brand/[org]/billing` | reads | `table:finance.org_refunds` | apps/brand/src/app/[org]/billing/page.tsx:78 |
+| `page:brand/[org]/billing` | routes-to | `page:accounts/security` | apps/brand/src/app/[org]/billing/page.tsx:120 |
 | `page:brand/[org]/billing` | routes-to | `page:brand/[org]/campaigns` | PRD v0.3.1 §6 B1.8 (belum di kode: halaman billing tanpa link ke daftar campaign; lewat sidebar layout:brand) |
 | `page:brand/[org]/billing` | wrapped-by | `layout:brand` | apps/brand/src/app/layout.tsx:20 |
 | `page:brand/[org]/campaigns` | calls | `api:rpc core.duplicate_campaign` | apps/brand/src/features/campaigns/actions.ts:12 |
@@ -977,9 +977,9 @@ Arah: `A --tipe--> B` = A bergantung pada B. `?` = belum terverifikasi.
 | `api:rpc core.org_credit` | reads | `table:finance.ledger_entries` | db/core/supabase/schemas/finance/invoice_confirm.sql:163 |
 | `api:rpc core.org_credit` | reads | `table:finance.org_refunds` | db/core/supabase/schemas/finance/invoice_confirm.sql:142 (finance.org_credit_available) |
 | `api:rpc core.org_credit` | reads | `table:finance.reward_pools` | db/core/supabase/schemas/finance/invoice_confirm.sql:168 |
-| `api:rpc core.pay_invoice_with_credit` | guarded-by | `policy:core.org-role` | db/core/supabase/schemas/finance/invoice_confirm.sql:185 |
-| `api:rpc core.pay_invoice_with_credit` | writes | `table:finance.invoices` | db/core/supabase/schemas/finance/invoice_confirm.sql:215 |
-| `api:rpc core.pay_invoice_with_credit` | writes | `table:finance.ledger_entries` | db/core/supabase/schemas/finance/invoice_confirm.sql:220 (finance.settle_invoice → finance.post) |
+| `api:rpc core.pay_invoice_with_credit` | guarded-by | `policy:core.org-role` | db/core/supabase/schemas/finance/invoice_confirm.sql:201 |
+| `api:rpc core.pay_invoice_with_credit` | writes | `table:finance.invoices` | db/core/supabase/schemas/finance/invoice_confirm.sql:247 |
+| `api:rpc core.pay_invoice_with_credit` | writes | `table:finance.ledger_entries` | db/core/supabase/schemas/finance/invoice_confirm.sql:252 (finance.settle_invoice → finance.post) |
 | `api:rpc core.pay_invoice_with_credit` | writes | `table:finance.reward_pools` | db/core/supabase/schemas/finance/invoice_confirm.sql:46 (finance.settle_invoice) |
 | `api:rpc core.record_review` | calls | `fn:enqueue_notification` | db/core/supabase/schemas/trust/decisions.sql:50 (trust.apply_submission_decision) |
 | `api:rpc core.record_review` | guarded-by | `policy:core.admin-aal2` | db/core/supabase/schemas/api/review.sql:49 |
@@ -1156,9 +1156,9 @@ Arah: `A --tipe--> B` = A bergantung pada B. `?` = belum terverifikasi.
 | `table:finance.fulfillments` | typed-by | `table:market.profiles` | db/core/supabase/schemas/finance/fulfillments.sql:5 |
 | `table:finance.fulfillments` | typed-by | `table:market.reward_types` | db/core/supabase/schemas/finance/fulfillments.sql:6 |
 | `table:finance.fulfillments` | typed-by | `table:member.recipient_details` | PRD v0.3.1 §14 kg.yaml E-18 refs E-29 (recipient_ref, tanpa FK); kode: finance/fulfillments.sql baris 9 recipient_ref |
-| `table:finance.invoices` | guarded-by | `policy:core.admin-aal2` | db/core/supabase/schemas/finance/invoices.sql:51 |
-| `table:finance.invoices` | guarded-by | `policy:core.iss-identity` | db/core/supabase/schemas/finance/invoices.sql:46 |
-| `table:finance.invoices` | guarded-by | `policy:core.org-role` | db/core/supabase/schemas/finance/invoices.sql:48 |
+| `table:finance.invoices` | guarded-by | `policy:core.admin-aal2` | db/core/supabase/schemas/finance/invoices.sql:53 |
+| `table:finance.invoices` | guarded-by | `policy:core.iss-identity` | db/core/supabase/schemas/finance/invoices.sql:48 |
+| `table:finance.invoices` | guarded-by | `policy:core.org-role` | db/core/supabase/schemas/finance/invoices.sql:50 |
 | `table:finance.invoices` | typed-by | `table:market.campaigns` | db/core/supabase/schemas/finance/invoices.sql:7 |
 | `table:finance.invoices` | typed-by | `table:market.organizations` | db/core/supabase/schemas/finance/invoices.sql:6 |
 | `table:finance.ledger_accounts` | guarded-by | `policy:core.admin-aal2` | db/core/supabase/schemas/finance/ledger_accounts.sql:24 |
@@ -2200,6 +2200,7 @@ Masalah sistem yang ditemukan saat menyusun PRD v0.2 dan saat dicek ulang (v0.2.
 | 2026-10-20 | `fn:accrue_earnings` | Audit PRD (G-2/G-4, §12 & C4.1): Trust Score tidak memengaruhi cap/hold; TikTok tidak punya cap lebih rendah & hold lebih panjang (satu max_per_clip & satu hold global) | diperbaiki: finance.clip_terms(trust, platform) dari public.finance.trust_tiers & public.finance.platform_rules → cap = max_per_clip × cap_pct tier × cap_pct platform (accrue), hold = hold tier minimal hold platform (release); default kode netral, nilai awal di seed; profil clipper menampilkan tier yang berlaku |
 | 2026-10-20 | `page:admin/finance` | Review interim (subagent, kuota Codex habis) C18: pencarian ledger dengan UUID submisi/refund tidak menemukan ref "<id>:…"; query OR lintas join tanpa indeks (scan penuh); dedupe announce tanpa indeks; eCPM memakai fee rule hari ini, bukan fee yang ditagih; margin retry_after 5 menit < lease penjadwal | diperbaiki: pencarian dipecah per kolom terindeks + awalan ref untuk UUID, indeks ledger_entries(ref_id text_pattern_ops), indeks parsial notifications campaign.new, eCPM = spend + fee invoice lunas diprorata ke spend, retry_after + 1 jam |
 | 2026-10-20 | `api:fn core/social` | Audit PRD (G-5, F-A06/FR-07): sinyal konten duplikat lintas akun (hash cover) tidak ada | diperbaiki: submit menghitung dHash 64-bit cover (thumbnail JPEG platform, jpeg-js; cover polos/format lain → null) → tracking.submissions.cover_hash; worker_create_submission mem-flag FR-07 bila cover berjarak Hamming ≤ trust.fraud.cover_distance (6) dengan submisi akun sosmed lain ≤ 90 hari |
+| 2026-10-20 | `api:rpc core.pay_invoice_with_credit` | Audit PRD ulang (brand AB-2, §5.3 D-09): kredit rollover dipakai membayar invoice campaign berikutnya tetap dikenai fee mgmt/admin + pajak penuh, padahal dijanjikan "tanpa fee baru" | diperbaiki: finance.rollover_available (jurnal rollover − invoices.fee_exempt non-void, dibatasi kredit tersedia); pay_invoice_with_credit menghitung ulang fee & pajak invoice campaign/top-up tanpa porsi rollover, tercatat di fee_exempt dan tampil di invoice brand |
 | 2026-10-20 | `page:admin/finance` | Review Claudex R21: sanksi di antara get_batch dan attach_export → CSV basi berisi clipper yang di-ban tetap diterima | diperbaiki: bridge_attach_export mengunci profil di CSV (FOR SHARE) dan menolak export_stale bila finance.payout_block berlaku |
 | 2026-10-20 | `page:brand/[org]/campaigns/new` | Audit PRD ulang (brand AB-3): ringkasan biaya builder menjumlahkan nilai pool non-tunai ke Total dibayar (contoh MPL Rp39,7 jt vs invoice Rp27,2 jt) | diperbaiki: costSummary meniru issue_invoice — budgetIdr = pool Rupiah ditagih, nonCashIdr dasar fee saja, creatorValueIdr untuk total budget creator |
 | 2026-10-20 | `page:admin/finance` | Audit PRD ulang (admin AA-1/AA-3/AA-7): payout requested milik clipper yang lalu di-ban/suspend/ber-flag tetap masuk batch & CSV; finance tak bisa menahan tanpa refund atau melepas tahan; ban dari manajemen user tidak menghanguskan pending/menghentikan tracking/mengabari | diperbaiki: finance.payout_block satu sumber alasan (create_payout_batch menahan, bridge_get_batch → identity holdReason profile_blocked, sanksi & raise_flag menahan langsung); api.hold_payout / api.release_payout + kartu "Perlu dicek sebelum batch"; trust.apply_ban dipakai fraud queue & manage_user |
