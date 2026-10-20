@@ -448,11 +448,11 @@ Arah: `A --tipe--> B` = A bergantung pada B. `?` = belum terverifikasi.
 | `page:admin/finance` | calls | `api:rpc core.import_bank_lines` | apps/admin/src/features/finance/actions.ts:127 |
 | `page:admin/finance` | calls | `api:rpc core.set_bank_ref` | apps/admin/src/features/finance/actions.ts:144 |
 | `page:admin/finance` | calls | `api:rpc core.bank_issues` | tab Mutasi bank (rpc bank_issues); kode baris 463 |
-| `api:rpc core.set_bank_ref` | writes | `table:finance.payouts` | db/core/supabase/schemas/finance/bank_lines.sql:136 |
+| `api:rpc core.set_bank_ref` | writes | `table:finance.payouts` | db/core/supabase/schemas/finance/bank_lines.sql:138 |
 | `page:admin/finance` | calls | `api:rpc core.resolve_bank_line` | apps/admin/src/features/finance/actions.ts:137 |
 | `page:admin/finance` | reads | `table:finance.bank_lines` | tab Mutasi bank (view api.bank_lines); kode baris 459 |
-| `api:rpc core.import_bank_lines` | writes | `table:finance.bank_lines` | db/core/supabase/schemas/finance/bank_lines.sql:180 |
-| `api:rpc core.resolve_bank_line` | writes | `table:finance.bank_lines` | db/core/supabase/schemas/finance/bank_lines.sql:205 |
+| `api:rpc core.import_bank_lines` | writes | `table:finance.bank_lines` | db/core/supabase/schemas/finance/bank_lines.sql:182 |
+| `api:rpc core.resolve_bank_line` | writes | `table:finance.bank_lines` | db/core/supabase/schemas/finance/bank_lines.sql:207 |
 | `job:reconcile-daily` | reads | `table:finance.bank_lines` | db/core/supabase/schemas/finance/bank_lines.sql:76 (finance.reconcile_bank dari cron reconcile-daily) |
 | `page:admin/finance` | calls | `api:rpc core.cancel_payout` | apps/admin/src/features/finance/actions.ts:99 |
 | `page:admin/finance` | calls | `api:rpc core.approve_payout_batch` | apps/admin/src/features/finance/actions.ts:43 |
@@ -906,7 +906,7 @@ Arah: `A --tipe--> B` = A bergantung pada B. `?` = belum terverifikasi.
 | `api:rpc core.confirm_invoice_payment` | writes | `table:finance.ledger_accounts` | db/core/supabase/schemas/finance/invoice_confirm.sql:48 (finance.account membuat akun campaign_pool, finance.settle_invoice) |
 | `api:rpc core.confirm_invoice_payment` | writes | `table:finance.ledger_entries` | db/core/supabase/schemas/finance/invoice_confirm.sql:129 (finance.settle_invoice → finance.post) |
 | `api:rpc core.confirm_invoice_payment` | writes | `table:finance.reward_pools` | db/core/supabase/schemas/finance/invoice_confirm.sql:46 (finance.settle_invoice) |
-| `api:rpc core.confirm_invoice_payment` | writes | `table:ops.audit_logs` | db/core/supabase/schemas/finance/invoice_confirm.sql:130 |
+| `api:rpc core.confirm_invoice_payment` | writes | `table:ops.audit_logs` | db/core/supabase/schemas/finance/invoice_confirm.sql:131 |
 | `api:rpc core.control_campaign` | writes | `table:finance.invoices` | db/core/supabase/schemas/api/campaigns.sql:572 (topup → finance.issue_invoice) |
 | `api:rpc core.control_campaign` | writes | `table:market.campaigns` | db/core/supabase/schemas/api/campaigns.sql:503 |
 | `api:rpc core.control_campaign` | writes | `table:market.rate_rules` | db/core/supabase/schemas/api/campaigns.sql:547 |
@@ -957,8 +957,8 @@ Arah: `A --tipe--> B` = A bergantung pada B. `?` = belum terverifikasi.
 | `api:rpc core.mark_fulfillment_delivered` | reads | `table:market.reward_types` | db/core/supabase/schemas/finance/fulfillment_admin.sql:16 |
 | `api:rpc core.mark_fulfillment_delivered` | writes | `table:finance.fulfillments` | db/core/supabase/schemas/finance/fulfillment_admin.sql:12, db/core/supabase/schemas/api/worker.sql:587 (api.worker_fulfillment_result, baris 28) |
 | `api:rpc core.mark_fulfillment_delivered` | writes | `table:ops.audit_logs` | db/core/supabase/schemas/finance/fulfillment_admin.sql:29 |
-| `api:rpc core.cancel_payout` | writes | `table:finance.payouts` | db/core/supabase/schemas/finance/payout_flow.sql:322 |
-| `api:rpc core.cancel_fulfillment` | writes | `table:finance.fulfillments` | db/core/supabase/schemas/finance/payout_flow.sql:373 |
+| `api:rpc core.cancel_payout` | writes | `table:finance.payouts` | db/core/supabase/schemas/finance/payout_flow.sql:323 |
+| `api:rpc core.cancel_fulfillment` | writes | `table:finance.fulfillments` | db/core/supabase/schemas/finance/payout_flow.sql:374 |
 | `api:view core.fulfillment_exports` | reads | `table:finance.fulfillments` | db/core/supabase/schemas/api/views.sql:100 |
 | `api:view core.admin_ledger` | reads | `table:finance.ledger_entries` | db/core/supabase/schemas/api/views.sql:86 |
 | `api:rpc core.missing_brief_tags` | guarded-by | `policy:core.public-read` | db/core/supabase/schemas/api/brief.sql:4 (security invoker lewat api.campaigns) |
@@ -966,15 +966,15 @@ Arah: `A --tipe--> B` = A bergantung pada B. `?` = belum terverifikasi.
 | `api:rpc core.missing_brief_tags` | reads | `table:market.campaigns` | db/core/supabase/schemas/api/brief.sql:15 |
 | `api:rpc core.my_referral_code` | guarded-by | `policy:core.rls-self` | PRD v0.3.1 Lampiran A.2 my_referral_code; kode: security definer, hanya profil auth.uid() (market/referrals.sql baris 27, 33) |
 | `api:rpc core.my_referral_code` | writes | `table:market.profiles` | db/core/supabase/schemas/market/referrals.sql:36 |
-| `api:rpc core.org_credit` | guarded-by | `policy:core.admin-aal2` | db/core/supabase/schemas/finance/invoice_confirm.sql:151 |
-| `api:rpc core.org_credit` | guarded-by | `policy:core.org-role` | db/core/supabase/schemas/finance/invoice_confirm.sql:151 |
-| `api:rpc core.org_credit` | reads | `table:finance.ledger_accounts` | db/core/supabase/schemas/finance/invoice_confirm.sql:154 |
-| `api:rpc core.org_credit` | reads | `table:finance.ledger_entries` | db/core/supabase/schemas/finance/invoice_confirm.sql:162 |
-| `api:rpc core.org_credit` | reads | `table:finance.org_refunds` | db/core/supabase/schemas/finance/invoice_confirm.sql:141 (finance.org_credit_available) |
-| `api:rpc core.org_credit` | reads | `table:finance.reward_pools` | db/core/supabase/schemas/finance/invoice_confirm.sql:167 |
-| `api:rpc core.pay_invoice_with_credit` | guarded-by | `policy:core.org-role` | db/core/supabase/schemas/finance/invoice_confirm.sql:184 |
-| `api:rpc core.pay_invoice_with_credit` | writes | `table:finance.invoices` | db/core/supabase/schemas/finance/invoice_confirm.sql:214 |
-| `api:rpc core.pay_invoice_with_credit` | writes | `table:finance.ledger_entries` | db/core/supabase/schemas/finance/invoice_confirm.sql:219 (finance.settle_invoice → finance.post) |
+| `api:rpc core.org_credit` | guarded-by | `policy:core.admin-aal2` | db/core/supabase/schemas/finance/invoice_confirm.sql:152 |
+| `api:rpc core.org_credit` | guarded-by | `policy:core.org-role` | db/core/supabase/schemas/finance/invoice_confirm.sql:152 |
+| `api:rpc core.org_credit` | reads | `table:finance.ledger_accounts` | db/core/supabase/schemas/finance/invoice_confirm.sql:155 |
+| `api:rpc core.org_credit` | reads | `table:finance.ledger_entries` | db/core/supabase/schemas/finance/invoice_confirm.sql:163 |
+| `api:rpc core.org_credit` | reads | `table:finance.org_refunds` | db/core/supabase/schemas/finance/invoice_confirm.sql:142 (finance.org_credit_available) |
+| `api:rpc core.org_credit` | reads | `table:finance.reward_pools` | db/core/supabase/schemas/finance/invoice_confirm.sql:168 |
+| `api:rpc core.pay_invoice_with_credit` | guarded-by | `policy:core.org-role` | db/core/supabase/schemas/finance/invoice_confirm.sql:185 |
+| `api:rpc core.pay_invoice_with_credit` | writes | `table:finance.invoices` | db/core/supabase/schemas/finance/invoice_confirm.sql:215 |
+| `api:rpc core.pay_invoice_with_credit` | writes | `table:finance.ledger_entries` | db/core/supabase/schemas/finance/invoice_confirm.sql:220 (finance.settle_invoice → finance.post) |
 | `api:rpc core.pay_invoice_with_credit` | writes | `table:finance.reward_pools` | db/core/supabase/schemas/finance/invoice_confirm.sql:46 (finance.settle_invoice) |
 | `api:rpc core.record_review` | calls | `fn:enqueue_notification` | db/core/supabase/schemas/trust/decisions.sql:50 (trust.apply_submission_decision) |
 | `api:rpc core.record_review` | guarded-by | `policy:core.admin-aal2` | db/core/supabase/schemas/api/review.sql:49 |
@@ -990,9 +990,9 @@ Arah: `A --tipe--> B` = A bergantung pada B. `?` = belum terverifikasi.
 | `api:rpc core.report_by_token` | reads | `table:market.report_links` | db/core/supabase/schemas/api/report_links.sql:89 |
 | `api:rpc core.report_by_token` | reads | `table:tracking.submissions` | db/core/supabase/schemas/api/report_links.sql:55 (market.campaign_report) |
 | `api:rpc core.request_fulfillment` | reads | `table:market.profiles` | db/core/supabase/schemas/finance/payout_flow.sql:16 (finance.require_active_clipper) |
-| `api:rpc core.request_fulfillment` | reads | `table:market.reward_types` | db/core/supabase/schemas/finance/payout_flow.sql:250 |
-| `api:rpc core.request_fulfillment` | writes | `table:finance.fulfillments` | db/core/supabase/schemas/finance/payout_flow.sql:280 |
-| `api:rpc core.request_fulfillment` | writes | `table:finance.ledger_entries` | db/core/supabase/schemas/finance/payout_flow.sql:282 (finance.post) |
+| `api:rpc core.request_fulfillment` | reads | `table:market.reward_types` | db/core/supabase/schemas/finance/payout_flow.sql:251 |
+| `api:rpc core.request_fulfillment` | writes | `table:finance.fulfillments` | db/core/supabase/schemas/finance/payout_flow.sql:281 |
+| `api:rpc core.request_fulfillment` | writes | `table:finance.ledger_entries` | db/core/supabase/schemas/finance/payout_flow.sql:283 (finance.post) |
 | `api:rpc core.request_payout` | reads | `table:finance.ledger_accounts` | db/core/supabase/schemas/finance/payout_flow.sql:76 |
 | `api:rpc core.request_payout` | reads | `table:finance.ledger_entries` | db/core/supabase/schemas/finance/payout_flow.sql:77 (finance.balance) |
 | `api:rpc core.request_payout` | reads | `table:market.profiles` | db/core/supabase/schemas/finance/payout_flow.sql:16 (finance.require_active_clipper) |
@@ -1109,7 +1109,7 @@ Arah: `A --tipe--> B` = A bergantung pada B. `?` = belum terverifikasi.
 | `job:lifecycle` | writes | `table:market.campaigns` | db/core/supabase/schemas/market/lifecycle.sql:57 |
 | `job:lifecycle` | writes | `table:tracking.submissions` | db/core/supabase/schemas/market/lifecycle.sql:75 |
 | `job:lifecycle` | writes | `table:trust.review_decisions` | db/core/supabase/schemas/market/lifecycle.sql:109 (trust.auto_approve_overdue) |
-| `job:alert-notify` | calls | `api:fn core/bridge` | db/core/supabase/schemas/ops/alerts.sql:69 (ops.notify_alerts → invoke bridge notify_admins) |
+| `job:alert-notify` | calls | `api:fn core/bridge` | db/core/supabase/schemas/ops/alerts.sql:76 (ops.notify_alerts → invoke bridge notify_admins) |
 | `job:notify-drain` | calls | `api:fn core/notify` | db/core/supabase/schemas/ops/cron.sql:8 |
 | `job:notify-drain` | configured-by | `env:CORE_SECRET_KEY` | db/core/supabase/schemas/ops/enqueue_notification.sql:36 (ops.invoke_function → header apikey) |
 | `job:reconcile-daily` | calls | `api:fn core/bridge` | db/core/supabase/schemas/finance/cron.sql:9 |
@@ -2195,6 +2195,7 @@ Masalah sistem yang ditemukan saat menyusun PRD v0.2 dan saat dicek ulang (v0.2.
 | 2026-10-20 | `fn:accrue_earnings` | Audit PRD (G-2/G-4, §12 & C4.1): Trust Score tidak memengaruhi cap/hold; TikTok tidak punya cap lebih rendah & hold lebih panjang (satu max_per_clip & satu hold global) | diperbaiki: finance.clip_terms(trust, platform) dari public.finance.trust_tiers & public.finance.platform_rules → cap = max_per_clip × cap_pct tier × cap_pct platform (accrue), hold = hold tier minimal hold platform (release); default kode netral, nilai awal di seed; profil clipper menampilkan tier yang berlaku |
 | 2026-10-20 | `page:admin/finance` | Review interim (subagent, kuota Codex habis) C18: pencarian ledger dengan UUID submisi/refund tidak menemukan ref "<id>:…"; query OR lintas join tanpa indeks (scan penuh); dedupe announce tanpa indeks; eCPM memakai fee rule hari ini, bukan fee yang ditagih; margin retry_after 5 menit < lease penjadwal | diperbaiki: pencarian dipecah per kolom terindeks + awalan ref untuk UUID, indeks ledger_entries(ref_id text_pattern_ops), indeks parsial notifications campaign.new, eCPM = spend + fee invoice lunas diprorata ke spend, retry_after + 1 jam |
 | 2026-10-20 | `api:fn core/social` | Audit PRD (G-5, F-A06/FR-07): sinyal konten duplikat lintas akun (hash cover) tidak ada | diperbaiki: submit menghitung dHash 64-bit cover (thumbnail JPEG platform, jpeg-js; cover polos/format lain → null) → tracking.submissions.cover_hash; worker_create_submission mem-flag FR-07 bila cover berjarak Hamming ≤ trust.fraud.cover_distance (6) dengan submisi akun sosmed lain ≤ 90 hari |
+| 2026-10-20 | `job:reconcile-daily` | Review Claudex R19: unggah bukti refund gagal lalu diulang dengan referensi lain → invalid:note tanpa jalan keluar di UI; dua transaksi paralel sama-sama mengirim email alert sejenis; retur bank (payout paid → failed) tidak membuka baris mutasi sampai rekonsiliasi harian | diperbaiki: refund approved boleh ganti referensi tanpa catatan + dialog terisi referensi tersimpan (api.org_refunds.bank_ref); pg_try_advisory_xact_lock per jenis alert (uji 2 sesi: 2 → 1 email); mark_batch_paid, pay_refund, confirm_invoice_payment menjalankan finance.reconcile_bank |
 | 2026-10-20 | `job:reconcile-daily` | Review interim C20: refund dibayar tak pernah punya bank_ref & payout boleh tanpa referensi → selamanya "tanpa mutasi" tanpa jalan koreksi; tab Mutasi bank membaca payload alert basi dan dedupe 20 jam menyembunyikan selisih baru; throttle email alert dari notified_at (asinkron) → N alert sejenis dalam satu transaksi = N email per admin (regresi C19) | diperbaiki: referensi wajib (mark_batch_paid; pay_refund setelah api.set_bank_ref yang diisi dialog bukti refund), api.set_bank_ref untuk koreksi (catatan + audit); api.bank_issues dibaca langsung; alert baru hanya untuk selisih yang belum termuat alert terbuka; ops.alerts.notify_requested_at menahan alert beruntun ≤ 15 menit (terlihat di transaksi yang sama) |
 | 2026-10-20 | `api:fn core/social` | Review interim C20-5: thumbnail Shorts YouTube (320×180, pillarbox hitam) hanya menyisakan ±16 bit dHash informatif → Shorts berbeda berjarak 0–4 bit → FR-07 palsu menahan earning | diperbaiki: bingkai polos di tepi dibuang sebelum dHash (Shorts berbeda kini 29–38 bit, re-encode ≤ 2); tes pillarbox membuktikan kode lama memberi jarak 4/4/0 |
 | 2026-10-20 | `table:finance.bank_lines` | Review Claudex R18: baris mutasi identik dari dua potongan file (tanggal sama) mendapat nomor urut sama → yang kedua dibuang diam-diam (debit ganda asli bisa tersembunyi); tab Mutasi bank memotong 200 baris terbaru sebelum mengurutkan → baris selisih lama tidak terjangkau | diperbaiki: unggahan wajib sehari penuh — file yang tidak memuat semua baris tersimpan untuk tanggalnya ditolak bank_partial_day, jumlah baris yang sudah ada dilaporkan; baris selisih diambil query sendiri (terlama dulu, 500 + jumlah total) |

@@ -127,6 +127,7 @@ begin
          paid_at = coalesce(p_paid_at, now()), confirmed_by = (select auth.uid())
    where id = inv.id;
   perform finance.settle_invoice(inv);
+  perform finance.reconcile_bank();
   insert into ops.audit_logs (actor_id, action, target, before, after)
   values ((select auth.uid()), 'invoice.confirm_payment', 'invoice:' || inv.id, jsonb_build_object('status', inv.status),
           jsonb_build_object('status', 'paid', 'amount', p_amount, 'ref', btrim(p_ref), 'channel', p_channel, 'paid_at', p_paid_at));

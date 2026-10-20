@@ -104,6 +104,7 @@ language plpgsql security definer set search_path = '' as $$
 declare
   ref text := btrim(coalesce(p_ref, ''));
   old text;
+  settled boolean := true;  -- refund approved belum dibayar: referensi boleh diganti tanpa catatan (unggah bukti diulang)
 begin
   if not ops.has_admin('admin_finance') then
     raise exception 'auth:forbidden' using errcode = '42501';
@@ -112,7 +113,8 @@ begin
     raise exception 'invalid:bank_ref' using errcode = 'P0001';
   end if;
   if p_target = 'refund' then
-    select r.bank_ref into old from finance.org_refunds r where r.id = p_id and r.status in ('approved', 'paid') for update;
+    select r.bank_ref, r.status = 'paid' into old, settled from finance.org_refunds r
+     where r.id = p_id and r.status in ('approved', 'paid') for update;
   elsif p_target = 'payout' then
     select p.bank_ref into old from finance.payouts p where p.id = p_id and p.status = 'paid' and p.channel = 'batch' for update;
   elsif p_target = 'invoice' then
@@ -127,7 +129,7 @@ begin
   if old is not distinct from ref then
     return finance.reconcile_bank();
   end if;
-  if old is not null and length(btrim(coalesce(p_note, ''))) < 3 then  -- mengganti referensi yang sudah ada = koreksi, wajib alasan
+  if old is not null and settled and length(btrim(coalesce(p_note, ''))) < 3 then  -- koreksi transaksi yang sudah dibayar, wajib alasan
     raise exception 'invalid:note' using errcode = 'P0001';
   end if;
   if p_target = 'refund' then

@@ -222,6 +222,7 @@ begin
   insert into ops.audit_logs (actor_id, action, target, before, after)
   values ((select auth.uid()), 'payout_batch.mark_paid', 'payout_batch:' || p_batch, jsonb_build_object('status', b.status),
           jsonb_build_object('results', p_results));
+  perform finance.reconcile_bank();  -- kas sistem berubah (paid / retur bank) → status baris mutasi ikut diperbarui
 end $$;
 
 -- Klaim reward non-tunai. recipient_schema reward type = [{key, pii, required}]: field pii tidak boleh ada di p_recipient

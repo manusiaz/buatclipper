@@ -49,7 +49,9 @@ end $$;
 -- F-X01 admin (alur 4): job tracking gagal, lonjakan fraud, payout gagal, selisih rekonsiliasi → email admin terkait lewat
 -- bridge identity (tanpa PII; payload tidak dikirim). Per jenis: alert terbuka terbaru yang belum terkirim (≤ 1 hari), maks
 -- satu email per jam dihitung dari email yang benar-benar terkirim (notified_at); permintaan yang masih berjalan
--- (notify_requested_at ≤ 15 menit, terlihat di transaksi yang sama) menahan alert beruntun. Job alert-notify mengulang yang gagal.
+-- (notify_requested_at ≤ 15 menit, terlihat di transaksi yang sama) menahan alert beruntun; transaksi paralel diserialkan dengan
+-- advisory lock per jenis (try: tidak menunggu, tanpa deadlock — yang memegang lock sedang mengirim). Job alert-notify mengulang
+-- yang gagal.
 create function ops.notify_alerts(p_kind text default null) returns int
 language plpgsql security definer set search_path = '' as $$
 declare
@@ -65,6 +67,11 @@ begin
                                where b.kind = a.kind and (b.notified_at > now() - interval '1 hour'
                                                           or b.notify_requested_at > now() - interval '15 minutes'))
             order by a.kind, a.id desc loop
+    continue when not pg_try_advisory_xact_lock(hashtext('ops.notify_alerts:' || r.kind));
+    -- Setelah lock: transaksi lain yang baru commit mungkin sudah meminta kirim (snapshot statement baru).
+    continue when exists (select 1 from ops.alerts b
+                           where b.kind = r.kind and b.id <> r.id
+                             and (b.notified_at > now() - interval '1 hour' or b.notify_requested_at > now() - interval '15 minutes'));
     update ops.alerts set notify_requested_at = now() where id = r.id;
     perform ops.invoke_function('bridge', jsonb_build_object('action', 'notify_admins', 'kind', r.kind, 'severity', r.severity,
                                                              'alert_id', r.id));

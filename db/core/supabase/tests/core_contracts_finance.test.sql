@@ -1212,8 +1212,12 @@ select throws_ok($$ select api.bridge_attach_proof('refund', (select id from t_p
                  'P0001', 'invalid:bank_ref', 'regresi C20-2: refund tidak bisa ditandai dibayar tanpa referensi mutasi bank');
 set local role authenticated;
 select pg_temp.jwt('33333333-0000-0000-0000-0000000000f1', '{"app_roles":["admin_finance"],"aal":"aal2"}');
-select api.set_bank_ref('refund', (select id from t_pay where k = 'refund'), 'TRF-REFUND-1');
+select api.set_bank_ref('refund', (select id from t_pay where k = 'refund'), 'TRF-REFUND-SALAH');
+select lives_ok($$ select api.set_bank_ref('refund', (select id from t_pay where k = 'refund'), 'TRF-REFUND-1') $$,
+                'unggah bukti refund diulang dengan referensi baru: refund belum dibayar tidak perlu catatan');
 reset role;
+select is((select bank_ref from finance.org_refunds where id = (select id from t_pay where k = 'refund')), 'TRF-REFUND-1',
+          'referensi refund mengikuti isian terakhir sebelum bukti terunggah');
 select api.bridge_attach_proof('refund', (select id from t_pay where k = 'refund'), 'payout-proofs/refund-1.pdf');
 select is((select status from finance.org_refunds where id = (select id from t_pay where k = 'refund')), 'paid', 'bukti transfer → refund paid');
 select is((select jsonb_object_agg(a.owner_type, e.amount) from finance.ledger_entries e join finance.ledger_accounts a on a.id = e.account_id
@@ -1425,6 +1429,15 @@ select is((select count(*) from ops.alerts where kind = 'reconcile.bank'), (sele
           'selisih berkurang (koreksi) tidak membuat alert baru');
 select ok((select count(*) from ops.alerts where kind = 'reconcile.bank') >= 3,
           'regresi C20-4: tiap selisih baru (baris tak dikenal, kredit ganda, payout tanpa mutasi) dikabari alert baru walau alert lama masih terbuka');
+insert into t_bank select 'po_batch', null, null, p.batch_id from finance.payouts p where p.id = (select id from t_bank where k = 'po');
+set local role authenticated;
+select pg_temp.jwt('33333333-0000-0000-0000-0000000000f1', '{"app_roles":["admin_finance"],"aal":"aal2"}');
+select api.mark_batch_paid((select id from t_bank where k = 'po_batch'),
+                           jsonb_build_array(jsonb_build_object('payout_id', (select id from t_bank where k = 'po'), 'status', 'failed',
+                                                                'reason', 'retur bank')));
+reset role;
+select is((select status from finance.bank_lines where reference = (select ref from t_bank where k = 'po')), 'open',
+          'regresi R19-3: retur bank lewat mark_batch_paid langsung membuka lagi baris mutasi (tanpa menunggu rekonsiliasi harian)');
 
 -- Regresi review R14: ban dari fraud queue bisa dicabut admin (profil core kembali active, bukan cuma login).
 set local role authenticated;

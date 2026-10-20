@@ -356,14 +356,14 @@ export type Database = {
                   ]
                 },"org_refunds": {
                   Row: {
-                    "amount": number | null,"campaign_id": string | null,"created_at": string | null,"id": string | null,"org_id": string | null,"paid_at": string | null,"requested_by": string | null,"status": string | null,"transfer_fee": number | null
+                    "amount": number | null,"bank_ref": string | null,"campaign_id": string | null,"created_at": string | null,"id": string | null,"org_id": string | null,"paid_at": string | null,"requested_by": string | null,"status": string | null,"transfer_fee": number | null
                   }
                   ComputedFields: never
                   Insert: {
-                           "amount"?: number | null,"campaign_id"?: string | null,"created_at"?: string | null,"id"?: string | null,"org_id"?: string | null,"paid_at"?: string | null,"requested_by"?: string | null,"status"?: string | null,"transfer_fee"?: number | null
+                           "amount"?: number | null,"bank_ref"?: string | null,"campaign_id"?: string | null,"created_at"?: string | null,"id"?: string | null,"org_id"?: string | null,"paid_at"?: string | null,"requested_by"?: string | null,"status"?: string | null,"transfer_fee"?: number | null
                          }
                         Update: {
-                           "amount"?: number | null,"campaign_id"?: string | null,"created_at"?: string | null,"id"?: string | null,"org_id"?: string | null,"paid_at"?: string | null,"requested_by"?: string | null,"status"?: string | null,"transfer_fee"?: number | null
+                           "amount"?: number | null,"bank_ref"?: string | null,"campaign_id"?: string | null,"created_at"?: string | null,"id"?: string | null,"org_id"?: string | null,"paid_at"?: string | null,"requested_by"?: string | null,"status"?: string | null,"transfer_fee"?: number | null
                          }
                         Relationships: [
                     

@@ -604,7 +604,7 @@ async function Instant({ loc }: { loc: UiLocale }) {
 
 async function Refunds({ loc, me }: { loc: UiLocale; me: string }) {
   const [t, db] = await Promise.all([getTranslations('admin'), coreServer('admin')]);
-  const list = rows(await db.from('org_refunds').select('id, org_id, campaign_id, amount, transfer_fee, status, requested_by, created_at, paid_at').in('status', ['requested', 'approved', 'paid']).order('created_at', { ascending: false }).limit(100));
+  const list = rows(await db.from('org_refunds').select('id, org_id, campaign_id, amount, transfer_fee, status, requested_by, created_at, paid_at, bank_ref').in('status', ['requested', 'approved', 'paid']).order('created_at', { ascending: false }).limit(100));
   const [orgs, camps] = await Promise.all([
     db.from('organizations').select('id, name').in('id', uniq(list.map((r) => r.org_id))),
     db.from('campaigns').select('id, title').in('id', uniq(list.map((r) => r.campaign_id))),
@@ -659,7 +659,7 @@ async function Refunds({ loc, me }: { loc: UiLocale; me: string }) {
                       success={t('finance.refundPaid')}
                       action={uploadProof.bind(null, 'refund', r.id!)}
                       fields={[
-                        { kind: 'text', name: 'bank_ref', label: t('finance.bankRefLabel'), helper: t('finance.bankRefHelp'), required: true },
+                        { kind: 'text', name: 'bank_ref', label: t('finance.bankRefLabel'), helper: t('finance.bankRefHelp'), required: true, defaultValue: r.bank_ref ?? '' },
                         { ...PROOF, label: t('finance.proofFile'), helper: t('finance.proofHelp') },
                       ]}
                     />
