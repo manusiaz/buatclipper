@@ -1,5 +1,5 @@
 // Notifikasi in-app (E-23, F-C11): event + payload → kunci pesan namespace notifications + nilai + deep link.
-// Event & kunci payload = db/identity/supabase/functions/_shared/templates.ts (37 event, sama dengan email/push).
+// Event & kunci payload = db/identity/supabase/functions/_shared/templates.ts (38 event, sama dengan email/push).
 
 export const EVENTS = [
   'campaign.new', 'campaign.invited', 'claim.expiring', 'submission.approved', 'submission.rejected', 'submission.forfeited',
@@ -8,7 +8,7 @@ export const EVENTS = [
   'account.suspended', 'account.banned', 'invoice.issued', 'invoice.paid', 'campaign.approved', 'campaign.rejected',
   'campaign.live', 'budget.used', 'budget.projection_low', 'campaign.settled', 'org.verified', 'org.rejected',
   'org.suspended', 'agency.link_requested', 'agency.link_approved', 'refund.requested', 'refund.paid', 'managed.draft_ready',
-  'account.warned', 'sanction.appeal_decided',
+  'account.warned', 'sanction.appeal_decided', 'security.notice',
 ] as const;
 
 export type NotificationEvent = (typeof EVENTS)[number];
@@ -59,6 +59,8 @@ export function notificationHref(event: string, payload: P, links: Links): strin
       return `${links.accounts}/kyc`;
     case 'account.banned':
       return `${links.accounts}/`;
+    case 'security.notice':
+      return `${links.accounts}/privacy`;
     case 'account.warned':
     case 'sanction.appeal_decided':
       return '/profile';

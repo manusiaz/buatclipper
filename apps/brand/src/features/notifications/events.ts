@@ -17,6 +17,7 @@ export const BRAND_EVENTS = [
   'refund.requested',
   'refund.paid',
   'managed.draft_ready',
+  'security.notice',
 ] as const;
 
 export type BrandEvent = (typeof BRAND_EVENTS)[number];
@@ -58,6 +59,8 @@ export function notificationHref(event: BrandEvent, payload: Payload): string | 
     case 'org.suspended':
     case 'agency.link_requested':
       return `/${org}/settings`;
+    case 'security.notice':
+      return null;
   }
 }
 
@@ -75,5 +78,6 @@ export function notificationValues(payload: Payload, formatIdr: (n: number) => s
     agency: s(payload.agency_org_name),
     client: s(payload.client_org_name),
     reason: s(payload.reason),
+    title: s(payload.title),
   };
 }

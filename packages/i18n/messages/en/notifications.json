@@ -89,5 +89,8 @@
   },
   "sanction": {
     "appeal_decided": { "title": "{decision, select, overturned {Appeal accepted} other {Appeal rejected}}", "body": "{decision, select, overturned {The sanction was lifted and its effects reversed where possible.} other {The sanction stays in place. The appeal decision is final.}}" }
+  },
+  "security": {
+    "notice": { "title": "{title}", "body": "{body}" }
   }
 }

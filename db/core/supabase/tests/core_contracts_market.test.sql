@@ -1209,6 +1209,23 @@ select is((select array_agg(p.username) from pgmq.q_email m join market.profiles
 select is((select array_agg(coalesce(recipient_count::text, 'null') order by title) from ops.broadcasts),
           array['2', '1', 'null'], 'recipient_count tercatat; yang terjadwal nanti belum terkirim');
 select is(ops.dispatch_broadcasts(), 0, 'broadcast tidak dikirim dua kali');
+-- Regresi audit 2 AA-15 (§16 UU PDP: notifikasi kebocoran ke subjek data maks 3 × 24 jam): ke SEMUA user, transaksional
+set local role authenticated;
+select pg_temp.jwt('33333333-0000-0000-0000-0000000000ad', '{admin_ops}', 'aal2');
+select throws_ok($$ select api.send_broadcast('Insiden data', 'Rincian insiden', '{}', '{in_app}', null, 'security') $$, '42501', 'auth:forbidden',
+                 'pemberitahuan keamanan butuh admin_super');
+select pg_temp.jwt('33333333-0000-0000-0000-0000000000ad', '{admin_super}', 'aal2');
+select throws_ok($$ select api.send_broadcast('Insiden data', 'Rincian insiden', '{"kyc":"approved"}', '{in_app}', null, 'security') $$,
+                 'P0001', 'invalid:segment', 'pemberitahuan keamanan tidak bisa disegmentasi');
+insert into t_ids (k, id) select 'bc_sec', api.send_broadcast('Pemberitahuan insiden data', 'Kami menemukan akses tidak sah ...', '{}', '{in_app}', null, 'security');
+reset role;
+select is((select channels @> array['in_app', 'email'] from ops.broadcasts where id = (select id from t_ids where k = 'bc_sec')), true,
+          'pemberitahuan keamanan selalu in-app + email');
+select is(ops.dispatch_broadcasts(), (select count(*)::int from market.profiles where status <> 'closed'),
+          'regresi AA-15: semua user yang masih punya akun (termasuk suspend/ban), bukan hanya yang aktif');
+select ok(exists (select 1 from pgmq.q_email m join market.profiles p on p.id = (m.message ->> 'user_id')::uuid
+                  where m.message ->> 'event' = 'security.notice' and p.username = 'andi'),
+          'email transaksional tetap terkirim walau user mematikan email promosi');
 
 -- ---------- job:trust-score (F-C12) ----------
 insert into trust.score_events (user_id, delta, reason, created_by) values

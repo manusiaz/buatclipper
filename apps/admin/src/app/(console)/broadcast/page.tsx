@@ -1,5 +1,6 @@
 import type { Metadata } from 'next';
 import { getLocale, getTranslations } from 'next-intl/server';
+import { hasRole } from '@clipper/auth';
 import { coreServer, requireAdmin } from '@clipper/auth/server';
 import { Badge, Card, CardHeader, CardTitle, EmptyState, formatDateTime, formatNumber, PageHeader, type UiLocale } from '@clipper/ui';
 import { rows } from '@/lib/data';
@@ -13,10 +14,10 @@ export async function generateMetadata(): Promise<Metadata> {
 
 // F-A12 / A6.1: tulis + jadwalkan broadcast ke segmen clipper; daftar ops.broadcasts dengan jumlah penerima.
 export default async function BroadcastPage() {
-  await requireAdmin(...rolesFor('broadcast'));
+  const { claims } = await requireAdmin(...rolesFor('broadcast'));
   const [t, tc, locale, db] = await Promise.all([getTranslations('admin'), getTranslations('common'), getLocale(), coreServer('admin')]);
   const loc = locale as UiLocale;
-  const list = rows(await db.from('broadcasts').select('id, title, body, segment, channels, scheduled_at, sent_at, recipient_count').order('scheduled_at', { ascending: false }).limit(50));
+  const list = rows(await db.from('broadcasts').select('id, title, body, segment, channels, scheduled_at, sent_at, recipient_count, kind').order('scheduled_at', { ascending: false }).limit(50));
   const platformLabels = Object.fromEntries(PLATFORM_KEYS.map((p) => [p, tc(`platforms.${p}`)]));
   const segText = (s: Segment) => {
     const parts = [
@@ -33,7 +34,7 @@ export default async function BroadcastPage() {
       <PageHeader title={t('broadcast.title')} description={t('broadcast.description')} />
       <div className="grid grid-cols-1 gap-5 xl:grid-cols-[minmax(0,3fr)_minmax(0,2fr)]">
         <Card padding="lg">
-          <BroadcastForm platformLabels={platformLabels} />
+          <BroadcastForm platformLabels={platformLabels} canSecurity={hasRole(claims, 'admin_super')} />
         </Card>
         <Card padding="none">
           <CardHeader className="px-5 pt-5">
@@ -46,7 +47,10 @@ export default async function BroadcastPage() {
               {list.map((b) => (
                 <li key={b.id} className="flex flex-col gap-1.5 px-5 py-4">
                   <div className="flex flex-wrap items-center justify-between gap-2">
-                    <span className="font-semibold break-words text-ink">{b.title}</span>
+                    <span className="font-semibold break-words text-ink">
+                      {b.kind === 'security' ? <Badge tone="danger" className="mr-2">{t('broadcast.securityBadge')}</Badge> : null}
+                      {b.title}
+                    </span>
                     {b.sent_at ? (
                       <Badge tone="success">{t('broadcast.sentTo', { n: formatNumber(b.recipient_count ?? 0, loc) })}</Badge>
                     ) : (

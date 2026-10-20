@@ -441,7 +441,7 @@ Arah: `A --tipe--> B` = A bergantung pada B. `?` = belum terverifikasi.
 | `page:admin/audit` | reads | `api:view identity.audit_logs` | kode: (console)/audit/page.tsx baris 34, source=identity (path ber-kurung) |
 | `page:admin/audit` | reads | `table:ops.audit_logs` | PRD v0.3.1 §14 kg.yaml features.F-A11; kode baris 34 (view api.audit_logs core) |
 | `page:admin/audit` | wrapped-by | `layout:admin` | apps/admin/src/app/layout.tsx:20 |
-| `page:admin/broadcast` | calls | `api:rpc core.send_broadcast` | apps/admin/src/features/broadcast/actions.ts:15 |
+| `page:admin/broadcast` | calls | `api:rpc core.send_broadcast` | apps/admin/src/features/broadcast/actions.ts:16 |
 | `page:admin/broadcast` | reads | `table:ops.broadcasts` | PRD v0.3.1 Lampiran B (ops.broadcasts); kode baris 19 |
 | `page:admin/broadcast` | wrapped-by | `layout:admin` | apps/admin/src/app/layout.tsx:20 |
 | `page:admin/campaigns` | calls | `api:rpc core.record_review` | apps/admin/src/features/campaign-review/actions.ts:10 |
@@ -1065,7 +1065,7 @@ Arah: `A --tipe--> B` = A bergantung pada B. `?` = belum terverifikasi.
 | `api:rpc core.save_campaign` | writes | `table:market.rate_rules` | db/core/supabase/schemas/api/campaigns.sql:370 |
 | `api:rpc core.save_reward_type` | guarded-by | `policy:core.org-role` | db/core/supabase/schemas/api/org.sql:366 |
 | `api:rpc core.save_reward_type` | writes | `table:market.reward_types` | db/core/supabase/schemas/api/org.sql:395 |
-| `api:rpc core.send_broadcast` | writes | `table:ops.broadcasts` | db/core/supabase/schemas/api/config.sql:156 |
+| `api:rpc core.send_broadcast` | writes | `table:ops.broadcasts` | db/core/supabase/schemas/api/config.sql:168 |
 | `api:rpc core.store_social_token` | guarded-by | `policy:core.definer-only` | db/core/supabase/schemas/tracking/vault.sql:4 (security definer; EXECUTE hanya service_role, baris 23) |
 | `api:rpc core.store_social_token` | writes | `table:tracking.social_accounts` | db/core/supabase/schemas/tracking/vault.sql:14 |
 | `api:rpc core.store_social_token` | writes | `table:vault.social-tokens` | db/core/supabase/schemas/tracking/vault.sql:13 |
@@ -1129,9 +1129,9 @@ Arah: `A --tipe--> B` = A bergantung pada B. `?` = belum terverifikasi.
 | `fn:enqueue_notification` | writes | `table:ops.notifications` | db/core/supabase/schemas/ops/enqueue_notification.sql:14 |
 | `fn:reverse_earning` | writes | `table:finance.ledger_entries` | db/core/supabase/schemas/finance/earnings.sql:336 (finance.post) |
 | `fn:reverse_earning` | writes | `table:finance.reward_pools` | db/core/supabase/schemas/finance/earnings.sql:329 |
-| `job:broadcast-dispatch` | calls | `fn:enqueue_notification` | db/core/supabase/schemas/ops/broadcast_dispatch.sql:39 |
-| `job:broadcast-dispatch` | writes | `table:ops.broadcasts` | db/core/supabase/schemas/ops/broadcast_dispatch.sql:45 |
-| `job:broadcast-dispatch` | writes | `table:ops.notifications` | db/core/supabase/schemas/ops/broadcast_dispatch.sql:39 (ops.enqueue_notification) |
+| `job:broadcast-dispatch` | calls | `fn:enqueue_notification` | db/core/supabase/schemas/ops/broadcast_dispatch.sql:40 |
+| `job:broadcast-dispatch` | writes | `table:ops.broadcasts` | db/core/supabase/schemas/ops/broadcast_dispatch.sql:46 |
+| `job:broadcast-dispatch` | writes | `table:ops.notifications` | db/core/supabase/schemas/ops/broadcast_dispatch.sql:40 (ops.enqueue_notification) |
 | `job:budget-alerts` | calls | `fn:enqueue_notification` | db/core/supabase/schemas/api/_helpers.sql:63 (market.notify_org, dipanggil market/jobs.sql baris 92) |
 | `job:budget-alerts` | writes | `table:ops.notifications` | db/core/supabase/schemas/api/_helpers.sql:63 (market.notify_org → ops.enqueue_notification) |
 | `job:claim-expiry` | calls | `fn:enqueue_notification` | db/core/supabase/schemas/market/claims.sql:37 |
@@ -1333,8 +1333,8 @@ Arah: `A --tipe--> B` = A bergantung pada B. `?` = belum terverifikasi.
 | `table:member.recipient_details` | typed-by | `table:auth.users` | db/identity/supabase/schemas/member/recipient_details.sql:4 |
 | `table:ops.audit_logs` | guarded-by | `policy:core.admin-aal2` | db/core/supabase/schemas/ops/audit_logs.sql:19 |
 | `table:ops.audit_logs` | guarded-by | `policy:core.iss-identity` | db/core/supabase/schemas/ops/audit_logs.sql:17 |
-| `table:ops.broadcasts` | guarded-by | `policy:core.admin-aal2` | db/core/supabase/schemas/ops/broadcasts.sql:21 |
-| `table:ops.broadcasts` | guarded-by | `policy:core.iss-identity` | db/core/supabase/schemas/ops/broadcasts.sql:19 |
+| `table:ops.broadcasts` | guarded-by | `policy:core.admin-aal2` | db/core/supabase/schemas/ops/broadcasts.sql:23 |
+| `table:ops.broadcasts` | guarded-by | `policy:core.iss-identity` | db/core/supabase/schemas/ops/broadcasts.sql:21 |
 | `table:ops.notification_prefs` | guarded-by | `policy:core.iss-identity` | db/core/supabase/schemas/ops/notifications.sql:31 |
 | `table:ops.notification_prefs` | guarded-by | `policy:core.rls-self` | db/core/supabase/schemas/ops/notifications.sql:33 |
 | `table:ops.notification_prefs` | typed-by | `table:market.profiles` | db/core/supabase/schemas/ops/notifications.sql:4 |
@@ -2286,6 +2286,7 @@ Masalah sistem yang ditemukan saat menyusun PRD v0.2 dan saat dicek ulang (v0.2.
 | 2026-10-20 | `api:fn core/bridge` | Audit PRD ulang (AA-16, alur 7 hapus akun UU PDP): close_account hanya mengosongkan avatar_path; file foto profil di bucket publik avatars/{user_id}/ tetap bisa diakses lewat URL publik | diperbaiki: setelah close_account ok (baru/sudah tertutup), bridge menghapus semua objek avatars/{user_id}/ lewat Storage API (gagal → error, identity mengulang; close_account idempoten); diverifikasi ke storage lokal: URL publik tidak melayani file lagi |
 | 2026-10-20 | `table:trust.sanctions` | Audit PRD ulang (AA-8, §12 "sanksi bertingkat: peringatan → tahan → suspend 30 hari → ban; semua sanksi bisa dibanding sekali"): tidak ada sanksi peringatan dan sanksi akun tidak bisa dibanding (hanya submisi ditolak) | diperbaiki: trust.sanctions dicatat resolve_fraud_flag (aksi baru warn, −5) & manage_user; api.appeal_sanction (sekali) + api.decide_sanction_appeal (dikabulkan → suspend/ban dicabut + unban identity, hold di-dismiss, penalti skor kembali; earning hangus tidak dijurnal ulang); notifikasi account.warned & sanction.appeal_decided; Profil clipper (Sanksi akun + Banding) dan antrean banding di Fraud admin |
 | 2026-10-20 | `job:track-due` | Review Claudex R29: lagging_count menghitung pesan antrean milik submisi yang sudah berhenti dilacak (akun dihapus) — juga pesan yang sengaja ditunda retry_later — sebagai macet | diperbaiki: cabang antrean hanya pesan yang sudah bisa diambil (vt ≤ now) > 1 jam dan submisinya masih tracking/flagged |
+| 2026-10-20 | `page:admin/broadcast` | Audit PRD ulang (AA-15, §16 UU PDP "notifikasi kebocoran ke subjek data maks 3 × 24 jam"): satu-satunya jalur massal = broadcast promo — hanya ke profil aktif dan emailnya dilewati bagi yang mematikan email promosi, jadi subjek data yang disuspend/diban/unsubscribe tidak dikabari | diperbaiki: ops.broadcasts.kind security (send_broadcast p_kind, admin_super, tanpa segmen, selalu in-app + email) → dispatch ke semua profil kecuali closed dengan event transaksional security.notice (template identity, clipper & brand); pilihan di form broadcast admin |
 | 2026-10-20 | `api:fn core/social` | Audit PRD (G-1, F-C02/D-11): YouTube hanya bisa dihubungkan lewat OAuth Google; fallback kode di deskripsi channel tidak ada (YOUTUBE_API_KEY tak dipakai) | diperbaiki: aksi youtube_code / youtube_verify (kode CLIP-… per user+channel harus ada di deskripsi) → akun terverifikasi dengan token mode api_key; adapter memakai ?key= (tanpa Analytics, tanpa refresh); dialog di halaman Akun sosmed |
 ## Keputusan
 

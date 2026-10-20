@@ -6,6 +6,8 @@ create table ops.broadcasts (
   body text not null check (char_length(body) between 1 and 2000),
   segment jsonb not null default '{}' check (jsonb_typeof(segment) = 'object'),
   channels text[] not null default '{in_app}' check (channels <@ array['in_app', 'email', 'push'] and cardinality(channels) >= 1),
+  -- security = pemberitahuan kebocoran/insiden data (§16 UU PDP, maks 3 × 24 jam): ke semua subjek data, transaksional
+  kind text not null default 'promo' check (kind in ('promo', 'security')),
   created_by uuid not null,
   scheduled_at timestamptz not null default now(),
   sent_at timestamptz,

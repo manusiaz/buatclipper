@@ -1008,6 +1008,9 @@
     "empty": "Belum ada broadcast",
     "everyone": "Semua clipper aktif",
     "sentTo": "{n} penerima",
-    "pending": "Menunggu"
+    "pending": "Menunggu",
+    "securityLabel": "Pemberitahuan keamanan / kebocoran data",
+    "securityHelp": "Ke semua user (termasuk yang ditangguhkan/diblokir), in-app + email transaksional, tanpa segmen. Wajib dikirim maks 3 × 24 jam sejak insiden diketahui (UU PDP). Hanya admin_super.",
+    "securityBadge": "Keamanan"
   }
 }

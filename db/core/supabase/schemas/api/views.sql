@@ -122,7 +122,7 @@ create view api.score_events with (security_invoker = true) as
 create view api.reward_codes with (security_invoker = true) as
   select id, reward_type_id, code, fulfillment_id, created_at, assigned_at from finance.reward_codes;
 create view api.broadcasts with (security_invoker = true) as
-  select id, title, body, segment, channels, created_by, scheduled_at, sent_at, recipient_count from ops.broadcasts;
+  select id, title, body, segment, channels, created_by, scheduled_at, sent_at, recipient_count, kind from ops.broadcasts;
 create view api.leaderboard with (security_invoker = true) as
   select 'week'::text as scope, w.week_start, null::uuid as campaign_id, w.user_id, p.username, p.avatar_path, w.views, w.rank
   from market.leaderboard_weekly w join market.profiles p on p.id = w.user_id

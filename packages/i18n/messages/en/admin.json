@@ -1008,6 +1008,9 @@
     "empty": "No broadcasts yet",
     "everyone": "All active clippers",
     "sentTo": "{n} recipients",
-    "pending": "Pending"
+    "pending": "Pending",
+    "securityLabel": "Security / data breach notice",
+    "securityHelp": "Goes to every user (including suspended/banned), in-app + transactional email, no segment. Must be sent within 3 × 24 hours of learning about the incident (PDP law). admin_super only.",
+    "securityBadge": "Security"
   }
 }

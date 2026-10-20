@@ -44,6 +44,7 @@ export const EVENTS = [
   "admin.alert",
   "account.warned",
   "sanction.appeal_decided",
+  "security.notice",
 ] as const;
 
 export type NotificationEvent = (typeof EVENTS)[number];
@@ -391,6 +392,13 @@ const DEFS: Record<NotificationEvent, Def> = {
     lines: (p) => [para(p, "body")],
     cta: "Buka aplikasi",
     url: (_p, l) => join(l.app, "campaigns"),
+  },
+  // §16 UU PDP: pemberitahuan kebocoran/insiden data ke semua user — transaksional (bukan PROMO_EVENTS), tanpa unsubscribe.
+  "security.notice": {
+    title: (p) => txt(p, "title") || "Pemberitahuan keamanan data",
+    lines: (p) => [para(p, "body")],
+    cta: "Pusat akun",
+    url: (_p, l) => join(l.accounts, "privacy"),
   },
   "account.suspended": {
     title: () => "Akun kamu ditangguhkan",

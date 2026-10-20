@@ -89,5 +89,8 @@
   },
   "sanction": {
     "appeal_decided": { "title": "{decision, select, overturned {Banding dikabulkan} other {Banding ditolak}}", "body": "{decision, select, overturned {Sanksi dibatalkan dan efeknya dipulihkan sejauh memungkinkan.} other {Sanksi tetap berlaku. Keputusan banding bersifat final.}}" }
+  },
+  "security": {
+    "notice": { "title": "{title}", "body": "{body}" }
   }
 }

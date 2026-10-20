@@ -119,9 +119,10 @@ begin
 end $$;
 
 -- A6.1: jadwalkan broadcast; dikirim job broadcast-dispatch (ops.dispatch_broadcasts). Segmen: {platforms, min_trust_score,
--- max_trust_score, kyc: approved|not_approved, active_days}.
+-- max_trust_score, kyc: approved|not_approved, active_days}. p_kind security (admin_super): pemberitahuan kebocoran data ke
+-- semua user (§16), tanpa segmen, selalu in-app + email transaksional (tidak terhalang berhenti langganan promosi).
 create function api.send_broadcast(p_title text, p_body text, p_segment jsonb default '{}', p_channels text[] default '{in_app}',
-                                   p_scheduled_at timestamptz default null) returns uuid
+                                   p_scheduled_at timestamptz default null, p_kind text default 'promo') returns uuid
 language plpgsql security definer set search_path = '' as $$
 declare
   uid uuid := market.session_uid();
@@ -131,6 +132,17 @@ declare
 begin
   if not ops.has_admin('admin_ops') then
     perform market.fail('auth:forbidden', 'butuh admin_ops aal2', '42501');
+  end if;
+  if coalesce(p_kind, '') not in ('promo', 'security') then
+    perform market.fail('invalid:kind', coalesce(p_kind, 'null'));
+  end if;
+  if p_kind = 'security' then
+    if not ops.has_admin('admin_super') then
+      perform market.fail('auth:forbidden', 'pemberitahuan keamanan butuh admin_super aal2', '42501');
+    end if;
+    if seg <> '{}' then
+      perform market.fail('invalid:segment', 'pemberitahuan keamanan ke semua user');
+    end if;
   end if;
   if jsonb_typeof(seg) <> 'object' then
     perform market.fail('invalid:segment', 'segmen harus object');
@@ -153,14 +165,17 @@ begin
      or (seg ? 'active_days' and coalesce(market.jnum(seg -> 'active_days'), 0) <= 0) then
     perform market.fail('invalid:segment', 'angka segmen');
   end if;
-  insert into ops.broadcasts (title, body, segment, channels, created_by, scheduled_at)
-  values (btrim(p_title), btrim(p_body), seg, coalesce(p_channels, '{in_app}'), uid, coalesce(p_scheduled_at, now()))
+  insert into ops.broadcasts (title, body, segment, channels, created_by, scheduled_at, kind)
+  values (btrim(p_title), btrim(p_body), seg,
+          case when p_kind = 'security' then (select array_agg(distinct c) from unnest(coalesce(p_channels, '{}') || array['in_app', 'email']) c)
+               else coalesce(p_channels, '{in_app}') end,
+          uid, coalesce(p_scheduled_at, now()), p_kind)
   returning id into bid;
   insert into ops.audit_logs (actor_id, action, target, before, after)
   values (uid, 'broadcast.create', 'broadcast:' || bid, null,
-          jsonb_build_object('title', btrim(p_title), 'segment', seg, 'channels', p_channels, 'scheduled_at', p_scheduled_at));
+          jsonb_build_object('title', btrim(p_title), 'segment', seg, 'channels', p_channels, 'scheduled_at', p_scheduled_at, 'kind', p_kind));
   return bid;
 end $$;
 
-revoke execute on function api.update_config(text, jsonb), api.send_broadcast(text, text, jsonb, text[], timestamptz) from public;
-grant execute on function api.update_config(text, jsonb), api.send_broadcast(text, text, jsonb, text[], timestamptz) to authenticated;
+revoke execute on function api.update_config(text, jsonb), api.send_broadcast(text, text, jsonb, text[], timestamptz, text) from public;
+grant execute on function api.update_config(text, jsonb), api.send_broadcast(text, text, jsonb, text[], timestamptz, text) to authenticated;

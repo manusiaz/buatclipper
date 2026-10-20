@@ -19,8 +19,9 @@ begin
     seg := b.segment;
     n := 0;
     for r in
+      -- security: semua subjek data yang masih punya akun (termasuk suspend/ban), bukan hanya yang aktif
       select p.id from market.profiles p
-       where p.status = 'active'
+       where (case when b.kind = 'security' then p.status <> 'closed' else p.status = 'active' end)
          and (not seg ? 'platforms'
               or exists (select 1 from tracking.social_accounts a where a.user_id = p.id and a.status = 'verified'
                          and a.platform::text in (select jsonb_array_elements_text(seg -> 'platforms'))))
@@ -36,7 +37,7 @@ begin
               or exists (select 1 from tracking.submissions s where s.user_id = p.id
                          and s.created_at >= now() - make_interval(days => (seg ->> 'active_days')::int)))
     loop
-      perform ops.enqueue_notification(r.id, 'broadcast.sent',
+      perform ops.enqueue_notification(r.id, case when b.kind = 'security' then 'security.notice' else 'broadcast.sent' end,
                                        jsonb_build_object('broadcast_id', b.id, 'title', b.title, 'body', b.body,
                                                           'channels', to_jsonb(b.channels)),
                                        'email' = any (b.channels) or 'push' = any (b.channels));

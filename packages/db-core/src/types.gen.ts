@@ -74,14 +74,14 @@ export type Database = {
                   ]
                 },"broadcasts": {
                   Row: {
-                    "body": string | null,"channels": (string)[] | null,"created_by": string | null,"id": string | null,"recipient_count": number | null,"scheduled_at": string | null,"segment": Json | null,"sent_at": string | null,"title": string | null
+                    "body": string | null,"channels": (string)[] | null,"created_by": string | null,"id": string | null,"kind": string | null,"recipient_count": number | null,"scheduled_at": string | null,"segment": Json | null,"sent_at": string | null,"title": string | null
                   }
                   ComputedFields: never
                   Insert: {
-                           "body"?: string | null,"channels"?: (string)[] | null,"created_by"?: string | null,"id"?: string | null,"recipient_count"?: number | null,"scheduled_at"?: string | null,"segment"?: Json | null,"sent_at"?: string | null,"title"?: string | null
+                           "body"?: string | null,"channels"?: (string)[] | null,"created_by"?: string | null,"id"?: string | null,"kind"?: string | null,"recipient_count"?: number | null,"scheduled_at"?: string | null,"segment"?: Json | null,"sent_at"?: string | null,"title"?: string | null
                          }
                         Update: {
-                           "body"?: string | null,"channels"?: (string)[] | null,"created_by"?: string | null,"id"?: string | null,"recipient_count"?: number | null,"scheduled_at"?: string | null,"segment"?: Json | null,"sent_at"?: string | null,"title"?: string | null
+                           "body"?: string | null,"channels"?: (string)[] | null,"created_by"?: string | null,"id"?: string | null,"kind"?: string | null,"recipient_count"?: number | null,"scheduled_at"?: string | null,"segment"?: Json | null,"sent_at"?: string | null,"title"?: string | null
                          }
                         Relationships: [
                     
@@ -852,7 +852,7 @@ export type Database = {
 { Args: { "p": Json }; Returns: string
                            },
 "send_broadcast":
-{ Args: { "p_body": string,"p_channels"?: (string)[],"p_scheduled_at"?: string,"p_segment"?: Json,"p_title": string }; Returns: string
+{ Args: { "p_body": string,"p_channels"?: (string)[],"p_kind"?: string,"p_scheduled_at"?: string,"p_segment"?: Json,"p_title": string }; Returns: string
                            },
 "set_bank_ref":
 { Args: { "p_id": string,"p_note"?: string,"p_ref": string,"p_target": string }; Returns: Json

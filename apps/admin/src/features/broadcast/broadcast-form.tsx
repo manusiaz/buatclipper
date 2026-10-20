@@ -7,10 +7,11 @@ import { useErrorText } from '@/features/shared/use-error-text';
 import { sendBroadcast } from './actions';
 import { CHANNELS, PLATFORM_KEYS } from './segment';
 
-export function BroadcastForm({ platformLabels }: { platformLabels: Record<string, string> }) {
+export function BroadcastForm({ platformLabels, canSecurity }: { platformLabels: Record<string, string>; canSecurity: boolean }) {
   const t = useTranslations('admin.broadcast');
   const errorText = useErrorText();
   const ref = useRef<HTMLFormElement>(null);
+  const [security, setSecurity] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [pending, start] = useTransition();
 
@@ -31,43 +32,54 @@ export function BroadcastForm({ platformLabels }: { platformLabels: Record<strin
       }}
     >
       {error ? <Alert tone="danger">{error}</Alert> : null}
+      {canSecurity ? (
+        <Checkbox
+          name="security"
+          checked={security}
+          onCheckedChange={(v) => setSecurity(v === true)}
+          label={t('securityLabel')}
+          description={t('securityHelp')}
+        />
+      ) : null}
       <Field label={t('fTitle')} required>
         <Input name="title" required minLength={3} maxLength={120} />
       </Field>
       <Field label={t('fBody')} required>
         <Textarea name="body" required maxLength={2000} showCount rows={4} />
       </Field>
-      <Fieldset legend={t('segment')} description={t('segmentHelp')}>
-        <div className="flex flex-col gap-4">
-          <div className="flex flex-wrap gap-x-5 gap-y-2">
-            {PLATFORM_KEYS.map((p) => (
-              <Checkbox key={p} name={`platform_${p}`} label={platformLabels[p] ?? p} />
-            ))}
+      {security ? null : (
+        <Fieldset legend={t('segment')} description={t('segmentHelp')}>
+          <div className="flex flex-col gap-4">
+            <div className="flex flex-wrap gap-x-5 gap-y-2">
+              {PLATFORM_KEYS.map((p) => (
+                <Checkbox key={p} name={`platform_${p}`} label={platformLabels[p] ?? p} />
+              ))}
+            </div>
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
+              <Field label={t('minTrust')} optional>
+                <Input name="min_trust_score" type="number" min={0} max={100} step={1} />
+              </Field>
+              <Field label={t('maxTrust')} optional>
+                <Input name="max_trust_score" type="number" min={0} max={100} step={1} />
+              </Field>
+              <Field label={t('kyc')}>
+                <Select
+                  name="kyc"
+                  defaultValue="any"
+                  options={[
+                    { value: 'any', label: t('kycAny') },
+                    { value: 'approved', label: t('kycApproved') },
+                    { value: 'not_approved', label: t('kycNotApproved') },
+                  ]}
+                />
+              </Field>
+              <Field label={t('activeDays')} optional helper={t('activeDaysHelp')}>
+                <Input name="active_days" type="number" min={1} max={3650} step={1} />
+              </Field>
+            </div>
           </div>
-          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
-            <Field label={t('minTrust')} optional>
-              <Input name="min_trust_score" type="number" min={0} max={100} step={1} />
-            </Field>
-            <Field label={t('maxTrust')} optional>
-              <Input name="max_trust_score" type="number" min={0} max={100} step={1} />
-            </Field>
-            <Field label={t('kyc')}>
-              <Select
-                name="kyc"
-                defaultValue="any"
-                options={[
-                  { value: 'any', label: t('kycAny') },
-                  { value: 'approved', label: t('kycApproved') },
-                  { value: 'not_approved', label: t('kycNotApproved') },
-                ]}
-              />
-            </Field>
-            <Field label={t('activeDays')} optional helper={t('activeDaysHelp')}>
-              <Input name="active_days" type="number" min={1} max={3650} step={1} />
-            </Field>
-          </div>
-        </div>
-      </Fieldset>
+        </Fieldset>
+      )}
       <Fieldset legend={t('channels')}>
         <div className="flex flex-wrap gap-x-5 gap-y-2">
           {CHANNELS.map((c) => (
