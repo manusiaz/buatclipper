@@ -1152,6 +1152,24 @@ insert into market.claims (id, campaign_id, user_id, expires_at, created_at) val
 select is(api.worker_create_submission('11111111-0000-0000-0000-00000000000a', '88888888-0000-0000-0000-0000000000b9',
             '99999999-0000-0000-0000-00000000000a', 'vid-music', 'https://tiktok.com/@andi/video/99', now() - interval '1 hour', 'pakai sound', 30)
           ->> 'status', 'in_review', 'regresi AA-11: campaign musik TikTok → in_review walau review auto');
+-- Regresi review R34-2: campaign musik review brand yang tidak direview 72 jam tidak di-auto-approve (sound belum diverifikasi).
+insert into market.campaigns (id, org_id, slug, title, type, platforms, start_at, submit_deadline, created_by, review_mode)
+values ('55555555-0000-0000-0000-0000000000ba', '44444444-0000-0000-0000-000000000001', 'k10-music-brand', 'Lagu brand', 'music', '{tiktok}',
+        now() - interval '5 days', now() + interval '10 days', '22222222-0000-0000-0000-0000000000a1', 'brand');
+update market.campaigns set status = 'in_review' where id = '55555555-0000-0000-0000-0000000000ba';
+update market.campaigns set status = 'scheduled' where id = '55555555-0000-0000-0000-0000000000ba';
+update market.campaigns set status = 'live' where id = '55555555-0000-0000-0000-0000000000ba';
+insert into market.claims (id, campaign_id, user_id, expires_at, created_at) values
+  ('88888888-0000-0000-0000-0000000000ba', '55555555-0000-0000-0000-0000000000ba', '11111111-0000-0000-0000-00000000000a',
+   now() + interval '46 hours', now() - interval '90 hours');
+insert into tracking.submissions (claim_id, user_id, campaign_id, social_account_id, platform, post_id, url, posted_at, created_at)
+values ('88888888-0000-0000-0000-0000000000ba', '11111111-0000-0000-0000-00000000000a', '55555555-0000-0000-0000-0000000000ba',
+        '99999999-0000-0000-0000-00000000000a', 'tiktok', 'v-mb', 'https://tiktok.com/v/mb', now() - interval '85 hours', now() - interval '80 hours');
+insert into t_ids select 's_music_brand', id from tracking.submissions where post_id = 'v-mb';
+update tracking.submissions set status = 'in_review' where id = (select v::uuid from t_ids where k = 's_music_brand');
+select trust.auto_approve_overdue();
+select is((select status::text from tracking.submissions where id = (select v::uuid from t_ids where k = 's_music_brand')), 'in_review',
+          'regresi R34-2: submisi musik TikTok review brand tidak di-auto-approve setelah 72 jam');
 select is((select array[f.details -> 'duplicates' ->> 0, f.details -> 'related_user_ids' ->> 0] from trust.fraud_flags f
              join tracking.submissions s on s.id = f.target_id where f.signal = 'FR-07' and s.post_id = 'vid-11'),
           array[(select v from t_ids where k = 's10'), '11111111-0000-0000-0000-00000000000a'],
@@ -1294,6 +1312,11 @@ select lives_ok($$ select api.reset_social_account('99999999-0000-0000-0000-0000
 reset role;
 select is((select status || ':' || (token_ref is null)::text from tracking.social_accounts where id = '99999999-0000-0000-0000-00000000000d'),
           'revoked:true', 'reset: status revoked, token_ref dilepas');
+-- Regresi review R34-1: refresh token yang sedang jalan saat reset tidak menghidupkan akun lagi.
+select api.store_social_token('99999999-0000-0000-0000-00000000000d', '{"access_token":"refresh-telat"}');
+select api.worker_account_status('99999999-0000-0000-0000-00000000000d', 'verified');
+select is((select status || ':' || (token_ref is null)::text from tracking.social_accounts where id = '99999999-0000-0000-0000-00000000000d'),
+          'revoked:true', 'regresi R34-1: refresh yang selesai setelah reset tidak menulis token / memverifikasi ulang');
 select ok(not exists (select 1 from vault.secrets where id = (select v::uuid from t_ids where k = 'tok_dedi')), 'reset: token Vault dihapus');
 select is((select count(*)::int from tracking.submissions where social_account_id = '99999999-0000-0000-0000-00000000000d'
            and status in ('tracking', 'flagged') and next_poll_at is not null), 0, 'reset: tracking di-pause');
@@ -1302,9 +1325,9 @@ select ok(exists (select 1 from ops.notifications where event = 'social.token_ex
           'reset: clipper dikabari + audit log');
 select api.worker_upsert_social_account('11111111-0000-0000-0000-00000000000d', 'tiktok',
                                         (select external_id from tracking.social_accounts where id = '99999999-0000-0000-0000-00000000000d'),
-                                        '@dedi', null, null, null);
-select is((select status from tracking.social_accounts where id = '99999999-0000-0000-0000-00000000000d'), 'verified',
-          'akun yang direset bisa disambung ulang oleh pemiliknya');
+                                        '@dedi', null, null, '{"access_token":"baru"}');
+select is((select status || ':' || (token_ref is not null)::text from tracking.social_accounts where id = '99999999-0000-0000-0000-00000000000d'),
+          'verified:true', 'akun yang direset bisa disambung ulang oleh pemiliknya (token baru tersimpan)');
 -- Regresi audit AA-13 (§12 "semua ambang di config"): ambang FR-05 dibaca identity dari config core.
 insert into ops.settings (key, value) values ('trust.fraud.shared_device_min_accounts', '5')
   on conflict (key) do update set value = excluded.value;

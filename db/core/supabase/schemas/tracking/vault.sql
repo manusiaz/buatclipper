@@ -4,10 +4,16 @@ create function api.store_social_token(p_account_id uuid, p_token text) returns 
 language plpgsql security definer set search_path = '' as $$
 declare
   sid uuid;
+  st text;
 begin
-  select a.token_ref into sid from tracking.social_accounts a where a.id = p_account_id for update;
+  select a.token_ref, a.status into sid, st from tracking.social_accounts a where a.id = p_account_id for update;
   if not found then
     raise exception 'akun sosmed % tidak ada', p_account_id using errcode = 'P0002';
+  end if;
+  -- Akun dicabut (reset admin / izin dicabut) atau diputus hanya hidup lagi lewat sambung ulang pemilik (upsert → verified dulu);
+  -- refresh token yang sedang jalan tidak boleh menulis token baru (R34-1).
+  if st not in ('verified', 'token_expired') then
+    return null;
   end if;
   if sid is null then
     sid := vault.create_secret(p_token, 'social:' || p_account_id::text, 'token OAuth sosmed');

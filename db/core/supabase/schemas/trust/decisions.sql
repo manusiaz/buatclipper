@@ -65,6 +65,7 @@ declare
 begin
   for r in select s.id from tracking.submissions s join market.campaigns c on c.id = s.campaign_id
             where s.status = 'in_review' and c.review_mode = 'brand' and s.created_at <= now() - make_interval(hours => h)
+              and not (c.type = 'music' and s.platform = 'tiktok')  -- §11 sound TikTok wajib diverifikasi manual (R34-2)
             order by s.created_at
             for update of s skip locked loop
     perform trust.apply_submission_decision(r.id, 'auto_approve', null, null, null, 'auto');
