@@ -70,6 +70,7 @@ export function BatchResults({ batchId, payouts }: { batchId: string; payouts: P
                   <Input
                     inputSize="sm"
                     aria-label={t('bankRef')}
+                    required={state[p.id]!.status === 'paid'}
                     value={state[p.id]!.bank_ref}
                     maxLength={100}
                     onChange={(e) => setState((s) => ({ ...s, [p.id]: { ...s[p.id]!, bank_ref: e.target.value } }))}

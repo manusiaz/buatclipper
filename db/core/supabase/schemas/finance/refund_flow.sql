@@ -118,6 +118,9 @@ begin
   if r.status <> 'approved' then
     raise exception 'invalid_state:%', r.status using errcode = 'P0001';
   end if;
+  if r.bank_ref is null then  -- diisi api.set_bank_ref sebelum bukti diunggah (rekonsiliasi bank per referensi)
+    raise exception 'invalid:bank_ref' using errcode = 'P0001';
+  end if;
   update finance.org_refunds set status = 'paid', paid_at = now(), proof_ref = p_proof_ref where id = r.id;
   perform finance.post(gen_random_uuid(), jsonb_build_array(
     finance.e(finance.account('org_credit', r.org_id, idr), -r.amount, 'refund', r.id || ':paid'),

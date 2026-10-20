@@ -396,8 +396,11 @@ select is((select count(*)::int from net.http_request_queue q where convert_from
           'regresi G-12: alert payout gagal → email admin lewat bridge (F-X01 admin)');
 select ops.raise_alert('payout.failed', 'warning', '{"payout_id":"x"}');
 select is((select count(*)::int from net.http_request_queue q where convert_from(q.body, 'UTF8')::jsonb ->> 'action' = 'notify_admins'
-            and convert_from(q.body, 'UTF8')::jsonb ->> 'kind' = 'payout.failed'), 2, 'regresi C19-2: email alert sebelumnya belum terkirim → alert berikutnya tetap dicoba kirim');
+            and convert_from(q.body, 'UTF8')::jsonb ->> 'kind' = 'payout.failed'), 1, 'regresi C20-1: alert beruntun selagi email masih dikirim (transaksi yang sama) tidak mengirim email lagi');
+update ops.alerts set notify_requested_at = now() - interval '16 minutes' where kind = 'payout.failed';
+select is(ops.notify_alerts('payout.failed'), 1, 'regresi C19-2: email yang belum terkirim diulang job alert-notify (≥ 15 menit)');
 select api.bridge_alert_notified((select max(id) from ops.alerts where kind = 'payout.failed'));
+update ops.alerts set notify_requested_at = now() - interval '16 minutes' where kind = 'payout.failed';
 select ops.raise_alert('payout.failed', 'warning', '{"payout_id":"y"}');
 select is((select count(*)::int from net.http_request_queue q where convert_from(q.body, 'UTF8')::jsonb ->> 'action' = 'notify_admins'
             and convert_from(q.body, 'UTF8')::jsonb ->> 'kind' = 'payout.failed'), 2, 'alert beruntun dalam 1 jam setelah email terkirim tidak mengirim email lagi');
@@ -463,6 +466,9 @@ select pg_temp.jwt('33333333-0000-0000-0000-0000000000f1', '{"app_roles":["admin
 select throws_ok($$ select api.mark_batch_paid((select id from t_pay where k = 'batch'),
                     jsonb_build_array(jsonb_build_object('payout_id', (select id from t_pay where k = 'b3'), 'status', 'paid'))) $$,
                  'P0001', 'payout_not_in_export', 'mark paid hanya untuk payout di CSV');
+select throws_ok($$ select api.mark_batch_paid((select id from t_pay where k = 'batch'),
+                    jsonb_build_array(jsonb_build_object('payout_id', (select id from t_pay where k = 'b1'), 'status', 'paid', 'bank_ref', ' '))) $$,
+                 'P0001', 'invalid:bank_ref', 'regresi C20-3: payout paid wajib referensi mutasi bank');
 select lives_ok($$ select api.mark_batch_paid((select id from t_pay where k = 'batch'), jsonb_build_array(
                    jsonb_build_object('payout_id', (select id from t_pay where k = 'b1'), 'status', 'paid', 'bank_ref', 'TRX-1'),
                    jsonb_build_object('payout_id', (select id from t_pay where k = 'b2'), 'status', 'failed', 'reason', 'rekening ditutup'))) $$,
@@ -805,6 +811,7 @@ select throws_ok($$ select api.request_refund('44444444-0000-0000-0000-000000000
 select pg_temp.jwt('33333333-0000-0000-0000-0000000000f2', '{"app_roles":["admin_finance"],"aal":"aal2"}');
 select lives_ok($$ select api.approve_refund((select id from t_pay where k = 'cancel_refund')) $$,
                 'admin_finance lain menyetujui refund batal (pembatal = pengaju, dua orang)');
+select api.set_bank_ref('refund', (select id from t_pay where k = 'cancel_refund'), 'TRF-REFUND-BATAL');
 reset role;
 select api.bridge_attach_proof('refund', (select id from t_pay where k = 'cancel_refund'), 'payout-proofs/refund-cancel.pdf');
 select is((select jsonb_object_agg(a.owner_type, e.amount) from finance.ledger_entries e join finance.ledger_accounts a on a.id = e.account_id
@@ -1201,6 +1208,12 @@ set local role authenticated;
 select pg_temp.jwt('33333333-0000-0000-0000-0000000000f1', '{"app_roles":["admin_finance"],"aal":"aal2"}');
 select lives_ok($$ select api.approve_refund((select id from t_pay where k = 'refund')) $$, 'admin_finance menyetujui refund');
 reset role;
+select throws_ok($$ select api.bridge_attach_proof('refund', (select id from t_pay where k = 'refund'), 'payout-proofs/refund-1.pdf') $$,
+                 'P0001', 'invalid:bank_ref', 'regresi C20-2: refund tidak bisa ditandai dibayar tanpa referensi mutasi bank');
+set local role authenticated;
+select pg_temp.jwt('33333333-0000-0000-0000-0000000000f1', '{"app_roles":["admin_finance"],"aal":"aal2"}');
+select api.set_bank_ref('refund', (select id from t_pay where k = 'refund'), 'TRF-REFUND-1');
+reset role;
 select api.bridge_attach_proof('refund', (select id from t_pay where k = 'refund'), 'payout-proofs/refund-1.pdf');
 select is((select status from finance.org_refunds where id = (select id from t_pay where k = 'refund')), 'paid', 'bukti transfer → refund paid');
 select is((select jsonb_object_agg(a.owner_type, e.amount) from finance.ledger_entries e join finance.ledger_accounts a on a.id = e.account_id
@@ -1392,6 +1405,26 @@ select ok(finance.reconcile_bank() -> 'missing_in_bank' ? ('payout:' || (select 
           'payout dibayar di rentang mutasi tanpa baris bank → selisih');
 select is((select status from finance.bank_lines where reference = (select ref from t_bank where k = 'po')), 'open',
           'baris bank yang tadinya cocok dibuka lagi saat kas sistem berubah');
+create temp table t_bank_alerts on commit drop as select count(*) n from ops.alerts where kind = 'reconcile.bank';
+select finance.reconcile_bank();
+select is((select count(*) from ops.alerts where kind = 'reconcile.bank'), (select n from t_bank_alerts),
+          'regresi C20-4: rekonsiliasi ulang dengan selisih yang sama tidak membuat alert baru');
+set local role authenticated;
+select pg_temp.jwt('33333333-0000-0000-0000-0000000000f1', '{"app_roles":["admin_finance"],"aal":"aal2"}');
+select ok(api.bank_issues() -> 'missing_in_bank' ? ('payout:' || (select id from t_bank where k = 'po')),
+          'regresi C20-4: tab Mutasi bank membaca selisih terkini (api.bank_issues), bukan payload alert lama');
+select throws_ok($$ select api.set_bank_ref('payout', (select id from t_bank where k = 'po'), (select ref from t_bank where k = 'po')) $$,
+                 'P0001', 'invalid:note', 'koreksi referensi yang sudah ada wajib catatan');
+select ok(not (api.set_bank_ref('payout', (select id from t_bank where k = 'po'), (select ref from t_bank where k = 'po'), 'salah ketik')
+               -> 'missing_in_bank' ? ('payout:' || (select id from t_bank where k = 'po'))),
+          'regresi C20-3: referensi payout salah ketik bisa dikoreksi (tercatat audit) lalu cocok lagi');
+reset role;
+select is((select status from finance.bank_lines where reference = (select ref from t_bank where k = 'po')), 'matched',
+          'baris bank payout cocok lagi setelah koreksi referensi');
+select is((select count(*) from ops.alerts where kind = 'reconcile.bank'), (select n from t_bank_alerts),
+          'selisih berkurang (koreksi) tidak membuat alert baru');
+select ok((select count(*) from ops.alerts where kind = 'reconcile.bank') >= 3,
+          'regresi C20-4: tiap selisih baru (baris tak dikenal, kredit ganda, payout tanpa mutasi) dikabari alert baru walau alert lama masih terbuka');
 
 -- Regresi review R14: ban dari fraud queue bisa dicabut admin (profil core kembali active, bukan cuma login).
 set local role authenticated;

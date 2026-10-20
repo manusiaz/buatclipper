@@ -61,6 +61,7 @@ export async function exportPayoutCsv(batchId: string, rowsHint: number): Promis
 /** A3.4: hasil transfer per payout (hanya yang masuk CSV = processing). failed → saldo kembali ke clipper (S-05). */
 export async function markBatch(batchId: string, results: { payout_id: string; status: 'paid' | 'failed'; bank_ref: string; reason?: string }[]): Promise<ActionResult> {
   const db = await finance();
+  if (results.some((r) => r.status === 'paid' && !r.bank_ref.trim())) return { ok: false, error: 'invalid:bank_ref' }; // rekonsiliasi per referensi
   const { error } = await db.rpc('mark_batch_paid', {
     p_batch: batchId,
     p_results: results.map((r) => ({
@@ -80,6 +81,11 @@ export async function uploadProof(target: 'batch' | 'refund', id: string, fd: Fo
   if (!(file instanceof File) || file.size === 0) return { ok: false, error: 'invalid:file' };
   if (file.size > MAX_PROOF) return { ok: false, error: 'payload_too_large' };
   if (!PROOF_TYPES.includes(file.type)) return { ok: false, error: 'unsupported_type' };
+  if (target === 'refund') {
+    // Referensi mutasi dulu (finance.pay_refund mewajibkannya, dipakai rekonsiliasi bank); aman diulang.
+    const { error } = await (await finance()).rpc('set_bank_ref', { p_target: 'refund', p_id: id, p_ref: text(fd, 'bank_ref') });
+    if (error) return settle(error);
+  }
   const content = Buffer.from(await file.arrayBuffer()).toString('base64');
   const r = await invokeFunction('identity', 'pii-export', {
     action: 'upload_proof', target, id, filename: file.name.slice(0, 200), content_type: file.type, content_base64: content,
@@ -129,5 +135,12 @@ export async function importBankStatement(fd: FormData): Promise<ActionResult<{ 
 export async function resolveBankLine(id: number, fd: FormData): Promise<ActionResult> {
   const db = await finance();
   const { error } = await db.rpc('resolve_bank_line', { p_id: id, p_note: text(fd, 'note') });
+  return settle(error, '/finance');
+}
+
+/** A3.5: referensi mutasi payout batch / invoice yang salah ketik dikoreksi (catatan wajib, audit) lalu dicocokkan ulang. */
+export async function setBankRef(target: 'payout' | 'invoice' | 'refund', id: string, fd: FormData): Promise<ActionResult> {
+  const db = await finance();
+  const { error } = await db.rpc('set_bank_ref', { p_target: target, p_id: id, p_ref: text(fd, 'ref'), p_note: text(fd, 'note') });
   return settle(error, '/finance');
 }

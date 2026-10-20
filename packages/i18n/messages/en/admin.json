@@ -771,7 +771,13 @@
     "bankResolveBody": "For lines that are not platform transactions (bank fees, interest, combined QRIS settlement). Recorded in the audit log.",
     "bankResolved": "Statement line closed",
     "bankNote": "Note",
-    "bankOpenMore": "Showing {shown} of {total} mismatched lines (oldest first). Close or match these to see the rest."
+    "bankOpenMore": "Showing {shown} of {total} mismatched lines (oldest first). Close or match these to see the rest.",
+    "bankRefLabel": "Bank statement reference",
+    "bankRefHelp": "The transfer reference number from internet banking (used by daily reconciliation).",
+    "bankFixRef": "Fix reference",
+    "bankFixRefBody": "Enter the correct bank statement reference for this transaction. Replacing an existing reference requires a note and is recorded in the audit log.",
+    "bankFixed": "Reference updated and re-matched",
+    "bankFixNoteHelp": "Required when replacing an existing reference (e.g. a typo)."
   },
   "fulfillment": {
     "title": "Non-cash fulfillment",

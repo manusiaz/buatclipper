@@ -620,6 +620,9 @@ export type Database = {
 "approve_refund":
 { Args: { "p_refund": string }; Returns: undefined
                            },
+"bank_issues":
+{ Args: Record<PropertyKey, never>; Returns: Json
+                           },
 "bridge_alert_notified":
 { Args: { "p_alert": number }; Returns: undefined
                            },
@@ -809,6 +812,9 @@ export type Database = {
                            },
 "send_broadcast":
 { Args: { "p_body": string,"p_channels"?: (string)[],"p_scheduled_at"?: string,"p_segment"?: Json,"p_title": string }; Returns: string
+                           },
+"set_bank_ref":
+{ Args: { "p_id": string,"p_note"?: string,"p_ref": string,"p_target": string }; Returns: Json
                            },
 "store_social_token":
 { Args: { "p_account_id": string,"p_token": string }; Returns: string

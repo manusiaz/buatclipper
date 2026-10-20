@@ -203,7 +203,10 @@ begin
       raise exception 'payout_not_in_export' using errcode = 'P0001';
     end if;
     if x.status = 'paid' then
-      update finance.payouts set status = 'paid', paid_at = now(), bank_ref = x.bank_ref where id = po.id;
+      if coalesce(btrim(x.bank_ref), '') = '' then  -- referensi mutasi wajib: rekonsiliasi bank (A3.5) mencocokkan per referensi
+        raise exception 'invalid:bank_ref' using errcode = 'P0001';
+      end if;
+      update finance.payouts set status = 'paid', paid_at = now(), bank_ref = btrim(x.bank_ref) where id = po.id;
       perform ops.enqueue_notification(po.user_id, 'payout.paid', finance.amount_ref(finance.idr(), po.amount - po.fee)
                                        || jsonb_build_object('payout_id', po.id, 'channel', po.channel));
     elsif x.status = 'failed' then

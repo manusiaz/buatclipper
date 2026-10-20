@@ -9,6 +9,7 @@ create table ops.alerts (
   resolved_at timestamptz,
   resolved_by uuid,
   notified_at timestamptz, -- email admin terkirim (bridge identity notify_admins sukses)
+  notify_requested_at timestamptz, -- pengiriman terakhir diminta (pg_net asinkron; dibaca transaksi yang sama)
   constraint alerts_resolution check ((resolved_at is null) = (resolved_by is null))
 );
 create index alerts_open_idx on ops.alerts (kind, created_at desc) where resolved_at is null;
@@ -47,7 +48,8 @@ end $$;
 
 -- F-X01 admin (alur 4): job tracking gagal, lonjakan fraud, payout gagal, selisih rekonsiliasi → email admin terkait lewat
 -- bridge identity (tanpa PII; payload tidak dikirim). Per jenis: alert terbuka terbaru yang belum terkirim (≤ 1 hari), maks
--- satu email per jam dihitung dari email yang benar-benar terkirim (notified_at). Job alert-notify mengulang yang gagal.
+-- satu email per jam dihitung dari email yang benar-benar terkirim (notified_at); permintaan yang masih berjalan
+-- (notify_requested_at ≤ 15 menit, terlihat di transaksi yang sama) menahan alert beruntun. Job alert-notify mengulang yang gagal.
 create function ops.notify_alerts(p_kind text default null) returns int
 language plpgsql security definer set search_path = '' as $$
 declare
@@ -59,8 +61,11 @@ begin
                              'reconcile.ledger', 'reconcile.orphans', 'reconcile.bank')
               and (p_kind is null or a.kind = p_kind)
               and a.notified_at is null and a.resolved_at is null and a.created_at > now() - interval '1 day'
-              and not exists (select 1 from ops.alerts b where b.kind = a.kind and b.notified_at > now() - interval '1 hour')
+              and not exists (select 1 from ops.alerts b
+                               where b.kind = a.kind and (b.notified_at > now() - interval '1 hour'
+                                                          or b.notify_requested_at > now() - interval '15 minutes'))
             order by a.kind, a.id desc loop
+    update ops.alerts set notify_requested_at = now() where id = r.id;
     perform ops.invoke_function('bridge', jsonb_build_object('action', 'notify_admins', 'kind', r.kind, 'severity', r.severity,
                                                              'alert_id', r.id));
     n := n + 1;

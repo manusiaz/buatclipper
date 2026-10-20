@@ -771,7 +771,13 @@
     "bankResolveBody": "Untuk baris yang memang bukan transaksi platform (biaya admin bank, bunga, setoran QRIS gabungan). Tercatat di audit log.",
     "bankResolved": "Baris mutasi ditutup",
     "bankNote": "Catatan",
-    "bankOpenMore": "Menampilkan {shown} dari {total} baris selisih (terlama dulu). Tutup atau cocokkan yang ini untuk melihat sisanya."
+    "bankOpenMore": "Menampilkan {shown} dari {total} baris selisih (terlama dulu). Tutup atau cocokkan yang ini untuk melihat sisanya.",
+    "bankRefLabel": "Nomor referensi mutasi bank",
+    "bankRefHelp": "Nomor referensi transfer di internet banking (dipakai rekonsiliasi harian).",
+    "bankFixRef": "Perbaiki referensi",
+    "bankFixRefBody": "Isi nomor referensi mutasi bank yang benar untuk transaksi ini. Mengganti referensi yang sudah ada wajib catatan; tercatat di audit log.",
+    "bankFixed": "Referensi diperbarui dan dicocokkan ulang",
+    "bankFixNoteHelp": "Wajib bila mengganti referensi yang sudah ada (mis. salah ketik)."
   },
   "fulfillment": {
     "title": "Fulfillment non-tunai",

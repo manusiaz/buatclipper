@@ -31,14 +31,39 @@ create view api.bank_lines with (security_invoker = true) as
   select id, value_date, amount, reference, description, status, note, imported_at, resolved_at from finance.bank_lines;
 grant select on api.bank_lines to authenticated;
 
--- Cocokkan semua baris (status open/matched dihitung ulang: payout yang belakangan gagal membuka lagi barisnya), lalu
--- selisih → alert reconcile.bank: referensi bank yang tidak cocok, dan kas sistem bertanggal di rentang mutasi yang sudah
--- diunggah tanpa satu pun baris bank. Invoice QRIS tidak dicek "tanpa mutasi" (acquirer menyetor gabungan, bukan per invoice).
-create function finance.reconcile_bank() returns jsonb
-language plpgsql security definer set search_path = '' as $$
+-- Selisih saat ini (tanpa efek samping; tab Mutasi bank membacanya langsung): referensi bank yang tidak cocok, dan kas sistem
+-- bertanggal di rentang mutasi yang sudah diunggah tanpa satu pun baris bank (referensi kosong juga). Invoice QRIS tidak dicek
+-- "tanpa mutasi" (acquirer menyetor gabungan, bukan per invoice).
+create function finance.bank_issues() returns jsonb
+language plpgsql stable security definer set search_path = '' as $$
 declare
   first_day date;
   last_day date;
+begin
+  select min(b.value_date), max(b.value_date) into first_day, last_day from finance.bank_lines b;
+  if first_day is null then
+    return '{}';
+  end if;
+  return jsonb_strip_nulls(jsonb_build_object(
+    'bank_unmatched', (select jsonb_agg(b.id order by b.id) from finance.bank_lines b where b.status = 'open'),
+    'missing_in_bank', (select jsonb_agg(x.k order by x.k) from (
+        select 'invoice:' || i.id k, i.payment_ref ref from finance.invoices i
+         where i.status = 'paid' and i.payment_channel = 'transfer' and (i.paid_at at time zone 'Asia/Jakarta')::date between first_day and last_day
+        union all
+        select 'payout:' || p.id, p.bank_ref from finance.payouts p
+         where p.status = 'paid' and p.channel = 'batch' and (p.paid_at at time zone 'Asia/Jakarta')::date between first_day and last_day
+        union all
+        select 'refund:' || r.id, r.bank_ref from finance.org_refunds r
+         where r.status = 'paid' and (r.paid_at at time zone 'Asia/Jakarta')::date between first_day and last_day) x
+      where x.ref is null or not exists (select 1 from finance.bank_lines b where b.reference = x.ref))));
+end $$;
+
+-- Cocokkan semua baris (status open/matched dihitung ulang: payout yang belakangan gagal membuka lagi barisnya), lalu selisih
+-- → alert reconcile.bank hanya bila ada selisih yang belum termuat di alert terbuka terakhir (selisih baru dikabari; yang sama atau
+-- berkurang tidak diulang).
+create function finance.reconcile_bank() returns jsonb
+language plpgsql security definer set search_path = '' as $$
+declare
   issues jsonb;
 begin
   with sys as (
@@ -55,27 +80,70 @@ begin
    where b.reference = bt.ref and b.status <> 'manual'
      and b.status <> case when st.amt = bt.amt then 'matched' else 'open' end;
 
-  select min(b.value_date), max(b.value_date) into first_day, last_day from finance.bank_lines b;
-  if first_day is null then
-    return '{}';
-  end if;
-  select jsonb_strip_nulls(jsonb_build_object(
-    'bank_unmatched', (select jsonb_agg(b.id order by b.id) from finance.bank_lines b where b.status = 'open'),
-    'missing_in_bank', (select jsonb_agg(x.k order by x.k) from (
-        select 'invoice:' || i.id k, i.payment_ref ref from finance.invoices i
-         where i.status = 'paid' and i.payment_channel = 'transfer' and (i.paid_at at time zone 'Asia/Jakarta')::date between first_day and last_day
-        union all
-        select 'payout:' || p.id, p.bank_ref from finance.payouts p
-         where p.status = 'paid' and p.channel = 'batch' and (p.paid_at at time zone 'Asia/Jakarta')::date between first_day and last_day
-        union all
-        select 'refund:' || r.id, r.bank_ref from finance.org_refunds r
-         where r.status = 'paid' and (r.paid_at at time zone 'Asia/Jakarta')::date between first_day and last_day) x
-      where x.ref is null or not exists (select 1 from finance.bank_lines b where b.reference = x.ref))))
-    into issues;
-  if issues <> '{}' then
-    perform ops.raise_alert('reconcile.bank', 'critical', issues, interval '20 hours');
+  issues := finance.bank_issues();
+  if issues <> '{}' and not coalesce((select a.payload from ops.alerts a where a.kind = 'reconcile.bank' and a.resolved_at is null
+                                       order by a.id desc limit 1) @> issues, false) then
+    perform ops.raise_alert('reconcile.bank', 'critical', issues);
   end if;
   return issues;
+end $$;
+
+create function api.bank_issues() returns jsonb
+language plpgsql stable security definer set search_path = '' as $$
+begin
+  if not ops.has_admin('admin_finance') then
+    raise exception 'auth:forbidden' using errcode = '42501';
+  end if;
+  return finance.bank_issues();
+end $$;
+
+-- Referensi mutasi bank pada transaksi sistem: refund diisi sebelum bukti transfer diunggah (pay_refund mewajibkannya);
+-- payout batch / invoice yang referensinya salah ketik dikoreksi dengan catatan. Tercatat di audit, lalu dicocokkan ulang.
+create function api.set_bank_ref(p_target text, p_id uuid, p_ref text, p_note text default null) returns jsonb
+language plpgsql security definer set search_path = '' as $$
+declare
+  ref text := btrim(coalesce(p_ref, ''));
+  old text;
+begin
+  if not ops.has_admin('admin_finance') then
+    raise exception 'auth:forbidden' using errcode = '42501';
+  end if;
+  if ref = '' or length(ref) > 120 then
+    raise exception 'invalid:bank_ref' using errcode = 'P0001';
+  end if;
+  if p_target = 'refund' then
+    select r.bank_ref into old from finance.org_refunds r where r.id = p_id and r.status in ('approved', 'paid') for update;
+  elsif p_target = 'payout' then
+    select p.bank_ref into old from finance.payouts p where p.id = p_id and p.status = 'paid' and p.channel = 'batch' for update;
+  elsif p_target = 'invoice' then
+    select i.payment_ref into old from finance.invoices i where i.id = p_id and i.status = 'paid' and i.payment_channel in ('transfer', 'qris')
+       for update;
+  else
+    raise exception 'invalid:target' using errcode = 'P0001';
+  end if;
+  if not found then
+    raise exception 'not_found:%', p_target using errcode = 'P0002';
+  end if;
+  if old is not distinct from ref then
+    return finance.reconcile_bank();
+  end if;
+  if old is not null and length(btrim(coalesce(p_note, ''))) < 3 then  -- mengganti referensi yang sudah ada = koreksi, wajib alasan
+    raise exception 'invalid:note' using errcode = 'P0001';
+  end if;
+  if p_target = 'refund' then
+    update finance.org_refunds set bank_ref = ref where id = p_id;
+  elsif p_target = 'payout' then
+    update finance.payouts set bank_ref = ref where id = p_id;
+  else
+    if exists (select 1 from finance.invoices i where i.payment_ref = ref) then
+      raise exception 'duplicate_payment_ref' using errcode = '23505';
+    end if;
+    update finance.invoices set payment_ref = ref where id = p_id;
+  end if;
+  insert into ops.audit_logs (actor_id, action, target, before, after)
+  values ((select auth.uid()), 'finance.bank_ref', p_target || ':' || p_id, jsonb_build_object('ref', old),
+          jsonb_build_object('ref', ref, 'note', nullif(btrim(coalesce(p_note, '')), '')));
+  return finance.reconcile_bank();
 end $$;
 
 -- p_lines: [{date: 'YYYY-MM-DD', amount: ±nominal, reference, description}] dari CSV (parser app), maks 5.000 baris per unggahan.
@@ -144,5 +212,7 @@ begin
           jsonb_build_object('status', 'manual', 'note', btrim(p_note)));
 end $$;
 
-revoke execute on function finance.reconcile_bank(), api.import_bank_lines(jsonb), api.resolve_bank_line(bigint, text) from public;
-grant execute on function api.import_bank_lines(jsonb), api.resolve_bank_line(bigint, text) to authenticated;
+revoke execute on function finance.bank_issues(), finance.reconcile_bank(), api.bank_issues(), api.import_bank_lines(jsonb),
+  api.resolve_bank_line(bigint, text), api.set_bank_ref(text, uuid, text, text) from public;
+grant execute on function api.bank_issues(), api.import_bank_lines(jsonb), api.resolve_bank_line(bigint, text),
+  api.set_bank_ref(text, uuid, text, text) to authenticated;

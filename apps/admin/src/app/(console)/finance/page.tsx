@@ -11,7 +11,7 @@ import { isUuid, param, rows, uniq, type SearchParams } from '@/lib/data';
 import { isoToWibDate, isoToWibInput } from '@/lib/wib';
 import {
   approveBatch, approveRefund, cancelPayout, confirmInvoice, createBatch, exportPayoutCsv, exportPph21, importBankStatement, resolveBankLine,
-  uploadProof,
+  setBankRef, uploadProof,
 } from '@/features/finance/actions';
 import { BatchResults } from '@/features/finance/batch-results';
 import { ActionButton, ActionDialog, type FieldSpec } from '@/features/shared/action-dialog';
@@ -457,14 +457,15 @@ async function Bank({ loc }: { loc: UiLocale }) {
   const [t, db] = await Promise.all([getTranslations('admin'), coreServer('admin')]);
   const cols = 'id, value_date, amount, reference, description, status, note';
   // Baris selisih diambil terpisah (terlama dulu) supaya tidak tergeser unggahan baru; yang cocok cukup 100 terbaru.
-  const [openRes, doneRes, alertRes] = await Promise.all([
+  const [openRes, doneRes, issuesRes] = await Promise.all([
     db.from('bank_lines').select(cols, { count: 'exact' }).eq('status', 'open').order('value_date').order('id').limit(500),
     db.from('bank_lines').select(cols).neq('status', 'open').order('value_date', { ascending: false }).order('id', { ascending: false }).limit(100),
-    db.from('alerts').select('payload, created_at').eq('kind', 'reconcile.bank').is('resolved_at', null).order('id', { ascending: false }).limit(1),
+    db.rpc('bank_issues'),
   ]);
   const open = rows(openRes);
   const lines = [...open, ...rows(doneRes)];
-  const missing = ((rows(alertRes)[0]?.payload as { missing_in_bank?: string[] } | undefined)?.missing_in_bank ?? []).slice(0, 50);
+  // Selisih terkini (api.bank_issues), bukan payload alert yang bisa basi.
+  const missing = ((issuesRes.data as { missing_in_bank?: string[] } | null)?.missing_in_bank ?? []).slice(0, 50);
   return (
     <div className="flex flex-col gap-4">
       <Alert tone="info" title={t('finance.bankTitle')}>{t('finance.bankHint')}</Alert>
@@ -481,12 +482,27 @@ async function Bank({ loc }: { loc: UiLocale }) {
       />
       {missing.length ? (
         <Alert tone="danger" title={t('finance.bankMissing', { n: missing.length })}>
-          <ul className="flex flex-wrap gap-x-3 gap-y-1">
-            {missing.map((k) => (
-              <li key={k}>
-                <Link href={`/finance?tab=ledger&q=${k.split(':')[1] ?? ''}`} className="font-mono text-[11px] text-link hover:underline">{k}</Link>
-              </li>
-            ))}
+          <ul className="flex flex-col gap-1">
+            {missing.map((k) => {
+              const [target, id = ''] = k.split(':') as ['payout' | 'invoice' | 'refund', string];
+              return (
+                <li key={k} className="flex flex-wrap items-center gap-2">
+                  <Link href={`/finance?tab=ledger&q=${id}`} className="font-mono text-[11px] text-link hover:underline">{k}</Link>
+                  <ActionDialog
+                    trigger={{ label: t('finance.bankFixRef'), variant: 'ghost', size: 'sm' }}
+                    title={t('finance.bankFixRef')}
+                    description={t('finance.bankFixRefBody')}
+                    submitLabel={t('finance.bankFixRef')}
+                    success={t('finance.bankFixed')}
+                    action={setBankRef.bind(null, target, id)}
+                    fields={[
+                      { kind: 'text', name: 'ref', label: t('finance.bankRefLabel'), required: true },
+                      { kind: 'text', name: 'note', label: t('finance.bankNote'), helper: t('finance.bankFixNoteHelp') },
+                    ]}
+                  />
+                </li>
+              );
+            })}
           </ul>
         </Alert>
       ) : null}
@@ -642,7 +658,10 @@ async function Refunds({ loc, me }: { loc: UiLocale; me: string }) {
                       submitLabel={t('finance.upload')}
                       success={t('finance.refundPaid')}
                       action={uploadProof.bind(null, 'refund', r.id!)}
-                      fields={[{ ...PROOF, label: t('finance.proofFile'), helper: t('finance.proofHelp') }]}
+                      fields={[
+                        { kind: 'text', name: 'bank_ref', label: t('finance.bankRefLabel'), helper: t('finance.bankRefHelp'), required: true },
+                        { ...PROOF, label: t('finance.proofFile'), helper: t('finance.proofHelp') },
+                      ]}
                     />
                   ) : (
                     <span className="text-caption text-muted">{r.paid_at ? formatDateTime(r.paid_at, loc) : ''}</span>
