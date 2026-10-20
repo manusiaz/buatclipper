@@ -837,7 +837,7 @@ export type Database = {
 { Args: { "p_fulfillment": string }; Returns: string
                            },
 "worker_create_submission":
-{ Args: { "p_account": string,"p_caption": string,"p_claim": string,"p_duration_sec": number,"p_post_id": string,"p_posted_at": string,"p_url": string,"p_user": string }; Returns: Json
+{ Args: { "p_account": string,"p_caption": string,"p_claim": string,"p_cover_hash"?: number,"p_duration_sec": number,"p_post_id": string,"p_posted_at": string,"p_url": string,"p_user": string }; Returns: Json
                            },
 "worker_defer":
 { Args: { "p_submission": string,"p_until": string }; Returns: undefined

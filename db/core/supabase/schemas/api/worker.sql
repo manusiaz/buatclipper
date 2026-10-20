@@ -379,7 +379,8 @@ end $$;
 -- Status: validating → in_review (review manual/brand, atau campaign berbatas durasi tapi API tidak memberi durasi) atau
 -- tracking (auto; langsung masuk jadwal poll). Claim → submitted.
 create function api.worker_create_submission(p_user uuid, p_claim uuid, p_account uuid, p_post_id text, p_url text,
-                                             p_posted_at timestamptz, p_caption text, p_duration_sec int)
+                                             p_posted_at timestamptz, p_caption text, p_duration_sec int,
+                                             p_cover_hash bigint default null)
 returns jsonb
 language plpgsql security definer set search_path = '' as $$
 declare
@@ -389,6 +390,7 @@ declare
   missing text[];
   sid uuid;
   st tracking.submission_status;
+  dup record;
 begin
   if not exists (select 1 from market.profiles pr where pr.id = p_user and pr.status = 'active') then
     raise exception 'profile_inactive' using errcode = 'P0001';
@@ -439,8 +441,8 @@ begin
   end if;
 
   begin
-    insert into tracking.submissions (claim_id, user_id, campaign_id, social_account_id, platform, post_id, url, posted_at)
-    values (cl.id, p_user, c.id, a.id, a.platform, p_post_id, p_url, p_posted_at) returning id into sid;
+    insert into tracking.submissions (claim_id, user_id, campaign_id, social_account_id, platform, post_id, url, posted_at, cover_hash)
+    values (cl.id, p_user, c.id, a.id, a.platform, p_post_id, p_url, p_posted_at, p_cover_hash) returning id into sid;
   exception when unique_violation then
     raise exception 'already_submitted' using errcode = 'P0001';
   end;
@@ -452,6 +454,21 @@ begin
     perform trust.apply_submission_decision(sid, 'auto_approve', null, null, null, 'auto');
   end if;
   update market.claims set status = 'submitted' where id = cl.id;
+  -- FR-07 (§12): cover hampir identik dengan submisi akun sosmed lain dalam 90 hari = konten duplikat lintas akun → flag (review
+  -- manual; earning tertahan selama flag terbuka). Jarak Hamming dHash ≤ trust.fraud.cover_distance (default 6: re-encode ≤ 5,
+  -- cover lain ≥ 28).
+  if p_cover_hash is not null then
+    select array_agg(t.id order by t.created_at) ids, array_agg(distinct t.user_id) users into dup
+      from (select t.id, t.user_id, t.created_at from tracking.submissions t
+             where t.cover_hash is not null and t.created_at > now() - interval '90 days' and t.social_account_id <> a.id
+               and bit_count((t.cover_hash # p_cover_hash)::bit(64)) <= (ops.cfg('trust.fraud.cover_distance', '6'))::int
+             order by t.created_at limit 20) t;
+    if dup.ids is not null then
+      perform trust.raise_flag('submission', sid, 'FR-07', 60,
+                               jsonb_build_object('duplicates', to_jsonb(dup.ids),
+                                                  'related_user_ids', to_jsonb(array_remove(dup.users, p_user))));
+    end if;
+  end if;
   if c.review_mode = 'brand' and st = 'in_review' then
     perform market.notify_org(c.org_id, array['brand_owner', 'brand_manager']::market.org_role[], 'submission.pending_review',
                               market.campaign_ref(c.id) || jsonb_build_object('submission_id', sid));
@@ -592,7 +609,7 @@ revoke execute on function api.worker_dequeue(text, int, int), api.worker_ack(te
   api.worker_submission_context(uuid), api.worker_record_snapshot(uuid, bigint, bigint, bigint, bigint, text, jsonb, jsonb),
   api.worker_post_gone(uuid, text), api.worker_account_status(uuid, text), api.worker_accounts_to_refresh(interval),
   api.worker_upsert_social_account(uuid, text, text, text, int, timestamptz, text),
-  api.worker_create_submission(uuid, uuid, uuid, text, text, timestamptz, text, int), api.worker_notification(bigint),
+  api.worker_create_submission(uuid, uuid, uuid, text, text, timestamptz, text, int, bigint), api.worker_notification(bigint),
   api.worker_unsubscribe(uuid), api.worker_fulfillments_due(int), api.worker_assign_code(uuid),
   api.worker_fulfillment_result(uuid, boolean, text, text)
   from public, anon, authenticated;
@@ -601,7 +618,7 @@ grant execute on function api.worker_dequeue(text, int, int), api.worker_ack(tex
   api.worker_submission_context(uuid), api.worker_record_snapshot(uuid, bigint, bigint, bigint, bigint, text, jsonb, jsonb),
   api.worker_post_gone(uuid, text), api.worker_account_status(uuid, text), api.worker_accounts_to_refresh(interval),
   api.worker_upsert_social_account(uuid, text, text, text, int, timestamptz, text),
-  api.worker_create_submission(uuid, uuid, uuid, text, text, timestamptz, text, int), api.worker_notification(bigint),
+  api.worker_create_submission(uuid, uuid, uuid, text, text, timestamptz, text, int, bigint), api.worker_notification(bigint),
   api.worker_unsubscribe(uuid), api.worker_fulfillments_due(int), api.worker_assign_code(uuid),
   api.worker_fulfillment_result(uuid, boolean, text, text)
   to service_role;

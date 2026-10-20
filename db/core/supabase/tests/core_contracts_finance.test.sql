@@ -929,7 +929,8 @@ select throws_ok($$ select api.worker_create_submission('11111111-0000-0000-0000
                     '99999999-0000-0000-0000-00000000000a', 'x', 'https://tiktok.com/x', now() - interval '1 hour', '#mplid', 5) $$, 'P0001',
                  'duration_out_of_range', 'submit: durasi di luar batas');
 insert into t_ids select 's10', api.worker_create_submission('11111111-0000-0000-0000-00000000000a', '88888888-0000-0000-0000-0000000000b0',
-  '99999999-0000-0000-0000-00000000000a', 'vid-10', 'https://tiktok.com/@andi/video/10', now() - interval '1 hour', 'Mantap #MPLID', 30) ->> 'submission_id';
+  '99999999-0000-0000-0000-00000000000a', 'vid-10', 'https://tiktok.com/@andi/video/10', now() - interval '1 hour', 'Mantap #MPLID', 30,
+  1234567890123) ->> 'submission_id';
 select is((select status::text || ':' || (next_poll_at <= now())::text from tracking.submissions where id = (select v::uuid from t_ids where k = 's10')),
           'tracking:true', 'review auto → tracking + langsung dijadwalkan poll');
 select is((select status::text from market.claims where id = '88888888-0000-0000-0000-0000000000b0'), 'submitted', 'claim → submitted');
@@ -946,11 +947,20 @@ select throws_ok($$ select api.worker_create_submission('11111111-0000-0000-0000
                     '99999999-0000-0000-0000-00000000000d', 'v1', 'https://tiktok.com/x', now() - interval '1 hour', '#mplid', 30) $$, 'P0001',
                  'reused_video', 'submit: video yang dipakai di campaign lain (allow_video_reuse mati)');
 select is(api.worker_create_submission('11111111-0000-0000-0000-00000000000d', '88888888-0000-0000-0000-0000000000b1',
-            '99999999-0000-0000-0000-00000000000d', 'vid-11', 'https://tiktok.com/@dedi/video/11', now() - interval '1 hour', '#mplid', null) ->> 'status',
+            '99999999-0000-0000-0000-00000000000d', 'vid-11', 'https://tiktok.com/@dedi/video/11', now() - interval '1 hour', '#mplid', null,
+            1234567890120) ->> 'status',
           'in_review', 'durasi tidak diketahui + campaign berbatas durasi → in_review walau review auto');
 select is(api.worker_create_submission('11111111-0000-0000-0000-00000000000f', '88888888-0000-0000-0000-0000000000b2',
-            '99999999-0000-0000-0000-00000000000f', 'vid-12', 'https://tiktok.com/@fani/video/12', now() - interval '1 hour', 'halo', null) ->> 'status',
+            '99999999-0000-0000-0000-00000000000f', 'vid-12', 'https://tiktok.com/@fani/video/12', now() - interval '1 hour', 'halo', null,
+            -1234567890123) ->> 'status',
           'in_review', 'review brand → in_review');
+select is((select array[f.details -> 'duplicates' ->> 0, f.details -> 'related_user_ids' ->> 0] from trust.fraud_flags f
+             join tracking.submissions s on s.id = f.target_id where f.signal = 'FR-07' and s.post_id = 'vid-11'),
+          array[(select v from t_ids where k = 's10'), '11111111-0000-0000-0000-00000000000a'],
+          'regresi G-5 (FR-07): cover hampir sama (jarak 2 bit) dari akun lain → flag konten duplikat');
+select ok(not exists (select 1 from trust.fraud_flags f join tracking.submissions s on s.id = f.target_id
+                       where f.signal = 'FR-07' and s.post_id in ('vid-10', 'vid-12')),
+          'cover berbeda / submisi pertama tidak di-flag FR-07');
 select is((select count(*)::int from ops.notifications where event = 'submission.pending_review' and user_id = '22222222-0000-0000-0000-0000000000a1'),
           1, 'review brand: org dinotifikasi submisi menunggu review');
 

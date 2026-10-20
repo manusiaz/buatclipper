@@ -17,6 +17,7 @@ create table tracking.submissions (
   last_snapshot_at timestamptz,
   next_poll_at timestamptz,
   retry_after timestamptz,  -- §11 backoff: API gagal/rate limit → penjadwal tidak mengantre ulang sebelum waktu ini
+  cover_hash bigint,  -- FR-07: dHash 64-bit cover saat submit (perseptual; null = cover tidak terbaca)
   locked_at timestamptz,
   created_at timestamptz not null default now(),
   constraint submissions_one_per_claim unique (claim_id),
@@ -32,6 +33,7 @@ create index submissions_campaign_idx on tracking.submissions (campaign_id, stat
 create index submissions_post_idx on tracking.submissions (platform, post_id);
 create index submissions_account_idx on tracking.submissions (social_account_id, user_id, platform);
 create index submissions_due_idx on tracking.submissions (next_poll_at) where status in ('tracking', 'flagged');
+create index submissions_cover_idx on tracking.submissions (created_at) where cover_hash is not null;
 
 alter table tracking.submissions enable row level security;
 create policy submissions_iss on tracking.submissions as restrictive for all to authenticated  -- policy:core.iss-identity

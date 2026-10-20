@@ -3,6 +3,7 @@
 import { type User, verifyUserJwt } from "../_shared/auth.ts";
 import { type Rpc, RpcError, serviceRpc, userClient } from "../_shared/db.ts";
 import { corsHeaders, envList, errorResponse, HttpError, json, randomToken, readJson } from "../_shared/http.ts";
+import { coverHash } from "../_shared/social/cover.ts";
 import {
   AdapterError,
   adapterFor,
@@ -45,6 +46,8 @@ export interface SocialDeps {
   flags: () => Promise<Record<string, boolean>>;
   getClaim: (user: User, claimId: string) => Promise<Claim | null>;
   missingTags: (user: User, campaignId: string, caption: string) => Promise<string[] | null>;
+  /** FR-07: dHash cover (null = tidak terbaca). */
+  coverHash: (url: string | null) => Promise<string | null>;
   redirectAllowlist: string[];
   origins: string[];
 }
@@ -294,6 +297,7 @@ export function createSocialHandler(deps: SocialDeps): (req: Request) => Promise
           p_posted_at: video.postedAt,
           p_caption: video.caption,
           p_duration_sec: video.durationSec,
+          p_cover_hash: await deps.coverHash(video.thumbnail),
         });
       } catch (e) {
         throw mapRpcError(e, SUBMIT_ERRORS);
@@ -340,6 +344,7 @@ export function defaultSocialDeps(): SocialDeps {
       if (error) throw new RpcError("missing_brief_tags", error.code ?? "", error.message);
       return data as string[] | null;
     },
+    coverHash: (url) => coverHash(url),
     redirectAllowlist: envList("SOCIAL_REDIRECT_ALLOWLIST"),
     origins: envList("APP_ORIGINS"),
   };

@@ -103,6 +103,7 @@ function deps(
         created_at: "2026-09-30T00:00:00Z",
       }),
     missingTags: (_u, _c, caption) => Promise.resolve(caption.includes("#mplid") ? [] : ["#mplid"]),
+    coverHash: () => Promise.resolve("4242"),
     redirectAllowlist: [CB],
     origins: [ORIGIN],
     ...over,
@@ -136,6 +137,7 @@ Deno.test("social: submit sukses → getPost (kepemilikan) → worker_create_sub
     p_posted_at: VIDEO.postedAt,
     p_caption: "#mplid",
     p_duration_sec: 34,
+    p_cover_hash: "4242",
   });
 });
 
