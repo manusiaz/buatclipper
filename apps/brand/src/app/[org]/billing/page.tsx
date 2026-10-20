@@ -25,7 +25,7 @@ import { InvoiceCredit } from '@/features/billing/pay-credit';
 import { can, getOrgContext, isUuid, num, publicSettings } from '@/lib/org';
 
 const PAGE = 25;
-const INVOICE_COLS = 'id, number, kind, campaign_id, subtotal, mgmt_fee, admin_fee, service_fee, tax, total, credit_applied, fee_exempt, amount_due, status, payment_channel, paid_amount, paid_at, faktur_no, issued_at, due_at, pin_until';
+const INVOICE_COLS = 'id, number, kind, campaign_id, subtotal, mgmt_fee, admin_fee, service_fee, tax, total, credit_applied, fee_exempt, amount_due, status, payment_channel, paid_amount, paid_at, faktur_no, faktur_path, issued_at, due_at, pin_until';
 
 export async function generateMetadata(): Promise<Metadata> {
   return { title: (await getTranslations('brand.nav'))('billing') };
@@ -50,6 +50,7 @@ const asInvoice = (r: Record<string, unknown>): InvoiceRow => ({
   paid_amount: r.paid_amount == null ? null : num(r.paid_amount),
   paid_at: (r.paid_at as string | null) ?? null,
   faktur_no: (r.faktur_no as string | null) ?? null,
+  faktur_path: (r.faktur_path as string | null) ?? null,
   issued_at: (r.issued_at as string | null) ?? null,
   due_at: (r.due_at as string | null) ?? null,
   pin_until: (r.pin_until as string | null) ?? null,
@@ -80,6 +81,7 @@ export default async function BillingPage({ params, searchParams }: { params: Pr
   ]);
   const invoices = (list.data ?? []).filter((r) => r.id).map((r) => asInvoice(r as Record<string, unknown>));
   const selected = selectedRes?.data?.id ? asInvoice(selectedRes.data as Record<string, unknown>) : null;
+  const fakturUrl = selected?.faktur_path ? ((await core.storage.from('invoice-docs').createSignedUrl(selected.faktur_path, 600)).data?.signedUrl ?? null) : null;
   const credit = creditRes.error ? null : parseCredit(creditRes.data);
   const leftover: LeftoverRow[] = (credit?.leftovers ?? []).map((l) => ({ campaignId: l.campaignId, title: l.title, leftover: l.amount }));
   const aal2 = claims.aal === 'aal2';
@@ -106,6 +108,7 @@ export default async function BillingPage({ params, searchParams }: { params: Pr
             campaignTitle={selected.campaign_id ? (titleOf.get(selected.campaign_id) ?? null) : null}
             orgId={orgId}
             pay={pay}
+            fakturUrl={fakturUrl}
             creditAction={
               selected.status === 'issued' && (creditCap(credit, selected) > 0 || selected.credit_applied > 0) ? (
                 <InvoiceCredit

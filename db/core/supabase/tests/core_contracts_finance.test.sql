@@ -1662,6 +1662,34 @@ select is((select array[fee_exempt, mgmt_fee, admin_fee, tax, total] from financ
 select is(finance.rollover_available('44444444-0000-0000-0000-000000000001'),
           300000::numeric, 'rollover terpakai tercatat di fee_exempt (1 jt), sisa rollover lama 300 rb; tidak membebaskan fee dua kali');
 
+-- Regresi audit 2 AB-4 (B1.8 "unduh faktur setelah lunas"): finance mencatat faktur pajak + PDF, brand billing mengunduhnya.
+insert into storage.buckets (id, name, public) values ('invoice-docs', 'invoice-docs', false) on conflict do nothing;
+create temp table t_fk as select org_id || '/' || id || '/faktur.pdf' as path, id from finance.invoices where id = (select id from t_pay where k = 'inv_roll');
+grant select on t_fk to authenticated;
+set local role authenticated;
+select pg_temp.jwt('22222222-0000-0000-0000-0000000000c1', '{"aal":"aal2"}');
+select throws_ok($$ select api.attach_faktur((select id from t_fk), '010.000-26.00000001', (select path from t_fk)) $$, '42501', 'auth:forbidden',
+                 'brand tidak bisa mengisi faktur sendiri');
+select throws_ok($$ insert into storage.objects (bucket_id, name) values ('invoice-docs', (select path from t_fk)) $$, '42501', null,
+                 'brand tidak bisa mengunggah ke invoice-docs');
+select pg_temp.jwt('33333333-0000-0000-0000-0000000000f1', '{"app_roles":["admin_finance"],"aal":"aal2"}');
+select throws_ok($$ select api.attach_faktur((select id from t_fk), '010.000-26.00000001', (select path from t_fk)) $$, 'P0001', 'file_missing',
+                 'faktur wajib berkas yang sudah diunggah');
+insert into storage.objects (bucket_id, name) values ('invoice-docs', (select path from t_fk));
+select throws_ok($$ select api.attach_faktur((select id from t_fk), 'abc', (select path from t_fk)) $$, 'P0001', 'invalid:faktur_no',
+                 'nomor faktur divalidasi');
+select lives_ok($$ select api.attach_faktur((select id from t_fk), '010.000-26.00000001', (select path from t_fk)) $$,
+                'regresi AB-4: admin_finance mencatat faktur pajak invoice lunas');
+select throws_ok($$ select api.attach_faktur((select id from api.invoices where status = 'paid' and id <> (select id from t_fk) limit 1),
+                                             '010.000-26.00000001', 'x') $$, 'P0001', 'faktur_used', 'satu nomor faktur untuk satu invoice');
+select pg_temp.jwt('22222222-0000-0000-0000-0000000000c1', '{"aal":"aal2"}');
+select is((select faktur_no || '|' || faktur_path from api.invoices where id = (select id from t_fk)),
+          '010.000-26.00000001|' || (select path from t_fk), 'brand billing melihat nomor + berkas faktur');
+select is((select count(*)::int from storage.objects where bucket_id = 'invoice-docs'), 1, 'brand billing bisa mengunduh PDF faktur');
+select pg_temp.jwt('22222222-0000-0000-0000-0000000000d9');
+select is((select count(*)::int from storage.objects where bucket_id = 'invoice-docs'), 0, 'bukan anggota billing org tidak bisa mengunduh');
+reset role;
+
 -- ========== Invarian akhir ==========
 select is((select count(*)::int from (select 1 from finance.ledger_entries e group by e.txn_id, e.reward_type_id having sum(e.amount) <> 0) x),
           0, 'akhir: ledger seimbang per transaksi per reward type');

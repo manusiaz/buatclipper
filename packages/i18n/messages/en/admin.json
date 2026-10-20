@@ -800,7 +800,16 @@
       "banned": "Banned",
       "suspended": "Suspended",
       "closed": "Closed"
-    }
+    },
+    "fakturTitle": "Awaiting tax invoice ({n})",
+    "fakturTax": "VAT {tax}",
+    "fakturAttach": "Upload tax invoice",
+    "fakturAttachTitle": "Tax invoice {number}",
+    "fakturAttachBody": "Issue the faktur in Coretax DJP, then upload its PDF. Brand billing can download it on the invoice page.",
+    "fakturAttached": "Tax invoice saved",
+    "fakturNo": "Faktur number",
+    "fakturNoHelp": "As shown in Coretax, e.g. 04002500123456789.",
+    "fakturFile": "Faktur PDF (max 5 MB)"
   },
   "fulfillment": {
     "title": "Non-cash fulfillment",

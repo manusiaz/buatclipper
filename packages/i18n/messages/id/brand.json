@@ -428,7 +428,6 @@
     "paidTitle": "Lunas",
     "paidBody": "Dibayar {amount} lewat {channel} pada {date} WIB.",
     "fakturDownload": "Unduh faktur pajak",
-    "fakturPending": "Faktur {no}. Unduhan file faktur segera tersedia.",
     "fakturNotYet": "Faktur pajak diterbitkan tim finance setelah pembayaran dicocokkan.",
     "payQris": "Bayar dengan QRIS",
     "payTransfer": "Bayar dengan transfer bank",
@@ -448,7 +447,8 @@
     "copy": "Salin",
     "copied": "Tersalin",
     "confirmNote": "Tim finance mencocokkan pembayaran secara manual (biasanya di hari kerja yang sama). Status berubah jadi Lunas setelah cocok.",
-    "feeExempt": "Tanpa fee baru untuk {amount} budget dari kredit rollover (sisa campaign sebelumnya)."
+    "feeExempt": "Tanpa fee baru untuk {amount} budget dari kredit rollover (sisa campaign sebelumnya).",
+    "fakturNo": "Faktur pajak {no}"
   },
   "leftover": {
     "title": "Sisa budget campaign",

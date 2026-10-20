@@ -103,5 +103,6 @@
   "delivery_unconfirmed": "A delivery attempt or export already happened. Confirm with the provider that the reward was not delivered, then tick the confirmation.",
   "export_stale": "The data changed since the export started. Export again.",
   "file_missing": "Export file not found. Export again.",
-  "last_owner": "The organization needs at least one Owner. Make another member an Owner first."
+  "last_owner": "The organization needs at least one Owner. Make another member an Owner first.",
+  "faktur_used": "This faktur number is already used by another invoice."
 }

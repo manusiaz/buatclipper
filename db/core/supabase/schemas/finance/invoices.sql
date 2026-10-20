@@ -25,6 +25,7 @@ create table finance.invoices (
   paid_at timestamptz,
   confirmed_by uuid,
   faktur_no text,
+  faktur_path text,  -- PDF faktur pajak (Coretax DJP) di bucket invoice-docs, diunggah admin_finance (api.attach_faktur)
   issued_at timestamptz not null default now(),
   due_at timestamptz,
   pin_until timestamptz,  -- perkiraan saat terbit; diganti periode sebenarnya saat lunas (pin_days dihitung dari waktu bayar)

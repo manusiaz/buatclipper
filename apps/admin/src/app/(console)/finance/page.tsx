@@ -10,7 +10,7 @@ import type { Claims } from '@clipper/auth';
 import { isUuid, param, rows, uniq, type SearchParams } from '@/lib/data';
 import { isoToWibDate, isoToWibInput } from '@/lib/wib';
 import {
-  approveBatch, approveRefund, cancelPayout, confirmInvoice, createBatch, exportPayoutCsv, exportPph21, holdPayout, importBankStatement,
+  approveBatch, approveRefund, attachFaktur, cancelPayout, confirmInvoice, createBatch, exportPayoutCsv, exportPph21, holdPayout, importBankStatement,
   releasePayout, resolveBankLine, setBankRef, uploadProof,
 } from '@/features/finance/actions';
 import { BatchResults } from '@/features/finance/batch-results';
@@ -63,14 +63,17 @@ async function names(db: Awaited<ReturnType<typeof coreServer>>, userIds: (strin
 
 async function Incoming({ loc }: { loc: UiLocale }) {
   const [t, db] = await Promise.all([getTranslations('admin'), coreServer('admin')]);
-  const [openRes, paidRes] = await Promise.all([
+  const [openRes, paidRes, fakturRes] = await Promise.all([
     db.from('invoices').select('id, number, org_id, campaign_id, kind, total, credit_applied, amount_due, issued_at, due_at').eq('status', 'issued').order('issued_at').limit(100),
     db.from('invoices').select('id, number, org_id, kind, paid_amount, paid_at, payment_channel').eq('status', 'paid').order('paid_at', { ascending: false }).limit(10),
+    // B1.8: invoice lunas ber-PPN yang belum punya faktur pajak (diterbitkan di Coretax, PDF-nya diunggah di sini)
+    db.from('invoices').select('id, number, org_id, tax, paid_at').eq('status', 'paid').gt('tax', 0).is('faktur_path', null).order('paid_at').limit(50),
   ]);
   const open = rows(openRes);
   const paid = rows(paidRes);
+  const noFaktur = rows(fakturRes);
   const [orgs, camps] = await Promise.all([
-    db.from('organizations').select('id, name').in('id', uniq([...open, ...paid].map((i) => i.org_id))),
+    db.from('organizations').select('id, name').in('id', uniq([...open, ...paid, ...noFaktur].map((i) => i.org_id))),
     db.from('campaigns').select('id, title').in('id', uniq(open.map((i) => i.campaign_id))),
   ]);
   const org = new Map(rows(orgs).map((o) => [o.id, o.name]));
@@ -135,6 +138,35 @@ async function Incoming({ loc }: { loc: UiLocale }) {
           </TBody>
         </Table>
       )}
+      {noFaktur.length ? (
+        <Card padding="md">
+          <CardHeader>
+            <CardTitle>{t('finance.fakturTitle', { n: noFaktur.length })}</CardTitle>
+          </CardHeader>
+          <ul className="mt-3 flex flex-col divide-y divide-border text-body-s">
+            {noFaktur.map((i) => (
+              <li key={i.id} className="flex flex-wrap items-center justify-between gap-2 py-2">
+                <span className="font-mono text-caption">{i.number}</span>
+                <span className="text-text-2">{org.get(i.org_id) ?? '—'}</span>
+                <span className="tnum">{t('finance.fakturTax', { tax: idr(i.tax, loc) })}</span>
+                <span className="text-muted">{i.paid_at ? formatDateTime(i.paid_at, loc) : '—'}</span>
+                <ActionDialog
+                  trigger={{ label: t('finance.fakturAttach'), variant: 'secondary', icon: 'upload' }}
+                  title={t('finance.fakturAttachTitle', { number: i.number ?? '' })}
+                  description={t('finance.fakturAttachBody')}
+                  submitLabel={t('finance.fakturAttach')}
+                  success={t('finance.fakturAttached')}
+                  action={attachFaktur.bind(null, i.id!)}
+                  fields={[
+                    { kind: 'text', name: 'faktur_no', label: t('finance.fakturNo'), required: true, maxLength: 25, helper: t('finance.fakturNoHelp') },
+                    { kind: 'file', name: 'file', label: t('finance.fakturFile'), accept: 'application/pdf', required: true, maxBytes: 5 * 1024 * 1024 },
+                  ]}
+                />
+              </li>
+            ))}
+          </ul>
+        </Card>
+      ) : null}
       {paid.length ? (
         <Card padding="md">
           <CardHeader>

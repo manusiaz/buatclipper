@@ -150,6 +150,7 @@ Wajib tetap benar setiap perubahan (dicek otomatis saat graph ini dibuat; cek ul
 | `api:rpc core.buy_pin` | api | db/core/supabase/schemas/api/campaigns.sql | invoice kind pinned + pin_until; pinned_until diset saat lunas |  |
 | `api:rpc core.claim_campaign` | api | db/core/supabase/schemas/api/campaigns.sql | Claim 1 slot 48 jam (F-C05) |  |
 | `api:rpc core.my_clip_terms` | api | db/core/supabase/schemas/api/read_models.sql | Cap & hold yang berlaku per platform untuk clipper ini (finance.clip_terms, §12/C4.1) |  |
+| `api:rpc core.attach_faktur` | api | db/core/supabase/schemas/finance/invoice_confirm.sql | admin_finance catat nomor faktur pajak (Coretax) + PDF di invoice-docs untuk invoice lunas; nomor unik (faktur_used), berkas wajib ada |  |
 | `api:rpc core.confirm_invoice_payment` | api | db/core/supabase/schemas/finance/invoice_confirm.sql | Finance konfirmasi QRIS/transfer → ledger bank → pool (F-A08) |  |
 | `api:rpc core.import_bank_lines` | api | db/core/supabase/schemas/finance/bank_lines.sql | Unggah CSV mutasi rekening → cocokkan per referensi dengan kas sistem (F-A08, A3.5) |  |
 | `api:rpc core.resolve_bank_line` | api | db/core/supabase/schemas/finance/bank_lines.sql | Tutup baris mutasi bukan transaksi platform dengan catatan (audit) |  |
@@ -235,6 +236,7 @@ Wajib tetap benar setiap perubahan (dicek otomatis saat graph ini dibuat; cek ul
 | `table:auth.sessions` | table |  | Sesi login + ip & user_agent | identity (bawaan Supabase) |
 | `table:auth.users` | table |  | Akun login Supabase Auth: email, HP, Google | identity (bawaan Supabase) |
 | `table:bucket.avatars` | table | db/core/supabase/schemas/market/storage.sql | Storage core publik: foto profil (F-C01), folder {user_id}/ |  |
+| `table:bucket.invoice-docs` | table | db/core/supabase/schemas/market/storage.sql | Storage core privat: PDF faktur pajak {org_id}/{invoice_id}/; admin_finance unggah, brand_owner/brand_finance unduh |  |
 | `table:bucket.campaign-assets` | table | db/core/supabase/schemas/market/storage.sql | Storage core privat: aset brief |  |
 | `table:bucket.campaign-covers` | table | db/core/supabase/schemas/market/storage.sql | Storage core publik: cover campaign (card & OG) |  |
 | `table:bucket.kyc-docs` | table | db/identity/supabase/schemas/member/storage.sql | Storage identity: foto KTP |  |
@@ -448,20 +450,22 @@ Arah: `A --tipe--> B` = A bergantung pada B. `?` = belum terverifikasi.
 | `page:admin/campaigns/new` | wrapped-by | `layout:admin` | apps/admin/src/app/layout.tsx:20 |
 | `page:admin/config` | calls | `api:rpc core.update_config` | apps/admin/src/features/config/actions.ts:15 |
 | `page:admin/config` | wrapped-by | `layout:admin` | apps/admin/src/app/layout.tsx:20 |
-| `page:admin/finance` | calls | `api:fn identity/pii-export` | apps/admin/src/features/finance/actions.ts:91 |
-| `page:admin/finance` | calls | `api:rpc core.import_bank_lines` | apps/admin/src/features/finance/actions.ts:128 |
-| `page:admin/finance` | calls | `api:rpc core.hold_payout` | apps/admin/src/features/finance/actions.ts:152 |
-| `page:admin/finance` | calls | `api:rpc core.release_payout` | apps/admin/src/features/finance/actions.ts:158 |
+| `page:admin/finance` | calls | `api:rpc core.attach_faktur` | apps/admin/src/features/finance/actions.ts:90 |
+| `page:admin/finance` | writes | `table:bucket.invoice-docs` | apps/admin/src/features/finance/actions.ts:88 |
+| `page:admin/finance` | calls | `api:fn identity/pii-export` | apps/admin/src/features/finance/actions.ts:107 |
+| `page:admin/finance` | calls | `api:rpc core.import_bank_lines` | apps/admin/src/features/finance/actions.ts:144 |
+| `page:admin/finance` | calls | `api:rpc core.hold_payout` | apps/admin/src/features/finance/actions.ts:168 |
+| `page:admin/finance` | calls | `api:rpc core.release_payout` | apps/admin/src/features/finance/actions.ts:174 |
 | `api:rpc core.hold_payout` | writes | `table:finance.payouts` | db/core/supabase/schemas/finance/payout_holds.sql:26 (finance.hold_payouts) |
-| `page:admin/finance` | calls | `api:rpc core.set_bank_ref` | apps/admin/src/features/finance/actions.ts:145 |
+| `page:admin/finance` | calls | `api:rpc core.set_bank_ref` | apps/admin/src/features/finance/actions.ts:161 |
 | `page:admin/finance` | calls | `api:rpc core.bank_issues` | tab Mutasi bank (rpc bank_issues); kode baris 463 |
 | `api:rpc core.set_bank_ref` | writes | `table:finance.payouts` | db/core/supabase/schemas/finance/bank_lines.sql:138 |
-| `page:admin/finance` | calls | `api:rpc core.resolve_bank_line` | apps/admin/src/features/finance/actions.ts:138 |
+| `page:admin/finance` | calls | `api:rpc core.resolve_bank_line` | apps/admin/src/features/finance/actions.ts:154 |
 | `page:admin/finance` | reads | `table:finance.bank_lines` | tab Mutasi bank (view api.bank_lines); kode baris 459 |
 | `api:rpc core.import_bank_lines` | writes | `table:finance.bank_lines` | db/core/supabase/schemas/finance/bank_lines.sql:182 |
 | `api:rpc core.resolve_bank_line` | writes | `table:finance.bank_lines` | db/core/supabase/schemas/finance/bank_lines.sql:207 |
 | `job:reconcile-daily` | reads | `table:finance.bank_lines` | db/core/supabase/schemas/finance/bank_lines.sql:76 (finance.reconcile_bank dari cron reconcile-daily) |
-| `page:admin/finance` | calls | `api:rpc core.cancel_payout` | apps/admin/src/features/finance/actions.ts:100 |
+| `page:admin/finance` | calls | `api:rpc core.cancel_payout` | apps/admin/src/features/finance/actions.ts:116 |
 | `page:admin/finance` | calls | `api:rpc core.approve_payout_batch` | apps/admin/src/features/finance/actions.ts:44 |
 | `page:admin/finance` | calls | `api:rpc core.confirm_invoice_payment` | apps/admin/src/features/finance/actions.ts:23 |
 | `page:admin/finance` | calls | `api:rpc core.create_payout_batch` | apps/admin/src/features/finance/actions.ts:36 |
@@ -590,12 +594,13 @@ Arah: `A --tipe--> B` = A bergantung pada B. `?` = belum terverifikasi.
 | `page:app/wallet/withdraw` | wrapped-by | `layout:clipper` | apps/clipper/src/app/layout.tsx:31 |
 | `page:brand/` | reads | `table:market.org_members` | apps/brand/src/app/page.tsx:20 |
 | `page:brand/` | wrapped-by | `layout:brand` | apps/brand/src/app/layout.tsx:20 |
+| `page:brand/[org]/billing` | reads | `table:bucket.invoice-docs` | apps/brand/src/app/[org]/billing/page.tsx:84 (signed URL faktur) |
 | `page:brand/[org]/billing` | calls | `api:rpc core.request_refund` | apps/brand/src/features/billing/actions.ts:19 |
-| `page:brand/[org]/billing` | calls | `api:rpc core.org_credit` | apps/brand/src/app/[org]/billing/page.tsx:79 |
+| `page:brand/[org]/billing` | calls | `api:rpc core.org_credit` | apps/brand/src/app/[org]/billing/page.tsx:80 |
 | `page:brand/[org]/billing` | calls | `api:rpc core.pay_invoice_with_credit` | apps/brand/src/features/billing/actions.ts:44 |
-| `page:brand/[org]/billing` | reads | `table:finance.invoices` | apps/brand/src/app/[org]/billing/page.tsx:75 |
-| `page:brand/[org]/billing` | reads | `table:finance.org_refunds` | apps/brand/src/app/[org]/billing/page.tsx:78 |
-| `page:brand/[org]/billing` | routes-to | `page:accounts/security` | apps/brand/src/app/[org]/billing/page.tsx:120 |
+| `page:brand/[org]/billing` | reads | `table:finance.invoices` | apps/brand/src/app/[org]/billing/page.tsx:76 |
+| `page:brand/[org]/billing` | reads | `table:finance.org_refunds` | apps/brand/src/app/[org]/billing/page.tsx:79 |
+| `page:brand/[org]/billing` | routes-to | `page:accounts/security` | apps/brand/src/app/[org]/billing/page.tsx:123 |
 | `page:brand/[org]/billing` | routes-to | `page:brand/[org]/campaigns` | PRD v0.3.1 §6 B1.8 (belum di kode: halaman billing tanpa link ke daftar campaign; lewat sidebar layout:brand) |
 | `page:brand/[org]/billing` | wrapped-by | `layout:brand` | apps/brand/src/app/layout.tsx:20 |
 | `page:brand/[org]/campaigns` | calls | `api:rpc core.duplicate_campaign` | apps/brand/src/features/campaigns/actions.ts:12 |
@@ -1147,11 +1152,18 @@ Arah: `A --tipe--> B` = A bergantung pada B. `?` = belum terverifikasi.
 | `table:auth.sessions` | guarded-by | `policy:identity.api-only` | PRD v0.3.1 §15.4 kolom Akses |
 | `table:auth.users` | guarded-by | `policy:identity.api-only` | PRD v0.3.1 §15.4 kolom Akses |
 | `table:bucket.avatars` | guarded-by | `policy:core.public-read` | db/core/supabase/config.toml:49 |
-| `table:bucket.avatars` | guarded-by | `policy:core.rls-self` | db/core/supabase/schemas/market/storage.sql:17 |
-| `table:bucket.campaign-assets` | guarded-by | `policy:core.inherit-parent` | db/core/supabase/schemas/market/storage.sql:10 |
-| `table:bucket.campaign-assets` | guarded-by | `policy:core.org-role` | db/core/supabase/schemas/market/storage.sql:6 |
+| `table:bucket.avatars` | guarded-by | `policy:core.rls-self` | db/core/supabase/schemas/market/storage.sql:18 |
+| `table:bucket.invoice-docs` | guarded-by | `policy:core.admin-aal2` | db/core/supabase/schemas/market/storage.sql:20 |
+| `table:bucket.invoice-docs` | guarded-by | `policy:core.org-role` | db/core/supabase/schemas/market/storage.sql:22 |
+| `table:bucket.invoice-docs` | guarded-by | `policy:core.storage-private` | db/core/supabase/config.toml:53 (public = false baris 54) |
+| `api:rpc core.attach_faktur` | guarded-by | `policy:core.admin-aal2` | db/core/supabase/schemas/finance/invoice_confirm.sql:277 |
+| `api:rpc core.attach_faktur` | reads | `table:bucket.invoice-docs` | db/core/supabase/schemas/finance/invoice_confirm.sql:294 |
+| `api:rpc core.attach_faktur` | writes | `table:finance.invoices` | db/core/supabase/schemas/finance/invoice_confirm.sql:297 |
+| `api:rpc core.attach_faktur` | writes | `table:ops.audit_logs` | db/core/supabase/schemas/finance/invoice_confirm.sql:298 |
+| `table:bucket.campaign-assets` | guarded-by | `policy:core.inherit-parent` | db/core/supabase/schemas/market/storage.sql:11 |
+| `table:bucket.campaign-assets` | guarded-by | `policy:core.org-role` | db/core/supabase/schemas/market/storage.sql:7 |
 | `table:bucket.campaign-assets` | guarded-by | `policy:core.storage-private` | db/core/supabase/config.toml:43 (public = false baris 44) |
-| `table:bucket.campaign-covers` | guarded-by | `policy:core.org-role` | db/core/supabase/schemas/market/storage.sql:6 |
+| `table:bucket.campaign-covers` | guarded-by | `policy:core.org-role` | db/core/supabase/schemas/market/storage.sql:7 |
 | `table:bucket.campaign-covers` | guarded-by | `policy:core.public-read` | db/core/supabase/config.toml:39 |
 | `table:bucket.kyc-docs` | guarded-by | `policy:identity.admin-aal2` | db/identity/supabase/schemas/member/storage.sql:10 |
 | `table:bucket.kyc-docs` | guarded-by | `policy:identity.rls-self` | db/identity/supabase/schemas/member/storage.sql:6 |
@@ -1167,9 +1179,9 @@ Arah: `A --tipe--> B` = A bergantung pada B. `?` = belum terverifikasi.
 | `table:finance.fulfillments` | typed-by | `table:market.profiles` | db/core/supabase/schemas/finance/fulfillments.sql:5 |
 | `table:finance.fulfillments` | typed-by | `table:market.reward_types` | db/core/supabase/schemas/finance/fulfillments.sql:6 |
 | `table:finance.fulfillments` | typed-by | `table:member.recipient_details` | PRD v0.3.1 §14 kg.yaml E-18 refs E-29 (recipient_ref, tanpa FK); kode: finance/fulfillments.sql baris 9 recipient_ref |
-| `table:finance.invoices` | guarded-by | `policy:core.admin-aal2` | db/core/supabase/schemas/finance/invoices.sql:55 |
-| `table:finance.invoices` | guarded-by | `policy:core.iss-identity` | db/core/supabase/schemas/finance/invoices.sql:50 |
-| `table:finance.invoices` | guarded-by | `policy:core.org-role` | db/core/supabase/schemas/finance/invoices.sql:52 |
+| `table:finance.invoices` | guarded-by | `policy:core.admin-aal2` | db/core/supabase/schemas/finance/invoices.sql:56 |
+| `table:finance.invoices` | guarded-by | `policy:core.iss-identity` | db/core/supabase/schemas/finance/invoices.sql:51 |
+| `table:finance.invoices` | guarded-by | `policy:core.org-role` | db/core/supabase/schemas/finance/invoices.sql:53 |
 | `table:finance.invoices` | typed-by | `table:market.campaigns` | db/core/supabase/schemas/finance/invoices.sql:7 |
 | `table:finance.invoices` | typed-by | `table:market.organizations` | db/core/supabase/schemas/finance/invoices.sql:6 |
 | `table:finance.ledger_accounts` | guarded-by | `policy:core.admin-aal2` | db/core/supabase/schemas/finance/ledger_accounts.sql:24 |
@@ -2227,6 +2239,7 @@ Masalah sistem yang ditemukan saat menyusun PRD v0.2 dan saat dicek ulang (v0.2.
 | 2026-10-20 | `page:brand/[org]/settings` | Audit PRD ulang (brand AB-1/AB-12, B1.5 & F-B01): org ditolak tidak bisa diperbaiki sendiri ("hubungi tim Clipper"), tidak ada jalur ubah data + verifikasi ulang; badan usaha boleh tanpa alamat padahal alamat dipakai di faktur | diperbaiki: api.update_org (brand_owner langsung; data legal berubah pada org verified → pending_verification, audit org.update, updated_at), dialog Ubah data + banner Perbaikan terkirim di brand, baris Diubah brand di detail org admin; create_org & form wajib alamat badan |
 | 2026-10-20 | `page:brand/[org]/team` | Audit PRD ulang (brand AB-5, E-03 "owner kelola member"): owner tidak bisa mengubah role, mengeluarkan anggota (mis. karyawan keluar tetap pegang akses billing), atau mencabut link undangan — halaman menyuruh lewat tim Clipper | diperbaiki: api.manage_team (set_role/remove/revoke_invite, brand_owner langsung, org dikunci, last_owner) + kontrol per baris di halaman Tim; tercatat org.team.* di audit |
 | 2026-10-20 | `api:rpc core.pay_invoice_with_credit` | Review Claudex R22: (1) melepas kredit setelah fee rollover dibebaskan membiarkan fee tetap terhapus (invoice bisa dilunasi transfer dengan diskon tanpa rollover); (2) jumlah default UI = total sebelum bebas fee → insufficient_credit, bayar penuh pakai kredit selalu gagal | diperbaiki: fee_gross menyimpan fee awal, bebas fee dihitung ulang tiap cadangan berubah (lepas → fee penuh kembali, rollover milik invoice itu tetap tersedia untuknya); permintaan ≥ total dengan kredit cukup = bayar penuh |
+| 2026-10-20 | `page:brand/[org]/billing` | Audit PRD ulang (brand AB-4, B1.8 "unduh faktur setelah lunas"): faktur_no tidak pernah diisi siapa pun, tombol Unduh faktur selalu nonaktif | diperbaiki: bucket invoice-docs + api.attach_faktur (admin_finance, invoice lunas, nomor unik, berkas wajib ada); tab Pembayaran masuk admin menampilkan invoice ber-PPN yang menunggu faktur + unggah; brand billing mengunduh lewat signed URL |
 | 2026-10-20 | `api:fn core/social` | Audit PRD (G-1, F-C02/D-11): YouTube hanya bisa dihubungkan lewat OAuth Google; fallback kode di deskripsi channel tidak ada (YOUTUBE_API_KEY tak dipakai) | diperbaiki: aksi youtube_code / youtube_verify (kode CLIP-… per user+channel harus ada di deskripsi) → akun terverifikasi dengan token mode api_key; adapter memakai ?key= (tanpa Analytics, tanpa refresh); dialog di halaman Akun sosmed |
 ## Keputusan
 

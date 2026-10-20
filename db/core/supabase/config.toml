@@ -50,6 +50,11 @@ public = true
 file_size_limit = "1MiB"
 allowed_mime_types = ["image/jpeg", "image/png", "image/webp"]
 
+[storage.buckets.invoice-docs]
+public = false
+file_size_limit = "5MiB"
+allowed_mime_types = ["application/pdf"]
+
 # Diff schema deklaratif memakai pg-delta. Engine lama (migra) membuang security_invoker dari view: view schema api jadi
 # melewati RLS. Jangan matikan.
 [experimental.pgdelta]

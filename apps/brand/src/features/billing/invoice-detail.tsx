@@ -40,6 +40,7 @@ export interface InvoiceRow {
   paid_amount: number | null;
   paid_at: string | null;
   faktur_no: string | null;
+  faktur_path: string | null;
   issued_at: string | null;
   due_at: string | null;
   pin_until: string | null;
@@ -63,6 +64,7 @@ export async function InvoiceDetail({
   orgId,
   pay,
   creditAction,
+  fakturUrl,
 }: {
   invoice: InvoiceRow;
   campaignTitle: string | null;
@@ -70,6 +72,8 @@ export async function InvoiceDetail({
   pay: PaymentConfig;
   /** Tombol "Bayar pakai kredit" kalau kredit org tersedia ≥ total. */
   creditAction?: ReactNode;
+  /** Signed URL PDF faktur pajak (invoice-docs), dibuat server per tampilan. */
+  fakturUrl?: string | null;
 }) {
   const [t, locale] = await Promise.all([getTranslations('brand.billing'), getLocale()]);
   const loc = locale === 'en' ? 'en' : 'id';
@@ -170,10 +174,10 @@ export async function InvoiceDetail({
             </Alert>
           ) : null}
           {inv.status === 'paid' ? (
-            inv.faktur_no ? (
+            inv.faktur_no && fakturUrl ? (
               <div className="flex flex-col gap-1.5">
-                <Button variant="secondary" iconLeft="download" disabled className="self-start">{t('fakturDownload')}</Button>
-                <p className="text-caption text-muted">{t('fakturPending', { no: inv.faktur_no })}</p>
+                <Button variant="secondary" iconLeft="download" href={fakturUrl} target="_blank" rel="noopener" className="self-start">{t('fakturDownload')}</Button>
+                <p className="text-caption text-muted">{t('fakturNo', { no: inv.faktur_no })}</p>
               </div>
             ) : (
               <p className="text-caption text-muted">{t('fakturNotYet')}</p>

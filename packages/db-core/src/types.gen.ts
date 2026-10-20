@@ -236,14 +236,14 @@ export type Database = {
                   ]
                 },"invoices": {
                   Row: {
-                    "admin_fee": number | null,"amount_due": number | null,"campaign_id": string | null,"credit_applied": number | null,"due_at": string | null,"faktur_no": string | null,"fee_exempt": number | null,"id": string | null,"issued_at": string | null,"kind": string | null,"mgmt_fee": number | null,"number": string | null,"org_id": string | null,"paid_amount": number | null,"paid_at": string | null,"payment_channel": string | null,"pin_until": string | null,"pool_topups": Json | null,"service_fee": number | null,"status": string | null,"subtotal": number | null,"tax": number | null,"total": number | null
+                    "admin_fee": number | null,"amount_due": number | null,"campaign_id": string | null,"credit_applied": number | null,"due_at": string | null,"faktur_no": string | null,"faktur_path": string | null,"fee_exempt": number | null,"id": string | null,"issued_at": string | null,"kind": string | null,"mgmt_fee": number | null,"number": string | null,"org_id": string | null,"paid_amount": number | null,"paid_at": string | null,"payment_channel": string | null,"pin_until": string | null,"pool_topups": Json | null,"service_fee": number | null,"status": string | null,"subtotal": number | null,"tax": number | null,"total": number | null
                   }
                   ComputedFields: never
                   Insert: {
-                           "admin_fee"?: number | null,"amount_due"?: never,"campaign_id"?: string | null,"credit_applied"?: number | null,"due_at"?: string | null,"faktur_no"?: string | null,"fee_exempt"?: number | null,"id"?: string | null,"issued_at"?: string | null,"kind"?: string | null,"mgmt_fee"?: number | null,"number"?: string | null,"org_id"?: string | null,"paid_amount"?: number | null,"paid_at"?: string | null,"payment_channel"?: string | null,"pin_until"?: string | null,"pool_topups"?: Json | null,"service_fee"?: number | null,"status"?: string | null,"subtotal"?: number | null,"tax"?: number | null,"total"?: number | null
+                           "admin_fee"?: number | null,"amount_due"?: never,"campaign_id"?: string | null,"credit_applied"?: number | null,"due_at"?: string | null,"faktur_no"?: string | null,"faktur_path"?: string | null,"fee_exempt"?: number | null,"id"?: string | null,"issued_at"?: string | null,"kind"?: string | null,"mgmt_fee"?: number | null,"number"?: string | null,"org_id"?: string | null,"paid_amount"?: number | null,"paid_at"?: string | null,"payment_channel"?: string | null,"pin_until"?: string | null,"pool_topups"?: Json | null,"service_fee"?: number | null,"status"?: string | null,"subtotal"?: number | null,"tax"?: number | null,"total"?: number | null
                          }
                         Update: {
-                           "admin_fee"?: number | null,"amount_due"?: never,"campaign_id"?: string | null,"credit_applied"?: number | null,"due_at"?: string | null,"faktur_no"?: string | null,"fee_exempt"?: number | null,"id"?: string | null,"issued_at"?: string | null,"kind"?: string | null,"mgmt_fee"?: number | null,"number"?: string | null,"org_id"?: string | null,"paid_amount"?: number | null,"paid_at"?: string | null,"payment_channel"?: string | null,"pin_until"?: string | null,"pool_topups"?: Json | null,"service_fee"?: number | null,"status"?: string | null,"subtotal"?: number | null,"tax"?: number | null,"total"?: number | null
+                           "admin_fee"?: number | null,"amount_due"?: never,"campaign_id"?: string | null,"credit_applied"?: number | null,"due_at"?: string | null,"faktur_no"?: string | null,"faktur_path"?: string | null,"fee_exempt"?: number | null,"id"?: string | null,"issued_at"?: string | null,"kind"?: string | null,"mgmt_fee"?: number | null,"number"?: string | null,"org_id"?: string | null,"paid_amount"?: number | null,"paid_at"?: string | null,"payment_channel"?: string | null,"pin_until"?: string | null,"pool_topups"?: Json | null,"service_fee"?: number | null,"status"?: string | null,"subtotal"?: number | null,"tax"?: number | null,"total"?: number | null
                          }
                         Relationships: [
                     
@@ -619,6 +619,9 @@ export type Database = {
                            },
 "approve_refund":
 { Args: { "p_refund": string }; Returns: undefined
+                           },
+"attach_faktur":
+{ Args: { "p_faktur_no": string,"p_invoice": string,"p_path": string }; Returns: undefined
                            },
 "bank_issues":
 { Args: Record<PropertyKey, never>; Returns: Json

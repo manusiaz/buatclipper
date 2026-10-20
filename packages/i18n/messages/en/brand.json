@@ -428,7 +428,6 @@
     "paidTitle": "Paid",
     "paidBody": "Paid {amount} via {channel} on {date} WIB.",
     "fakturDownload": "Download tax invoice",
-    "fakturPending": "Tax invoice {no}. File download coming soon.",
     "fakturNotYet": "The tax invoice is issued by finance after the payment is matched.",
     "payQris": "Pay with QRIS",
     "payTransfer": "Pay by bank transfer",
@@ -448,7 +447,8 @@
     "copy": "Copy",
     "copied": "Copied",
     "confirmNote": "Finance matches payments manually (usually the same business day). The status changes to Paid once matched.",
-    "feeExempt": "No new fees on {amount} of budget funded by rollover credit (previous campaign leftover)."
+    "feeExempt": "No new fees on {amount} of budget funded by rollover credit (previous campaign leftover).",
+    "fakturNo": "Tax invoice {no}"
   },
   "leftover": {
     "title": "Leftover campaign budget",

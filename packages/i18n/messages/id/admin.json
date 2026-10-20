@@ -800,7 +800,16 @@
       "banned": "Di-ban",
       "suspended": "Ditangguhkan",
       "closed": "Ditutup"
-    }
+    },
+    "fakturTitle": "Menunggu faktur pajak ({n})",
+    "fakturTax": "PPN {tax}",
+    "fakturAttach": "Unggah faktur",
+    "fakturAttachTitle": "Faktur pajak {number}",
+    "fakturAttachBody": "Terbitkan faktur di Coretax DJP, lalu unggah PDF-nya. Brand billing bisa mengunduhnya di halaman tagihan.",
+    "fakturAttached": "Faktur pajak tersimpan",
+    "fakturNo": "Nomor faktur",
+    "fakturNoHelp": "Sesuai Coretax, mis. 04002500123456789.",
+    "fakturFile": "PDF faktur (maks 5 MB)"
   },
   "fulfillment": {
     "title": "Fulfillment non-tunai",

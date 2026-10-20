@@ -266,7 +266,42 @@ begin
 end $$;
 
 
+-- B1.8 "unduh faktur setelah lunas": admin_finance mencatat nomor faktur pajak (diterbitkan di Coretax DJP) + PDF-nya yang sudah
+-- diunggah ke invoice-docs/{org_id}/{invoice_id}/…; brand_owner/brand_finance mengunduh lewat signed URL. Boleh diganti (koreksi).
+create function api.attach_faktur(p_invoice uuid, p_faktur_no text, p_path text) returns void
+language plpgsql security definer set search_path = '' as $$
+declare
+  inv finance.invoices;
+  no text := btrim(coalesce(p_faktur_no, ''));
+begin
+  if not ops.has_admin('admin_finance') then
+    raise exception 'auth:forbidden' using errcode = '42501';
+  end if;
+  select * into inv from finance.invoices i where i.id = p_invoice for update;
+  if not found then
+    raise exception 'not_found:invoice' using errcode = 'P0002';
+  end if;
+  if inv.status <> 'paid' then
+    raise exception 'invalid_state:%', inv.status using errcode = 'P0001';
+  end if;
+  if no !~ '^[0-9][0-9.-]{11,24}$' then
+    raise exception 'invalid:faktur_no' using errcode = 'P0001';
+  end if;
+  if exists (select 1 from finance.invoices i where i.faktur_no = no and i.id <> inv.id) then
+    raise exception 'faktur_used' using errcode = 'P0001';
+  end if;
+  if p_path is null or p_path not like inv.org_id || '/' || inv.id || '/%'
+     or not exists (select 1 from storage.objects o where o.bucket_id = 'invoice-docs' and o.name = p_path) then
+    raise exception 'file_missing' using errcode = 'P0001';
+  end if;
+  update finance.invoices set faktur_no = no, faktur_path = p_path where id = inv.id;
+  insert into ops.audit_logs (actor_id, action, target, before, after)
+  values ((select auth.uid()), 'invoice.faktur', 'invoice:' || inv.id, jsonb_build_object('faktur_no', inv.faktur_no, 'path', inv.faktur_path),
+          jsonb_build_object('faktur_no', no, 'path', p_path));
+end $$;
+
 revoke execute on function api.confirm_invoice_payment(uuid, numeric, timestamptz, text, text), finance.settle_invoice(finance.invoices),
-  finance.org_credit_available(uuid), finance.rollover_available(uuid), api.org_credit(uuid), api.pay_invoice_with_credit(uuid, numeric) from public;
+  finance.org_credit_available(uuid), finance.rollover_available(uuid), api.org_credit(uuid), api.pay_invoice_with_credit(uuid, numeric),
+  api.attach_faktur(uuid, text, text) from public;
 grant execute on function api.confirm_invoice_payment(uuid, numeric, timestamptz, text, text), api.org_credit(uuid),
-  api.pay_invoice_with_credit(uuid, numeric) to authenticated;
+  api.pay_invoice_with_credit(uuid, numeric), api.attach_faktur(uuid, text, text) to authenticated;

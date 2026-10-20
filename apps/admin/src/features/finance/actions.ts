@@ -75,6 +75,22 @@ export async function markBatch(batchId: string, results: { payout_id: string; s
   return settle(error, '/finance');
 }
 
+/** B1.8: PDF faktur pajak (Coretax DJP) ke invoice-docs/{org}/{invoice}/…, lalu nomor + path dicatat api.attach_faktur. */
+export async function attachFaktur(invoiceId: string, fd: FormData): Promise<ActionResult> {
+  const db = await finance();
+  const file = fd.get('file');
+  if (!(file instanceof File) || file.size === 0) return { ok: false, error: 'invalid:file' };
+  if (file.size > 5 * 1024 * 1024) return { ok: false, error: 'payload_too_large' };
+  if (file.type !== 'application/pdf') return { ok: false, error: 'unsupported_type' };
+  const { data: inv } = await db.from('invoices').select('org_id').eq('id', invoiceId).maybeSingle();
+  if (!inv?.org_id) return { ok: false, error: 'not_found:invoice' };
+  const path = `${inv.org_id}/${invoiceId}/${crypto.randomUUID()}.pdf`;
+  const up = await db.storage.from('invoice-docs').upload(path, file, { contentType: 'application/pdf' });
+  if (up.error) return { ok: false, error: 'upload_failed' };
+  const { error } = await db.rpc('attach_faktur', { p_invoice: invoiceId, p_faktur_no: text(fd, 'faktur_no'), p_path: path });
+  return settle(error, '/finance');
+}
+
 /** Bukti transfer → pii-export upload_proof (batch: menutup batch yang sudah paid; refund: menandai refund dibayar). */
 export async function uploadProof(target: 'batch' | 'refund', id: string, fd: FormData): Promise<ActionResult> {
   await requireAdmin('admin_finance');
