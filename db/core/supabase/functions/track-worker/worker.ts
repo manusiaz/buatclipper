@@ -116,16 +116,17 @@ export async function runTrackWorker(deps: TrackDeps): Promise<TrackSummary> {
   };
   let flags: Record<string, boolean> | null = null;
   const readCt = new Map<number, number>();
-  // Pesan ditunda (vt) + next_poll_at digeser melewati penundaan + lease penjadwal (1 jam), supaya
-  // enqueue_due_submissions tidak membuat pesan baru yang memanggil API sebelum waktunya.
+  // Pesan ditunda (vt) + retry_after submisi, supaya enqueue_due_submissions tidak membuat pesan baru yang memanggil API
+  // sebelum waktunya (juga poll final di ujung view window).
   const retryLater = async (subId: string, ids: number[], retryAfterSec?: number) => {
-    let delay = 0;
     for (const id of ids) {
-      const sec = backoffSec(readCt.get(id) ?? 1, retryAfterSec);
-      delay = Math.max(delay, sec);
-      await rpc("worker_retry_later", { p_queue: "tracking", p_msg_id: id, p_seconds: sec });
+      await rpc("worker_retry_later", {
+        p_queue: "tracking",
+        p_msg_id: id,
+        p_seconds: backoffSec(readCt.get(id) ?? 1, retryAfterSec),
+        p_submission: subId,
+      });
     }
-    await rpc("worker_defer", { p_submission: subId, p_until: new Date(now() + (delay + 3600) * 1000).toISOString() });
   };
 
   while (now() < deadline - 5_000) {

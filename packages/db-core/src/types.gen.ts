@@ -8,7 +8,15 @@ export type Database = {
             [_ in never]: never
           }
           Views: {
-            "admin_profiles": {
+            "admin_ledger": {
+                  Row: {
+                    "amount": number | null,"created_at": string | null,"id": number | null,"owner_id": string | null,"owner_type": string | null,"ref_id": string | null,"ref_type": string | null,"reward_type": string | null,"state": "pending"|"available"|"withdrawn" | null,"txn_id": string | null
+                  }
+                  ComputedFields: never
+                  Relationships: [
+                    
+                  ]
+                },"admin_profiles": {
                   Row: {
                     "avatar_path": string | null,"created_at": string | null,"display_name": string | null,"id": string | null,"status": "active"|"suspended"|"banned"|"closed" | null,"suspended_until": string | null,"trust_score": number | null,"username": string | null
                   }
@@ -831,7 +839,7 @@ export type Database = {
 { Args: { "p_caption": string,"p_comments": number,"p_extra"?: Json,"p_likes": number,"p_raw": Json,"p_shares": number,"p_submission": string,"p_views": number }; Returns: Json
                            },
 "worker_retry_later":
-{ Args: { "p_msg_id": number,"p_queue": string,"p_seconds": number }; Returns: undefined
+{ Args: { "p_msg_id": number,"p_queue": string,"p_seconds": number,"p_submission"?: string }; Returns: undefined
                            },
 "worker_submission_context":
 { Args: { "p_submission": string }; Returns: Json

@@ -53,6 +53,7 @@ export async function Overview({
   const suggestions = [
     { key: 'raise_rate', tab: 'controls' },
     { key: 'extend', tab: 'controls' },
+    { key: 'notify', tab: 'controls' },
     ...(inviteTab ? [{ key: 'invite', tab: 'invites' }] : []),
     { key: 'pin', tab: 'pin' },
   ];

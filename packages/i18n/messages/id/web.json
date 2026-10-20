@@ -208,7 +208,7 @@
     "clips": "Klip dihitung",
     "clippers": "Clipper",
     "ecpm": "Biaya per 1.000 views",
-    "ecpmHint": "Budget Rupiah terpakai ÷ views valid",
+    "ecpmHint": "Total biaya brand (budget terpakai + fee) ÷ views valid",
     "emptyTitle": "Belum ada klip yang dihitung",
     "emptyBody": "Angka muncul setelah klip pertama lolos validasi dan mulai di-tracking.",
     "platformTitle": "Views per platform",

@@ -22,7 +22,7 @@ export async function generateMetadata(): Promise<Metadata> {
   return { title: (await getTranslations('admin'))('nav.finance') };
 }
 
-const TABS = ['incoming', 'payout', 'instant', 'refund', 'pph21'] as const;
+const TABS = ['incoming', 'payout', 'instant', 'refund', 'pph21', 'ledger'] as const;
 type Tab = (typeof TABS)[number];
 const idr = (v: unknown, loc: UiLocale) => formatIDR(Number(v ?? 0), { locale: loc });
 const PROOF: FieldSpec = { kind: 'file', name: 'file', label: '', accept: 'application/pdf,image/jpeg,image/png', required: true, maxBytes: 10 * 1024 * 1024 };
@@ -48,6 +48,7 @@ export default async function FinancePage({ searchParams }: { searchParams: Prom
       {tab === 'instant' ? <Instant loc={loc} /> : null}
       {tab === 'refund' ? <Refunds loc={loc} me={claims.sub} /> : null}
       {tab === 'pph21' ? <Pph21 /> : null}
+      {tab === 'ledger' ? <Ledger loc={loc} q={param(sp, 'q')} /> : null}
     </>
   );
 }
@@ -382,6 +383,64 @@ async function BatchDetail({ b, loc, me }: { b: { id: string | null; status: str
         </TBody>
       </Table>
     </Card>
+  );
+}
+
+/** F-A08 ledger: entri terbaru, atau satu transaksi / referensi (txn_id, ref_id: invoice, payout, submisi:pool, …). */
+async function Ledger({ loc, q }: { loc: UiLocale; q: string }) {
+  const [t, db] = await Promise.all([getTranslations('admin'), coreServer('admin')]);
+  const term = q.trim();
+  const prefix = term.replace(/[%_,()]/g, '');
+  let query = db.from('admin_ledger').select('id, txn_id, created_at, owner_type, owner_id, reward_type, amount, state, ref_type, ref_id');
+  if (isUuid(term)) query = query.or(`txn_id.eq.${term},ref_id.eq.${term},owner_id.eq.${term}`);
+  else if (prefix) query = query.like('ref_id', `${prefix}%`);
+  const list = rows(await query.order('id', { ascending: false }).limit(200));
+  return (
+    <div className="flex flex-col gap-4">
+      <form className="flex flex-col gap-3 sm:flex-row sm:items-end" action="/finance">
+        <input type="hidden" name="tab" value="ledger" />
+        <Field label={t('finance.ledgerSearch')} helper={t('finance.ledgerSearchHelp')} className="sm:w-96">
+          <Input name="q" defaultValue={term} inputMode="search" />
+        </Field>
+        <Button type="submit" variant="secondary" iconLeft="search">{t('finance.ledgerFind')}</Button>
+      </form>
+      {list.length === 0 ? (
+        <EmptyState icon="receipt_long" title={t('finance.ledgerEmpty')} />
+      ) : (
+        <Table card caption={t('finance.tabs.ledger')}>
+          <THead>
+            <TR>
+              <TH>{t('finance.ledgerAccount')}</TH>
+              <TH align="right">{t('finance.ledgerAmount')}</TH>
+              <TH>{t('finance.ledgerRef')}</TH>
+              <TH align="right">{t('finance.age')}</TH>
+            </TR>
+          </THead>
+          <TBody>
+            {list.map((e) => (
+              <TR key={e.id}>
+                <TD>
+                  <span className="font-semibold text-ink">{e.owner_type}{e.state ? ` · ${e.state}` : ''}</span>
+                  {e.owner_id ? <code className="block font-mono text-[11px] text-muted">{e.owner_id}</code> : null}
+                </TD>
+                <TD numeric className={Number(e.amount) < 0 ? 'text-danger-fg' : undefined}>
+                  {e.reward_type === 'IDR' ? idr(e.amount, loc) : `${Number(e.amount).toLocaleString(loc === 'en' ? 'en-US' : 'id-ID')} ${e.reward_type}`}
+                </TD>
+                <TD>
+                  <span className="text-body-s text-ink">{e.ref_type}</span>
+                  <Link href={`/finance?tab=ledger&q=${e.txn_id}`} className="block font-mono text-[11px] break-all text-link hover:underline">
+                    {e.ref_id}
+                  </Link>
+                </TD>
+                <TD align="right" muted>
+                  <RelativeTime value={e.created_at!} locale={loc} />
+                </TD>
+              </TR>
+            ))}
+          </TBody>
+        </Table>
+      )}
+    </div>
   );
 }
 

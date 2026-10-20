@@ -1115,6 +1115,18 @@ select is((select payload from ops.notifications where event = 'campaign.new' an
             "org_name":"Studio Satu","platforms":["tiktok"]}'::jsonb, 'payload campaign.new');
 select is((select count(*)::int from pgmq.q_email where message ->> 'event' = 'campaign.new' and (message ->> 'email')::boolean), 1,
           'email promosi campaign.new dilewati untuk yang unsubscribe');
+-- G-9 (F-B08): brand mengumumkan ulang → hanya clipper yang baru eligible yang dikabari (tidak dobel)
+insert into market.profiles (id, username, display_name) values ('11111111-0000-0000-0000-0000000000f7', 'baru_f7', 'Baru');
+insert into tracking.social_accounts (user_id, platform, external_id, handle, status, followers, platform_created_at)
+values ('11111111-0000-0000-0000-0000000000f7', 'tiktok', 'tt-f7', '@baru', 'verified', 5000, now() - interval '400 days');
+set local role authenticated;
+select pg_temp.jwt('22222222-0000-0000-0000-0000000000a1');
+select lives_ok($$ select api.control_campaign('55555555-0000-0000-0000-0000000000b3', 'notify_eligible') $$, 'brand mengumumkan ulang campaign');
+select lives_ok($$ select api.control_campaign('55555555-0000-0000-0000-0000000000b3', 'notify_eligible') $$, 'diulang aman');
+reset role;
+select is((select array_agg(p.username order by p.username) from ops.notifications n join market.profiles p on p.id = n.user_id
+            where n.event = 'campaign.new' and n.payload ->> 'campaign_id' = '55555555-0000-0000-0000-0000000000b3'),
+          array['andi', 'baru_f7', 'dedi'], 'regresi G-9: hanya clipper yang baru eligible yang dikabari, sekali');
 select is((select status::text || ':' || (locked_at is not null)::text from tracking.submissions where id = (select v::uuid from t_ids where k = 's14')),
           'locked:true', 'akhir view window + snapshot final → locked');
 select is((select sum(amount) from finance.clip_earnings where submission_id = (select v::uuid from t_ids where k = 's14')), 5000::numeric,
@@ -1131,7 +1143,7 @@ update tracking.submissions set locked_at = now() - interval '8 days' where id =
 select finance.release_earnings();
 select market.run_lifecycle();
 select is((select status::text from market.campaigns where id = '55555555-0000-0000-0000-0000000000b4'), 'settled', 'settling → settled setelah semua submisi settled');
-select is((select count(*)::int from ops.notifications where event = 'campaign.new'), 2, 'campaign.new sekali per campaign');
+select is((select count(*)::int from ops.notifications where event = 'campaign.new'), 3, 'campaign.new sekali per campaign per clipper (2 saat live + 1 clipper baru dari pengumuman ulang)');
 select ok(exists (select 1 from ops.notifications where event = 'campaign.settled' and user_id = '22222222-0000-0000-0000-0000000000a1'
                   and payload ->> 'campaign_title' = 'Selesai' and payload -> 'leftover' -> 0 ->> 'amount' = '995000'
                   and payload -> 'leftover' -> 0 ->> 'unit_label' = 'Rp'), 'campaign.settled ke org dengan judul & sisa budget');
@@ -1243,6 +1255,16 @@ select is((select array_agg(distinct action order by action) from ops.audit_logs
             where action in ('invoice.confirm_payment', 'payout_batch.create', 'payout_batch.approve', 'payout_batch.mark_paid', 'refund.approve')),
           array['invoice.confirm_payment', 'payout_batch.approve', 'payout_batch.create', 'payout_batch.mark_paid', 'refund.approve'],
           'aksi finance admin tercatat audit log (F-A11)');
+-- G-10 (F-A08): ledger terbaca di back-office finance — hanya admin_finance
+insert into t_ids select 'ledger_n', count(*)::text from finance.ledger_entries;
+set local role authenticated;
+select pg_temp.jwt('33333333-0000-0000-0000-0000000000f1', '{"app_roles":["admin_finance"],"aal":"aal2"}');
+select is((select count(*)::text from api.admin_ledger), (select v from t_ids where k = 'ledger_n'),
+          'regresi G-10: admin_finance membaca seluruh ledger');
+select pg_temp.jwt('33333333-0000-0000-0000-0000000000a0', '{"app_roles":["admin_ops"],"aal":"aal2"}');
+select is((select count(*)::int from api.admin_ledger), 0, 'admin_ops tidak membaca ledger');
+select pg_temp.jwt('11111111-0000-0000-0000-00000000000a', '{}');
+select is((select count(*)::int from api.admin_ledger), 0, 'clipper tidak membaca ledger');
 
 reset role;
 -- Regresi review 2026-10-19: views final turun di bawah awal rule baru (rate naik di 2.000 views) → rule baru hangus, bukan error
@@ -1328,6 +1350,12 @@ insert into t_ids select 'sf6', pg_temp.mk_sub('55555555-0000-0000-0000-00000000
 select api.worker_record_snapshot((select v::uuid from t_ids where k = 'sf6'), 150000, 20000, 900, 300, '#x', '{}', '{}');
 select ok(not exists (select 1 from trust.fraud_flags where signal = 'FR-03' and target_id = (select v::uuid from t_ids where k = 'sf6')),
           'regresi R16: follower null tidak memicu FR-03');
+-- Regresi R17: retry tertunda (Retry-After/backoff) → penjadwal tidak mengantre ulang submisi itu walau next_poll_at lewat
+update tracking.submissions set next_poll_at = now() - interval '1 minute' where id = (select v::uuid from t_ids where k = 'sf6');
+select api.worker_retry_later('tracking', 0, 3600, (select v::uuid from t_ids where k = 'sf6'));
+select tracking.enqueue_due_submissions();
+select ok(not exists (select 1 from pgmq.q_tracking where message ->> 'submission_id' = (select v from t_ids where k = 'sf6')),
+          'regresi R17: penjadwal menunggu retry_after (poll final di ujung window tidak memotong backoff)');
 
 -- Regresi G-7: teman satu perangkat dengan pengundang (FR-05) → bonus referral batal selama flag belum di-dismiss.
 insert into market.profiles (id, username, display_name) values

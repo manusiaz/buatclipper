@@ -144,6 +144,11 @@ export function ControlPanel({
                 {t('pause')}
               </Button>
             ) : null}
+            {status === 'live' ? (
+              <Button variant="secondary" iconLeft="campaign" loading={busy === 'notify'} onClick={() => run('notify', { action: 'notify_eligible' })}>
+                {t('notifyEligible')}
+              </Button>
+            ) : null}
             {status === 'paused' ? (
               <Button iconLeft="play_arrow" loading={busy === 'resume'} onClick={() => run('resume', { action: 'resume' })}>
                 {t('resume')}

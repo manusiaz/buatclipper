@@ -173,7 +173,7 @@
     "spent": "Spend",
     "ofBudget": "dari {budget}",
     "ecpm": "eCPM",
-    "ecpmHint": "Spend per 1.000 views valid",
+    "ecpmHint": "Total biaya brand (budget terpakai + fee) per 1.000 views valid",
     "clips": "Klip",
     "clippers": "{count} clipper",
     "utilization": "Utilisasi budget",
@@ -196,6 +196,7 @@
     "suggest": {
       "raise_rate": "Naikkan rate",
       "extend": "Perpanjang deadline",
+      "notify": "Kabari clipper eligible",
       "invite": "Undang clipper",
       "pin": "Pin campaign"
     },
@@ -229,6 +230,7 @@
       "in_review": "Campaign sedang direview. Membatalkan akan membatalkan invoice yang belum dibayar.",
       "draft": "Draft belum diajukan."
     },
+    "notifyEligible": "Kabari clipper eligible",
     "pause": "Jeda",
     "resume": "Lanjutkan",
     "endEarly": "Akhiri lebih awal",
@@ -272,7 +274,8 @@
       "end_early": "Campaign diakhiri.",
       "extend": "Deadline diperpanjang.",
       "raise_rate": "Rate dinaikkan.",
-      "topup": "Invoice top-up terbit."
+      "topup": "Invoice top-up terbit.",
+      "notify_eligible": "Clipper eligible yang belum dikabari sudah diberi tahu."
     }
   },
   "invites": {

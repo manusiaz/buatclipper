@@ -173,7 +173,7 @@
     "spent": "Spend",
     "ofBudget": "of {budget}",
     "ecpm": "eCPM",
-    "ecpmHint": "Spend per 1,000 valid views",
+    "ecpmHint": "Total brand cost (spent budget + fees) per 1,000 valid views",
     "clips": "Clips",
     "clippers": "{count, plural, one {# clipper} other {# clippers}}",
     "utilization": "Budget utilization",
@@ -196,6 +196,7 @@
     "suggest": {
       "raise_rate": "Raise the rate",
       "extend": "Extend the deadline",
+      "notify": "Notify eligible clippers",
       "invite": "Invite clippers",
       "pin": "Pin the campaign"
     },
@@ -229,6 +230,7 @@
       "in_review": "The campaign is in review. Cancelling also voids unpaid invoices.",
       "draft": "The draft has not been submitted."
     },
+    "notifyEligible": "Notify eligible clippers",
     "pause": "Pause",
     "resume": "Resume",
     "endEarly": "End early",
@@ -272,7 +274,8 @@
       "end_early": "Campaign ended.",
       "extend": "Deadline extended.",
       "raise_rate": "Rate raised.",
-      "topup": "Top-up invoice issued."
+      "topup": "Top-up invoice issued.",
+      "notify_eligible": "Eligible clippers who had not heard yet were notified."
     }
   },
   "invites": {

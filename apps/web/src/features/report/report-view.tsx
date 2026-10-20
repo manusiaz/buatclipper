@@ -43,7 +43,6 @@ export async function ReportView({ report: r }: { report: Report }) {
   const amount = (v: number, b: Report['budget'][number]) =>
     b.code === 'IDR' ? formatIDR(v, { locale }) : `${formatNumber(v, locale, { maximumFractionDigits: b.decimals })} ${b.unit || b.code}`;
   const totalViews = r.byPlatform.reduce((a, b) => a + b.views, 0);
-  const idrSpent = r.budget.find((b) => b.code === 'IDR')?.spent ?? 0;
   const c = r.campaign;
   const period = [c.startAt, c.submitDeadline].map((d) => (d ? formatWib(d, locale) : t('tbd'))).join(' – ');
 
@@ -72,7 +71,7 @@ export async function ReportView({ report: r }: { report: Report }) {
         <StatCard label={t('clippers')} value={n(r.clippers)} icon="groups" />
         <StatCard
           label={t('ecpm')}
-          value={r.viewsValid > 0 && idrSpent > 0 ? formatIDR(Math.round((idrSpent / r.viewsValid) * 1000), { locale }) : '—'}
+          value={r.ecpmIdr == null ? '—' : formatIDR(Math.round(r.ecpmIdr), { locale })}
           icon="trending_up"
           hint={t('ecpmHint')}
           className="col-span-2 md:col-span-1"

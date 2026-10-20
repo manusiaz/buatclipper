@@ -95,7 +95,6 @@ begin
     'spent_idr', proj -> 'spent_idr',
     'remaining_idr', proj -> 'remaining_idr',
     'utilization_pct', proj -> 'utilization_pct',
-    'ecpm_idr', case when views > 0 then trim_scale(round((proj ->> 'spent_idr')::numeric / views * 1000, 2)) end,
     'projection', proj,
     'daily', coalesce((select jsonb_agg(jsonb_build_object('day', d.day, 'views', d.views) order by d.day)
                          from (select (x.taken_at at time zone 'Asia/Jakarta')::date as day, sum(x.delta) as views

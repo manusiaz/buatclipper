@@ -16,6 +16,7 @@ create table tracking.submissions (
   counted_views bigint not null default 0 check (counted_views >= 0),
   last_snapshot_at timestamptz,
   next_poll_at timestamptz,
+  retry_after timestamptz,  -- §11 backoff: API gagal/rate limit → penjadwal tidak mengantre ulang sebelum waktu ini
   locked_at timestamptz,
   created_at timestamptz not null default now(),
   constraint submissions_one_per_claim unique (claim_id),
@@ -52,6 +53,7 @@ begin
   for s in update tracking.submissions t set next_poll_at = now() + interval '1 hour'
             where t.id in (select d.id from tracking.submissions d
                            where d.status in ('tracking', 'flagged') and d.next_poll_at <= now()
+                             and (d.retry_after is null or d.retry_after <= now())
                            order by d.next_poll_at limit p_limit for update skip locked)
             returning t.id, t.platform loop
     perform pgmq.send('tracking', jsonb_build_object('submission_id', s.id, 'platform', s.platform));

@@ -5,7 +5,7 @@ import { getOrgContext } from '@/lib/org';
 import { fail, type Result } from '@/lib/result';
 
 export type ControlAction =
-  | { action: 'pause' | 'resume' | 'end_early' }
+  | { action: 'pause' | 'resume' | 'end_early' | 'notify_eligible' }
   | { action: 'extend'; submit_deadline: string }
   | { action: 'raise_rate'; rule_id: string; params: Record<string, unknown> }
   | { action: 'topup'; pools: { pool_id: string; amount: number }[] };

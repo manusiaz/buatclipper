@@ -997,8 +997,8 @@ select ok((select j @> market.campaign_report('55555555-0000-0000-0000-000000000
 select is((select array[j ->> 'views_valid', j ->> 'spent_idr', j ->> 'ecpm_idr', j ->> 'utilization_pct', j #>> '{by_platform,tiktok}',
                         j #>> '{daily,0,views}', j #>> '{daily,1,views}', j #>> '{pools,0,remaining}']
              from t_json where k = 'stats_l6'),
-          array['25000', '50000', '2000', '5', '25000', '10000', '15000', '950000'],
-          'dashboard: views valid, spend, eCPM, utilisasi, split platform, kurva harian dari selisih snapshot, sisa pool');
+          array['25000', '50000', '2400', '5', '25000', '10000', '15000', '950000'],
+          'dashboard: views valid, spend, eCPM (G-8: total bayar brand = spend + fee 15% + 5%), utilisasi, split platform, kurva harian, sisa pool');
 select is((select (j #>> '{projection,projected_utilization_pct}')::numeric < 50 from t_json where k = 'stats_l6'), true,
           'proyeksi pemakaian budget < 50% (dasar alert & saran)');
 select is((select array[j ->> 'total_views', j ->> 'approved', j ->> 'approval_rate', j ->> 'trust_score', j #>> '{earnings,0,pending}',

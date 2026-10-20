@@ -14,14 +14,22 @@ begin
                  from pgmq.read(p_queue, greatest(coalesce(p_vt_seconds, 300), 1), least(greatest(coalesce(p_qty, 20), 1), 100)) q;
 end $$;
 
--- §11: API error / rate limit → coba lagi dengan backoff (bukan visibility timeout tetap). 1 detik–6 jam.
-create function api.worker_retry_later(p_queue text, p_msg_id bigint, p_seconds int) returns void
+-- §11: API error / rate limit → coba lagi dengan backoff (bukan visibility timeout tetap). 1 detik–6 jam. p_submission:
+-- penjadwal (enqueue_due_submissions) menahan pesan baru untuk submisi itu sampai pesan yang ditunda muncul lagi (+5 menit),
+-- termasuk poll final di ujung view window.
+create function api.worker_retry_later(p_queue text, p_msg_id bigint, p_seconds int, p_submission uuid default null) returns void
 language plpgsql security definer set search_path = '' as $$
+declare
+  sec int := least(greatest(coalesce(p_seconds, 300), 1), 21600);
 begin
   if p_queue is null or p_queue not in ('tracking', 'email') then
     raise exception 'invalid:queue' using errcode = 'P0001';
   end if;
-  perform pgmq.set_vt(p_queue, p_msg_id, least(greatest(coalesce(p_seconds, 300), 1), 21600));
+  perform pgmq.set_vt(p_queue, p_msg_id, sec);
+  if p_submission is not null then
+    update tracking.submissions set retry_after = greatest(coalesce(retry_after, now()), now() + make_interval(secs => sec + 300))
+     where id = p_submission;
+  end if;
 end $$;
 
 create function api.worker_ack(p_queue text, p_msg_id bigint) returns void
@@ -577,7 +585,7 @@ begin
   end if;
 end $$;
 
-revoke execute on function api.worker_dequeue(text, int, int), api.worker_ack(text, bigint), api.worker_retry_later(text, bigint, int),
+revoke execute on function api.worker_dequeue(text, int, int), api.worker_ack(text, bigint), api.worker_retry_later(text, bigint, int, uuid),
   tracking.final_due(uuid),
   api.worker_account_token(uuid), api.worker_defer(uuid, timestamptz),
   api.worker_submission_context(uuid), api.worker_record_snapshot(uuid, bigint, bigint, bigint, bigint, text, jsonb, jsonb),
@@ -587,7 +595,7 @@ revoke execute on function api.worker_dequeue(text, int, int), api.worker_ack(te
   api.worker_unsubscribe(uuid), api.worker_fulfillments_due(int), api.worker_assign_code(uuid),
   api.worker_fulfillment_result(uuid, boolean, text, text)
   from public, anon, authenticated;
-grant execute on function api.worker_dequeue(text, int, int), api.worker_ack(text, bigint), api.worker_retry_later(text, bigint, int),
+grant execute on function api.worker_dequeue(text, int, int), api.worker_ack(text, bigint), api.worker_retry_later(text, bigint, int, uuid),
   api.worker_account_token(uuid), api.worker_defer(uuid, timestamptz),
   api.worker_submission_context(uuid), api.worker_record_snapshot(uuid, bigint, bigint, bigint, bigint, text, jsonb, jsonb),
   api.worker_post_gone(uuid, text), api.worker_account_status(uuid, text), api.worker_accounts_to_refresh(interval),

@@ -16,6 +16,7 @@ const sample = {
     { url: 'javascript:alert(1)', platform: 'tiktok', views: 1 },
     { url: 'https://youtu.be/abcdefgh', platform: 'unknown', views: 10 },
   ],
+  ecpm_idr: '2400.5',
 };
 
 describe('parseReport', () => {
@@ -37,6 +38,7 @@ describe('parseReport', () => {
         { url: 'https://www.tiktok.com/@a/video/1234567890', platform: 'tiktok', views: 400000 },
         { url: 'https://youtu.be/abcdefgh', platform: null, views: 10 },
       ],
+      ecpmIdr: 2400.5,
     });
   });
   it('returns null for an invalid / expired link (null from the RPC)', () => {

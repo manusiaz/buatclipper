@@ -615,6 +615,13 @@
     "days": "Days (1–365)"
   },
   "finance": {
+    "ledgerSearch": "Find transactions",
+    "ledgerSearchHelp": "Transaction ID, account owner, or reference prefix (invoice, payout, submission)",
+    "ledgerFind": "Find",
+    "ledgerEmpty": "No ledger entries",
+    "ledgerAccount": "Account",
+    "ledgerAmount": "Amount",
+    "ledgerRef": "Reference",
     "title": "Finance",
     "description": "Incoming brand payments, weekly payouts (two-person), instant, refunds, and the PPh 21 recap.",
     "tabs": {
@@ -622,7 +629,8 @@
       "payout": "Payouts",
       "instant": "Instant",
       "refund": "Refunds",
-      "pph21": "PPh 21"
+      "pph21": "PPh 21",
+      "ledger": "Ledger"
     },
     "incomingHint": "Match against the bank statement in internet banking. The amount must equal the total; a reference number cannot be used twice.",
     "noInvoices": "No unpaid invoices",

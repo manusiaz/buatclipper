@@ -61,8 +61,19 @@ begin
       'top_clips', coalesce((select jsonb_agg(jsonb_build_object('url', t.url, 'platform', t.platform, 'views', t.counted_views))
                              from (select s.url, s.platform, s.counted_views from tracking.submissions s
                                    where s.campaign_id = c.id and s.status = any (counted)
-                                   order by s.counted_views desc limit 10) t), '[]'::jsonb))
-    from market.campaigns c where c.id = p_campaign);
+                                   order by s.counted_views desc limit 10) t), '[]'::jsonb),
+      -- eCPM delivered (§3 metrik) = total bayar brand ÷ (views valid ÷ 1.000): nilai Rupiah semua pool yang terpakai
+      -- (non-tunai pakai nilai Rp per unit, dasar fee) + fee manajemen & admin dari fee rule campaign; tanpa pajak.
+      'spent_idr', trim_scale(round(x.spent, 2)),
+      'ecpm_idr', case when x.views > 0 then trim_scale(round(x.spent * (1 + (coalesce(fr.mgmt_fee_pct, 0) + coalesce(fr.admin_fee_pct, 0)) / 100)
+                                                             / x.views * 1000, 2)) end)
+    from market.campaigns c
+    cross join lateral (select coalesce((select sum(p.allocated * rt.idr_value_per_unit) from finance.reward_pools p
+                                          join market.reward_types rt on rt.id = p.reward_type_id where p.campaign_id = c.id), 0) as spent,
+                               coalesce((select sum(s.counted_views) from tracking.submissions s
+                                          where s.campaign_id = c.id and s.status = any (counted)), 0) as views) x
+    cross join lateral (select * from finance.effective_fee_rule(c.org_id, c.id)) fr
+   where c.id = p_campaign);
 end $$;
 revoke execute on function market.campaign_report(uuid) from public;
 

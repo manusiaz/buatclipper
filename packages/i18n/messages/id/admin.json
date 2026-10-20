@@ -615,6 +615,13 @@
     "days": "Hari (1–365)"
   },
   "finance": {
+    "ledgerSearch": "Cari transaksi",
+    "ledgerSearchHelp": "ID transaksi, pemilik akun, atau awalan referensi (invoice, payout, submisi)",
+    "ledgerFind": "Cari",
+    "ledgerEmpty": "Tidak ada entri ledger",
+    "ledgerAccount": "Akun",
+    "ledgerAmount": "Jumlah",
+    "ledgerRef": "Referensi",
     "title": "Finance",
     "description": "Uang masuk dari brand, payout mingguan (dua orang), instant, refund, dan rekap PPh 21.",
     "tabs": {
@@ -622,7 +629,8 @@
       "payout": "Payout",
       "instant": "Instant",
       "refund": "Refund",
-      "pph21": "PPh 21"
+      "pph21": "PPh 21",
+      "ledger": "Ledger"
     },
     "incomingHint": "Cocokkan dengan mutasi rekening di internet banking. Nominal harus sama dengan total; nomor referensi tidak boleh dipakai dua kali.",
     "noInvoices": "Tidak ada invoice belum lunas",

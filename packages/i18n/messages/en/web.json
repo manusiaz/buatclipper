@@ -208,7 +208,7 @@
     "clips": "Counted clips",
     "clippers": "Clippers",
     "ecpm": "Cost per 1,000 views",
-    "ecpmHint": "Rupiah budget spent ÷ valid views",
+    "ecpmHint": "Total brand cost (spent budget + fees) ÷ valid views",
     "emptyTitle": "No counted clips yet",
     "emptyBody": "Numbers appear once the first clip passes validation and tracking starts.",
     "platformTitle": "Views per platform",

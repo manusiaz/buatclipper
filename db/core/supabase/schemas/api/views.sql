@@ -80,6 +80,12 @@ create view api.wallet_entries with (security_invoker = true) as
   select e.id, a.owner_id as user_id, e.reward_type_id, e.amount, e.state, e.ref_type, e.ref_id, e.created_at
   from finance.ledger_entries e join finance.ledger_accounts a on a.id = e.account_id
   where a.owner_type = 'user_wallet';
+-- F-A08 ledger untuk back-office finance: entri + pemilik akun, hanya admin_finance (baris kosong untuk yang lain).
+create view api.admin_ledger with (security_invoker = true) as
+  select e.id, e.txn_id, e.created_at, a.owner_type, a.owner_id, rt.code as reward_type, e.amount, e.state, e.ref_type, e.ref_id
+  from finance.ledger_entries e join finance.ledger_accounts a on a.id = e.account_id
+  join market.reward_types rt on rt.id = e.reward_type_id
+  where (select ops.has_admin('admin_finance'));
 create view api.payouts with (security_invoker = true) as
   select id, user_id, method_id, batch_id, channel, amount, fee, status, hold_reason, bank_ref, provider_ref, last_error, created_at,
          paid_at
@@ -127,7 +133,7 @@ create view api.leaderboard with (security_invoker = true) as
 grant select on api.my_profile, api.admin_profiles, api.managed_briefs, api.organizations, api.org_members, api.org_invites, api.claims, api.social_accounts,
                 api.submissions, api.view_snapshots, api.review_decisions, api.fraud_flags, api.notifications,
                 api.notification_prefs, api.audit_logs, api.report_links, api.fee_rules, api.wallet_balances,
-                api.wallet_entries, api.payouts, api.fulfillments, api.fulfillment_exports, api.invoices, api.org_refunds, api.payout_batches,
+                api.wallet_entries, api.admin_ledger, api.payouts, api.fulfillments, api.fulfillment_exports, api.invoices, api.org_refunds, api.payout_batches,
                 api.campaign_invites, api.org_links, api.referrals, api.score_events, api.reward_codes, api.broadcasts,
                 api.leaderboard
   to authenticated;

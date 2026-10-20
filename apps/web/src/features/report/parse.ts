@@ -14,6 +14,7 @@ export interface Report {
   byPlatform: Array<{ platform: Platform; views: number }>;
   budget: Array<{ code: string; unit: string; decimals: number; total: number; spent: number }>;
   topClips: Array<{ url: string; platform: Platform | null; views: number }>;
+  ecpmIdr: number | null;
 }
 
 /** Hasil api.report_by_token (market.campaign_report) → bentuk bertipe; null = link tidak berlaku. */
@@ -48,6 +49,7 @@ export function parseReport(json: unknown): Report | null {
       .map(obj)
       .map((t) => ({ url: str(t.url) ?? '', platform: isPlatform(t.platform) ? t.platform : null, views: num(t.views) ?? 0 }))
       .filter((t) => /^https:\/\//.test(t.url)),
+    ecpmIdr: num(r.ecpm_idr),
   };
 }
 

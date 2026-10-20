@@ -122,6 +122,12 @@ begin
                                returning q.msg_id, q.read_ct, q.enqueued_at, q.vt, q.message', 'q_' || queue_name)
     using vt, qty;
 end $$;
+create function pgmq.set_vt(queue_name text, msg_id bigint, vt integer) returns setof pgmq.message_record language plpgsql as $$
+begin
+  return query execute format('update pgmq.%I q set vt = now() + make_interval(secs => $2) where q.msg_id = $1
+                               returning q.msg_id, q.read_ct, q.enqueued_at, q.vt, q.message', 'q_' || queue_name)
+    using msg_id, vt;
+end $$;
 create function pgmq.delete(queue_name text, msg_id bigint) returns boolean language plpgsql as $$
 declare n int;
 begin

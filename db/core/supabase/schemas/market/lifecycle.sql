@@ -34,6 +34,9 @@ begin
    where c.id = p_campaign and not c.is_template
      and not exists (select 1 from market.org_members m where m.org_id = c.org_id and m.user_id = p.id)
      and (c.visibility <> 'invite' or exists (select 1 from market.campaign_invites i where i.campaign_id = c.id and i.user_id = p.id))
+     -- Sekali per clipper per campaign: diumumkan ulang (F-B08) hanya menjangkau yang baru eligible.
+     and not exists (select 1 from ops.notifications n where n.user_id = p.id and n.event = 'campaign.new'
+                      and n.payload ->> 'campaign_id' = c.id::text)
      and exists (select 1 from tracking.social_accounts a
                  where a.user_id = p.id and a.status = 'verified' and a.platform = any (c.platforms)
                    and coalesce(a.followers, 0) >= c.min_followers

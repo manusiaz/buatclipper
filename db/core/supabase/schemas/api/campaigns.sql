@@ -547,6 +547,12 @@ begin
     update market.rate_rules set effective_to = t where id = r.id;
     insert into market.rate_rules (campaign_id, kind, reward_type_id, pool_id, platform, params, effective_from, lineage_id)
     values (c.id, r.kind, r.reward_type_id, r.pool_id, r.platform, newp, t, coalesce(r.lineage_id, r.id));
+  elsif p_action = 'notify_eligible' then
+    -- F-B08 intervensi underspend: kabari clipper eligible yang belum pernah menerima pengumuman campaign ini.
+    if c.status <> 'live' then
+      perform market.fail('invalid_state:' || c.status, 'kabari clipper hanya untuk campaign berjalan');
+    end if;
+    perform market.announce_campaign(c.id);
   elsif p_action = 'topup' then
     if c.status not in ('scheduled', 'live', 'paused') then
       perform market.fail('invalid_state:' || c.status, 'top-up hanya untuk campaign terjadwal/berjalan');
