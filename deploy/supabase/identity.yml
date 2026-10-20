@@ -1,0 +1,40 @@
+# Stack identity (= db/identity/supabase/config.toml versi self-hosted): login OTP email, MFA TOTP, hook claim JWT,
+# token user ES256 (private key hanya di sini), template email dari Caddy (auth.{DOMAIN}/email/*), env Edge Function identity.
+services:
+  auth:
+    environment:
+      GOTRUE_JWT_KEYS: ${JWT_KEYS}
+      GOTRUE_MAILER_OTP_LENGTH: 6
+      GOTRUE_MAILER_OTP_EXP: 600
+      GOTRUE_MAILER_SUBJECTS_MAGIC_LINK: "Kode masuk Clipper: {{ .Token }}"
+      GOTRUE_MAILER_TEMPLATES_MAGIC_LINK: ${SUPABASE_PUBLIC_URL}/email/magic_link.html
+      GOTRUE_MAILER_SUBJECTS_INVITE: "Kamu diundang ke Clipper"
+      GOTRUE_MAILER_TEMPLATES_INVITE: ${SUPABASE_PUBLIC_URL}/email/invite.html
+      GOTRUE_MFA_TOTP_ENROLL_ENABLED: "true"
+      GOTRUE_MFA_TOTP_VERIFY_ENABLED: "true"
+      GOTRUE_MFA_MAX_ENROLLED_FACTORS: 10
+      GOTRUE_HOOK_CUSTOM_ACCESS_TOKEN_ENABLED: "true"
+      GOTRUE_HOOK_CUSTOM_ACCESS_TOKEN_URI: pg-functions://postgres/member/custom_access_token_hook
+  functions:
+    environment:
+      IDENTITY_ISSUER: ${API_EXTERNAL_URL}
+      PUBLIC_SUPABASE_URL: ${SUPABASE_PUBLIC_URL}
+      APP_ORIGINS: ${APP_ORIGINS}
+      PII_HMAC_KEY: ${PII_HMAC_KEY}
+      PII_ENC_KEYS: ${PII_ENC_KEYS}
+      PII_ENC_KEY_VERSION: ${PII_ENC_KEY_VERSION}
+      CORE_FUNCTIONS_URL: ${CORE_PUBLIC_URL}/functions/v1
+      BRIDGE_SECRET_CORE_TO_IDENTITY: ${BRIDGE_SECRET_CORE_TO_IDENTITY}
+      BRIDGE_SECRET_IDENTITY_TO_CORE: ${BRIDGE_SECRET_IDENTITY_TO_CORE}
+      RESEND_API_KEY: ${RESEND_API_KEY}
+      EMAIL_FROM: ${EMAIL_FROM}
+      APP_URL: ${APP_URL}
+      BRAND_URL: ${BRAND_URL}
+      ACCOUNTS_URL: ${ACCOUNTS_URL}
+      ADMIN_URL: ${ADMIN_URL}
+      VAPID_PUBLIC_KEY: ${VAPID_PUBLIC_KEY}
+      VAPID_PRIVATE_KEY: ${VAPID_PRIVATE_KEY}
+      VAPID_SUBJECT: ${VAPID_SUBJECT}
+      DISBURSE_PROVIDER: ${DISBURSE_PROVIDER}
+      DISBURSE_CALLBACK_TOKEN: ${DISBURSE_CALLBACK_TOKEN}
+      XENDIT_SECRET_KEY: ${XENDIT_SECRET_KEY}

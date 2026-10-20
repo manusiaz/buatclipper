@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { exportJWK, generateKeyPair, type JWTPayload, type KeyLike, SignJWT } from "jose";
 import { requireApiKey, verifyUserJwt } from "./auth.ts";
 import { HttpError } from "./http.ts";
+import { serviceKey } from "./db.ts";
 
 const ISS = "https://auth.clipper.test/auth/v1";
 const { privateKey, publicKey } = await generateKeyPair("ES256");
@@ -79,4 +80,20 @@ Deno.test("apikey: secret key legacy & SUPABASE_SECRET_KEYS diterima, lainnya 40
   Deno.env.delete("SUPABASE_SERVICE_ROLE_KEY");
   Deno.env.delete("SUPABASE_SECRET_KEYS");
   await assert.rejects(requireApiKey(r("legacy-service-role")), unauthorized);
+});
+
+Deno.test("serviceKey: SUPABASE_SECRET_KEYS kosong (compose self-hosted) → pakai service_role legacy", () => {
+  const prev = [Deno.env.get("SUPABASE_SECRET_KEYS"), Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")];
+  try {
+    Deno.env.set("SUPABASE_SECRET_KEYS", '{"default":""}');
+    Deno.env.set("SUPABASE_SERVICE_ROLE_KEY", "legacy-service");
+    assert.equal(serviceKey(), "legacy-service");
+    Deno.env.set("SUPABASE_SECRET_KEYS", '{"default":"sb_secret_baru"}');
+    assert.equal(serviceKey(), "sb_secret_baru");
+  } finally {
+    prev[0] === undefined ? Deno.env.delete("SUPABASE_SECRET_KEYS") : Deno.env.set("SUPABASE_SECRET_KEYS", prev[0]);
+    prev[1] === undefined
+      ? Deno.env.delete("SUPABASE_SERVICE_ROLE_KEY")
+      : Deno.env.set("SUPABASE_SERVICE_ROLE_KEY", prev[1]);
+  }
 });

@@ -1,13 +1,16 @@
 // Jalankan: pnpm e2e (butuh scripts/dev-stack.sh + 4 app di port 3000–3003, build produksi atau dev).
+// Deploy self-hosted (deploy/deploy.sh): E2E_WEB/E2E_ACC/E2E_APP/E2E_BRAND, E2E_CORE_DB, E2E_MAILPIT menimpa default lokal.
 // Journey lintas host: web → accounts (OTP Mailpit, onboarding + avatar) → app (kartu + brand, claim) → accounts/invite → brand.
 const { chromium } = require('playwright');
 const { execFileSync } = require('child_process');
 const fs = require('fs');
 const OUT = require('path').join(__dirname, '..', 'test-results', 'e2e');
 fs.mkdirSync(OUT, { recursive: true });
-const WEB = 'http://clipper.localhost:3000', ACC = 'http://accounts.clipper.localhost:3001', APP = 'http://app.clipper.localhost:3002',
-  BRAND = 'http://brand.clipper.localhost:3003';
-const CORE_DB = 'postgresql://postgres:postgres@127.0.0.1:55322/postgres';
+const env = (k, d) => process.env[k] || d;
+const WEB = env('E2E_WEB', 'http://clipper.localhost:3000'), ACC = env('E2E_ACC', 'http://accounts.clipper.localhost:3001'),
+  APP = env('E2E_APP', 'http://app.clipper.localhost:3002'), BRAND = env('E2E_BRAND', 'http://brand.clipper.localhost:3003');
+const CORE_DB = env('E2E_CORE_DB', 'postgresql://postgres:postgres@127.0.0.1:55322/postgres');
+const MAILPIT = env('E2E_MAILPIT', 'http://127.0.0.1:54324');
 const sql = (q) => execFileSync('psql', [CORE_DB, '-X', '-tAqc', q], { encoding: 'utf8' }).trim();
 const email = `e2e-${Date.now()}@clipper.localhost`;
 const username = `e2e_${Date.now().toString(36)}`;
@@ -16,7 +19,7 @@ const log = (...a) => console.log('✓', ...a);
 
 async function otp(addr, since) {
   for (let i = 0; i < 40; i++) {
-    const r = await fetch(`http://127.0.0.1:54324/api/v1/search?query=to:${encodeURIComponent(addr)}`).then((r) => r.json());
+    const r = await fetch(`${MAILPIT}/api/v1/search?query=to:${encodeURIComponent(addr)}`).then((r) => r.json());
     const m = (r.messages || []).find((x) => new Date(x.Created).getTime() >= since - 2000);
     const code = m && /(\d{6})/.exec(m.Subject + ' ' + (m.Snippet || ''))?.[1];
     if (code) return code;

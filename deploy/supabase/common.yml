@@ -1,0 +1,58 @@
+# Override bersama untuk compose self-hosted resmi Supabase (docker/docker-compose.yml, versi dipin di deploy.sh), dipakai
+# kedua stack (STACK=identity|core). Disalin deploy.sh ke deploy/stack/$STACK/ lalu dirangkai lewat COMPOSE_FILE.
+# - Nama container per stack (resmi: supabase-*), supaya dua stack bisa jalan di satu host.
+# - Port hanya di 127.0.0.1: publik lewat Caddy (deploy/Caddyfile, path API saja). Studio = SSH tunnel ke GW_PORT.
+# - Realtime & Supavisor tidak dipakai platform (tidak ada .channel()/pooler) → dimatikan lewat profile.
+# - Network eksternal "clipper" hanya untuk gateway (alias identity-gw / core-gw, dipakai Caddy). Service lain TIDAK ikut:
+#   nama service kedua stack sama (auth, functions, api-gw) → DNS docker jadi ambigu. Panggilan lintas stack (bridge,
+#   JWKS, template email) memakai URL publik yang dipetakan ke Caddy di host (extra_hosts host-gateway).
+services:
+  studio:
+    container_name: ${STACK}-studio
+  api-gw:
+    container_name: ${STACK}-gw
+    ports: !override
+      - 127.0.0.1:${GW_PORT}:8000/tcp
+    networks:
+      clipper:
+        aliases:
+          - ${STACK}-gw
+  auth:
+    container_name: ${STACK}-auth
+    environment:
+      GOTRUE_JWT_VALID_METHODS: HS256,ES256
+      GOTRUE_RATE_LIMIT_EMAIL_SENT: ${AUTH_EMAIL_RATE_LIMIT:-1000}
+    extra_hosts:
+      - ${AUTH_HOST}:host-gateway
+      - ${API_HOST}:host-gateway
+  rest:
+    container_name: ${STACK}-rest
+  realtime:
+    profiles: [disabled]
+  storage:
+    container_name: ${STACK}-storage
+    environment:
+      JWT_JWKS: ${JWT_JWKS}
+      FILE_SIZE_LIMIT: ${STORAGE_FILE_SIZE_LIMIT}
+  imgproxy:
+    container_name: ${STACK}-imgproxy
+  meta:
+    container_name: ${STACK}-meta
+  functions:
+    container_name: ${STACK}-functions
+    environment:
+      SUPABASE_JWKS: ${JWT_JWKS}
+    extra_hosts:
+      - ${AUTH_HOST}:host-gateway
+      - ${API_HOST}:host-gateway
+  db:
+    container_name: ${STACK}-db
+    ports:
+      - 127.0.0.1:${DB_PORT}:5432/tcp
+  supavisor:
+    profiles: [disabled]
+
+networks:
+  clipper:
+    external: true
+    name: clipper

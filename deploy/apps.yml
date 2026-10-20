@@ -1,0 +1,76 @@
+# 5 app Next.js (satu image monorepo, deploy/app.Dockerfile) + Caddy. Env dari deploy/apps.env (ditulis deploy.sh,
+# semua NEXT_PUBLIC_*: app tidak memegang secret, §15.7).
+x-app: &app
+  image: clipper-apps:latest
+  restart: unless-stopped
+  env_file: apps.env
+  networks: [clipper]
+
+services:
+  web:
+    <<: *app
+    build:
+      context: ..
+      dockerfile: deploy/app.Dockerfile
+      args:
+        NEXT_PUBLIC_IDENTITY_URL: ${NEXT_PUBLIC_IDENTITY_URL}
+        NEXT_PUBLIC_IDENTITY_PUBLISHABLE_KEY: ${NEXT_PUBLIC_IDENTITY_PUBLISHABLE_KEY}
+        NEXT_PUBLIC_CORE_URL: ${NEXT_PUBLIC_CORE_URL}
+        NEXT_PUBLIC_CORE_PUBLISHABLE_KEY: ${NEXT_PUBLIC_CORE_PUBLISHABLE_KEY}
+        NEXT_PUBLIC_COOKIE_DOMAIN: ${NEXT_PUBLIC_COOKIE_DOMAIN}
+        NEXT_PUBLIC_WEB_URL: ${NEXT_PUBLIC_WEB_URL}
+        NEXT_PUBLIC_ACCOUNTS_URL: ${NEXT_PUBLIC_ACCOUNTS_URL}
+        NEXT_PUBLIC_APP_URL: ${NEXT_PUBLIC_APP_URL}
+        NEXT_PUBLIC_BRAND_URL: ${NEXT_PUBLIC_BRAND_URL}
+        NEXT_PUBLIC_ADMIN_URL: ${NEXT_PUBLIC_ADMIN_URL}
+        NEXT_PUBLIC_VAPID_PUBLIC_KEY: ${NEXT_PUBLIC_VAPID_PUBLIC_KEY}
+        NEXT_PUBLIC_TURNSTILE_SITE_KEY: ${NEXT_PUBLIC_TURNSTILE_SITE_KEY}
+    command: [pnpm, --filter, ./apps/web, start]
+  accounts:
+    <<: *app
+    command: [pnpm, --filter, ./apps/accounts, start]
+  clipper:
+    <<: *app
+    command: [pnpm, --filter, ./apps/clipper, start]
+  brand:
+    <<: *app
+    command: [pnpm, --filter, ./apps/brand, start]
+  admin:
+    <<: *app
+    command: [pnpm, --filter, ./apps/admin, start]
+
+  caddy:
+    image: caddy:2.10.2
+    restart: unless-stopped
+    ports:
+      - 80:80
+      - 443:443
+      - 443:443/udp
+    environment:
+      DOMAIN: ${DOMAIN}
+      SCHEME: ${SCHEME}
+      ACME_EMAIL: ${ACME_EMAIL}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - ../db/identity/supabase/templates:/srv/email:ro
+      - caddy-data:/data
+      - caddy-config:/config
+    networks:
+      clipper:
+        aliases:
+          - ${DOMAIN}
+          - accounts.${DOMAIN}
+          - app.${DOMAIN}
+          - brand.${DOMAIN}
+          - admin.${DOMAIN}
+          - auth.${DOMAIN}
+          - api.${DOMAIN}
+
+volumes:
+  caddy-data:
+  caddy-config:
+
+networks:
+  clipper:
+    external: true
+    name: clipper

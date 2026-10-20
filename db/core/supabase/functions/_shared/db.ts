@@ -16,14 +16,16 @@ function firstKey(jsonEnv: string, prefer: string): string | undefined {
   if (!raw) return undefined;
   try {
     const v = JSON.parse(raw);
-    if (Array.isArray(v)) return v.find((k) => typeof k === "string");
-    return v?.[prefer] ?? Object.values(v ?? {}).find((k) => typeof k === "string") as string | undefined;
+    // Kosong = belum diset (compose self-hosted resmi mengisi {"default":""} kalau key baru tidak dipakai).
+    const ok = (k: unknown): k is string => typeof k === "string" && k.length > 0;
+    if (Array.isArray(v)) return v.find(ok);
+    return ok(v?.[prefer]) ? v[prefer] : Object.values(v ?? {}).find(ok);
   } catch {
     return undefined;
   }
 }
 
-function serviceKey(): string {
+export function serviceKey(): string {
   const k = firstKey("SUPABASE_SECRET_KEYS", "default") ?? Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
   if (!k) throw new HttpError(500, "misconfigured", "secret key core tidak ada");
   return k;

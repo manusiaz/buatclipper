@@ -4,9 +4,9 @@ CREATE SCHEMA "api";
 
 CREATE SCHEMA "member";
 
-CREATE EXTENSION "pg_cron";
+CREATE EXTENSION IF NOT EXISTS "pg_cron";
 
-CREATE EXTENSION "pg_net" SCHEMA "extensions";
+CREATE EXTENSION IF NOT EXISTS "pg_net" SCHEMA "extensions";
 
 CREATE TABLE "member"."audit_logs" (
   "id"       bigint                   GENERATED ALWAYS AS IDENTITY NOT NULL,

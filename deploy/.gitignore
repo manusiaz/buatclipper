@@ -1,0 +1,5 @@
+# Konfigurasi & secret server, compose resmi yang diunduh, dan data stack (DB, storage) — jangan masuk git.
+config.env
+secrets.env
+apps.env
+stack/
