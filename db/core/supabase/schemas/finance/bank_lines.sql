@@ -79,10 +79,14 @@ begin
 end $$;
 
 -- p_lines: [{date: 'YYYY-MM-DD', amount: ±nominal, reference, description}] dari CSV (parser app), maks 5.000 baris per unggahan.
+-- Baris identik (tanggal, nominal, referensi, keterangan) dibedakan nomor urutnya di dalam file, jadi unggahan wajib memuat
+-- mutasi SEHARI PENUH: file untuk tanggal yang sudah ada harus memuat semua baris tersimpan tanggal itu (mutasi bank tidak
+-- pernah hilang), selain itu ditolak bank_partial_day — mutasi kembar dari dua potongan file tidak dibuang diam-diam.
 create function api.import_bank_lines(p_lines jsonb) returns jsonb
 language plpgsql security definer set search_path = '' as $$
 declare
   n int;
+  partial date;
 begin
   if not ops.has_admin('admin_finance') then
     raise exception 'auth:forbidden' using errcode = '42501';
@@ -100,16 +104,24 @@ begin
   ), h as (
     select x.*, encode(sha256(convert_to(concat_ws('|', x.d, x.a, x.r, x.ds, row_number() over (partition by x.d, x.a, x.r, x.ds)),
                                          'UTF8')), 'hex') hash
-      from x
+      from x where x.a <> 0
+  ), gap as (
+    select min(b.value_date) d from finance.bank_lines b
+     where b.value_date in (select h.d from h) and not exists (select 1 from h where h.hash = b.line_hash)
+  ), ins as (
+    insert into finance.bank_lines (value_date, amount, reference, description, line_hash, imported_by)
+    select h.d, h.a, h.r, h.ds, h.hash, (select auth.uid()) from h where (select gap.d from gap) is null
+    on conflict (line_hash) do nothing
+    returning 1
   )
-  insert into finance.bank_lines (value_date, amount, reference, description, line_hash, imported_by)
-  select h.d, h.a, h.r, h.ds, h.hash, (select auth.uid()) from h where h.a <> 0
-  on conflict (line_hash) do nothing;
-  get diagnostics n = row_count;
+  select (select gap.d from gap), (select count(*) from ins) into partial, n;
+  if partial is not null then
+    raise exception 'bank_partial_day:%', partial using errcode = 'P0001';
+  end if;
   insert into ops.audit_logs (actor_id, action, target, before, after)
   values ((select auth.uid()), 'finance.bank_import', 'bank_lines', null,
           jsonb_build_object('lines', jsonb_array_length(p_lines), 'inserted', n));
-  return jsonb_build_object('inserted', n, 'issues', finance.reconcile_bank());
+  return jsonb_build_object('inserted', n, 'existing', jsonb_array_length(p_lines) - n, 'issues', finance.reconcile_bank());
 end $$;
 
 -- Baris bank yang bukan transaksi sistem (biaya bank, bunga, setoran QRIS gabungan) ditutup dengan catatan; tercatat di audit.

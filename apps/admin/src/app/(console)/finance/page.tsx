@@ -455,11 +455,15 @@ async function Ledger({ loc, q }: { loc: UiLocale; q: string }) {
 /** A3.5 / §16: mutasi rekening bank (CSV internet banking) vs kas sistem per referensi; selisih → alert reconcile.bank. */
 async function Bank({ loc }: { loc: UiLocale }) {
   const [t, db] = await Promise.all([getTranslations('admin'), coreServer('admin')]);
-  const [lineRes, alertRes] = await Promise.all([
-    db.from('bank_lines').select('id, value_date, amount, reference, description, status, note').order('value_date', { ascending: false }).order('id', { ascending: false }).limit(200),
+  const cols = 'id, value_date, amount, reference, description, status, note';
+  // Baris selisih diambil terpisah (terlama dulu) supaya tidak tergeser unggahan baru; yang cocok cukup 100 terbaru.
+  const [openRes, doneRes, alertRes] = await Promise.all([
+    db.from('bank_lines').select(cols, { count: 'exact' }).eq('status', 'open').order('value_date').order('id').limit(500),
+    db.from('bank_lines').select(cols).neq('status', 'open').order('value_date', { ascending: false }).order('id', { ascending: false }).limit(100),
     db.from('alerts').select('payload, created_at').eq('kind', 'reconcile.bank').is('resolved_at', null).order('id', { ascending: false }).limit(1),
   ]);
-  const lines = rows(lineRes).sort((a, b) => Number(b.status === 'open') - Number(a.status === 'open'));
+  const open = rows(openRes);
+  const lines = [...open, ...rows(doneRes)];
   const missing = ((rows(alertRes)[0]?.payload as { missing_in_bank?: string[] } | undefined)?.missing_in_bank ?? []).slice(0, 50);
   return (
     <div className="flex flex-col gap-4">
@@ -485,6 +489,9 @@ async function Bank({ loc }: { loc: UiLocale }) {
             ))}
           </ul>
         </Alert>
+      ) : null}
+      {(openRes.count ?? 0) > open.length ? (
+        <Alert tone="warn">{t('finance.bankOpenMore', { shown: open.length, total: openRes.count ?? 0 })}</Alert>
       ) : null}
       {lines.length === 0 ? (
         <EmptyState icon="account_balance" title={t('finance.bankEmpty')} />

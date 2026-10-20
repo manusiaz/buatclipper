@@ -112,7 +112,7 @@ export async function exportPph21(fd: FormData): Promise<ActionResult<ExportResu
 }
 
 /** A3.5: CSV mutasi internet banking → api.import_bank_lines (cocok per referensi; selisih → alert reconcile.bank). */
-export async function importBankStatement(fd: FormData): Promise<ActionResult<{ inserted: number }>> {
+export async function importBankStatement(fd: FormData): Promise<ActionResult<{ inserted: number; existing: number }>> {
   const db = await finance();
   const file = fd.get('file');
   const { lines, badRows } = file instanceof File && file.size > 0 ? parseBankCsv(await file.text()) : { lines: [], badRows: [1] };
@@ -121,7 +121,8 @@ export async function importBankStatement(fd: FormData): Promise<ActionResult<{ 
   const { data, error } = await db.rpc('import_bank_lines', { p_lines: lines.map((l) => ({ ...l })) });
   if (error) return settle(error);
   settle(null, '/finance', '/');
-  return { ok: true, data: { inserted: Number((data as { inserted?: number } | null)?.inserted ?? 0) } };
+  const r = (data ?? {}) as { inserted?: number; existing?: number };
+  return { ok: true, data: { inserted: Number(r.inserted ?? 0), existing: Number(r.existing ?? 0) } };
 }
 
 /** Baris bank yang bukan transaksi sistem (biaya bank, bunga, setoran QRIS gabungan) ditutup dengan catatan. */

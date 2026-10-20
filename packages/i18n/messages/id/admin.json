@@ -164,7 +164,8 @@
     "too_many_codes": "Maksimal 10.000 kode per unggahan.",
     "file_missing": "Berkas CSV tidak ditemukan lagi. Hubungi engineering.",
     "bank_csv": "CSV mutasi tidak terbaca di baris {param}. Wajib: tanggal, nominal (atau debit & kredit), referensi.",
-    "too_many_lines": "Maksimal 5.000 baris per unggahan."
+    "too_many_lines": "Maksimal 5.000 baris per unggahan.",
+    "bank_partial_day": "File tidak memuat semua mutasi tanggal {param} yang sudah diunggah. Unggah mutasi sehari penuh tanggal itu."
   },
   "export": {
     "download": "Unduh CSV ({rows} baris)",
@@ -755,8 +756,8 @@
     "bankTitle": "Rekonsiliasi harian vs mutasi rekening",
     "bankHint": "Unggah CSV mutasi dari internet banking setiap hari. Baris dicocokkan per nomor referensi dengan kas sistem: invoice lunas (nomor referensi konfirmasi), payout batch & refund (referensi bank saat ditandai dibayar). Selisih memicu alert ke admin finance.",
     "bankImport": "Unggah mutasi",
-    "bankImportBody": "CSV dengan baris judul: tanggal, nominal (+ masuk, − keluar) atau kolom debit & kredit, referensi, keterangan (opsional). Unggah ulang file yang sama aman.",
-    "bankImported": "{inserted} baris mutasi baru diimpor dan dicocokkan",
+    "bankImportBody": "CSV mutasi SEHARI PENUH dengan baris judul: tanggal, nominal (+ masuk, − keluar) atau kolom debit & kredit, referensi, keterangan (opsional). Unggah ulang file yang sama aman.",
+    "bankImported": "{inserted} baris mutasi baru diimpor ({existing} sudah ada) dan dicocokkan",
     "bankFile": "File CSV mutasi",
     "bankMissing": "{n} transaksi sistem belum ada di mutasi bank",
     "bankEmpty": "Belum ada mutasi bank yang diunggah",
@@ -769,7 +770,8 @@
     "bankResolve": "Tutup dengan catatan",
     "bankResolveBody": "Untuk baris yang memang bukan transaksi platform (biaya admin bank, bunga, setoran QRIS gabungan). Tercatat di audit log.",
     "bankResolved": "Baris mutasi ditutup",
-    "bankNote": "Catatan"
+    "bankNote": "Catatan",
+    "bankOpenMore": "Menampilkan {shown} dari {total} baris selisih (terlama dulu). Tutup atau cocokkan yang ini untuk melihat sisanya."
   },
   "fulfillment": {
     "title": "Fulfillment non-tunai",

@@ -1378,9 +1378,11 @@ set local role authenticated;
 select pg_temp.jwt('33333333-0000-0000-0000-0000000000f1', '{"app_roles":["admin_finance"],"aal":"aal2"}');
 select lives_ok($$ select api.resolve_bank_line((select id from api.bank_lines where reference = 'BIAYA-ADM'), 'biaya admin bulanan bank') $$,
                 'baris biaya bank ditutup manual dengan catatan');
-select is((api.import_bank_lines(jsonb_build_array(jsonb_build_object('date', (now() at time zone 'Asia/Jakarta')::date,
-             'amount', (select amt from t_bank where k = 'inv'), 'reference', (select ref from t_bank where k = 'inv'), 'description', 'TRF ULANG')))
-           ->> 'inserted')::int, 1, 'kredit kedua dengan referensi invoice yang sama');
+select throws_ok($$ select api.import_bank_lines(jsonb_build_array((select v -> 0 from t_bank_in))) $$, 'P0001',
+                 'bank_partial_day:' || (now() at time zone 'Asia/Jakarta')::date,
+                 'regresi R18-1: potongan file yang tidak memuat semua mutasi tersimpan tanggal itu ditolak, bukan dibuang diam-diam');
+select is((api.import_bank_lines((select v from t_bank_in) || jsonb_build_array((select v -> 0 from t_bank_in))) ->> 'inserted')::int, 1,
+          'regresi R18-1: mutasi kembar (tanggal, nominal, referensi, keterangan sama) di file sehari penuh tetap tersimpan');
 reset role;
 select is((select array_agg(distinct b.status) from finance.bank_lines b where b.reference = (select ref from t_bank where k = 'inv')),
           array['open'], 'dana masuk dua kali untuk satu invoice → selisih (tidak dianggap cocok)');
