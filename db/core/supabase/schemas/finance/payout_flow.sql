@@ -137,17 +137,29 @@ language plpgsql security definer set search_path = '' as $$
 declare
   bid uuid;
   n int;
+  held int := 0;
+  x record;
 begin
   if not ops.has_admin('admin_finance') then
     raise exception 'auth:forbidden' using errcode = '42501';
   end if;
+  -- Checkpoint §12: clipper yang di-ban/suspend atau ber-flag fraud terbuka tidak ikut ditransfer → ditahan dengan alasannya.
+  for x in select p.id, finance.payout_block(p.user_id, p.id) reason from finance.payouts p
+            where p.status = 'requested' and p.channel = 'batch' and p.batch_id is null and p.created_at <= coalesce(p_cutoff, now()) loop
+    continue when x.reason is null;
+    perform finance.hold_payouts(null, x.id, x.reason);
+    held := held + 1;
+  end loop;
   insert into finance.payout_batches (created_by, cutoff_at) values ((select auth.uid()), coalesce(p_cutoff, now()))
   returning id into bid;
   update finance.payouts set batch_id = bid
    where status = 'requested' and channel = 'batch' and batch_id is null and created_at <= coalesce(p_cutoff, now());
   get diagnostics n = row_count;
-  if n = 0 then
+  if n = 0 and held = 0 then
     raise exception 'batch_empty' using errcode = 'P0001';
+  elsif n = 0 then  -- semua ditahan: tahan tetap tersimpan, tanpa batch kosong
+    delete from finance.payout_batches where id = bid;
+    return null;
   end if;
   update finance.payout_batches b set count = n,
          total = (select sum(p.amount - p.fee) from finance.payouts p where p.batch_id = bid)

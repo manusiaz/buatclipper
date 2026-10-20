@@ -444,10 +444,10 @@ select throws_ok($$ select api.cancel_payout((select id from t_pay where k = 'b1
 reset role;
 select is(jsonb_array_length(api.bridge_get_batch((select id from t_pay where k = 'batch')) -> 'payouts'), 3, 'bridge_get_batch: isi batch approved');
 select is((select jsonb_agg(x - 'id' - 'user_id' order by x ->> 'amount') from jsonb_array_elements(api.bridge_get_batch((select id from t_pay where k = 'batch')) -> 'payouts') x),
-          '[{"method_id":"aaaaaaaa-0000-0000-0000-0000000000b1","amount":100000.00,"fee":0.00},
-            {"method_id":"aaaaaaaa-0000-0000-0000-0000000000b1","amount":150000.00,"fee":0.00},
-            {"method_id":"aaaaaaaa-0000-0000-0000-0000000000b1","amount":200000.00,"fee":0.00}]'::jsonb,
-          'bridge_get_batch: amount bruto + fee (transfer = amount − fee)');
+          '[{"method_id":"aaaaaaaa-0000-0000-0000-0000000000b1","amount":100000.00,"fee":0.00,"blocked":null},
+            {"method_id":"aaaaaaaa-0000-0000-0000-0000000000b1","amount":150000.00,"fee":0.00,"blocked":null},
+            {"method_id":"aaaaaaaa-0000-0000-0000-0000000000b1","amount":200000.00,"fee":0.00,"blocked":null}]'::jsonb,
+          'bridge_get_batch: amount bruto + fee (transfer = amount − fee), blocked kosong untuk clipper aktif');
 -- Regresi review 2026-10-19 (R3): CSV yang tidak cocok dengan isi batch saat ini tidak diserahkan.
 select throws_ok($$ select api.bridge_attach_export((select id from t_pay where k = 'batch'), 'pii-exports/batch-1.csv',
                       jsonb_build_array(jsonb_build_object('payout_id', (select id from t_pay where k = 'b3'), 'reason', 'nama_tidak_cocok')),
@@ -1565,6 +1565,62 @@ select is((select array[ct.cap_pct, ct.hold_days] from finance.clip_terms(85, 't
 select is((select ct.hold_days from finance.clip_terms(85, 'x') ct), (ops.cfg('public.finance.hold_days', '7'))::int,
           'aturan platform bukan objek diabaikan → hold global');
 delete from ops.settings where key in ('public.finance.trust_tiers', 'public.finance.platform_rules');
+
+-- Regresi audit 2 AA-1/AA-3/AA-7: batch payout = checkpoint sanksi; tahan & lepas tahan payout oleh finance.
+insert into market.profiles (id, username, display_name) values ('11111111-0000-0000-0000-000000000f10', 'payhold_f10', 'Pay Hold');
+select finance.post(gen_random_uuid(), jsonb_build_array(
+  finance.e(finance.account('bank_clearing', null, finance.idr()), -500000, 'adjustment', 'fixture:f10'),
+  finance.e(finance.account('user_wallet', '11111111-0000-0000-0000-000000000f10', finance.idr()), 500000, 'adjustment', 'fixture:f10', 'available')));
+set local role authenticated;
+select pg_temp.jwt('11111111-0000-0000-0000-000000000f10', '{"kyc":"approved"}');
+insert into t_pay select 'ph1', (api.request_payout('aaaaaaaa-0000-0000-0000-000000000f10', 150000, 'batch', 'idem-hold-f10')).id;
+reset role;
+select trust.raise_flag('profile', '11111111-0000-0000-0000-000000000f10', 'FR-05', 60, '{}');
+select is((select status || ':' || hold_reason from finance.payouts where id = (select id from t_pay where k = 'ph1')), 'on_hold:fraud_flag',
+          'regresi AA-1: flag profil terbuka → payout yang belum ditransfer langsung ditahan');
+set local role authenticated;
+select pg_temp.jwt('33333333-0000-0000-0000-0000000000f1', '{"app_roles":["admin_finance"],"aal":"aal2"}');
+select throws_ok($$ select api.release_payout((select id from t_pay where k = 'ph1'), 'sudah dicek') $$, 'P0001', 'payout_blocked:fraud_flag',
+                 'regresi AA-3: lepas tahan ditolak selama flag masih terbuka');
+reset role;
+update trust.fraud_flags set status = 'dismissed', resolved_by = '33333333-0000-0000-0000-0000000000e1', resolved_at = now()
+ where target_id = '11111111-0000-0000-0000-000000000f10' and signal = 'FR-05';
+set local role authenticated;
+select pg_temp.jwt('33333333-0000-0000-0000-0000000000f1', '{"app_roles":["admin_finance"],"aal":"aal2"}');
+select lives_ok($$ select api.release_payout((select id from t_pay where k = 'ph1'), 'flag di-dismiss moderator') $$,
+                'regresi AA-3: lepas tahan → kembali antre batch (S-05 on_hold → requested)');
+select lives_ok($$ select api.hold_payout((select id from t_pay where k = 'ph1'), 'nominal mencurigakan') $$,
+                'regresi AA-3: finance menahan payout tanpa mengembalikan dana');
+select is((select status || ':' || hold_reason from api.payouts where id = (select id from t_pay where k = 'ph1')), 'on_hold:nominal mencurigakan',
+          'payout tertahan dengan alasan');
+select lives_ok($$ select api.release_payout((select id from t_pay where k = 'ph1'), 'aman') $$, 'lepas tahan lagi');
+reset role;
+update market.profiles set status = 'banned' where id = '11111111-0000-0000-0000-000000000f10';
+set local role authenticated;
+select pg_temp.jwt('33333333-0000-0000-0000-0000000000f1', '{"app_roles":["admin_finance"],"aal":"aal2"}');
+select api.create_payout_batch(now());
+reset role;
+select is((select status || ':' || hold_reason || ':' || (batch_id is null)::text from finance.payouts where id = (select id from t_pay where k = 'ph1')),
+          'on_hold:profile_banned:true', 'regresi AA-1: buat batch menahan payout clipper yang di-ban, tidak ikut ditransfer');
+update market.profiles set status = 'active' where id = '11111111-0000-0000-0000-000000000f10';
+set local role authenticated;
+select pg_temp.jwt('33333333-0000-0000-0000-0000000000f1', '{"app_roles":["admin_finance"],"aal":"aal2"}');
+select api.release_payout((select id from t_pay where k = 'ph1'), 'banding diterima');
+insert into t_pay select 'ph_batch', api.create_payout_batch(now());
+select pg_temp.jwt('33333333-0000-0000-0000-0000000000f2', '{"app_roles":["admin_finance"],"aal":"aal2"}');
+select api.approve_payout_batch((select id from t_pay where k = 'ph_batch'));
+reset role;
+update market.profiles set status = 'suspended', suspended_until = now() + interval '3 days' where id = '11111111-0000-0000-0000-000000000f10';
+select is((select x ->> 'blocked' from jsonb_array_elements(api.bridge_get_batch((select id from t_pay where k = 'ph_batch')) -> 'payouts') x
+            where x ->> 'id' = (select id::text from t_pay where k = 'ph1')), 'profile_suspended',
+          'regresi AA-1: batch disetujui → export menandai payout clipper yang disuspend (identity menahannya)');
+update market.profiles set status = 'active', suspended_until = null where id = '11111111-0000-0000-0000-000000000f10';
+set local role authenticated;
+select pg_temp.jwt('33333333-0000-0000-0000-0000000000e1', '{"app_roles":["admin_moderator"],"aal":"aal2"}');
+select api.manage_user('11111111-0000-0000-0000-000000000f10', 'ban', '{"reason":"pelanggaran ToS"}');
+reset role;
+select ok(exists (select 1 from ops.notifications where user_id = '11111111-0000-0000-0000-000000000f10' and event = 'account.banned'),
+          'regresi AA-7: ban dari manajemen user mengabari clipper (paritas dengan ban fraud queue)');
 
 -- ========== Invarian akhir ==========
 select is((select count(*)::int from (select 1 from finance.ledger_entries e group by e.txn_id, e.reward_type_id having sum(e.amount) <> 0) x),

@@ -718,6 +718,9 @@ export type Database = {
               "created": boolean,"display_name": string,"id": string,"username": string
             }[]
                            },
+"hold_payout":
+{ Args: { "p_payout": string,"p_reason": string }; Returns: undefined
+                           },
 "import_bank_lines":
 { Args: { "p_lines": Json }; Returns: Json
                            },
@@ -769,6 +772,9 @@ export type Database = {
                            },
 "record_review":
 { Args: { "p_decision": string,"p_message"?: string,"p_note"?: string,"p_reason"?: string,"p_target_id": string,"p_target_type": string }; Returns: undefined
+                           },
+"release_payout":
+{ Args: { "p_note": string,"p_payout": string }; Returns: undefined
                            },
 "report_by_token":
 { Args: { "p_token": string }; Returns: Json

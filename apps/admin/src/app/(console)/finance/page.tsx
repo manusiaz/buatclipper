@@ -10,8 +10,8 @@ import type { Claims } from '@clipper/auth';
 import { isUuid, param, rows, uniq, type SearchParams } from '@/lib/data';
 import { isoToWibDate, isoToWibInput } from '@/lib/wib';
 import {
-  approveBatch, approveRefund, cancelPayout, confirmInvoice, createBatch, exportPayoutCsv, exportPph21, importBankStatement, resolveBankLine,
-  setBankRef, uploadProof,
+  approveBatch, approveRefund, cancelPayout, confirmInvoice, createBatch, exportPayoutCsv, exportPph21, holdPayout, importBankStatement,
+  releasePayout, resolveBankLine, setBankRef, uploadProof,
 } from '@/features/finance/actions';
 import { BatchResults } from '@/features/finance/batch-results';
 import { ActionButton, ActionDialog, type FieldSpec } from '@/features/shared/action-dialog';
@@ -178,6 +178,16 @@ async function Payouts({ loc, claims, batch }: { loc: UiLocale; claims: Claims; 
   ]);
   const flags = rows(flagRes);
   const flagged = new Set(flags.map((f) => f.target_id));
+  // Checkpoint §12: status sanksi & submisi ber-flag clipper yang menunggu transfer (flag profil/ban/suspend ditahan otomatis saat batch).
+  const [statusRes, subFlagRes] = userIds.length
+    ? await Promise.all([
+        db.from('admin_profiles').select('id, status').in('id', userIds),
+        db.from('submissions').select('user_id').in('user_id', userIds).eq('status', 'flagged'),
+      ])
+    : [{ data: [], error: null }, { data: [], error: null }];
+  const inactive = new Map(rows(statusRes).filter((p) => p.status !== 'active').map((p) => [p.id!, p.status!]));
+  const subFlagged = new Set(rows(subFlagRes).map((s) => s.user_id!));
+  const review = requested.filter((p) => flagged.has(p.user_id!) || flagged.has(p.id!) || inactive.has(p.user_id!) || subFlagged.has(p.user_id!));
   const total = requested.reduce((s, p) => s + Number(p.amount ?? 0) - Number(p.fee ?? 0), 0);
   const selected = batches.find((b) => b.id === batch) ?? null;
 
@@ -266,6 +276,36 @@ async function Payouts({ loc, claims, batch }: { loc: UiLocale; claims: Claims; 
 
       {selected && isUuid(selected.id) ? <BatchDetail b={selected} loc={loc} me={claims.sub} /> : null}
 
+      {review.length ? (
+        <Card padding="md" className="flex flex-col gap-3">
+          <CardHeader>
+            <CardTitle>{t('finance.reviewTitle')}</CardTitle>
+            <CardDescription>{t('finance.reviewBody')}</CardDescription>
+          </CardHeader>
+          <ul className="flex flex-col divide-y divide-border">
+            {review.map((p) => (
+              <li key={p.id} className="flex flex-wrap items-center gap-3 py-2 text-body-s">
+                <Link href={`/users?user=${p.user_id}`} className="font-semibold text-link hover:underline">@{user.get(p.user_id!) ?? '—'}</Link>
+                <span className="tnum">{idr(Number(p.amount) - Number(p.fee), loc)}</span>
+                {inactive.has(p.user_id!) ? <Badge tone="danger" size="sm">{t(`finance.profileStatus.${inactive.get(p.user_id!)}`)}</Badge> : null}
+                {flagged.has(p.user_id!) || flagged.has(p.id!) ? <Badge tone="danger" size="sm" icon="flag">{t('finance.flag')}</Badge> : null}
+                {subFlagged.has(p.user_id!) ? <Badge tone="warn" size="sm">{t('finance.subFlagged')}</Badge> : null}
+                <span className="ml-auto">
+                  <ActionDialog
+                    trigger={{ label: t('finance.holdPayout'), variant: 'ghost', icon: 'pause' }}
+                    title={t('finance.holdPayout')}
+                    description={t('finance.holdPayoutBody')}
+                    submitLabel={t('finance.holdPayout')}
+                    success={t('finance.payoutHeld')}
+                    action={holdPayout.bind(null, p.id!)}
+                    fields={[{ kind: 'textarea', name: 'reason', label: t('form.reason'), required: true, maxLength: 500 }]}
+                  />
+                </span>
+              </li>
+            ))}
+          </ul>
+        </Card>
+      ) : null}
       {held.length ? (
         <Card padding="md" className="flex flex-col gap-3">
           <CardHeader>
@@ -278,7 +318,18 @@ async function Payouts({ loc, claims, batch }: { loc: UiLocale; claims: Claims; 
                 <span className="font-semibold text-ink">@{user.get(p.user_id!) ?? '—'}</span>
                 <span className="tnum">{idr(Number(p.amount) - Number(p.fee), loc)}</span>
                 <Badge tone="warn" size="sm">{t.has(`export.reasons.${p.hold_reason}`) ? t(`export.reasons.${p.hold_reason}`) : p.hold_reason}</Badge>
-                <span className="ml-auto">
+                <span className="ml-auto flex gap-1">
+                  {p.channel === 'batch' ? (
+                    <ActionDialog
+                      trigger={{ label: t('finance.releasePayout'), variant: 'ghost', icon: 'play_circle' }}
+                      title={t('finance.releasePayout')}
+                      description={t('finance.releasePayoutBody')}
+                      submitLabel={t('finance.releasePayout')}
+                      success={t('finance.payoutReleased')}
+                      action={releasePayout.bind(null, p.id!)}
+                      fields={[{ kind: 'textarea', name: 'note', label: t('finance.reviewNote'), required: true, maxLength: 500 }]}
+                    />
+                  ) : null}
                   <CancelPayout id={p.id!} t={t} />
                 </span>
               </li>

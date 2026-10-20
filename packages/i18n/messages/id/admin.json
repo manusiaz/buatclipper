@@ -165,7 +165,8 @@
     "file_missing": "Berkas CSV tidak ditemukan lagi. Hubungi engineering.",
     "bank_csv": "CSV mutasi tidak terbaca di baris {param}. Wajib: tanggal, nominal (atau debit & kredit), referensi.",
     "too_many_lines": "Maksimal 5.000 baris per unggahan.",
-    "bank_partial_day": "File tidak memuat semua mutasi tanggal {param} yang sudah diunggah. Unggah mutasi sehari penuh tanggal itu."
+    "bank_partial_day": "File tidak memuat semua mutasi tanggal {param} yang sudah diunggah. Unggah mutasi sehari penuh tanggal itu.",
+    "batch_all_held": "Semua payout yang memenuhi syarat ditahan (ban/suspend/flag). Cek kartu \"Payout ditahan\"."
   },
   "export": {
     "download": "Unduh CSV ({rows} baris)",
@@ -182,7 +183,13 @@
       "no_consent": "Belum memberi consent berbagi data ke brand",
       "recipient_missing": "Data penerima tidak ditemukan",
       "recipient_mismatch": "Data penerima tidak cocok",
-      "missing_kyc": "Tanpa data KYC (NIK)"
+      "missing_kyc": "Tanpa data KYC (NIK)",
+      "profile_blocked": "Profil diblokir (ban/suspend/flag fraud)",
+      "profile_banned": "Akun di-ban",
+      "profile_suspended": "Akun ditangguhkan",
+      "profile_closed": "Akun ditutup",
+      "profile_missing": "Profil tidak ada",
+      "fraud_flag": "Flag fraud terbuka"
     }
   },
   "overview": {
@@ -777,7 +784,22 @@
     "bankFixRef": "Perbaiki referensi",
     "bankFixRefBody": "Isi nomor referensi mutasi bank yang benar untuk transaksi ini. Mengganti referensi yang sudah ada wajib catatan; tercatat di audit log.",
     "bankFixed": "Referensi diperbarui dan dicocokkan ulang",
-    "bankFixNoteHelp": "Wajib bila mengganti referensi yang sudah ada (mis. salah ketik)."
+    "bankFixNoteHelp": "Wajib bila mengganti referensi yang sudah ada (mis. salah ketik).",
+    "reviewTitle": "Perlu dicek sebelum batch",
+    "reviewBody": "Payout clipper yang di-ban/ditangguhkan, ber-flag fraud, atau punya submisi ber-flag. Ban, suspend, dan flag profil ditahan otomatis saat batch dibuat; sisanya putuskan di sini.",
+    "subFlagged": "Submisi ber-flag",
+    "holdPayout": "Tahan",
+    "holdPayoutBody": "Payout ditahan tanpa mengembalikan dana dan tidak ikut batch sampai dilepas atau dibatalkan.",
+    "payoutHeld": "Payout ditahan",
+    "releasePayout": "Lepas tahan",
+    "releasePayoutBody": "Payout kembali antre batch berikutnya. Ditolak selama clipper masih di-ban/ditangguhkan atau flag fraud masih terbuka.",
+    "payoutReleased": "Payout kembali antre batch",
+    "reviewNote": "Catatan review",
+    "profileStatus": {
+      "banned": "Di-ban",
+      "suspended": "Ditangguhkan",
+      "closed": "Ditutup"
+    }
   },
   "fulfillment": {
     "title": "Fulfillment non-tunai",

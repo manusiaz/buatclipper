@@ -39,4 +39,8 @@ Deno.test("holdReason: fee ≥ amount → invalid_amount", () => {
   assertEquals(holdReason(p("5000", "5000"), method as any, kyc as any), "invalid_amount");
   // deno-lint-ignore no-explicit-any
   assertEquals(holdReason(p("5000", "0"), method as any, kyc as any), null);
+  // AA-1: core menandai payout clipper yang di-ban/suspend/ber-flag → tidak masuk CSV walau rekening & KYC lolos
+  const banned = { ...p("5000", "0"), blocked: "profile_banned" };
+  // deno-lint-ignore no-explicit-any
+  assertEquals(holdReason(banned, method as any, kyc as any), "profile_blocked");
 });

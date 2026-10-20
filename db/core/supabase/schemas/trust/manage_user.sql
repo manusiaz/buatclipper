@@ -50,6 +50,7 @@ begin
     end if;
     update market.profiles set status = 'suspended', suspended_until = until_at where id = pr.id;
     update market.claims set status = 'released' where user_id = pr.id and status = 'open';
+    perform finance.hold_payouts(pr.id, null, 'profile_suspended');
     perform ops.enqueue_notification(pr.id, 'account.suspended',
                                      jsonb_build_object('until', until_at, 'reason', prm ->> 'reason'));
   elsif p_action = 'unsuspend' then
@@ -62,7 +63,8 @@ begin
       perform market.fail('invalid_state:' || pr.status);
     end if;
     update market.profiles set status = 'banned' where id = pr.id;
-    update market.claims set status = 'released' where user_id = pr.id and status = 'open';
+    -- Paritas dengan ban fraud queue (AA-7): pending hangus, tracking berhenti, payout ditahan, clipper dikabari.
+    perform trust.apply_ban(pr.id, 'admin', jsonb_build_object('reason', prm ->> 'reason'));
   elsif p_action = 'unban' then
     if pr.status = 'closed' then
       perform market.fail('invalid_state:' || pr.status);

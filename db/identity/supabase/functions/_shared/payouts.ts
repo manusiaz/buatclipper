@@ -9,7 +9,8 @@ export type HoldReason =
   | "method_disabled"
   | "kyc_not_approved"
   | "name_mismatch"
-  | "invalid_amount";
+  | "invalid_amount"
+  | "profile_blocked";
 
 export interface MethodRow {
   id: string;
@@ -40,6 +41,8 @@ export interface PayoutRef {
   amount: string | number;
   /** Biaya (gross − fee = yang ditransfer). Batch mingguan gratis → 0; ada untuk berjaga kalau batch berbiaya. */
   fee?: string | number;
+  /** Alasan blokir dari core (finance.payout_block: ban/suspend/flag fraud terbuka); ada = tidak masuk CSV. */
+  blocked?: string | null;
 }
 
 /** Jumlah yang benar-benar ditransfer ke rekening. */
@@ -64,6 +67,7 @@ export function formatCents(c: bigint): string {
 }
 
 export function holdReason(p: PayoutRef, method: MethodRow | undefined, kyc: KycRow | undefined): HoldReason | null {
+  if (p.blocked) return "profile_blocked";
   if (!method) return "method_missing";
   if (method.user_id !== p.user_id) return "method_owner_mismatch"; // includes tombstones (user_id NULL)
   if (method.disabled_at !== null || method.blocked) return "method_disabled";

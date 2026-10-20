@@ -18,8 +18,10 @@ begin
   return jsonb_build_object(
     'batch', jsonb_build_object('id', b.id, 'status', b.status, 'created_by', b.created_by, 'approved_by', b.approved_by,
                                 'file_ref', b.file_ref),
+    -- blocked: profil di-ban/suspend atau flag fraud terbuka sejak batch disetujui → identity menahannya (bukan masuk CSV).
     'payouts', coalesce((select jsonb_agg(jsonb_build_object('id', p.id, 'user_id', p.user_id, 'method_id', p.method_id,
-                                                             'amount', p.amount, 'fee', p.fee) order by p.id)
+                                                             'amount', p.amount, 'fee', p.fee,
+                                                             'blocked', finance.payout_block(p.user_id, p.id)) order by p.id)
                          from finance.payouts p where p.batch_id = b.id and p.status = 'requested'), '[]'));
 end $$;
 

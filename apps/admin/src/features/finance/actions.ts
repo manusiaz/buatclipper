@@ -33,7 +33,8 @@ export async function confirmInvoice(invoiceId: string, fd: FormData): Promise<A
 /** A3.2: batch dari payout requested (channel batch) sampai cut-off. */
 export async function createBatch(fd: FormData): Promise<ActionResult> {
   const db = await finance();
-  const { error } = await db.rpc('create_payout_batch', { p_cutoff: wibToIso(text(fd, 'cutoff')) ?? new Date().toISOString() });
+  const { data, error } = await db.rpc('create_payout_batch', { p_cutoff: wibToIso(text(fd, 'cutoff')) ?? new Date().toISOString() });
+  if (!error && data === null) return { ...settle(null, '/finance'), ok: false, error: 'batch_all_held' }; // semua ditahan checkpoint
   return settle(error, '/finance');
 }
 
@@ -142,5 +143,18 @@ export async function resolveBankLine(id: number, fd: FormData): Promise<ActionR
 export async function setBankRef(target: 'payout' | 'invoice' | 'refund', id: string, fd: FormData): Promise<ActionResult> {
   const db = await finance();
   const { error } = await db.rpc('set_bank_ref', { p_target: target, p_id: id, p_ref: text(fd, 'ref'), p_note: text(fd, 'note') });
+  return settle(error, '/finance');
+}
+
+/** A3.2: tahan payout mencurigakan tanpa mengembalikan dana; lepas tahan setelah review (S-05 on_hold → requested). */
+export async function holdPayout(payoutId: string, fd: FormData): Promise<ActionResult> {
+  const db = await finance();
+  const { error } = await db.rpc('hold_payout', { p_payout: payoutId, p_reason: text(fd, 'reason') });
+  return settle(error, '/finance');
+}
+
+export async function releasePayout(payoutId: string, fd: FormData): Promise<ActionResult> {
+  const db = await finance();
+  const { error } = await db.rpc('release_payout', { p_payout: payoutId, p_note: text(fd, 'note') });
   return settle(error, '/finance');
 }

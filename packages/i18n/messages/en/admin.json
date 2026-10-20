@@ -165,7 +165,8 @@
     "file_missing": "The CSV file is no longer available. Contact engineering.",
     "bank_csv": "Statement CSV unreadable at row {param}. Required: date, amount (or debit & credit), reference.",
     "too_many_lines": "At most 5,000 lines per upload.",
-    "bank_partial_day": "The file does not contain every statement line already uploaded for {param}. Upload the full day's statement for that date."
+    "bank_partial_day": "The file does not contain every statement line already uploaded for {param}. Upload the full day's statement for that date.",
+    "batch_all_held": "Every eligible payout was held (ban/suspension/flag). See the held payouts card."
   },
   "export": {
     "download": "Download CSV ({rows} rows)",
@@ -182,7 +183,13 @@
       "no_consent": "No consent to share data with the brand",
       "recipient_missing": "Recipient data not found",
       "recipient_mismatch": "Recipient data mismatch",
-      "missing_kyc": "No KYC data (NIK)"
+      "missing_kyc": "No KYC data (NIK)",
+      "profile_blocked": "Profile blocked (ban/suspension/fraud flag)",
+      "profile_banned": "Account banned",
+      "profile_suspended": "Account suspended",
+      "profile_closed": "Account closed",
+      "profile_missing": "Profile missing",
+      "fraud_flag": "Open fraud flag"
     }
   },
   "overview": {
@@ -777,7 +784,22 @@
     "bankFixRef": "Fix reference",
     "bankFixRefBody": "Enter the correct bank statement reference for this transaction. Replacing an existing reference requires a note and is recorded in the audit log.",
     "bankFixed": "Reference updated and re-matched",
-    "bankFixNoteHelp": "Required when replacing an existing reference (e.g. a typo)."
+    "bankFixNoteHelp": "Required when replacing an existing reference (e.g. a typo).",
+    "reviewTitle": "Review before batching",
+    "reviewBody": "Payouts of clippers who are banned/suspended, fraud-flagged, or have flagged submissions. Bans, suspensions and profile flags are held automatically when the batch is created; decide the rest here.",
+    "subFlagged": "Flagged submission",
+    "holdPayout": "Hold",
+    "holdPayoutBody": "The payout is held without returning funds and stays out of batches until released or cancelled.",
+    "payoutHeld": "Payout held",
+    "releasePayout": "Release hold",
+    "releasePayoutBody": "The payout goes back to the next batch queue. Refused while the clipper is still banned/suspended or a fraud flag is open.",
+    "payoutReleased": "Payout queued again",
+    "reviewNote": "Review note",
+    "profileStatus": {
+      "banned": "Banned",
+      "suspended": "Suspended",
+      "closed": "Closed"
+    }
   },
   "fulfillment": {
     "title": "Non-cash fulfillment",

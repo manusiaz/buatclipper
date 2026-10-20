@@ -18,6 +18,13 @@ begin
     values (p_target_type, p_target_id, p_signal, p_score, p_status, coalesce(p_details, '{}'), now())
     returning id into fid;
   end if;
+  if fid is not null and p_status in ('open', 'held') then  -- blok withdraw (flag profil / payout): payout belum ditransfer ditahan
+    if p_target_type = 'payout' then
+      perform finance.hold_payouts(null, p_target_id, 'fraud_flag');
+    elsif p_target_type = 'profile' then
+      perform finance.hold_payouts(p_target_id, null, 'fraud_flag');
+    end if;
+  end if;
   if fid is not null then
     select count(*) into n from trust.fraud_flags f where f.created_at > now() - interval '1 hour';
     if n > (ops.cfg('trust.fraud.flag_spike_per_hour', '20'))::int then
@@ -25,6 +32,25 @@ begin
     end if;
   end if;
   return fid;
+end $$;
+
+-- Efek ban (§12, sama untuk fraud queue dan manajemen user F-A07): pending hangus, tracking berhenti, claim dilepas,
+-- payout yang belum ditransfer ditahan, clipper dikabari. Ban login identity dipicu pemanggil.
+create function trust.apply_ban(p_user uuid, p_reason text, p_payload jsonb) returns void
+language plpgsql security definer set search_path = '' as $$
+declare
+  x record;
+begin
+  for x in select s.id, s.status from tracking.submissions s
+            where s.user_id = p_user and s.status in ('tracking', 'flagged', 'locked') order by s.id loop
+    perform finance.reverse_earning(x.id, 'ban:' || p_reason);
+    if x.status in ('tracking', 'flagged') then
+      update tracking.submissions set status = 'forfeited', next_poll_at = null where id = x.id;
+    end if;
+  end loop;
+  update market.claims set status = 'released' where user_id = p_user and status = 'open';
+  perform finance.hold_payouts(p_user, null, 'profile_banned');
+  perform ops.enqueue_notification(p_user, 'account.banned', p_payload);
 end $$;
 
 -- Sanksi bertingkat (§12): hold (tahan earning/payout), reverse (earning pending kembali ke pool + submisi hangus),
@@ -99,19 +125,12 @@ begin
     elsif p_action = 'suspend' then
       update market.profiles set status = 'suspended', suspended_until = now() + interval '30 days'
        where id = target_user and status in ('active', 'suspended');
+      perform finance.hold_payouts(target_user, null, 'profile_suspended');
       perform ops.enqueue_notification(target_user, 'account.suspended',
                                        jsonb_build_object('until', now() + interval '30 days', 'signal', f.signal));
     elsif p_action = 'ban' then
       update market.profiles set status = 'banned' where id = target_user and status <> 'closed';
-      for x in select s.id, s.status from tracking.submissions s
-                where s.user_id = target_user and s.status in ('tracking', 'flagged', 'locked') order by s.id loop
-        perform finance.reverse_earning(x.id, 'ban:' || f.signal);  -- pending hangus (§12 sanksi bertingkat)
-        if x.status in ('tracking', 'flagged') then
-          update tracking.submissions set status = 'forfeited', next_poll_at = null where id = x.id;
-        end if;
-      end loop;
-      update market.claims set status = 'released' where user_id = target_user and status = 'open';
-      perform ops.enqueue_notification(target_user, 'account.banned', jsonb_build_object('signal', f.signal, 'flag_id', f.id));
+      perform trust.apply_ban(target_user, f.signal, jsonb_build_object('signal', f.signal, 'flag_id', f.id));
       perform ops.invoke_function('bridge', jsonb_build_object('action', 'ban_user', 'user_id', target_user));
     end if;
   end if;
@@ -125,5 +144,5 @@ begin
           jsonb_build_object('action', p_action, 'note', p_note, 'target_user', target_user));
 end $$;
 
-revoke execute on function trust.raise_flag(text, uuid, text, numeric, jsonb, text), api.resolve_fraud_flag(uuid, text, text) from public;
+revoke execute on function trust.apply_ban(uuid, text, jsonb), trust.raise_flag(text, uuid, text, numeric, jsonb, text), api.resolve_fraud_flag(uuid, text, text) from public;
 grant execute on function api.resolve_fraud_flag(uuid, text, text) to authenticated;
