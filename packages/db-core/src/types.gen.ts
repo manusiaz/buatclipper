@@ -356,14 +356,14 @@ export type Database = {
                   ]
                 },"org_refunds": {
                   Row: {
-                    "amount": number | null,"bank_ref": string | null,"campaign_id": string | null,"created_at": string | null,"id": string | null,"org_id": string | null,"paid_at": string | null,"requested_by": string | null,"status": string | null,"transfer_fee": number | null
+                    "amount": number | null,"bank_ref": string | null,"campaign_id": string | null,"created_at": string | null,"dest_account": string | null,"dest_bank": string | null,"dest_name": string | null,"dest_set_by": string | null,"id": string | null,"org_id": string | null,"paid_at": string | null,"requested_by": string | null,"status": string | null,"transfer_fee": number | null
                   }
                   ComputedFields: never
                   Insert: {
-                           "amount"?: number | null,"bank_ref"?: string | null,"campaign_id"?: string | null,"created_at"?: string | null,"id"?: string | null,"org_id"?: string | null,"paid_at"?: string | null,"requested_by"?: string | null,"status"?: string | null,"transfer_fee"?: number | null
+                           "amount"?: number | null,"bank_ref"?: string | null,"campaign_id"?: string | null,"created_at"?: string | null,"dest_account"?: string | null,"dest_bank"?: string | null,"dest_name"?: string | null,"dest_set_by"?: string | null,"id"?: string | null,"org_id"?: string | null,"paid_at"?: string | null,"requested_by"?: string | null,"status"?: string | null,"transfer_fee"?: number | null
                          }
                         Update: {
-                           "amount"?: number | null,"bank_ref"?: string | null,"campaign_id"?: string | null,"created_at"?: string | null,"id"?: string | null,"org_id"?: string | null,"paid_at"?: string | null,"requested_by"?: string | null,"status"?: string | null,"transfer_fee"?: number | null
+                           "amount"?: number | null,"bank_ref"?: string | null,"campaign_id"?: string | null,"created_at"?: string | null,"dest_account"?: string | null,"dest_bank"?: string | null,"dest_name"?: string | null,"dest_set_by"?: string | null,"id"?: string | null,"org_id"?: string | null,"paid_at"?: string | null,"requested_by"?: string | null,"status"?: string | null,"transfer_fee"?: number | null
                          }
                         Relationships: [
                     
@@ -658,6 +658,9 @@ export type Database = {
 "bridge_get_payout":
 { Args: { "p_payout": string }; Returns: Json
                            },
+"bridge_get_refund":
+{ Args: { "p_refund": string }; Returns: Json
+                           },
 "bridge_mark_instant":
 { Args: { "p_error": string,"p_payout": string,"p_provider_ref": string,"p_status": string }; Returns: undefined
                            },
@@ -827,6 +830,9 @@ export type Database = {
                            },
 "set_bank_ref":
 { Args: { "p_id": string,"p_note"?: string,"p_ref": string,"p_target": string }; Returns: Json
+                           },
+"set_refund_dest":
+{ Args: { "p_dest": Json,"p_refund": string }; Returns: undefined
                            },
 "store_social_token":
 { Args: { "p_account_id": string,"p_token": string }; Returns: string

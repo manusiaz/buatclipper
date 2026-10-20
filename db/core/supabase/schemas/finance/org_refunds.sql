@@ -12,13 +12,21 @@ create table finance.org_refunds (
   bank_ref text,
   proof_ref text,
   idempotency_key text not null,
+  -- AB-6 rekening tujuan (api.set_refund_dest), dest_set_by = yang mengisi. Badan usaha: rekening perusahaan atas nama legal
+  -- org (data badan). Perorangan: dest_* kosong = rekening bank pribadi pemilik org (dest_set_by) yang terdaftar di identity
+  -- (PII tidak disalin ke core), dibuka admin_finance lewat identity pii-export refund_destination setelah disetujui.
+  dest_bank text check (length(dest_bank) between 2 and 40),
+  dest_account text check (dest_account ~ '^[0-9]{5,20}$'),
+  dest_name text check (length(dest_name) between 2 and 200),
+  dest_set_by uuid,
   created_at timestamptz not null default now(),
   paid_at timestamptz,
   constraint org_refunds_idempotency_unique unique (idempotency_key),
   constraint org_refunds_fee_below_amount check (transfer_fee < amount),
   constraint org_refunds_two_person check (approved_by is null or approved_by <> requested_by),
   constraint org_refunds_approved check (status not in ('approved', 'paid') or approved_by is not null),
-  constraint org_refunds_paid_complete check (status <> 'paid' or (paid_at is not null and proof_ref is not null))
+  constraint org_refunds_paid_complete check (status <> 'paid' or (paid_at is not null and proof_ref is not null)),
+  constraint org_refunds_dest check (num_nonnulls(dest_bank, dest_account, dest_name) in (0, 3) and (dest_account is null or dest_set_by is not null))
 );
 create index org_refunds_org_idx on finance.org_refunds (org_id, created_at desc);
 create index org_refunds_campaign_idx on finance.org_refunds (campaign_id);

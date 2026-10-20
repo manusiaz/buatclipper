@@ -104,5 +104,9 @@
   "export_stale": "The data changed since the export started. Export again.",
   "file_missing": "Export file not found. Export again.",
   "last_owner": "The organization needs at least one Owner. Make another member an Owner first.",
-  "faktur_used": "This faktur number is already used by another invoice."
+  "faktur_used": "This faktur number is already used by another invoice.",
+  "refund_name_mismatch": "The account holder name must match the organization’s legal name.",
+  "refund_dest_missing": "The brand hasn’t added a refund destination account.",
+  "refund_dest_invalid": "The destination account is not valid (owner/KYC name/status). Ask the brand to update it.",
+  "refund_not_approved": "The refund isn’t approved yet."
 }

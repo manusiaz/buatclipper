@@ -813,6 +813,20 @@ select pg_temp.jwt('22222222-0000-0000-0000-0000000000c1', '{"aal":"aal2"}');
 select throws_ok($$ select api.request_refund('44444444-0000-0000-0000-000000000001', '55555555-0000-0000-0000-0000000000a8', 'refund',
                     10000, 'refund-after-cancel') $$, 'P0001', 'insufficient_balance', 'pool sudah dikuras: tidak bisa refund dua kali');
 select pg_temp.jwt('33333333-0000-0000-0000-0000000000f2', '{"app_roles":["admin_finance"],"aal":"aal2"}');
+select throws_ok($$ select api.approve_refund((select id from t_pay where k = 'cancel_refund')) $$, 'P0001', 'refund_dest_missing',
+                 'regresi AB-6: refund tanpa rekening tujuan tidak bisa disetujui (finance tidak tahu harus transfer ke mana)');
+select pg_temp.jwt('22222222-0000-0000-0000-0000000000c1', '{"aal":"aal2"}');
+select throws_ok($$ select api.set_refund_dest((select id from t_pay where k = 'cancel_refund'),
+                                               '{"bank":"BCA","account_no":"1234567890","account_name":"Budi Santoso"}') $$,
+                 'P0001', 'refund_name_mismatch', 'rekening refund badan usaha harus atas nama legal org (bukan rekening pribadi)');
+select lives_ok($$ select api.set_refund_dest((select id from t_pay where k = 'cancel_refund'),
+                                              '{"bank":"BCA","account_no":"123-456-7890","account_name":"PT. STUDIO SATU"}') $$,
+                'regresi AB-6: brand billing mengisi rekening perusahaan untuk refund batal');
+reset role;
+select is((select dest_bank || ':' || dest_account || ':' || dest_name from finance.org_refunds where id = (select id from t_pay where k = 'cancel_refund')),
+          'BCA:1234567890:PT. STUDIO SATU', 'rekening tujuan tersimpan (nomor dinormalkan)');
+set local role authenticated;
+select pg_temp.jwt('33333333-0000-0000-0000-0000000000f2', '{"app_roles":["admin_finance"],"aal":"aal2"}');
 select lives_ok($$ select api.approve_refund((select id from t_pay where k = 'cancel_refund')) $$,
                 'admin_finance lain menyetujui refund batal (pembatal = pengaju, dua orang)');
 select api.set_bank_ref('refund', (select id from t_pay where k = 'cancel_refund'), 'TRF-REFUND-BATAL');
@@ -1086,8 +1100,8 @@ select is((select status::text from tracking.submissions where user_id = '111111
           'submisi yang menunggu review dihentikan');
 
 -- ========== M. Hak akses RPC service_role ==========
-select is((select count(*)::int from pg_proc p where p.pronamespace = 'api'::regnamespace and p.proname ~ '^(worker|bridge)_'), 31,
-          '31 RPC worker/bridge');
+select is((select count(*)::int from pg_proc p where p.pronamespace = 'api'::regnamespace and p.proname ~ '^(worker|bridge)_'), 32,
+          '32 RPC worker/bridge');
 select is((select count(*)::int from pg_proc p where p.pronamespace = 'api'::regnamespace and p.proname ~ '^(worker|bridge)_'
             and (has_function_privilege('authenticated', p.oid, 'execute') or has_function_privilege('anon', p.oid, 'execute'))), 0,
           'authenticated/anon tidak bisa EXECUTE RPC worker/bridge');
@@ -1212,9 +1226,39 @@ select is((select e.amount from finance.ledger_entries e join finance.ledger_acc
 select is((select status || ':' || transfer_fee from finance.org_refunds where id = (select id from t_pay where k = 'refund')), 'requested:2500.00',
           'refund sisa → E-35 requested dengan biaya transfer');
 set local role authenticated;
+select pg_temp.jwt('22222222-0000-0000-0000-0000000000c1', '{"aal":"aal2"}');
+select api.set_refund_dest((select id from t_pay where k = 'refund'), '{"bank":"Mandiri","account_no":"9876543210","account_name":"PT Studio Satu"}');
 select pg_temp.jwt('33333333-0000-0000-0000-0000000000f1', '{"app_roles":["admin_finance"],"aal":"aal2"}');
 select lives_ok($$ select api.approve_refund((select id from t_pay where k = 'refund')) $$, 'admin_finance menyetujui refund');
+select pg_temp.jwt('22222222-0000-0000-0000-0000000000c1', '{"aal":"aal2"}');
+select throws_ok($$ select api.set_refund_dest((select id from t_pay where k = 'refund'),
+                                               '{"bank":"BCA","account_no":"1111111111","account_name":"PT Studio Satu"}') $$,
+                 'P0001', 'invalid_state:approved', 'rekening tidak bisa diganti setelah disetujui orang kedua');
 reset role;
+-- AB-6 perorangan: rekening pribadi tetap di identity; core hanya mencatat pemilik org yang memilih rekeningnya.
+insert into market.organizations (id, name, org_type, status, verified_by, verified_at, created_by) values
+  ('44444444-0000-0000-0000-0000000000e7', 'Toko Pribadi', 'perorangan', 'verified', '33333333-0000-0000-0000-0000000000f1', now(),
+   '22222222-0000-0000-0000-0000000000a1');
+insert into market.org_members (org_id, user_id, role) values
+  ('44444444-0000-0000-0000-0000000000e7', '22222222-0000-0000-0000-0000000000a1', 'brand_owner'),
+  ('44444444-0000-0000-0000-0000000000e7', '22222222-0000-0000-0000-0000000000c1', 'brand_finance');
+with x as (insert into finance.org_refunds (org_id, amount, transfer_fee, requested_by, idempotency_key)
+           values ('44444444-0000-0000-0000-0000000000e7', 100000, 2500, '22222222-0000-0000-0000-0000000000c1', 'ref-perorangan-1') returning id)
+insert into t_pay select 'ref_p', id from x;
+set local role authenticated;
+select pg_temp.jwt('22222222-0000-0000-0000-0000000000c1', '{"aal":"aal2"}');
+select throws_ok($$ select api.set_refund_dest((select id from t_pay where k = 'ref_p'), '{"owner_account":true}') $$,
+                 '42501', 'auth:forbidden', 'perorangan: rekening refund hanya milik pemilik org (bukan anggota finance)');
+select pg_temp.jwt('22222222-0000-0000-0000-0000000000a1', '{"aal":"aal2"}');
+select throws_ok($$ select api.set_refund_dest((select id from t_pay where k = 'ref_p'),
+                                               '{"bank":"BCA","account_no":"1234567890","account_name":"Andi"}') $$,
+                 'P0001', 'invalid:owner_account', 'perorangan: nomor rekening pribadi tidak disimpan di core');
+select lives_ok($$ select api.set_refund_dest((select id from t_pay where k = 'ref_p'), '{"owner_account":true}') $$,
+                'regresi AB-6: pemilik org perorangan memakai rekening pribadinya di Akun (identity)');
+reset role;
+select is(api.bridge_get_refund((select id from t_pay where k = 'ref_p')) - 'id' - 'requested_by',
+          '{"status":"requested","approved_by":null,"company_account":false,"dest_set_by":"22222222-0000-0000-0000-0000000000a1","amount":100000.00,"fee":2500.00}'::jsonb,
+          'bridge_get_refund: identity membuka rekening pribadi dest_set_by');
 select throws_ok($$ select api.bridge_attach_proof('refund', (select id from t_pay where k = 'refund'), 'payout-proofs/refund-1.pdf') $$,
                  'P0001', 'invalid:bank_ref', 'regresi C20-2: refund tidak bisa ditandai dibayar tanpa referensi mutasi bank');
 set local role authenticated;

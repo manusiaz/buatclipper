@@ -24,8 +24,8 @@ insert into member.legal_versions (kind, version, published_at, url) values
   ('privacy', '2026-10-01', now() - interval '1 day', 'https://contoh.id/legal/privacy');
 
 -- Hak akses: semua svc_* hanya untuk service_role, security definer, search_path kosong.
-select is((select count(*)::int from pg_proc p where p.pronamespace = 'api'::regnamespace and p.proname like 'svc\_%'), 13,
-          '13 fungsi svc_* ada');
+select is((select count(*)::int from pg_proc p where p.pronamespace = 'api'::regnamespace and p.proname like 'svc\_%'), 14,
+          '14 fungsi svc_* ada');
 select is((select count(*)::int from pg_proc p where p.pronamespace = 'api'::regnamespace and p.proname like 'svc\_%'
             and has_function_privilege('authenticated', p.oid, 'execute')), 0, 'authenticated tidak bisa EXECUTE svc_*');
 select is((select count(*)::int from pg_proc p where p.pronamespace = 'api'::regnamespace and p.proname like 'svc\_%'
@@ -45,6 +45,8 @@ reset role;
 set local role anon;
 select throws_ok($$ select * from api.svc_payout_methods(array['00000000-0000-0000-0000-000000000001'::uuid]) $$, '42501', null,
                  'anon tidak bisa membaca ciphertext rekening');
+select throws_ok($$ select * from api.svc_user_payout_methods('00000000-0000-0000-0000-0000000000a1') $$, '42501', null,
+                 'anon tidak bisa membaca rekening user lewat svc_user_payout_methods');
 reset role;
 
 -- Fixture PII lewat penyimpan service role (seperti member-data).
@@ -76,6 +78,10 @@ select is((select row(user_id, bank_code, account_no_enc, enc_key_version, accou
 select is((select count(*)::int from api.svc_payout_methods(array[(select id from t_pm where k = 'a'),
                                                                  '00000000-0000-0000-0000-000000000099'::uuid])), 1,
           'svc_payout_methods: ID tidak dikenal diabaikan');
+select is((select array_agg(bank_code) from api.svc_user_payout_methods('00000000-0000-0000-0000-0000000000a1')), array['BCA'],
+          'svc_user_payout_methods (AB-6 refund perorangan): rekening bank aktif milik user itu saja');
+select is((select count(*)::int from api.svc_user_payout_methods('00000000-0000-0000-0000-0000000000b1')), 0,
+          'svc_user_payout_methods: e-wallet tidak dipakai untuk refund');
 select is((select row(user_id, legal_name, nik_enc, enc_key_version, status::text, closed)::text
            from api.svc_kyc(array['00000000-0000-0000-0000-0000000000b1'::uuid])),
           row('00000000-0000-0000-0000-0000000000b1'::uuid, 'Budi Santoso', '\x0b01'::bytea, 2::smallint,

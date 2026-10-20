@@ -809,7 +809,14 @@
     "fakturAttached": "Tax invoice saved",
     "fakturNo": "Faktur number",
     "fakturNoHelp": "As shown in Coretax, e.g. 04002500123456789.",
-    "fakturFile": "Faktur PDF (max 5 MB)"
+    "fakturFile": "Faktur PDF (max 5 MB)",
+    "refundDestCompany": "To {bank} {account}, {name}",
+    "refundDestOwner": "To the owner’s personal account (Account)",
+    "refundDestNone": "The brand hasn’t added a destination account",
+    "refundDestReveal": "Show account",
+    "refundDestNet": "Transfer Rp{amount}",
+    "copy": "Copy",
+    "copied": "Copied"
   },
   "fulfillment": {
     "title": "Non-cash fulfillment",

@@ -809,7 +809,14 @@
     "fakturAttached": "Faktur pajak tersimpan",
     "fakturNo": "Nomor faktur",
     "fakturNoHelp": "Sesuai Coretax, mis. 04002500123456789.",
-    "fakturFile": "PDF faktur (maks 5 MB)"
+    "fakturFile": "PDF faktur (maks 5 MB)",
+    "refundDestCompany": "Ke {bank} {account} a.n. {name}",
+    "refundDestOwner": "Ke rekening pribadi pemilik org (Akun)",
+    "refundDestNone": "Rekening tujuan belum diisi brand",
+    "refundDestReveal": "Lihat rekening",
+    "refundDestNet": "Transfer Rp{amount}",
+    "copy": "Salin",
+    "copied": "Tersalin"
   },
   "fulfillment": {
     "title": "Fulfillment non-tunai",

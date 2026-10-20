@@ -14,6 +14,7 @@ import {
   releasePayout, resolveBankLine, setBankRef, uploadProof,
 } from '@/features/finance/actions';
 import { BatchResults } from '@/features/finance/batch-results';
+import { RefundDestReveal } from '@/features/finance/refund-dest';
 import { ActionButton, ActionDialog, type FieldSpec } from '@/features/shared/action-dialog';
 import { ExportPanel } from '@/features/shared/export-panel';
 import { TabLinks } from '@/features/shared/tab-links';
@@ -687,7 +688,7 @@ async function Instant({ loc }: { loc: UiLocale }) {
 
 async function Refunds({ loc, me }: { loc: UiLocale; me: string }) {
   const [t, db] = await Promise.all([getTranslations('admin'), coreServer('admin')]);
-  const list = rows(await db.from('org_refunds').select('id, org_id, campaign_id, amount, transfer_fee, status, requested_by, created_at, paid_at, bank_ref').in('status', ['requested', 'approved', 'paid']).order('created_at', { ascending: false }).limit(100));
+  const list = rows(await db.from('org_refunds').select('id, org_id, campaign_id, amount, transfer_fee, status, requested_by, created_at, paid_at, bank_ref, dest_bank, dest_account, dest_name, dest_set_by').in('status', ['requested', 'approved', 'paid']).order('created_at', { ascending: false }).limit(100));
   const [orgs, camps] = await Promise.all([
     db.from('organizations').select('id, name').in('id', uniq(list.map((r) => r.org_id))),
     db.from('campaigns').select('id, title').in('id', uniq(list.map((r) => r.campaign_id))),
@@ -716,6 +717,10 @@ async function Refunds({ loc, me }: { loc: UiLocale; me: string }) {
                 <TD>
                   <span className="font-semibold text-ink">{org.get(r.org_id) ?? '—'}</span>
                   <span className="block text-caption text-muted">{r.campaign_id ? camp.get(r.campaign_id) : '—'}</span>
+                  <span className="block text-caption text-text-2">
+                    {r.dest_account ? t('finance.refundDestCompany', { bank: r.dest_bank ?? '', account: r.dest_account, name: r.dest_name ?? '' })
+                      : r.dest_set_by ? t('finance.refundDestOwner') : t('finance.refundDestNone')}
+                  </span>
                 </TD>
                 <TD numeric>{idr(r.amount, loc)}</TD>
                 <TD numeric muted>{idr(r.transfer_fee, loc)}</TD>
@@ -733,19 +738,22 @@ async function Refunds({ loc, me }: { loc: UiLocale; me: string }) {
                   ) : r.status === 'requested' ? (
                     <ActionButton label={t('finance.approveRefund')} icon="verified" variant="primary" success={t('finance.refundApproved')} action={approveRefund.bind(null, r.id!)} />
                   ) : r.status === 'approved' ? (
-                    <ActionDialog
-                      trigger={{ label: t('finance.uploadProof'), icon: 'upload', variant: 'ink' }}
-                      title={t('finance.uploadProof')}
-                      description={t('finance.refundProofBody', { amount: idr(Number(r.amount) - Number(r.transfer_fee), loc) })}
-                      tone="ink"
-                      submitLabel={t('finance.upload')}
-                      success={t('finance.refundPaid')}
-                      action={uploadProof.bind(null, 'refund', r.id!)}
-                      fields={[
-                        { kind: 'text', name: 'bank_ref', label: t('finance.bankRefLabel'), helper: t('finance.bankRefHelp'), required: true, defaultValue: r.bank_ref ?? '' },
-                        { ...PROOF, label: t('finance.proofFile'), helper: t('finance.proofHelp') },
-                      ]}
-                    />
+                    <span className="inline-flex flex-col items-end gap-2">
+                      {r.dest_set_by && !r.dest_account ? <RefundDestReveal refundId={r.id!} /> : null}
+                      <ActionDialog
+                        trigger={{ label: t('finance.uploadProof'), icon: 'upload', variant: 'ink' }}
+                        title={t('finance.uploadProof')}
+                        description={t('finance.refundProofBody', { amount: idr(Number(r.amount) - Number(r.transfer_fee), loc) })}
+                        tone="ink"
+                        submitLabel={t('finance.upload')}
+                        success={t('finance.refundPaid')}
+                        action={uploadProof.bind(null, 'refund', r.id!)}
+                        fields={[
+                          { kind: 'text', name: 'bank_ref', label: t('finance.bankRefLabel'), helper: t('finance.bankRefHelp'), required: true, defaultValue: r.bank_ref ?? '' },
+                          { ...PROOF, label: t('finance.proofFile'), helper: t('finance.proofHelp') },
+                        ]}
+                      />
+                    </span>
                   ) : (
                     <span className="text-caption text-muted">{r.paid_at ? formatDateTime(r.paid_at, loc) : ''}</span>
                   )}

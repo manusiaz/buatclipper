@@ -789,5 +789,22 @@
       "insufficient_balance": "Nominal melebihi sisa budget campaign.",
       "insufficient_credit": "Kredit organisasi tidak cukup untuk invoice ini."
     }
+  },
+  "refundDest": {
+    "title": "Rekening tujuan refund",
+    "body": "Finance mentransfer dana refund ke rekening ini setelah disetujui.",
+    "bank": "Bank",
+    "accountNo": "Nomor rekening",
+    "accountName": "Nama pemilik rekening",
+    "accountNameHelp": "Harus atas nama {name} (rekening perusahaan).",
+    "ownerOnly": "Organisasi perorangan: rekening refund diisi pemilik organisasi.",
+    "fill": "Isi rekening",
+    "save": "Simpan",
+    "cancel": "Batal",
+    "saved": "Rekening tujuan disimpan",
+    "summary": "Ke {bank} ••{last4}",
+    "summaryOwner": "Ke rekening pemilik",
+    "ownerAccount": "Refund ditransfer ke rekening bank pribadimu yang terdaftar di Akun (nama sesuai KYC).",
+    "manageMethods": "Kelola rekening"
   }
 }

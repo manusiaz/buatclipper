@@ -105,7 +105,8 @@ create view api.invoices with (security_invoker = true) as
          total - credit_applied as amount_due  -- yang ditagih lewat transfer/QRIS setelah kredit org
   from finance.invoices;
 create view api.org_refunds with (security_invoker = true) as
-  select id, org_id, campaign_id, amount, transfer_fee, status, requested_by, created_at, paid_at, bank_ref from finance.org_refunds;
+  select id, org_id, campaign_id, amount, transfer_fee, status, requested_by, created_at, paid_at, bank_ref, dest_bank, dest_account,
+         dest_name, dest_set_by from finance.org_refunds;
 create view api.payout_batches with (security_invoker = true) as
   select id, created_by, approved_by, status, cutoff_at, total, count, executed_at, created_at from finance.payout_batches;
 

@@ -167,6 +167,21 @@ begin
                             'net_amount', p.amount - p.fee, 'channel', p.channel, 'status', p.status);
 end $$;
 
+-- AB-6: refund org perorangan → identity membuka rekening bank pribadi dest_set_by (pemilik org) untuk transfer.
+create function api.bridge_get_refund(p_refund uuid) returns jsonb
+language plpgsql stable security definer set search_path = '' as $$
+declare
+  r finance.org_refunds;
+begin
+  select * into r from finance.org_refunds x where x.id = p_refund;
+  if not found then
+    raise exception 'not_found:refund' using errcode = 'P0002';
+  end if;
+  return jsonb_build_object('id', r.id, 'status', r.status, 'requested_by', r.requested_by, 'approved_by', r.approved_by,
+                            'dest_set_by', r.dest_set_by, 'company_account', r.dest_account is not null, 'amount', r.amount,
+                            'fee', r.transfer_fee);
+end $$;
+
 -- Alur 11: hasil penyedia disbursement. provider_ref UNIQUE (satu payout = satu transfer); failed → dana + fee kembali ke
 -- Tersedia (finance.return_payout). Status yang sama dikirim ulang = no-op.
 create function api.bridge_mark_instant(p_payout uuid, p_status text, p_provider_ref text, p_error text) returns void
@@ -287,12 +302,12 @@ revoke execute on function api.bridge_get_batch(uuid), api.bridge_attach_export(
   api.bridge_attach_proof(text, uuid, text), api.bridge_raise_fraud_flag(text, uuid, text, numeric, jsonb),
   api.bridge_close_account(uuid), api.bridge_get_payout(uuid), api.bridge_mark_instant(uuid, text, text, text),
   api.bridge_pph21(date, date), api.bridge_fulfillment_export(uuid), api.bridge_collect_ids(), api.bridge_report_orphans(jsonb),
-  api.bridge_alert_notified(bigint)
+  api.bridge_alert_notified(bigint), api.bridge_get_refund(uuid)
   from public, anon, authenticated;
 grant execute on function api.bridge_get_batch(uuid), api.bridge_attach_export(uuid, text, jsonb, uuid[]),
   api.bridge_attach_fulfillment_export(uuid, text, uuid[]), api.bridge_fulfillment_export_accepted(uuid, text),
   api.bridge_attach_proof(text, uuid, text), api.bridge_raise_fraud_flag(text, uuid, text, numeric, jsonb),
   api.bridge_close_account(uuid), api.bridge_get_payout(uuid), api.bridge_mark_instant(uuid, text, text, text),
   api.bridge_pph21(date, date), api.bridge_fulfillment_export(uuid), api.bridge_collect_ids(), api.bridge_report_orphans(jsonb),
-  api.bridge_alert_notified(bigint)
+  api.bridge_alert_notified(bigint), api.bridge_get_refund(uuid)
   to service_role;

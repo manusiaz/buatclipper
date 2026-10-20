@@ -5,6 +5,7 @@ import { useLocale, useTranslations } from 'next-intl';
 import { Alert, Button, Card, CardContent, CardDescription, CardHeader, CardTitle, Dialog, DialogContent, Field, Input, formatIDR, toast } from '@clipper/ui';
 import { useErrorText } from '@/lib/use-error';
 import { requestRefund } from './actions';
+import { emptyDest, RefundDestFields, toDest, type RefundDestConfig } from './refund-dest';
 
 export interface LeftoverRow {
   campaignId: string;
@@ -20,6 +21,7 @@ export function LeftoverPanel({
   aal2,
   securityHref,
   refundFee,
+  dest: destConfig,
 }: {
   orgId: string;
   rows: LeftoverRow[];
@@ -27,15 +29,18 @@ export function LeftoverPanel({
   securityHref: string;
   /** public.finance.refund_transfer_fee_idr */
   refundFee: number;
+  dest: RefundDestConfig;
 }) {
   const t = useTranslations('brand.leftover');
   const errText = useErrorText();
   const locale = useLocale() === 'en' ? 'en' : 'id';
   const [dialog, setDialog] = useState<{ row: LeftoverRow; mode: Mode; key: string } | null>(null);
   const [amount, setAmount] = useState('');
+  const [destDraft, setDestDraft] = useState(() => emptyDest(destConfig));
   const [pending, start] = useTransition();
   const value = Number(amount);
-  const valid = dialog != null && Number.isInteger(value) && value > 0 && value <= Math.floor(dialog.row.leftover) && (dialog.mode === 'rollover' || value > refundFee);
+  const dest = toDest(destConfig, destDraft);
+  const valid = dialog != null && Number.isInteger(value) && value > 0 && value <= Math.floor(dialog.row.leftover) && (dialog.mode === 'rollover' || (value > refundFee && dest != null));
 
   const openDialog = (row: LeftoverRow, mode: Mode) => {
     setAmount(String(Math.floor(row.leftover)));
@@ -87,7 +92,7 @@ export function LeftoverPanel({
                 onClick={() =>
                   dialog &&
                   start(async () => {
-                    const res = await requestRefund(orgId, dialog.row.campaignId, dialog.mode, value, dialog.key);
+                    const res = await requestRefund(orgId, dialog.row.campaignId, dialog.mode, value, dialog.key, dest ?? undefined);
                     if (!res.ok) return void toast.error(errText(res.error));
                     toast.success(t(`${dialog.mode}Done`));
                     setDialog(null);
@@ -116,6 +121,7 @@ export function LeftoverPanel({
                   <dd className="text-right font-semibold text-ink tnum">{formatIDR(Math.max(0, (valid ? value : 0) - refundFee), { locale })}</dd>
                 </dl>
               ) : null}
+              {dialog.mode === 'refund' ? <RefundDestFields config={destConfig} value={destDraft} onChange={setDestDraft} /> : null}
             </div>
           ) : null}
         </DialogContent>

@@ -22,6 +22,7 @@ import { CreditCard } from '@/features/billing/credit-card';
 import { creditCap, parseCredit } from '@/features/billing/credit';
 import { LeftoverPanel, type LeftoverRow } from '@/features/billing/leftover-panel';
 import { InvoiceCredit } from '@/features/billing/pay-credit';
+import { RefundDestDialog, type RefundDestConfig } from '@/features/billing/refund-dest';
 import { can, getOrgContext, isUuid, num, publicSettings } from '@/lib/org';
 
 const PAGE = 25;
@@ -58,7 +59,7 @@ const asInvoice = (r: Record<string, unknown>): InvoiceRow => ({
 
 export default async function BillingPage({ params, searchParams }: { params: Promise<{ org: string }>; searchParams: Promise<{ invoice?: string; page?: string }> }) {
   const [{ org: orgId }, sp] = await Promise.all([params, searchParams]);
-  const { core, role, claims } = await getOrgContext(orgId);
+  const { core, org, role, direct, claims } = await getOrgContext(orgId);
   const [t, locale] = await Promise.all([getTranslations('brand'), getLocale()]);
   const loc = locale === 'en' ? 'en' : 'id';
   if (!can(role, 'billing')) {
@@ -76,7 +77,7 @@ export default async function BillingPage({ params, searchParams }: { params: Pr
     core.from('invoices').select(INVOICE_COLS, { count: 'exact' }).eq('org_id', orgId).order('issued_at', { ascending: false }).range((page - 1) * PAGE, page * PAGE - 1),
     selectedId ? core.from('invoices').select(INVOICE_COLS).eq('id', selectedId).eq('org_id', orgId).maybeSingle() : null,
     publicSettings(core, ['public.billing.qris_max_idr', 'public.billing.qris_payload', 'public.billing.bank_account', 'public.finance.refund_transfer_fee_idr']),
-    core.from('org_refunds').select('id, campaign_id, amount, transfer_fee, status, created_at, paid_at').eq('org_id', orgId).order('created_at', { ascending: false }).limit(50),
+    core.from('org_refunds').select('id, campaign_id, amount, transfer_fee, status, created_at, paid_at, dest_bank, dest_account, dest_set_by').eq('org_id', orgId).order('created_at', { ascending: false }).limit(50),
     core.rpc('org_credit', { p_org: orgId }),
   ]);
   const invoices = (list.data ?? []).filter((r) => r.id).map((r) => asInvoice(r as Record<string, unknown>));
@@ -97,6 +98,13 @@ export default async function BillingPage({ params, searchParams }: { params: Pr
   };
   const pageCount = Math.max(1, Math.ceil((list.count ?? 0) / PAGE));
   const base = `/${orgId}/billing`;
+  const ownerDirect = direct && role === 'brand_owner';
+  const destConfig: RefundDestConfig = {
+    kind: org.org_type === 'perorangan' ? 'perorangan' : 'badan',
+    legalName: org.legal_name ?? '',
+    ownerDirect,
+    methodsHref: `${hosts.accounts}/payout-methods?next=${encodeURIComponent(`${hosts.brand}${base}`)}`,
+  };
 
   return (
     <>
@@ -136,6 +144,7 @@ export default async function BillingPage({ params, searchParams }: { params: Pr
             aal2={aal2}
             securityHref={securityUrl(`${hosts.brand}${base}`)}
             refundFee={num(settings['public.finance.refund_transfer_fee_idr'])}
+            dest={destConfig}
           />
         ) : null}
 
@@ -219,7 +228,16 @@ export default async function BillingPage({ params, searchParams }: { params: Pr
                   <TD numeric>{formatIDR(num(r.amount), { locale: loc })}</TD>
                   <TD numeric muted>{formatIDR(num(r.transfer_fee), { locale: loc })}</TD>
                   <TD>
-                    <Badge tone={r.status === 'paid' ? 'success' : r.status === 'cancelled' ? 'neutral' : 'warn'}>{t(`billing.refundStatus.${r.status ?? 'requested'}`)}</Badge>
+                    <span className="flex flex-col items-start gap-1">
+                      <Badge tone={r.status === 'paid' ? 'success' : r.status === 'cancelled' ? 'neutral' : 'warn'}>{t(`billing.refundStatus.${r.status ?? 'requested'}`)}</Badge>
+                      {r.dest_account ? (
+                        <span className="text-caption text-muted">{t('refundDest.summary', { bank: r.dest_bank ?? '', last4: r.dest_account.slice(-4) })}</span>
+                      ) : r.dest_set_by ? (
+                        <span className="text-caption text-muted">{t('refundDest.summaryOwner')}</span>
+                      ) : r.status === 'requested' && r.id && aal2 ? (
+                        <RefundDestDialog orgId={orgId} refundId={r.id} config={destConfig} />
+                      ) : null}
+                    </span>
                   </TD>
                   <TD muted>{r.created_at ? formatDate(r.created_at, loc) : '—'}</TD>
                 </TR>

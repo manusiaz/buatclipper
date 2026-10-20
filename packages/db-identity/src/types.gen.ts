@@ -187,6 +187,11 @@ export type Database = {
                            },
 "svc_touch_push":
 { Args: { "p_endpoint": string }; Returns: undefined
+                           },
+"svc_user_payout_methods":
+{ Args: { "p_user": string }; Returns: {
+              "account_last4": string,"account_name": string,"account_no_enc": string,"bank_code": string,"blocked": boolean,"disabled_at": string,"enc_key_version": number,"id": string,"kind": string,"user_id": string
+            }[]
                            }
           }
           Enums: {

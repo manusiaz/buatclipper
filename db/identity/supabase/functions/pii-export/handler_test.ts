@@ -34,6 +34,7 @@ async function setup(
   roles = ["admin_finance"],
   aal = "aal2",
   attach: () => unknown = () => ({ ok: true }),
+  extraCore: Record<string, () => unknown> = {},
 ) {
   const methods = [
     await method(1, u(1), { account_name: "  user   1 " }), // ok (spacing/case differ from KYC)
@@ -77,6 +78,7 @@ async function setup(
       ],
     }),
     attach_export: attach,
+    ...extraCore,
   });
   const storage = new FakeStorage();
   const deps: PiiExportDeps = {
@@ -350,4 +352,51 @@ Deno.test("pph21: NIK + KTP name per user, gross as given, no tax computed", asy
   );
   const bad = await json(await handler(post({ action: "pph21", from: "2026-09-31", to: "2026-10-01" })));
   assertEquals(bad.body.error.code, "invalid_input");
+});
+
+Deno.test("refund_destination: approved perorangan refund → owner's newest valid bank account, decrypted + audited", async () => {
+  const REF = "00000000-0000-0000-0000-00000000e001";
+  const refund = (over: Record<string, unknown> = {}) => ({
+    id: REF,
+    status: "approved",
+    requested_by: u(50),
+    approved_by: u(51),
+    dest_set_by: u(1),
+    company_account: false,
+    amount: "100000.00",
+    fee: "2500.00",
+    ...over,
+  });
+  const run = async (r: Record<string, unknown>) => {
+    const s = await setup({}, ["admin_finance"], "aal2", undefined, { get_refund: () => r });
+    const all = await Promise.all([method(5, u(5)), method(1, u(1), { account_name: "  user   1 " })]);
+    // svc_user_payout_methods: rekening aktif milik user, terbaru dulu
+    s.rpc.on("svc_user_payout_methods", (a) => all.filter((x) => x.user_id === a.p_user));
+    return { s, res: await json(await s.handler(post({ action: "refund_destination", refund_id: REF }))) };
+  };
+  const ok = await run(refund());
+  assertEquals(ok.res.status, 200);
+  assertEquals(ok.res.body.data, {
+    bank_code: "BCA",
+    account_no: "8880001",
+    account_name: "  user   1 ",
+    amount: "97500.00",
+  });
+  const a = ok.s.rpc.named("svc_audit")[0].args;
+  assertEquals([a.p_actor, a.p_action, a.p_target], [FIN, "pii.refund_destination", `refund:${REF}`]);
+
+  assertEquals(
+    (await run(refund({ status: "requested", approved_by: null }))).res.body.error.code,
+    "refund_not_approved",
+  );
+  assertEquals((await run(refund({ company_account: true }))).res.body.error.code, "refund_dest_missing");
+  // nama rekening ≠ nama KYC → tidak didekripsi; pemilik tanpa rekening → method_missing
+  const bad = await run(refund({ dest_set_by: u(5) }));
+  assertEquals([bad.res.status, bad.res.body.error.code, bad.res.body.error.message], [
+    409,
+    "refund_dest_invalid",
+    "name_mismatch",
+  ]);
+  assertEquals(bad.s.rpc.named("svc_audit").length, 0);
+  assertEquals((await run(refund({ dest_set_by: u(77) }))).res.body.error.message, "method_missing");
 });

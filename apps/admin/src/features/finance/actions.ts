@@ -117,6 +117,15 @@ export async function cancelPayout(payoutId: string, fd: FormData): Promise<Acti
   return settle(error, '/finance');
 }
 
+export type RefundDestination = { bank_code: string; account_no: string; account_name: string; amount: string };
+
+/** AB-6: rekening pribadi pemilik org perorangan (identity pii-export, diaudit) untuk transfer refund yang sudah disetujui. */
+export async function revealRefundDest(refundId: string): Promise<ActionResult<RefundDestination>> {
+  await requireAdmin('admin_finance');
+  const r = await invokeFunction<RefundDestination>('identity', 'pii-export', { action: 'refund_destination', refund_id: refundId }, 'admin');
+  return r.ok ? { ok: true, data: r.data } : { ok: false, error: r.error };
+}
+
 /** A3.6: refund disetujui admin_finance lain (constraint org_refunds_two_person). */
 export async function approveRefund(refundId: string): Promise<ActionResult> {
   const db = await finance();

@@ -136,6 +136,54 @@ export async function exportPayouts(deps: PiiExportDeps, actor: Actor, batchId: 
   return { url, expires_in: SIGNED_URL_TTL_S, file_ref, rows: rows.length, held };
 }
 
+// ---- refund_destination (AB-6, A3.6) ------------------------------------------------------------------------------
+
+interface CoreRefund {
+  id: string;
+  status: string;
+  requested_by: string;
+  approved_by: string | null;
+  dest_set_by: string | null;
+  company_account: boolean;
+  amount: string | number;
+  fee: string | number;
+}
+
+/** Refund org perorangan: rekening bank pribadi pemilik org (dest_set_by) dibuka untuk transfer setelah disetujui orang
+ * kedua; rekening terbaru yang lolos cek payout (aktif, KYC approved, nama = nama KYC). Tanpa berkas: satu baris, diaudit. */
+export async function refundDestination(deps: PiiExportDeps, actor: Actor, refundId: string) {
+  const r = await deps.core().invoke<CoreRefund>("get_refund", { refund_id: refundId });
+  if (!r || r.id !== refundId) throw new HttpError(404, "refund_not_found", "refund tidak ditemukan");
+  if (r.status !== "approved" || !r.approved_by) {
+    throw new HttpError(409, "refund_not_approved", "refund belum disetujui");
+  }
+  if (!r.dest_set_by || r.company_account) throw new HttpError(409, "refund_dest_missing", "bukan rekening identity");
+  const owner = r.dest_set_by;
+  const methods = (await deps.rpc.invoke<MethodRow[] | null>("svc_user_payout_methods", { p_user: owner })) ?? [];
+  const [k] = (await rpcByIds<KycRow>(deps.rpc, "svc_kyc", "p_user_ids", [owner])).filter((x) => !x.closed);
+  const refOf = (m: MethodRow): PayoutRef => ({
+    id: r.id,
+    user_id: owner,
+    method_id: m.id,
+    amount: r.amount,
+    fee: r.fee,
+  });
+  const method = methods.find((m) => holdReason(refOf(m), m, k) === null);
+  if (!method) {
+    const reason = methods.length ? holdReason(refOf(methods[0]), methods[0], k) : "method_missing";
+    throw new HttpError(409, "refund_dest_invalid", reason ?? "method_missing");
+  }
+  const ref = refOf(method);
+  const accountNo = await deps.crypto().decryptPg("payout.account_no", method.account_no_enc!, method.enc_key_version!);
+  await audit(deps, actor, "pii.refund_destination", `refund:${r.id}`, { method_id: method.id });
+  return {
+    bank_code: method.bank_code,
+    account_no: accountNo,
+    account_name: method.account_name,
+    amount: netAmount(ref),
+  };
+}
+
 // ---- upload_proof (alur 9, A3.4 / A3.6) -----------------------------------------------------------------------------
 
 const PROOF_TYPES: Record<string, { ext: string; magic: number[] }> = {
@@ -350,6 +398,7 @@ export async function resignRecipients(deps: PiiExportDeps, actor: Actor, reward
 
 const ROLES: Record<string, readonly AdminRole[]> = {
   payout_csv: ["admin_finance"],
+  refund_destination: ["admin_finance"],
   upload_proof: ["admin_finance"],
   pph21: ["admin_finance"],
   recipients_csv: ["admin_finance", "admin_ops"],
@@ -373,6 +422,8 @@ export function createPiiExportHandler(deps: PiiExportDeps): (req: Request) => P
     switch (act) {
       case "payout_csv":
         return okResponse(await exportPayouts(deps, actor, uuid(body, "batch_id")));
+      case "refund_destination":
+        return okResponse(await refundDestination(deps, actor, uuid(body, "refund_id")));
       case "upload_proof":
         return okResponse(await uploadProof(deps, actor, body));
       case "pph21":

@@ -88,5 +88,9 @@
   "export_stale": "Data berubah sejak export dimulai. Export ulang.",
   "file_missing": "Berkas export tidak ditemukan. Export ulang.",
   "last_owner": "Organisasi harus punya minimal satu Pemilik. Jadikan anggota lain Pemilik dulu.",
-  "faktur_used": "Nomor faktur sudah dipakai invoice lain."
+  "faktur_used": "Nomor faktur sudah dipakai invoice lain.",
+  "refund_name_mismatch": "Nama pemilik rekening harus sama dengan nama legal organisasi.",
+  "refund_dest_missing": "Rekening tujuan refund belum diisi brand.",
+  "refund_dest_invalid": "Rekening tujuan tidak valid (pemilik/nama KYC/status). Minta brand memperbaruinya.",
+  "refund_not_approved": "Refund belum disetujui."
 }

@@ -14,6 +14,18 @@ language sql stable security definer set search_path = '' as $$
   where pm.id = any (p_ids);
 $$;
 
+-- AB-6 refund org perorangan: rekening bank aktif milik pemilik org, terbaru dulu (pii-export memilih yang lolos cek KYC).
+create function api.svc_user_payout_methods(p_user uuid)
+returns table (id uuid, user_id uuid, kind text, bank_code text, account_no_enc bytea, account_last4 text,
+               enc_key_version smallint, account_name text, disabled_at timestamptz, blocked boolean)
+language sql stable security definer set search_path = '' as $$
+  select pm.id, pm.user_id, pm.kind, pm.bank_code, pm.account_no_enc, pm.account_last4, pm.enc_key_version,
+         pm.account_name, pm.disabled_at, pm.blocked
+  from member.payout_methods pm
+  where pm.user_id = p_user and pm.kind = 'bank' and pm.disabled_at is null and not pm.blocked
+  order by pm.created_at desc;
+$$;
+
 -- KYC per user. closed = baris tombstone akun yang sudah dihapus tapi masih wajib disimpan untuk pajak (retain_until):
 -- user_id-nya NULL, jadi dicari lewat jejak audit account.close (append-only) supaya rekap PPh 21 tetap bisa dibuat.
 create function api.svc_kyc(p_user_ids uuid[])
@@ -220,6 +232,7 @@ language sql stable security definer set search_path = '' as $$
 $$;
 
 revoke execute on function api.svc_payout_methods(uuid[]) from public, anon, authenticated;
+revoke execute on function api.svc_user_payout_methods(uuid) from public, anon, authenticated;
 revoke execute on function api.svc_kyc(uuid[]) from public, anon, authenticated;
 revoke execute on function api.svc_recipients(uuid[]) from public, anon, authenticated;
 revoke execute on function api.svc_has_consent(uuid, text) from public, anon, authenticated;
@@ -233,6 +246,7 @@ revoke execute on function api.svc_close_member(uuid, boolean, date) from public
 revoke execute on function api.svc_audit(uuid, text, text, jsonb) from public, anon, authenticated;
 revoke execute on function api.svc_my_data(uuid) from public, anon, authenticated;
 grant execute on function api.svc_payout_methods(uuid[]) to service_role;
+grant execute on function api.svc_user_payout_methods(uuid) to service_role;
 grant execute on function api.svc_kyc(uuid[]) to service_role;
 grant execute on function api.svc_recipients(uuid[]) to service_role;
 grant execute on function api.svc_has_consent(uuid, text) to service_role;

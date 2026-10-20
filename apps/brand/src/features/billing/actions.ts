@@ -4,6 +4,7 @@ import { revalidatePath } from 'next/cache';
 import { requireBrandAal2 } from '@clipper/auth/server';
 import { getOrgContext, isUuid } from '@/lib/org';
 import { fail, type Result } from '@/lib/result';
+import type { RefundDest } from './refund-dest';
 
 /** B3.7 sisa budget: rollover (kredit org) / refund (dikurangi biaya transfer). Uang brand bergerak → wajib aal2. */
 export async function requestRefund(
@@ -12,6 +13,7 @@ export async function requestRefund(
   mode: 'rollover' | 'refund',
   amount: number,
   idempotency: string,
+  dest?: RefundDest,
 ): Promise<Result<{ id: string }>> {
   await requireBrandAal2();
   const { core } = await getOrgContext(orgId);
@@ -25,7 +27,23 @@ export async function requestRefund(
   });
   if (error || !data) return fail(error);
   revalidatePath(`/${orgId}/billing`);
+  if (mode === 'refund' && dest) {
+    // refund sudah tercatat; kalau rekening gagal disimpan, brand mengisinya dari tabel refund (Isi rekening)
+    const r = await core.rpc('set_refund_dest', { p_refund: data, p_dest: dest });
+    if (r.error) return fail(r.error);
+  }
   return { ok: true, id: data };
+}
+
+/** AB-6 rekening tujuan refund (status requested; diganti sebelum disetujui finance). */
+export async function setRefundDest(orgId: string, refundId: string, dest: RefundDest): Promise<Result> {
+  await requireBrandAal2();
+  const { core } = await getOrgContext(orgId);
+  if (!isUuid(refundId)) return { ok: false, error: 'not_found:refund' };
+  const { error } = await core.rpc('set_refund_dest', { p_refund: refundId, p_dest: dest });
+  if (error) return fail(error);
+  revalidatePath(`/${orgId}/billing`);
+  return { ok: true };
 }
 
 /**

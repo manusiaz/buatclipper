@@ -789,5 +789,22 @@
       "insufficient_balance": "Amount exceeds the campaign’s leftover budget.",
       "insufficient_credit": "Organization credit is not enough for this invoice."
     }
+  },
+  "refundDest": {
+    "title": "Refund destination account",
+    "body": "Finance transfers the refund to this account after it is approved.",
+    "bank": "Bank",
+    "accountNo": "Account number",
+    "accountName": "Account holder name",
+    "accountNameHelp": "Must be in the name of {name} (company account).",
+    "ownerOnly": "Individual organization: the owner fills in the refund account.",
+    "fill": "Add account",
+    "save": "Save",
+    "cancel": "Cancel",
+    "saved": "Destination account saved",
+    "summary": "To {bank} ••{last4}",
+    "summaryOwner": "To the owner’s account",
+    "ownerAccount": "The refund goes to your personal bank account registered in Account settings (name matches KYC).",
+    "manageMethods": "Manage accounts"
   }
 }
