@@ -7,7 +7,7 @@ import { Alert, Avatar, Badge, Card, CardHeader, CardTitle, formatDateTime, form
 import { must, rows } from '@/lib/data';
 import { ActionDialog } from '@/features/shared/action-dialog';
 import { recordSanctionAppeal } from '@/features/fraud/actions';
-import { banUser, kycDecision, kycNotify, manageUser, unbanUser } from './actions';
+import { banUser, kycDecision, kycNotify, manageUser, resetSocialAccount, unbanUser } from './actions';
 
 export const KYC_REJECT_REASONS = ['photo_unreadable', 'name_mismatch', 'nik_invalid', 'not_ktp', 'duplicate', 'other'] as const;
 
@@ -17,7 +17,7 @@ export async function UserDetail({ userId, claims, loc, back = '/users' }: { use
   const isMod = hasRole(claims, 'admin_moderator');
   const canManage = hasRole(claims, 'admin_ops', 'admin_moderator');
   const canReadKyc = hasRole(claims, 'admin_moderator', 'admin_support', 'admin_finance');
-  const canAppeal = hasRole(claims, 'admin_support', 'admin_moderator');
+  const canSupport = hasRole(claims, 'admin_support', 'admin_moderator');
   const [profRes, scoreRes, acctRes, flagRes, decRes, sancRes] = await Promise.all([
     db.from('admin_profiles').select('id, username, display_name, trust_score, status, suspended_until, created_at').eq('id', userId).maybeSingle(),
     db.from('score_events').select('id, delta, reason, created_at').eq('user_id', userId).order('created_at', { ascending: false }).limit(10),
@@ -149,6 +149,17 @@ export async function UserDetail({ userId, claims, loc, back = '/users' }: { use
                 <span className="font-semibold text-ink">@{a.handle}</span>
                 <span className="tnum text-muted">{t('users.followers', { n: formatNumber(Number(a.followers ?? 0), loc) })}</span>
                 <Badge tone={a.status === 'verified' ? 'success' : 'warn'} size="sm">{a.status}</Badge>
+                {canSupport && a.status !== 'disconnected' ? (
+                  <ActionDialog
+                    trigger={{ label: t('users.resetSocial'), icon: 'link_off' }}
+                    title={t('users.resetSocial')}
+                    description={t('users.resetSocialBody')}
+                    submitLabel={t('users.resetSocial')}
+                    success={t('users.resetSocialDone')}
+                    action={resetSocialAccount.bind(null, a.id!)}
+                    fields={[{ kind: 'textarea', name: 'note', label: t('form.reason'), required: true, maxLength: 500 }]}
+                  />
+                ) : null}
               </li>
             ))}
           </ul>
@@ -180,7 +191,7 @@ export async function UserDetail({ userId, claims, loc, back = '/users' }: { use
                   <span className="ml-auto text-caption text-muted">
                     {x.decision ? t(`fraud.decisions.${x.decision}`) : x.appealed_at ? t('users.appealPending') : x.lifted_at ? t('users.sanctionLifted') : null}
                   </span>
-                  {canAppeal && !x.appealed_at ? (
+                  {canSupport && !x.appealed_at ? (
                     <ActionDialog
                       trigger={{ label: t('users.recordAppeal'), icon: 'support_agent' }}
                       title={t('users.recordAppeal')}

@@ -15,6 +15,7 @@ export const EVENTS = [
   "submission.pending_review",
   "social.token_expired",
   "earning.available",
+  "earning.held",
   "payout.paid",
   "payout.failed",
   "fulfillment.delivered",
@@ -309,9 +310,11 @@ const DEFS: Record<NotificationEvent, Def> = {
   "submission.forfeited": {
     title: () => "Earning submisi hangus",
     lines: (p) => [
-      `Video kamu di campaign ${
-        campaign(p)
-      } tidak bisa diakses lagi (dihapus atau diprivate), jadi earning-nya hangus.`,
+      txt(p, "reason").startsWith("fraud:")
+        ? `Earning video kamu di campaign ${campaign(p)} dibatalkan setelah pemeriksaan kecurangan.`
+        : `Video kamu di campaign ${
+          campaign(p)
+        } tidak bisa diakses lagi (dihapus atau diprivate), jadi earning-nya hangus.`,
       reason(p),
     ],
     cta: "Lihat tugas",
@@ -344,6 +347,17 @@ const DEFS: Record<NotificationEvent, Def> = {
     lines: (p) => [`${money(p) || "Earning kamu"} sudah Tersedia di wallet dan bisa ditarik.`],
     cta: "Buka wallet",
     url: (_p, l) => join(l.app, "wallet"),
+  },
+  "earning.held": {
+    title: () => "Earning kamu ditahan sementara",
+    lines: (p) => [
+      txt(p, "submission_id")
+        ? `Earning video kamu di campaign ${campaign(p)} ditahan selama tim moderasi memeriksanya.`
+        : "Penarikan saldo kamu ditahan selama tim moderasi memeriksa akun.",
+      "Earning tetap tercatat. Kalau pemeriksaan selesai tanpa masalah, semuanya berjalan lagi seperti biasa.",
+    ],
+    cta: "Lihat detail",
+    url: (p, l) => join(l.app, txt(p, "submission_id") ? "tasks" : "wallet"),
   },
   "payout.paid": {
     title: (p) => `Payout ${rupiah(p) || "kamu"} berhasil`,

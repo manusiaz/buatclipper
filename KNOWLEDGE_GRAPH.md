@@ -173,6 +173,7 @@ Wajib tetap benar setiap perubahan (dicek otomatis saat graph ini dibuat; cek ul
 | `api:rpc core.list_campaigns` | api | db/core/supabase/schemas/api/campaigns.sql | CTA per user: bisa claim / sudah claim belum submit / slot penuh / budget habis / deadline lewat / tidak eligible + alasan |  |
 | `api:rpc core.manage_org` | api | db/core/supabase/schemas/api/org.sql | Admin buat/verifikasi org, fee custom, tambah anggota + stub profil (paket managed F-A03, F-A07) |  |
 | `api:rpc core.manage_user` | api | db/core/supabase/schemas/trust/manage_user.sql | Admin atas clipper: override Trust Score, suspend/unsuspend + audit log (F-A07) |  |
+| `api:rpc core.reset_social_account` | api | db/core/supabase/schemas/trust/manage_user.sql | admin_support/admin_moderator reset koneksi akun sosmed (§4): token dicabut, tracking di-pause, clipper diminta sambung ulang |  |
 | `api:rpc core.mark_batch_paid` | api | db/core/supabase/schemas/finance/payout_flow.sql | Tandai batch paid/gagal + jurnal (F-A08) |  |
 | `api:rpc core.mark_fulfillment_delivered` | api | db/core/supabase/schemas/finance/fulfillment_admin.sql | Admin tandai fulfillment manual_export (atau webhook macet yang dikonfirmasi brand) terkirim dengan referensi kiriman + audit log (F-A10) |  |
 | `api:rpc core.retry_fulfillment` | api | db/core/supabase/schemas/finance/fulfillment_admin.sql | Admin kirim ulang webhook macet (on_hold setelah 12× gagal): attempts 0, worker mengambil lagi, berhenti lagi setelah 12× gagal (J-A5) |  |
@@ -516,6 +517,7 @@ Arah: `A --tipe--> B` = A bergantung pada B. `?` = belum terverifikasi.
 | `page:admin/users` | calls | `api:rpc identity.admin_kyc_decision` | apps/admin/src/features/users/actions.ts:37 |
 | `page:admin/users` | calls | `api:rpc identity.admin_read` | apps/admin/src/features/users/user-detail.tsx:38 |
 | `page:admin/users` | calls | `api:rpc identity.admin_set_role` | apps/admin/src/features/users/actions.ts:139 |
+| `page:admin/users` | calls | `api:rpc core.reset_social_account` | apps/admin/src/features/users/actions.ts:178 (user-detail.tsx baris 159, Reset koneksi) |
 | `page:admin/users` | calls | `api:rpc core.manage_user` | apps/admin/src/features/users/actions.ts:170 |
 | `page:admin/users` | calls | `api:rpc identity.admin_kyc_queue` | kode: (console)/users/page.tsx baris 138 (path ber-kurung) |
 | `page:admin/users` | calls | `api:rpc identity.admin_list_roles` | kode: (console)/users/page.tsx baris 265 (path ber-kurung) |
@@ -808,7 +810,7 @@ Arah: `A --tipe--> B` = A bergantung pada B. `?` = belum terverifikasi.
 | `api:GET brand/[org]/campaigns/[id]/report.csv` | reads | `table:tracking.view_snapshots` | apps/brand/src/app/[org]/campaigns/[id]/report.csv/route.ts:42 |
 | `api:GET identity/.well-known/openid-configuration` | reads | `config:identity-signing-key` | PRD v0.3.1 §15.6 public key di JWKS |
 | `api:fn core/bridge` | configured-by | `env:BRIDGE_SECRET_IDENTITY_TO_CORE` | db/core/supabase/functions/bridge/index.ts:10 |
-| `api:fn core/bridge` | guarded-by | `policy:bridge-hmac` | db/core/supabase/functions/bridge/handler.ts:173 |
+| `api:fn core/bridge` | guarded-by | `policy:bridge-hmac` | db/core/supabase/functions/bridge/handler.ts:174 |
 | `api:fn core/bridge` | reads | `table:finance.fulfillments` | db/core/supabase/schemas/api/bridge.sql:274 (rpc bridge_fulfillment_export), db/core/supabase/schemas/api/bridge.sql:261 (rpc bridge_pph21: reward non-tunai terkirim, §5.4) |
 | `api:fn core/bridge` | writes | `table:finance.fulfillments` | db/core/supabase/schemas/api/bridge.sql:295 (rpc bridge_attach_fulfillment_export: klaim di CSV → processing + export_ref) |
 | `api:fn core/bridge` | reads | `table:finance.ledger_entries` | db/core/supabase/schemas/api/bridge.sql:129 (rpc bridge_close_account: cek saldo) |
@@ -822,13 +824,13 @@ Arah: `A --tipe--> B` = A bergantung pada B. `?` = belum terverifikasi.
 | `api:fn core/bridge` | writes | `table:tracking.social_accounts` | db/core/supabase/schemas/api/bridge.sql:148 (rpc bridge_close_account) |
 | `api:fn core/bridge` | writes | `table:trust.fraud_flags` | db/core/supabase/schemas/api/bridge.sql:111 (rpc bridge_raise_fraud_flag → trust.raise_flag) |
 | `api:fn core/bridge` | writes | `table:vault.social-tokens` | db/core/supabase/schemas/api/bridge.sql:145 (rpc bridge_close_account: hapus token) |
-| `api:fn core/bridge` | calls | `api:fn identity/bridge` | db/core/supabase/functions/bridge/handler.ts:151 (cron disburse & ban_user → identity) |
+| `api:fn core/bridge` | calls | `api:fn identity/bridge` | db/core/supabase/functions/bridge/handler.ts:152 (cron disburse & ban_user → identity) |
 | `api:fn core/fulfill` | calls | `ext:brand-webhook` | db/core/supabase/functions/fulfill/fulfill.ts:115 |
 | `api:fn core/fulfill` | guarded-by | `policy:fn-cron-key` | db/core/supabase/functions/fulfill/index.ts:10 |
-| `api:fn core/fulfill` | reads | `table:finance.fulfillments` | db/core/supabase/schemas/api/worker.sql:512 (rpc worker_fulfillments_due) |
-| `api:fn core/fulfill` | reads | `table:vault.social-tokens` | db/core/supabase/schemas/api/worker.sql:533 (secret webhook reward type di Vault core) |
-| `api:fn core/fulfill` | writes | `table:finance.fulfillments` | db/core/supabase/schemas/api/worker.sql:589 (rpc worker_fulfillment_result) |
-| `api:fn core/fulfill` | writes | `table:finance.reward_codes` | db/core/supabase/schemas/api/worker.sql:568 (rpc worker_assign_code) |
+| `api:fn core/fulfill` | reads | `table:finance.fulfillments` | db/core/supabase/schemas/api/worker.sql:535 (rpc worker_fulfillments_due) |
+| `api:fn core/fulfill` | reads | `table:vault.social-tokens` | db/core/supabase/schemas/api/worker.sql:556 (secret webhook reward type di Vault core) |
+| `api:fn core/fulfill` | writes | `table:finance.fulfillments` | db/core/supabase/schemas/api/worker.sql:612 (rpc worker_fulfillment_result) |
+| `api:fn core/fulfill` | writes | `table:finance.reward_codes` | db/core/supabase/schemas/api/worker.sql:591 (rpc worker_assign_code) |
 | `api:fn core/notify` | calls | `api:fn identity/bridge` | db/core/supabase/functions/notify/notify.ts:94 (send_email; send_push sesuai flag kanal pesan) |
 | `api:fn core/notify` | configured-by | `env:BRIDGE_SECRET_CORE_TO_IDENTITY` | db/core/supabase/functions/_shared/bridge.ts:66 |
 | `api:fn core/notify` | configured-by | `env:SUPABASE_DB_URL` | PRD v0.3.1 §15.8 Queue lewat koneksi Postgres langsung (belum di kode: queue dibaca lewat rpc api.worker_dequeue dengan secret key, bukan koneksi Postgres) |
@@ -840,41 +842,44 @@ Arah: `A --tipe--> B` = A bergantung pada B. `?` = belum terverifikasi.
 | `api:fn core/refresh-tokens` | configured-by | `env:META_APP_SECRET` | db/core/supabase/functions/_shared/social/mod.ts:18 |
 | `api:fn core/refresh-tokens` | configured-by | `env:TIKTOK_CLIENT_SECRET` | db/core/supabase/functions/_shared/social/mod.ts:17 |
 | `api:fn core/refresh-tokens` | guarded-by | `policy:fn-cron-key` | db/core/supabase/functions/refresh-tokens/index.ts:11 |
-| `api:fn core/refresh-tokens` | writes | `table:tracking.social_accounts` | db/core/supabase/schemas/api/worker.sql:298 (rpc worker_account_status) |
+| `api:fn core/refresh-tokens` | writes | `table:tracking.social_accounts` | db/core/supabase/schemas/api/worker.sql:319 (rpc worker_account_status) |
 | `api:fn core/refresh-tokens` | writes | `table:vault.social-tokens` | db/core/supabase/functions/refresh-tokens/refresh.ts:43 (store_social_token → Vault) |
 | `api:fn core/social` | calls | `api:rpc core.missing_brief_tags` | db/core/supabase/functions/social/handler.ts:340 |
-| `api:fn core/social` | calls | `api:rpc core.store_social_token` | db/core/supabase/schemas/api/worker.sql:369 (rpc worker_upsert_social_account) |
-| `api:fn core/social` | writes | `table:trust.fraud_flags` | db/core/supabase/schemas/api/worker.sql:467 (FR-07 raise_flag di worker_create_submission, cover_hash dari submit) |
+| `api:fn core/social` | calls | `api:rpc core.store_social_token` | db/core/supabase/schemas/api/worker.sql:390 (rpc worker_upsert_social_account) |
+| `api:fn core/social` | writes | `table:trust.fraud_flags` | db/core/supabase/schemas/api/worker.sql:490 (FR-07 raise_flag di worker_create_submission, cover_hash dari submit) |
 | `api:fn core/social` | calls | `mod:social` | db/core/supabase/functions/social/handler.ts:22 |
 | `api:fn core/social` | configured-by | `env:GOOGLE_CLIENT_SECRET` | db/core/supabase/functions/_shared/social/mod.ts:19 |
 | `api:fn core/social` | configured-by | `env:META_APP_SECRET` | db/core/supabase/functions/_shared/social/mod.ts:18 |
 | `api:fn core/social` | configured-by | `env:TIKTOK_CLIENT_SECRET` | db/core/supabase/functions/_shared/social/mod.ts:17 |
 | `api:fn core/social` | guarded-by | `policy:fn-verify-jwt` | db/core/supabase/functions/social/handler.ts:327 |
 | `api:fn core/social` | reads | `table:market.claims` | db/core/supabase/functions/social/handler.ts:332 |
-| `api:fn core/social` | writes | `table:tracking.social_accounts` | db/core/supabase/schemas/api/worker.sql:362 (rpc worker_upsert_social_account) |
-| `api:fn core/social` | writes | `table:tracking.submissions` | db/core/supabase/schemas/api/worker.sql:444 (rpc worker_create_submission) |
-| `api:fn core/social` | writes | `table:vault.social-tokens` | db/core/supabase/schemas/api/worker.sql:369 (api.store_social_token) |
-| `api:fn core/track-worker` | calls | `api:rpc core.missing_brief_tags` | db/core/supabase/schemas/api/worker.sql:171 (rpc worker_record_snapshot) |
-| `api:fn core/track-worker` | calls | `fn:accrue_earnings` | db/core/supabase/schemas/api/worker.sql:234 (rpc worker_record_snapshot) |
-| `api:fn core/track-worker` | calls | `fn:reverse_earning` | db/core/supabase/schemas/api/worker.sql:270 (rpc worker_post_gone) |
+| `api:fn core/social` | writes | `table:tracking.social_accounts` | db/core/supabase/schemas/api/worker.sql:383 (rpc worker_upsert_social_account) |
+| `api:fn core/social` | writes | `table:tracking.submissions` | db/core/supabase/schemas/api/worker.sql:465 (rpc worker_create_submission) |
+| `api:fn core/social` | writes | `table:vault.social-tokens` | db/core/supabase/schemas/api/worker.sql:390 (api.store_social_token) |
+| `api:fn core/track-worker` | calls | `api:rpc core.missing_brief_tags` | db/core/supabase/schemas/api/worker.sql:173 (rpc worker_record_snapshot) |
+| `api:fn core/track-worker` | calls | `fn:accrue_earnings` | db/core/supabase/schemas/api/worker.sql:251 (rpc worker_record_snapshot) |
+| `api:fn core/track-worker` | calls | `fn:reverse_earning` | db/core/supabase/schemas/api/worker.sql:291 (rpc worker_post_gone) |
+| `api:fn core/track-worker` | writes | `table:trust.score_events` | db/core/supabase/schemas/api/worker.sql:288 (rpc worker_post_gone: FR-06 otomatis menurunkan Trust Score, AA-9) |
 | `api:fn core/track-worker` | calls | `mod:social` | db/core/supabase/functions/track-worker/index.ts:6 |
 | `api:fn core/track-worker` | configured-by | `env:SUPABASE_DB_URL` | PRD v0.3.1 §15.8 Queue lewat koneksi Postgres langsung (belum di kode: queue dibaca lewat rpc api.worker_dequeue dengan secret key, bukan koneksi Postgres) |
 | `api:fn core/track-worker` | guarded-by | `policy:fn-cron-key` | db/core/supabase/functions/track-worker/index.ts:12 |
 | `api:fn core/track-worker` | reads | `table:tracking.submissions` | db/core/supabase/schemas/api/worker.sql:66 (rpc worker_submission_context) |
 | `api:fn core/track-worker` | reads | `table:vault.social-tokens` | db/core/supabase/schemas/api/worker.sql:72 (rpc worker_submission_context) |
 | `api:fn core/track-worker` | subscribes | `event:queue.tracking` | db/core/supabase/functions/track-worker/worker.ts:134 |
-| `api:fn core/track-worker` | writes | `table:tracking.view_snapshots` | db/core/supabase/schemas/api/worker.sql:163 (rpc worker_record_snapshot) |
-| `api:fn core/track-worker` | writes | `table:trust.fraud_flags` | db/core/supabase/schemas/api/worker.sql:173 (rpc worker_record_snapshot → trust.raise_flag) |
+| `api:fn core/track-worker` | writes | `table:tracking.view_snapshots` | db/core/supabase/schemas/api/worker.sql:165 (rpc worker_record_snapshot) |
+| `api:fn core/track-worker` | writes | `table:trust.fraud_flags` | db/core/supabase/schemas/api/worker.sql:175 (rpc worker_record_snapshot → trust.raise_flag) |
 | `api:fn identity/admin-auth` | guarded-by | `policy:identity.admin-aal2` | db/identity/supabase/functions/admin-auth/handler.ts:33 |
 | `api:fn identity/admin-auth` | writes | `table:auth.users` | db/identity/supabase/functions/admin-auth/handler.ts:51 (invite; ban_duration lewat _shared/moderation.ts) |
-| `api:fn identity/bridge` | calls | `api:rpc identity.shared_device_groups` | db/identity/supabase/functions/bridge/handler.ts:154 |
+| `api:fn identity/bridge` | calls | `api:rpc identity.shared_device_groups` | db/identity/supabase/functions/bridge/handler.ts:160 |
+| `api:fn identity/bridge` | calls | `api:fn core/bridge` | db/identity/supabase/functions/bridge/handler.ts:154 (fraud_device_params: ambang FR-05 dari config core, AA-13) |
+| `api:fn core/bridge` | reads | `table:ops.settings` | db/core/supabase/schemas/ops/alerts.sql:31 (ops.cfg dari rpc bridge_fraud_device_params, bridge.sql baris 311: trust.fraud.shared_device_*) |
 | `api:fn identity/bridge` | calls | `ext:resend` | db/identity/supabase/functions/bridge/index.ts:28 |
 | `api:fn identity/bridge` | calls | `ext:web-push` | db/identity/supabase/functions/bridge/index.ts:29 |
 | `api:fn identity/bridge` | configured-by | `env:BRIDGE_SECRET_CORE_TO_IDENTITY` | db/identity/supabase/functions/bridge/index.ts:21 |
 | `api:fn identity/bridge` | configured-by | `env:RESEND_API_KEY` | db/identity/supabase/functions/bridge/index.ts:28 |
 | `api:fn identity/bridge` | configured-by | `env:VAPID_PRIVATE_KEY` | db/identity/supabase/functions/_shared/push.ts:37 |
-| `api:fn identity/bridge` | guarded-by | `policy:bridge-hmac` | db/identity/supabase/functions/bridge/handler.ts:195 |
-| `api:fn identity/bridge` | reads | `table:auth.users` | db/identity/supabase/functions/bridge/handler.ts:71 |
+| `api:fn identity/bridge` | guarded-by | `policy:bridge-hmac` | db/identity/supabase/functions/bridge/handler.ts:200 |
+| `api:fn identity/bridge` | reads | `table:auth.users` | db/identity/supabase/functions/bridge/handler.ts:69 |
 | `api:fn identity/bridge` | calls | `api:fn core/bridge` | db/identity/supabase/functions/_shared/disburse.ts:264 (aksi disburse: get_payout, lalu mark_instant) |
 | `api:fn identity/bridge` | calls | `ext:disbursement` | db/identity/supabase/functions/_shared/disburse.ts:113 (runDisburse → Xendit Payouts API) |
 | `api:fn identity/bridge` | configured-by | `env:DISBURSEMENT_API_KEY` | kode: _shared/disburse.ts baris 203 (XENDIT_SECRET_KEY lewat providerFromEnv, bridge/index.ts baris 30) |
@@ -1001,7 +1006,7 @@ Arah: `A --tipe--> B` = A bergantung pada B. `?` = belum terverifikasi.
 | `api:rpc core.mark_batch_paid` | writes | `table:ops.audit_logs` | db/core/supabase/schemas/finance/payout_flow.sql:234 |
 | `api:rpc core.mark_fulfillment_delivered` | guarded-by | `policy:core.admin-aal2` | db/core/supabase/schemas/finance/fulfillment_admin.sql:9 |
 | `api:rpc core.mark_fulfillment_delivered` | reads | `table:market.reward_types` | db/core/supabase/schemas/finance/fulfillment_admin.sql:21 |
-| `api:rpc core.mark_fulfillment_delivered` | writes | `table:finance.fulfillments` | db/core/supabase/schemas/finance/fulfillment_admin.sql:12, db/core/supabase/schemas/api/worker.sql:589 (api.worker_fulfillment_result, baris 28) |
+| `api:rpc core.mark_fulfillment_delivered` | writes | `table:finance.fulfillments` | db/core/supabase/schemas/finance/fulfillment_admin.sql:12, db/core/supabase/schemas/api/worker.sql:612 (api.worker_fulfillment_result, baris 28) |
 | `api:rpc core.mark_fulfillment_delivered` | writes | `table:ops.audit_logs` | db/core/supabase/schemas/finance/fulfillment_admin.sql:40 |
 | `api:rpc core.cancel_payout` | writes | `table:finance.payouts` | db/core/supabase/schemas/finance/payout_flow.sql:341 |
 | `api:rpc core.cancel_fulfillment` | writes | `table:finance.fulfillments` | db/core/supabase/schemas/finance/payout_flow.sql:392 |
@@ -1047,14 +1052,14 @@ Arah: `A --tipe--> B` = A bergantung pada B. `?` = belum terverifikasi.
 | `api:rpc core.request_payout` | calls | `api:fn core/bridge` | db/core/supabase/schemas/finance/payout_flow.sql:93 (instant → bridge disburse) |
 | `api:rpc core.request_refund` | writes | `table:finance.ledger_entries` | db/core/supabase/schemas/finance/refund_flow.sql:85 (finance.post) |
 | `api:rpc core.request_refund` | writes | `table:finance.org_refunds` | db/core/supabase/schemas/finance/refund_flow.sql:67 |
-| `api:rpc core.resolve_fraud_flag` | calls | `fn:reverse_earning` | db/core/supabase/schemas/trust/fraud_resolve.sql:117 |
-| `api:rpc core.resolve_fraud_flag` | guarded-by | `policy:core.admin-aal2` | db/core/supabase/schemas/trust/fraud_resolve.sql:69 |
-| `api:rpc core.resolve_fraud_flag` | writes | `table:finance.ledger_entries` | db/core/supabase/schemas/trust/fraud_resolve.sql:117 (finance.reverse_earning → jurnal balik) |
-| `api:rpc core.resolve_fraud_flag` | writes | `table:market.profiles` | db/core/supabase/schemas/trust/fraud_resolve.sql:126 |
-| `api:rpc core.resolve_fraud_flag` | writes | `table:ops.audit_logs` | db/core/supabase/schemas/trust/fraud_resolve.sql:154 |
-| `api:rpc core.resolve_fraud_flag` | writes | `table:trust.fraud_flags` | db/core/supabase/schemas/trust/fraud_resolve.sql:105 |
-| `api:rpc core.resolve_fraud_flag` | writes | `table:trust.score_events` | db/core/supabase/schemas/trust/fraud_resolve.sql:152 |
-| `api:rpc core.resolve_fraud_flag` | calls | `api:fn core/bridge` | db/core/supabase/schemas/trust/fraud_resolve.sql:134 (ban → bridge ban_user) |
+| `api:rpc core.resolve_fraud_flag` | calls | `fn:reverse_earning` | db/core/supabase/schemas/trust/fraud_resolve.sql:126 |
+| `api:rpc core.resolve_fraud_flag` | guarded-by | `policy:core.admin-aal2` | db/core/supabase/schemas/trust/fraud_resolve.sql:70 |
+| `api:rpc core.resolve_fraud_flag` | writes | `table:finance.ledger_entries` | db/core/supabase/schemas/trust/fraud_resolve.sql:126 (finance.reverse_earning → jurnal balik) |
+| `api:rpc core.resolve_fraud_flag` | writes | `table:market.profiles` | db/core/supabase/schemas/trust/fraud_resolve.sql:137 |
+| `api:rpc core.resolve_fraud_flag` | writes | `table:ops.audit_logs` | db/core/supabase/schemas/trust/fraud_resolve.sql:165 |
+| `api:rpc core.resolve_fraud_flag` | writes | `table:trust.fraud_flags` | db/core/supabase/schemas/trust/fraud_resolve.sql:111 |
+| `api:rpc core.resolve_fraud_flag` | writes | `table:trust.score_events` | db/core/supabase/schemas/trust/fraud_resolve.sql:163 |
+| `api:rpc core.resolve_fraud_flag` | calls | `api:fn core/bridge` | db/core/supabase/schemas/trust/fraud_resolve.sql:145 (ban → bridge ban_user) |
 | `api:rpc core.revoke_report_link` | guarded-by | `policy:core.org-role` | db/core/supabase/schemas/api/report_links.sql:32 |
 | `api:rpc core.revoke_report_link` | writes | `table:market.report_links` | db/core/supabase/schemas/api/report_links.sql:29 |
 | `api:rpc core.save_campaign` | guarded-by | `policy:core.admin-aal2` | db/core/supabase/schemas/api/campaigns.sql:170 |
@@ -1095,8 +1100,14 @@ Arah: `A --tipe--> B` = A bergantung pada B. `?` = belum terverifikasi.
 | `api:rpc identity.admin_read` | reads | `table:member.kyc_records` | db/identity/supabase/schemas/api/admin_read.sql:17 |
 | `api:rpc identity.admin_read` | writes | `table:member.audit_logs` | db/identity/supabase/schemas/api/admin_read.sql:10 |
 | `api:rpc identity.admin_set_role` | guarded-by | `policy:identity.admin-aal2` | db/identity/supabase/schemas/api/admin_set_role.sql:10 |
-| `api:rpc identity.admin_set_role` | writes | `table:member.audit_logs` | db/identity/supabase/schemas/api/admin_set_role.sql:23 |
-| `api:rpc identity.admin_set_role` | writes | `table:member.platform_roles` | db/identity/supabase/schemas/api/admin_set_role.sql:17 |
+| `api:rpc identity.admin_set_role` | writes | `table:member.audit_logs` | db/identity/supabase/schemas/api/admin_set_role.sql:29 |
+| `api:rpc identity.admin_set_role` | writes | `table:member.platform_roles` | db/identity/supabase/schemas/api/admin_set_role.sql:23 |
+| `api:rpc identity.admin_set_role` | reads | `table:member.consents` | db/identity/supabase/schemas/api/admin_set_role.sql:19 (akun ber-ToS clipper/brand tidak bisa jadi admin, AA-20) |
+| `api:rpc core.reset_social_account` | guarded-by | `policy:core.admin-aal2` | db/core/supabase/schemas/trust/manage_user.sql:97 |
+| `api:rpc core.reset_social_account` | writes | `table:vault.social-tokens` | db/core/supabase/schemas/trust/manage_user.sql:110 |
+| `api:rpc core.reset_social_account` | writes | `table:tracking.social_accounts` | db/core/supabase/schemas/trust/manage_user.sql:111 |
+| `api:rpc core.reset_social_account` | calls | `fn:enqueue_notification` | db/core/supabase/schemas/trust/manage_user.sql:113 (social.token_expired → sambung ulang) |
+| `api:rpc core.reset_social_account` | writes | `table:ops.audit_logs` | db/core/supabase/schemas/trust/manage_user.sql:115 |
 | `api:rpc identity.my_payout_methods` | guarded-by | `policy:identity.rls-self` | PRD v0.3.1 §15.4 data sendiri; kode: security definer + filter auth.uid() (api/my_payout_methods.sql baris 9) |
 | `api:rpc identity.my_payout_methods` | reads | `table:member.payout_methods` | db/identity/supabase/schemas/api/my_payout_methods.sql:8 |
 | `api:rpc identity.record_consent` | guarded-by | `policy:identity.rls-self` | PRD v0.3.1 §15.4 data sendiri; kode: uid = auth.uid() (api/record_consent.sql baris 10) |
@@ -1142,7 +1153,7 @@ Arah: `A --tipe--> B` = A bergantung pada B. `?` = belum terverifikasi.
 | `job:earning-release` | calls | `fn:enqueue_notification` | db/core/supabase/schemas/finance/earnings.sql:473 |
 | `job:earning-release` | writes | `table:finance.ledger_entries` | db/core/supabase/schemas/finance/earnings.sql:471 (finance.post) |
 | `job:earning-release` | reads | `table:finance.fee_rules` | db/core/supabase/schemas/finance/earnings.sql:440 (fee rule efektif campaign → clipper_fee_pct dipotong saat rilis) |
-| `job:fraud-device-scan` | calls | `api:fn core/bridge` | db/identity/supabase/functions/bridge/handler.ts:168 |
+| `job:fraud-device-scan` | calls | `api:fn core/bridge` | db/identity/supabase/functions/bridge/handler.ts:173 |
 | `job:fraud-device-scan` | calls | `api:fn identity/bridge` | db/identity/supabase/schemas/member/cron.sql:15 |
 | `job:fraud-device-scan` | configured-by | `env:BRIDGE_SECRET_IDENTITY_TO_CORE` | db/identity/supabase/functions/_shared/bridge.ts:136 |
 | `job:fraud-device-scan` | reads | `table:auth.sessions` | db/identity/supabase/schemas/api/shared_device_groups.sql:6 (dipanggil bridge/handler.ts baris 113) |
@@ -1159,7 +1170,7 @@ Arah: `A --tipe--> B` = A bergantung pada B. `?` = belum terverifikasi.
 | `job:notify-drain` | calls | `api:fn core/notify` | db/core/supabase/schemas/ops/cron.sql:8 |
 | `job:notify-drain` | configured-by | `env:CORE_SECRET_KEY` | db/core/supabase/schemas/ops/enqueue_notification.sql:36 (ops.invoke_function → header apikey) |
 | `job:reconcile-daily` | calls | `api:fn core/bridge` | db/core/supabase/schemas/finance/cron.sql:9 |
-| `job:reconcile-daily` | calls | `api:fn identity/bridge` | db/core/supabase/functions/bridge/handler.ts:116 |
+| `job:reconcile-daily` | calls | `api:fn identity/bridge` | db/core/supabase/functions/bridge/handler.ts:117 |
 | `job:reconcile-daily` | configured-by | `env:BRIDGE_SECRET_CORE_TO_IDENTITY` | db/core/supabase/functions/_shared/bridge.ts:66 |
 | `job:reconcile-daily` | reads | `table:finance.ledger_entries` | db/core/supabase/schemas/finance/reconcile.sql:15 |
 | `job:referral-bonus` | writes | `table:finance.ledger_entries` | db/core/supabase/schemas/finance/referral_bonus.sql:34 (finance.post) |
@@ -1374,7 +1385,7 @@ Arah: `A --tipe--> B` = A bergantung pada B. `?` = belum terverifikasi.
 | `api:rpc core.record_sanction_appeal` | guarded-by | `policy:core.admin-aal2` | db/core/supabase/schemas/trust/sanctions.sql:84 |
 | `api:rpc core.record_sanction_appeal` | writes | `table:trust.sanctions` | db/core/supabase/schemas/trust/sanctions.sql:87 (trust.file_appeal) |
 | `api:rpc core.record_sanction_appeal` | writes | `table:ops.audit_logs` | db/core/supabase/schemas/trust/sanctions.sql:88 |
-| `api:rpc core.resolve_fraud_flag` | writes | `table:trust.sanctions` | db/core/supabase/schemas/trust/fraud_resolve.sql:146 (trust.record_sanction) |
+| `api:rpc core.resolve_fraud_flag` | writes | `table:trust.sanctions` | db/core/supabase/schemas/trust/fraud_resolve.sql:157 (trust.record_sanction) |
 | `api:rpc core.manage_user` | writes | `table:trust.sanctions` | db/core/supabase/schemas/trust/manage_user.sql:57 (trust.record_sanction: suspend), db/core/supabase/schemas/trust/manage_user.sql:71 (ban), db/core/supabase/schemas/trust/manage_user.sql:63 (unsuspend → lifted_at) |
 | `table:trust.fraud_flags` | guarded-by | `policy:core.admin-aal2` | db/core/supabase/schemas/trust/fraud_flags.sql:21 |
 | `table:trust.fraud_flags` | guarded-by | `policy:core.iss-identity` | db/core/supabase/schemas/trust/fraud_flags.sql:19 |
@@ -1444,7 +1455,7 @@ Arah: `A --tipe--> B` = A bergantung pada B. `?` = belum terverifikasi.
 | `test:member-data.integrity` | tests | `api:rpc identity.store_kyc` | db/identity/supabase/tests/identity_access.test.sql:72 |
 | `test:member-data.integrity` | tests | `fn:custom_access_token_hook` | db/identity/supabase/tests/identity_access.test.sql:46 |
 | `test:member-data.integrity` | tests | `policy:identity.unique-identity` | PRD v0.3.1 §15.4 FR-04; kode: identity_access.test.sql baris 72–73 (FR-04 NIK ganda ditolak) |
-| `test:member-data.integrity` | tests | `table:member.push_subscriptions` | db/identity/supabase/tests/identity_access.test.sql:168 |
+| `test:member-data.integrity` | tests | `table:member.push_subscriptions` | db/identity/supabase/tests/identity_access.test.sql:177 |
 | `test:pwa.ios-login` | tests | `mod:auth` | PRD v0.3.1 R-17 sesi diset dari server |
 | `test:pwa.ios-login` | tests | `page:app/login` | PRD v0.3.1 R-17 |
 | `test:rls.access-matrix` | tests | `job:broadcast-dispatch` | db/core/supabase/tests/core_access.test.sql:288 |
@@ -2300,6 +2311,11 @@ Masalah sistem yang ditemukan saat menyusun PRD v0.2 dan saat dicek ulang (v0.2.
 | 2026-10-20 | `page:accounts/kyc` | Verifikasi final `pnpm build`: app accounts gagal build — supportUrl (coreServer, next/headers) ditaruh di lib/url.ts yang juga diimpor komponen client account-nav | diperbaiki: supportUrl dipindah ke lib/support.ts (server-only); kyc & security mengimpor dari sana |
 | 2026-10-20 | `api:rpc core.send_broadcast` | Review Claudex R31-2: lonceng brand hanya menampilkan judul pemberitahuan keamanan, isi (langkah yang harus dilakukan) hilang. R31-1 (backfill sanksi pra-R30) ditolak: tabel trust.sanctions baru ada di branch ini, origin/main = initial commit dan ci.yml tanpa db push, jadi tidak ada lingkungan berisi baris lama | diperbaiki: brand notif security.notice = "{title}: {body}" + notificationValues.body |
 | 2026-10-20 | `api:fn identity/bridge` | Review Claudex R32-1: perbaikan R30-2 memakai kontrak yang salah — core bridge meneruskan unban sebagai duration "none" (handler.ts ban_user), identity mengecek unban:true sehingga jatuh ke banUser dan ditolak 400; login tetap terblokir walau banding dikabulkan | diperbaiki: identity bridge ban_user duration "none" → unbanUser; tes identity memakai payload yang sama dengan yang diasersikan tes core bridge |
+| 2026-10-20 | `api:rpc core.reset_social_account` | Audit PRD ulang AA-10 (§4 "admin_support … reset koneksi akun"): admin_support hanya bisa membaca akun sosmed | diperbaiki: api.reset_social_account (token Vault dihapus, status revoked, tracking di-pause, notifikasi social.token_expired, audit) + tombol Reset koneksi di detail user admin; pemilik menyambung ulang akun yang sama |
+| 2026-10-20 | `api:fn core/track-worker` | Audit PRD ulang AA-9/AA-11/AA-12 (§12 Trust Score "turun dari … fraud flag"; §11 "Campaign musik/sound: … verifikasi manual"; FR-11 "Sumber traffic … tidak wajar"): FR-06 otomatis tanpa penalti skor, campaign musik TikTok langsung tracking, FR-11 hanya memeriksa negara | diperbaiki: worker_post_gone menulis score_events fraud_flag (trust.score_deltas.post_gone, default −10); campaign musik di TikTok → in_review; FR-11 juga dari porsi views sumber trust.fraud.offsite_traffic_sources > trust.fraud.max_offsite_traffic_share (tahan earning) |
+| 2026-10-20 | `api:fn identity/bridge` | Audit PRD ulang AA-13 (§12 "Semua ambang di bawah ada di config"): ambang FR-05 (jendela, minimum akun) hard-code di identity dan trust.fraud.cover_distance (FR-07) tidak di-seed sehingga tidak bisa diubah admin | diperbaiki: identity membaca ambang lewat core bridge fraud_device_params (trust.fraud.shared_device_window_hours / _min_accounts); seed cover_distance & kunci FR-11 baru |
+| 2026-10-20 | `api:rpc identity.admin_set_role` | Audit PRD ulang AA-20 (§4 "Akun admin dibuat terpisah dari akun clipper/brand"): set role by user ID bisa menjadikan akun clipper/brand admin | diperbaiki: grant role admin ditolak (admin_account_must_be_separate) untuk akun yang punya consent tos_clipper/tos_brand dan belum admin |
+| 2026-10-20 | `api:rpc core.resolve_fraud_flag` | Audit PRD ulang AA-22 (A4.2 "Tahan, reverse earning, suspend, atau ban → Clipper menerima notifikasi"): tahan tidak mengabari; reverse atas submisi locked diam; salinan submission.forfeited selalu menyebut video tidak bisa diakses walau penyebabnya fraud | diperbaiki: event earning.held (template identity + render clipper + i18n); reverse mengabari submisi locked yang earning-nya belum rilis; copy forfeited dibedakan reason fraud:* |
 
 ## Keputusan
 

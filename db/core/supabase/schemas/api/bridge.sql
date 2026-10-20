@@ -307,6 +307,13 @@ language sql security definer set search_path = '' as $$
   update ops.alerts set notified_at = now() where id = p_alert and notified_at is null;
 $$;
 
+-- FR-05 (§12 "semua ambang di config"): identity membaca jendela & minimum akun per perangkat sebelum scan sesi login.
+create function api.bridge_fraud_device_params() returns jsonb
+language sql stable security definer set search_path = '' as $$
+  select jsonb_build_object('window_hours', (ops.cfg('trust.fraud.shared_device_window_hours', '24'))::int,
+                            'min_accounts', (ops.cfg('trust.fraud.shared_device_min_accounts', '3'))::int);
+$$;
+
 -- Alur 10: ID lintas DB yang dirujuk core (profil belum ditutup, rekening & penerima milik mereka).
 create function api.bridge_collect_ids() returns jsonb
 language plpgsql stable security definer set search_path = '' as $$
@@ -335,12 +342,12 @@ revoke execute on function api.bridge_get_batch(uuid), api.bridge_attach_export(
   api.bridge_attach_proof(text, uuid, text), api.bridge_raise_fraud_flag(text, uuid, text, numeric, jsonb),
   api.bridge_close_account(uuid), api.bridge_get_payout(uuid), api.bridge_mark_instant(uuid, text, text, text),
   api.bridge_pph21(date, date), api.bridge_fulfillment_export(uuid), api.bridge_collect_ids(), api.bridge_report_orphans(jsonb),
-  api.bridge_alert_notified(bigint), api.bridge_get_refund(uuid), api.bridge_refund_revealed(uuid, uuid)
+  api.bridge_alert_notified(bigint), api.bridge_get_refund(uuid), api.bridge_refund_revealed(uuid, uuid), api.bridge_fraud_device_params()
   from public, anon, authenticated;
 grant execute on function api.bridge_get_batch(uuid), api.bridge_attach_export(uuid, text, jsonb, uuid[]),
   api.bridge_attach_fulfillment_export(uuid, text, uuid[]), api.bridge_fulfillment_export_accepted(uuid, text),
   api.bridge_attach_proof(text, uuid, text), api.bridge_raise_fraud_flag(text, uuid, text, numeric, jsonb),
   api.bridge_close_account(uuid), api.bridge_get_payout(uuid), api.bridge_mark_instant(uuid, text, text, text),
   api.bridge_pph21(date, date), api.bridge_fulfillment_export(uuid), api.bridge_collect_ids(), api.bridge_report_orphans(jsonb),
-  api.bridge_alert_notified(bigint), api.bridge_get_refund(uuid), api.bridge_refund_revealed(uuid, uuid)
+  api.bridge_alert_notified(bigint), api.bridge_get_refund(uuid), api.bridge_refund_revealed(uuid, uuid), api.bridge_fraud_device_params()
   to service_role;

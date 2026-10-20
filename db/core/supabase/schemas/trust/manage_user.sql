@@ -86,3 +86,35 @@ begin
 end $$;
 revoke execute on function api.manage_user(uuid, text, jsonb) from public;
 grant execute on function api.manage_user(uuid, text, jsonb) to authenticated;
+
+-- §4 admin_support "reset koneksi akun": token OAuth dicabut (Vault dihapus, status revoked), tracking submisinya di-pause,
+-- clipper dikabari untuk menyambung ulang akun yang sama (upsert → verified, polling lanjut). Bukan pemutusan permanen.
+create function api.reset_social_account(p_account uuid, p_note text) returns void
+language plpgsql security definer set search_path = '' as $$
+declare
+  a tracking.social_accounts;
+begin
+  if not ops.has_admin('admin_support', 'admin_moderator') then
+    perform market.fail('auth:forbidden', 'butuh admin_support/admin_moderator aal2', '42501');
+  end if;
+  if nullif(btrim(coalesce(p_note, '')), '') is null then
+    perform market.fail('invalid:reason', 'aksi admin atas user wajib alasan');
+  end if;
+  select * into a from tracking.social_accounts x where x.id = p_account for update;
+  if not found then
+    perform market.fail('not_found:social_account', null, 'P0002');
+  end if;
+  if a.status = 'disconnected' then
+    perform market.fail('invalid_state:' || a.status);
+  end if;
+  delete from vault.secrets v where v.id = a.token_ref;
+  update tracking.social_accounts set status = 'revoked', token_ref = null where id = a.id;
+  update tracking.submissions set next_poll_at = null where social_account_id = a.id and status in ('tracking', 'flagged');
+  perform ops.enqueue_notification(a.user_id, 'social.token_expired',
+                                   jsonb_build_object('account_id', a.id, 'platform', a.platform, 'handle', a.handle));
+  insert into ops.audit_logs (actor_id, action, target, before, after)
+  values ((select auth.uid()), 'social.reset', 'social_account:' || a.id, jsonb_build_object('status', a.status, 'user_id', a.user_id),
+          jsonb_build_object('status', 'revoked', 'note', left(btrim(p_note), 500)));
+end $$;
+revoke execute on function api.reset_social_account(uuid, text) from public;
+grant execute on function api.reset_social_account(uuid, text) to authenticated;

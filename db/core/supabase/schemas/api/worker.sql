@@ -140,6 +140,8 @@ declare
   skip numeric;
   id_views numeric;
   all_views numeric;
+  off_views numeric;
+  src_views numeric;
   window_end timestamptz;
   every_h numeric;
   nxt timestamptz;
@@ -221,6 +223,21 @@ begin
       hold := true;  -- FR-11: tahan earning
     end if;
   end if;
+  -- FR-11 sumber traffic: porsi views dari sumber trust.fraud.offsite_traffic_sources (iklan/promosi berbayar, embed autoplay)
+  -- di atas trust.fraud.max_offsite_traffic_share = views dibeli → tahan earning sampai moderator memutus.
+  if jsonb_typeof(p_extra -> 'traffic_sources') = 'object' then
+    select coalesce(sum(x.value::numeric) filter (where upper(x.key) in (select jsonb_array_elements_text(
+             ops.cfg('trust.fraud.offsite_traffic_sources', '["ADVERTISING","PROMOTED","NO_LINK_EMBEDDED"]')))), 0),
+           sum(x.value::numeric) into off_views, src_views
+      from jsonb_each_text(p_extra -> 'traffic_sources') x where x.value ~ '^[0-9]+(\.[0-9]+)?$';
+    if src_views > 0 and p_views >= greatest(c.min_views, 1000)
+       and off_views / src_views > (ops.cfg('trust.fraud.max_offsite_traffic_share', '0.5'))::numeric then
+      raised := trust.raise_flag('submission', s.id, 'FR-11', 60,
+                                 jsonb_build_object('offsite_share', round(off_views / src_views, 4),
+                                                    'traffic_sources', p_extra -> 'traffic_sources', 'snapshot_id', sid)) is not null or raised;
+      hold := true;
+    end if;
+  end if;
   if fin and p_views < s.counted_views
      and (s.counted_views - p_views) * 100 >= s.counted_views * (ops.cfg('trust.fraud.lock_drop_pct', '20'))::numeric then
     -- FR-08: koreksi otomatis (accrue_earnings → correct_down); flag hanya catatan, tidak menahan release.
@@ -257,6 +274,7 @@ create function api.worker_post_gone(p_submission uuid, p_reason text) returns v
 language plpgsql security definer set search_path = '' as $$
 declare
   s tracking.submissions;
+  fid uuid;
 begin
   select * into s from tracking.submissions t where t.id = p_submission for update;
   if not found then
@@ -265,7 +283,10 @@ begin
   if s.status not in ('tracking', 'flagged') then
     return;
   end if;
-  perform trust.raise_flag('submission', s.id, 'FR-06', 100, jsonb_build_object('post_gone', true, 'reason', p_reason), 'actioned');
+  fid := trust.raise_flag('submission', s.id, 'FR-06', 100, jsonb_build_object('post_gone', true, 'reason', p_reason), 'actioned');
+  -- §12 Trust Score turun dari fraud flag; FR-06 langsung ditindak tanpa antrean, jadi penaltinya di sini (setara reverse).
+  insert into trust.score_events (user_id, delta, reason, ref_id)
+  values (s.user_id, coalesce((ops.cfg('trust.score_deltas') ->> 'post_gone')::int, -10), 'fraud_flag', fid::text);
   update tracking.submissions set status = 'forfeited', next_poll_at = null where id = s.id;
   perform finance.reverse_earning(s.id, 'post_gone');
   perform ops.enqueue_notification(s.user_id, 'submission.forfeited', market.campaign_ref(s.campaign_id)
@@ -446,8 +467,10 @@ begin
   exception when unique_violation then
     raise exception 'already_submitted' using errcode = 'P0001';
   end;
+  -- §11: API TikTok tidak memberi info sound → campaign musik/sound di TikTok selalu diverifikasi manual di moderasi.
   st := case when c.review_mode in ('manual', 'brand')
                   or (p_duration_sec is null and (c.min_duration_sec is not null or c.max_duration_sec is not null))
+                  or (c.type = 'music' and a.platform = 'tiktok')
              then 'in_review' else 'tracking' end;
   update tracking.submissions set status = 'in_review' where id = sid;
   if st = 'tracking' then  -- review auto: keputusan tercatat seperti review biasa (Trust Score naik, notifikasi submission.approved)

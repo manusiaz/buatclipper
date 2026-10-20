@@ -65,6 +65,7 @@ Deno.test("bridge: aksi identity → RPC bridge_* 1:1", async () => {
     "attach_fulfillment_export",
     "attach_proof",
     "close_account",
+    "fraud_device_params",
     "fulfillment_export",
     "fulfillment_export_accepted",
     "get_batch",

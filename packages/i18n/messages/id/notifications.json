@@ -30,14 +30,15 @@
   "submission": {
     "approved": { "title": "Submisi kamu disetujui", "body": "Video di campaign {campaign} disetujui. Views-nya sekarang dihitung untuk earning." },
     "rejected": { "title": "Submisi kamu ditolak", "body": "Video di campaign {campaign} ditolak. Kamu bisa banding satu kali dari halaman Tugas." },
-    "forfeited": { "title": "Earning submisi hangus", "body": "Video di campaign {campaign} tidak bisa diakses lagi, jadi earning-nya hangus." },
+    "forfeited": { "title": "Earning submisi hangus", "body": "{cause, select, fraud {Earning video di campaign {campaign} dibatalkan setelah pemeriksaan kecurangan.} other {Video di campaign {campaign} tidak bisa diakses lagi, jadi earning-nya hangus.}}" },
     "pending_review": { "title": "Submisi menunggu review: {campaign}", "body": "{count} submisi baru menunggu review. Tanpa keputusan dalam 72 jam, disetujui otomatis." }
   },
   "social": {
     "token_expired": { "title": "Hubungkan ulang akun {platform} kamu", "body": "Izin akun {platform}{handle} kedaluwarsa atau dicabut, jadi tracking views berhenti sementara." }
   },
   "earning": {
-    "available": { "title": "Earning siap ditarik", "body": "{amount} sudah Tersedia di wallet dan bisa ditarik." }
+    "available": { "title": "Earning siap ditarik", "body": "{amount} sudah Tersedia di wallet dan bisa ditarik." },
+    "held": { "title": "Earning kamu ditahan sementara", "body": "{scope, select, submission {Earning video di campaign {campaign} ditahan selama tim moderasi memeriksanya.} other {Penarikan saldo ditahan selama tim moderasi memeriksa akun.}} Kalau tidak ada masalah, semuanya berjalan lagi seperti biasa." }
   },
   "payout": {
     "paid": { "title": "Payout {amount} berhasil", "body": "Dana sudah ditransfer. Waktu masuk tergantung bank atau e-wallet tujuan." },

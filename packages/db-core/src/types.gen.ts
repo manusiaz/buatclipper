@@ -661,6 +661,9 @@ export type Database = {
 "bridge_collect_ids":
 { Args: Record<PropertyKey, never>; Returns: Json
                            },
+"bridge_fraud_device_params":
+{ Args: Record<PropertyKey, never>; Returns: Json
+                           },
 "bridge_fulfillment_export":
 { Args: { "p_reward_type": string }; Returns: {
               "amount": number,"id": string,"recipient": Json,"recipient_ref": string,"user_id": string
@@ -832,6 +835,9 @@ export type Database = {
       } },
 "request_refund":
 { Args: { "p_amount": number,"p_campaign": string,"p_idempotency": string,"p_mode": string,"p_org": string }; Returns: string
+                           },
+"reset_social_account":
+{ Args: { "p_account": string,"p_note": string }; Returns: undefined
                            },
 "resolve_alert":
 { Args: { "p_id": number }; Returns: undefined

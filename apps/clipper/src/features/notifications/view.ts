@@ -59,6 +59,8 @@ export async function notificationViews(rows: NotificationRow[], locale: UiLocal
         client: text(p, 'client_org_name') || t('fallback.client'),
         level: budgetLevel(p.pct),
         decision: text(p, 'decision', 20),
+        cause: text(p, 'reason', 60).startsWith('fraud:') ? 'fraud' : 'gone',
+        scope: p.submission_id ? 'submission' : 'account',
       };
       const known = isEvent(event);
       // Kode alasan standar → label common.rejectReasons; pesan reviewer ikut di belakangnya.

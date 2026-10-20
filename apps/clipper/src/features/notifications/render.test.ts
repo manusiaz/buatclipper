@@ -12,6 +12,7 @@ describe('notification messages', () => {
   const values = {
     campaign: 'K', platform: 'TikTok', handle: '', amount: 'Rp1', expiresAt: 'x', until: 'x', count: '2', invoice: 'INV',
     dueAt: 'x', reward: 'R', title: 'T', body: 'B', org: 'O', agency: 'A', client: 'C', level: 'p80', decision: 'overturned',
+    cause: 'fraud', scope: 'submission',
   };
   for (const [loc, msgs] of [['id', id], ['en', en]] as const) {
     it(`${loc}: every event has a title and body that format`, () => {

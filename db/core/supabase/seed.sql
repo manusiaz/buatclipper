@@ -63,5 +63,10 @@ insert into ops.settings (key, value) values
   ('trust.fraud.new_account_days', '14'),
   ('trust.fraud.new_account_views', '100000'),
   ('trust.fraud.views_over_reach', '3'),
-  ('trust.fraud.flag_spike_per_hour', '20')
+  ('trust.fraud.flag_spike_per_hour', '20'),
+  ('trust.fraud.cover_distance', '6'),
+  ('trust.fraud.max_offsite_traffic_share', '0.5'),
+  ('trust.fraud.offsite_traffic_sources', '["ADVERTISING","PROMOTED","NO_LINK_EMBEDDED"]'),
+  ('trust.fraud.shared_device_window_hours', '24'),
+  ('trust.fraud.shared_device_min_accounts', '3')
 on conflict (key) do nothing;

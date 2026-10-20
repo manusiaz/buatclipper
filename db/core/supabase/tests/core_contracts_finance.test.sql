@@ -929,11 +929,17 @@ select throws_ok($$ select api.resolve_fraud_flag((select id from t_pay where k 
 select pg_temp.jwt('33333333-0000-0000-0000-0000000000e1', '{"app_roles":["admin_moderator"],"aal":"aal2"}');
 select api.resolve_fraud_flag((select id from t_pay where k = 'fl1'), 'hold', 'cek manual');
 reset role;
+select ok(exists (select 1 from ops.notifications where event = 'earning.held' and user_id = '11111111-0000-0000-0000-00000000000b'
+                  and payload ->> 'submission_id' = (select v from t_ids where k = 's9b') and payload ->> 'signal' = 'FR-01'),
+          'regresi AA-22: tahan earning submisi → clipper dikabari');
 insert into t_pay select 'fl5', trust.raise_flag('payout', (select id from t_pay where k = 'i3'), 'FR-07', 50, '{}');
 set local role authenticated;
 select pg_temp.jwt('33333333-0000-0000-0000-0000000000e1', '{"app_roles":["admin_moderator"],"aal":"aal2"}');
 select api.resolve_fraud_flag((select id from t_pay where k = 'fl5'), 'hold', 'cek');
 reset role;
+select ok(exists (select 1 from ops.notifications where event = 'earning.held' and payload ->> 'target_type' = 'payout'
+                  and user_id = (select user_id from finance.payouts where id = (select id from t_pay where k = 'i3'))
+                  and not payload ? 'submission_id'), 'regresi AA-22: tahan payout → clipper dikabari (tanpa submisi)');
 select is((select status::text from finance.payouts where id = (select id from t_pay where k = 'i3')), 'requested',
           'regresi R4: instant yang sedang dikirim ke penyedia tidak ikut ditahan (tidak bisa dibatalkan + refund)');
 set local role authenticated;
@@ -1133,6 +1139,19 @@ select is(api.worker_create_submission('11111111-0000-0000-0000-00000000000f', '
             '99999999-0000-0000-0000-00000000000f', 'vid-12', 'https://tiktok.com/@fani/video/12', now() - interval '1 hour', 'halo', null,
             -1234567890123) ->> 'status',
           'in_review', 'review brand → in_review');
+-- Regresi audit AA-11 (§11): API TikTok tidak memberi info sound → campaign musik di TikTok selalu review manual.
+insert into market.campaigns (id, org_id, slug, title, type, platforms, start_at, submit_deadline, created_by, review_mode)
+values ('55555555-0000-0000-0000-0000000000b9', '44444444-0000-0000-0000-000000000001', 'k10-music', 'Lagu baru', 'music', '{tiktok}',
+        now() - interval '5 days', now() + interval '10 days', '22222222-0000-0000-0000-0000000000a1', 'auto');
+update market.campaigns set status = 'in_review' where id = '55555555-0000-0000-0000-0000000000b9';
+update market.campaigns set status = 'scheduled' where id = '55555555-0000-0000-0000-0000000000b9';
+update market.campaigns set status = 'live' where id = '55555555-0000-0000-0000-0000000000b9';
+insert into market.claims (id, campaign_id, user_id, expires_at, created_at) values
+  ('88888888-0000-0000-0000-0000000000b9', '55555555-0000-0000-0000-0000000000b9', '11111111-0000-0000-0000-00000000000a',
+   now() + interval '46 hours', now() - interval '2 hours');
+select is(api.worker_create_submission('11111111-0000-0000-0000-00000000000a', '88888888-0000-0000-0000-0000000000b9',
+            '99999999-0000-0000-0000-00000000000a', 'vid-music', 'https://tiktok.com/@andi/video/99', now() - interval '1 hour', 'pakai sound', 30)
+          ->> 'status', 'in_review', 'regresi AA-11: campaign musik TikTok → in_review walau review auto');
 select is((select array[f.details -> 'duplicates' ->> 0, f.details -> 'related_user_ids' ->> 0] from trust.fraud_flags f
              join tracking.submissions s on s.id = f.target_id where f.signal = 'FR-07' and s.post_id = 'vid-11'),
           array[(select v from t_ids where k = 's10'), '11111111-0000-0000-0000-00000000000a'],
@@ -1192,6 +1211,17 @@ select is((api.worker_record_snapshot((select v::uuid from t_ids where k = 's2')
 select is((select status::text from tracking.submissions where id = (select v::uuid from t_ids where k = 's2')), 'flagged', 'FR-11 menahan earning');
 select is((select (details ->> 'id_share')::numeric from trust.fraud_flags where target_id = (select v::uuid from t_ids where k = 's2')
            and signal = 'FR-11'), 0.15::numeric, 'FR-11 mencatat porsi penonton Indonesia');
+-- Regresi audit AA-12 (FR-11 "sumber traffic ... tidak wajar"): porsi views dari iklan/embed > ambang config → flag + tahan earning.
+select api.worker_record_snapshot((select v::uuid from t_ids where k = 's9r'), 5000, 400, 40, 20, null, null,
+                                  '{"traffic_sources":{"SHORTS":4000,"ADVERTISING":500,"NO_LINK_EMBEDDED":500}}');
+select ok(not exists (select 1 from trust.fraud_flags where target_id = (select v::uuid from t_ids where k = 's9r') and signal = 'FR-11'),
+          'traffic organik (iklan/embed 20%) tidak di-flag');
+select api.worker_record_snapshot((select v::uuid from t_ids where k = 's9r'), 8000, 640, 64, 32, null, null,
+                                  '{"traffic_sources":{"SHORTS":2000,"ADVERTISING":5000,"NO_LINK_EMBEDDED":1000}}');
+select is((select (details ->> 'offsite_share')::numeric from trust.fraud_flags where target_id = (select v::uuid from t_ids where k = 's9r')
+           and signal = 'FR-11'), 0.75::numeric, 'regresi AA-12: FR-11 dari sumber traffic (75% iklan/embed)');
+select is((select status::text from tracking.submissions where id = (select v::uuid from t_ids where k = 's9r')), 'flagged',
+          'FR-11 sumber traffic menahan earning');
 select is(api.worker_account_token('99999999-0000-0000-0000-00000000000a') - 'token',
           '{"id":"99999999-0000-0000-0000-00000000000a","user_id":"11111111-0000-0000-0000-00000000000a","platform":"tiktok",
             "external_id":"tt-andi","handle":"@andi","status":"verified"}'::jsonb, 'worker_account_token: akun + token');
@@ -1216,6 +1246,14 @@ select is((select sum(amount) from finance.clip_earnings where submission_id = (
           'views turun 30% saat lock → earning dikoreksi turun');
 select is((select status from trust.fraud_flags where target_id = (select v::uuid from t_ids where k = 's12') and signal = 'FR-08'), 'actioned',
           'FR-08 tercatat sebagai koreksi otomatis');
+-- Regresi audit AA-22: reverse atas submisi locked yang earning-nya belum rilis → clipper tetap dikabari.
+insert into t_pay select 'fl8', trust.raise_flag('submission', (select v::uuid from t_ids where k = 's12'), 'FR-02', 70, '{}');
+set local role authenticated;
+select pg_temp.jwt('33333333-0000-0000-0000-0000000000e1', '{"app_roles":["admin_moderator"],"aal":"aal2"}');
+select api.resolve_fraud_flag((select id from t_pay where k = 'fl8'), 'reverse', 'views dibeli');
+reset role;
+select ok(exists (select 1 from ops.notifications where event = 'submission.forfeited' and payload ->> 'submission_id' = (select v from t_ids where k = 's12')
+                  and payload ->> 'reason' = 'fraud:FR-02'), 'regresi AA-22: earning submisi locked dibatalkan → clipper dikabari');
 
 -- ========== K. Post hilang, status token, akun sosmed ==========
 select api.worker_post_gone((select v::uuid from t_ids where k = 's1'), 'deleted');
@@ -1224,6 +1262,9 @@ select is((select sum(amount) from finance.clip_earnings where submission_id = (
           'post dihapus → earning pending hangus');
 select is((select count(*)::int from ops.notifications where event = 'submission.forfeited' and user_id = '11111111-0000-0000-0000-00000000000a'), 1,
           'notifikasi submisi hangus');
+select is((select e.delta from trust.score_events e join trust.fraud_flags f on f.id::text = e.ref_id
+           where f.signal = 'FR-06' and f.target_id = (select v::uuid from t_ids where k = 's1') and e.reason = 'fraud_flag'), -10::smallint,
+          'regresi AA-9: post hilang (FR-06 otomatis) menurunkan Trust Score');
 select api.worker_account_status('99999999-0000-0000-0000-00000000000a', 'expired');
 select api.worker_account_status('99999999-0000-0000-0000-00000000000a', 'expired');
 select is((select count(*)::int from ops.notifications where event = 'social.token_expired'), 1, 'token kedaluwarsa: notifikasi sekali');
@@ -1239,6 +1280,35 @@ select throws_ok($$ select api.worker_upsert_social_account('11111111-0000-0000-
 select api.store_social_token('99999999-0000-0000-0000-00000000000d', jsonb_build_object('access_token', 'tok-2', 'expires_at', now() + interval '30 days')::text);
 select is((select array_agg(account_id) from api.worker_accounts_to_refresh(interval '6 hours')), array[(select v::uuid from t_ids where k = 'acc_fani_ig')],
           'refresh-tokens: hanya token yang kedaluwarsa dalam 6 jam');
+-- Regresi audit AA-10 (§4 admin_support "reset koneksi akun"): token dicabut, tracking di-pause, clipper diminta menyambung ulang.
+insert into t_ids select 'tok_dedi', token_ref::text from tracking.social_accounts where id = '99999999-0000-0000-0000-00000000000d';
+set local role authenticated;
+select pg_temp.jwt('11111111-0000-0000-0000-00000000000d');
+select throws_ok($$ select api.reset_social_account('99999999-0000-0000-0000-00000000000d', 'coba') $$, '42501', 'auth:forbidden',
+                 'clipper tidak bisa mereset koneksi akun');
+select pg_temp.jwt('33333333-0000-0000-0000-0000000000c1', '{"app_roles":["admin_support"],"aal":"aal2"}');
+select throws_ok($$ select api.reset_social_account('99999999-0000-0000-0000-00000000000d', ' ') $$, 'P0001', 'invalid:reason',
+                 'reset koneksi wajib alasan');
+select lives_ok($$ select api.reset_social_account('99999999-0000-0000-0000-00000000000d', 'token macet, permintaan clipper') $$,
+                'regresi AA-10: admin_support mereset koneksi akun sosmed');
+reset role;
+select is((select status || ':' || (token_ref is null)::text from tracking.social_accounts where id = '99999999-0000-0000-0000-00000000000d'),
+          'revoked:true', 'reset: status revoked, token_ref dilepas');
+select ok(not exists (select 1 from vault.secrets where id = (select v::uuid from t_ids where k = 'tok_dedi')), 'reset: token Vault dihapus');
+select is((select count(*)::int from tracking.submissions where social_account_id = '99999999-0000-0000-0000-00000000000d'
+           and status in ('tracking', 'flagged') and next_poll_at is not null), 0, 'reset: tracking di-pause');
+select ok(exists (select 1 from ops.notifications where event = 'social.token_expired' and user_id = '11111111-0000-0000-0000-00000000000d')
+          and exists (select 1 from ops.audit_logs where action = 'social.reset' and target = 'social_account:99999999-0000-0000-0000-00000000000d'),
+          'reset: clipper dikabari + audit log');
+select api.worker_upsert_social_account('11111111-0000-0000-0000-00000000000d', 'tiktok',
+                                        (select external_id from tracking.social_accounts where id = '99999999-0000-0000-0000-00000000000d'),
+                                        '@dedi', null, null, null);
+select is((select status from tracking.social_accounts where id = '99999999-0000-0000-0000-00000000000d'), 'verified',
+          'akun yang direset bisa disambung ulang oleh pemiliknya');
+-- Regresi audit AA-13 (§12 "semua ambang di config"): ambang FR-05 dibaca identity dari config core.
+insert into ops.settings (key, value) values ('trust.fraud.shared_device_min_accounts', '5')
+  on conflict (key) do update set value = excluded.value;
+select is(api.bridge_fraud_device_params(), '{"window_hours":24,"min_accounts":5}'::jsonb, 'regresi AA-13: ambang FR-05 dari config core');
 
 -- ========== L. bridge_close_account (alur 7) ==========
 select is(api.bridge_close_account('11111111-0000-0000-0000-00000000000a'), '{"ok":false,"reason":"balance_remaining"}'::jsonb,
@@ -1254,8 +1324,8 @@ select is((select status::text from tracking.submissions where user_id = '111111
           'submisi yang menunggu review dihentikan');
 
 -- ========== M. Hak akses RPC service_role ==========
-select is((select count(*)::int from pg_proc p where p.pronamespace = 'api'::regnamespace and p.proname ~ '^(worker|bridge)_'), 33,
-          '33 RPC worker/bridge');
+select is((select count(*)::int from pg_proc p where p.pronamespace = 'api'::regnamespace and p.proname ~ '^(worker|bridge)_'), 34,
+          '34 RPC worker/bridge');
 select is((select count(*)::int from pg_proc p where p.pronamespace = 'api'::regnamespace and p.proname ~ '^(worker|bridge)_'
             and (has_function_privilege('authenticated', p.oid, 'execute') or has_function_privilege('anon', p.oid, 'execute'))), 0,
           'authenticated/anon tidak bisa EXECUTE RPC worker/bridge');

@@ -1,9 +1,9 @@
 // Notifikasi in-app (E-23, F-C11): event + payload → kunci pesan namespace notifications + nilai + deep link.
-// Event & kunci payload = db/identity/supabase/functions/_shared/templates.ts (38 event, sama dengan email/push).
+// Event & kunci payload = db/identity/supabase/functions/_shared/templates.ts (40 event, sama dengan email/push).
 
 export const EVENTS = [
   'campaign.new', 'campaign.invited', 'claim.expiring', 'submission.approved', 'submission.rejected', 'submission.forfeited',
-  'submission.pending_review', 'social.token_expired', 'earning.available', 'payout.paid', 'payout.failed',
+  'submission.pending_review', 'social.token_expired', 'earning.available', 'earning.held', 'payout.paid', 'payout.failed',
   'fulfillment.delivered', 'fulfillment.cancelled', 'payout.cancelled', 'kyc.approved', 'kyc.rejected', 'broadcast.sent',
   'account.suspended', 'account.banned', 'invoice.issued', 'invoice.paid', 'campaign.approved', 'campaign.rejected',
   'campaign.live', 'budget.used', 'budget.projection_low', 'campaign.settled', 'org.verified', 'org.rejected',
@@ -46,6 +46,8 @@ export function notificationHref(event: string, payload: P, links: Links): strin
       return '/tasks';
     case 'social.token_expired':
       return '/social';
+    case 'earning.held':
+      return payload.submission_id ? '/tasks' : '/wallet';
     case 'earning.available':
     case 'payout.paid':
     case 'payout.failed':

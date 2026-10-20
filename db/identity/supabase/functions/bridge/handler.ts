@@ -39,8 +39,6 @@ export interface BridgeDeps {
 }
 
 export const MAX_IDS = 10_000;
-export const FR05_SINCE = "1 day";
-export const FR05_MIN_ACCOUNTS = 3;
 
 function eventOf(p: Record<string, unknown>): string {
   const event = str(p, "event", { max: 64 });
@@ -151,12 +149,19 @@ interface DeviceGroup {
 
 /** FR-05: many accounts from one IP + user agent. Core gets only a keyed group id, never the IP or user agent. */
 export async function fraudDeviceScan(deps: Pick<BridgeDeps, "rpc" | "core" | "crypto">) {
+  const core = deps.core();
+  // Ambang di config core (trust.fraud.shared_device_*), diatur admin_super lewat halaman Config.
+  const cfg = await core.invoke<{ window_hours?: unknown; min_accounts?: unknown }>("fraud_device_params", {});
+  const hours = Number.isInteger(cfg?.window_hours) && Number(cfg.window_hours) > 0 ? Number(cfg.window_hours) : 24;
+  const minAccounts = Number.isInteger(cfg?.min_accounts) && Number(cfg.min_accounts) >= 2
+    ? Number(cfg.min_accounts)
+    : 3;
+  const window = `${hours} hours`;
   const groups = (await deps.rpc.invoke<DeviceGroup[] | null>("shared_device_groups", {
-    p_since: FR05_SINCE,
-    p_min_accounts: FR05_MIN_ACCOUNTS,
+    p_since: window,
+    p_min_accounts: minAccounts,
   })) ?? [];
   const crypto = deps.crypto();
-  const core = deps.core();
   let flagged = 0;
   let failed = 0;
   for (const g of groups) {
@@ -174,7 +179,7 @@ export async function fraudDeviceScan(deps: Pick<BridgeDeps, "rpc" | "core" | "c
             device_group: group,
             accounts: users.length,
             related_user_ids: users.filter((u) => u !== uid).slice(0, 20),
-            window: FR05_SINCE,
+            window,
           },
         });
         flagged++;

@@ -123,6 +123,15 @@ set local request.jwt.claims = '{"sub":"00000000-0000-0000-0000-0000000000af","r
 select is((select string_agg(email || '=' || array_to_string(roles, ','), ' ' order by email) from api.admin_list_roles()),
           'mod@contoh.id=admin_moderator super@contoh.id=admin_super support@contoh.id=admin_support', 'admin_super melihat daftar admin + role');
 select ok((select count(*) > 0 from api.audit_logs where action = 'kyc.decide'), 'admin_super membaca audit log identity');
+-- Regresi audit AA-20 (§4 "akun admin dibuat terpisah dari akun clipper/brand"): akun yang setuju ToS clipper/brand tidak bisa jadi admin.
+select throws_ok($$ select api.admin_set_role('00000000-0000-0000-0000-00000000000a', 'admin_support', true) $$, '22023',
+                 'admin_account_must_be_separate', 'regresi AA-20: akun clipper tidak bisa diberi role admin');
+select lives_ok($$ select api.admin_set_role('00000000-0000-0000-0000-00000000000c', 'admin_support', true) $$,
+                'akun tanpa ToS clipper/brand bisa dijadikan admin');
+select lives_ok($$ select api.admin_set_role('00000000-0000-0000-0000-0000000000ad', 'admin_finance', true) $$,
+                'admin yang sudah ada bisa diberi role kedua');
+select api.admin_set_role('00000000-0000-0000-0000-00000000000c', 'admin_support', false);
+select api.admin_set_role('00000000-0000-0000-0000-0000000000ad', 'admin_finance', false);
 reset role;
 select is((member.custom_access_token_hook('{"user_id":"00000000-0000-0000-0000-00000000000a","claims":{}}') -> 'claims' ->> 'kyc'),
           'approved', 'hook: claim kyc approved');

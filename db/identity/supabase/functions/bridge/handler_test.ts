@@ -33,7 +33,10 @@ function setup(over: Partial<BridgeDeps> = {}) {
       },
     ],
   });
-  const core = new FakeCore({ raise_fraud_flag: () => ({ id: "f1" }) });
+  const core = new FakeCore({
+    raise_fraud_flag: () => ({ id: "f1" }),
+    fraud_device_params: () => ({ window_hours: 6, min_accounts: 4 }),
+  });
   const authAdmin = new FakeAuthAdmin();
   authAdmin.users.set(USER, { id: USER, email: "andi@contoh.id" });
   const deps: BridgeDeps = {
@@ -195,7 +198,7 @@ Deno.test("fraud_device_scan (cron apikey): one FR-05 flag per account, no IP or
   const s = setup();
   const res = await json(await s.handler(post({ action: "fraud_device_scan" }, { apikey: "sb_secret_test" })));
   assertEquals(res.body.data, { groups: 1, flagged: 3, failed: 0 });
-  assertEquals(s.rpc.named("shared_device_groups")[0].args, { p_since: "1 day", p_min_accounts: 3 });
+  assertEquals(s.rpc.named("shared_device_groups")[0].args, { p_since: "6 hours", p_min_accounts: 4 }); // ambang dari config core (AA-13)
   const flags = s.core.named("raise_fraud_flag").map((c) => c.payload);
   assertEquals(flags.map((f) => [f.target_type, f.signal, f.score]), [["profile", "FR-05", 60], [
     "profile",

@@ -36,6 +36,7 @@
   "slots_full": "All clipper slots are taken.",
   "invalid": "Invalid input: {param}.",
   "invalid_state": "This action isn't possible in the current status.",
+  "admin_account_must_be_separate": "Admin accounts must be separate: this account is already registered as a clipper/brand. Invite a new email.",
   "campaign_locked": "The brief is locked since submission. Only the FAQ can change.",
   "org_not_verified": "The organization isn't verified yet.",
   "org_suspended": "The organization is suspended.",

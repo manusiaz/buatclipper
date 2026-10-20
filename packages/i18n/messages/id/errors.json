@@ -22,6 +22,7 @@
   "slots_full": "Slot clipper sudah penuh.",
   "invalid": "Isian tidak valid: {param}.",
   "invalid_state": "Aksi tidak bisa dilakukan pada status ini.",
+  "admin_account_must_be_separate": "Akun admin harus dibuat terpisah: akun ini sudah terdaftar sebagai clipper/brand. Undang email baru.",
   "campaign_locked": "Brief terkunci sejak campaign diajukan. Hanya FAQ yang bisa diubah.",
   "org_not_verified": "Organisasi belum terverifikasi.",
   "org_suspended": "Organisasi sedang ditangguhkan.",

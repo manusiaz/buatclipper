@@ -13,6 +13,12 @@ begin
   if p_user_id = (select auth.uid()) and r = 'admin_super' and not p_grant then
     raise exception 'tidak bisa mencabut admin_super milik sendiri' using errcode = '22023';
   end if;
+  -- §4: akun admin dibuat terpisah dari akun clipper/brand → akun yang pernah setuju ToS clipper/brand tidak bisa jadi admin
+  -- (kecuali sudah admin: menambah role kedua).
+  if p_grant and not exists (select 1 from member.platform_roles x where x.user_id = p_user_id)
+     and exists (select 1 from member.consents c where c.user_id = p_user_id and c.kind in ('tos_clipper', 'tos_brand')) then
+    raise exception 'admin_account_must_be_separate' using errcode = '22023';
+  end if;
   if p_grant then
     insert into member.platform_roles (user_id, role, granted_by)
     values (p_user_id, r, (select auth.uid()))

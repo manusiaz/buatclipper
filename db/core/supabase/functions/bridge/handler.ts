@@ -62,6 +62,7 @@ export const INBOUND: Record<string, { fn: string; args: (p: Payload) => Payload
   close_account: { fn: "bridge_close_account", args: (p) => ({ p_user: pick(p, "user_id") }) },
   get_payout: { fn: "bridge_get_payout", args: (p) => ({ p_payout: pick(p, "payout_id") }) },
   get_refund: { fn: "bridge_get_refund", args: (p) => ({ p_refund: pick(p, "refund_id") }) },
+  fraud_device_params: { fn: "bridge_fraud_device_params", args: () => ({}) },
   refund_revealed: {
     fn: "bridge_refund_revealed",
     args: (p) => ({ p_refund: pick(p, "refund_id"), p_dest_set_by: pick(p, "dest_set_by") }),

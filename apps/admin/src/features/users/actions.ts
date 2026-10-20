@@ -170,3 +170,11 @@ export async function manageUser(userId: string, action: 'trust_override' | 'sus
   const { error } = await db.rpc('manage_user', { p_user: userId, p_action: action, p_params: params as never });
   return settle(error, '/users');
 }
+
+/** §4 admin_support "reset koneksi akun": token OAuth dicabut, tracking di-pause, clipper diminta menyambung ulang. */
+export async function resetSocialAccount(accountId: string, fd: FormData): Promise<ActionResult> {
+  await requireAdmin('admin_support', 'admin_moderator');
+  const db = await coreServer('admin');
+  const { error } = await db.rpc('reset_social_account', { p_account: accountId, p_note: text(fd, 'note') });
+  return settle(error, '/users');
+}

@@ -65,6 +65,7 @@ declare
   sub tracking.submissions;
   x record;
   score_delta smallint;
+  notify boolean;
 begin
   if not ops.has_admin('admin_moderator') then
     raise exception 'auth:forbidden' using errcode = '42501';
@@ -96,6 +97,11 @@ begin
     if sub.status = 'tracking' then
       update tracking.submissions set status = 'flagged' where id = sub.id;
     end if;
+    -- A4.2 "Clipper menerima notifikasi" untuk setiap tindakan, termasuk tahan.
+    perform ops.enqueue_notification(target_user, 'earning.held',
+                                     case when sub.id is null then '{}'::jsonb else market.campaign_ref(sub.campaign_id)
+                                          || jsonb_build_object('submission_id', sub.id) end
+                                     || jsonb_build_object('target_type', f.target_type, 'signal', f.signal));
     if f.target_type = 'payout' then
       -- Instant requested sudah diteruskan ke penyedia (alur 11); menahannya membuka refund saat transfer berjalan.
       update finance.payouts set status = 'on_hold', hold_reason = 'fraud:' || f.signal
@@ -114,9 +120,14 @@ begin
                 where (f.target_type = 'submission' and s.id = f.target_id)
                    or (f.target_type = 'profile' and s.user_id = f.target_id and s.status in ('tracking', 'flagged', 'locked'))
                 order by s.id loop
+        -- submisi locked yang masih punya earning belum rilis juga kehilangan earning → clipper tetap dikabari
+        notify := x.status <> 'locked' or exists (select 1 from finance.clip_earnings ce where ce.submission_id = x.id
+                                                   and ce.released_at is null and ce.amount > 0);
         perform finance.reverse_earning(x.id, 'fraud:' || f.signal);
         if x.status in ('tracking', 'flagged') then
           update tracking.submissions set status = 'forfeited', next_poll_at = null where id = x.id;
+        end if;
+        if notify then
           perform ops.enqueue_notification(target_user, 'submission.forfeited',
                                            market.campaign_ref((select s.campaign_id from tracking.submissions s where s.id = x.id))
                                            || jsonb_build_object('submission_id', x.id, 'reason', 'fraud:' || f.signal));

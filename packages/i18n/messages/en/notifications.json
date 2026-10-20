@@ -30,14 +30,15 @@
   "submission": {
     "approved": { "title": "Your submission was approved", "body": "Your video in {campaign} was approved. Its views now count toward earnings." },
     "rejected": { "title": "Your submission was rejected", "body": "Your video in {campaign} was rejected. You can appeal once from the Tasks page." },
-    "forfeited": { "title": "Submission earnings forfeited", "body": "Your video in {campaign} is no longer accessible, so its earnings were forfeited." },
+    "forfeited": { "title": "Submission earnings forfeited", "body": "{cause, select, fraud {Earnings for your video in {campaign} were cancelled after a fraud review.} other {Your video in {campaign} is no longer accessible, so its earnings were forfeited.}}" },
     "pending_review": { "title": "Submissions waiting for review: {campaign}", "body": "{count} new submissions are waiting. Without a decision in 72 hours they are approved automatically." }
   },
   "social": {
     "token_expired": { "title": "Reconnect your {platform} account", "body": "Access to your {platform} account{handle} expired or was revoked, so view tracking is paused." }
   },
   "earning": {
-    "available": { "title": "Earnings ready to withdraw", "body": "{amount} is now Available in your wallet." }
+    "available": { "title": "Earnings ready to withdraw", "body": "{amount} is now Available in your wallet." },
+    "held": { "title": "Your earnings are on hold", "body": "{scope, select, submission {Earnings for your video in {campaign} are on hold while moderators review it.} other {Withdrawals are on hold while moderators review your account.}} If everything checks out, things continue as usual." }
   },
   "payout": {
     "paid": { "title": "Payout of {amount} sent", "body": "The money has been transferred. Arrival time depends on the destination bank or e-wallet." },
