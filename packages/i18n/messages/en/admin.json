@@ -747,7 +747,7 @@
     "refundProofBody": "Transfer {amount} to the brand's account, then upload the proof.",
     "refundPaid": "Refund marked paid",
     "pph21": "PPh 21 recap",
-    "pph21Body": "Gross paid payouts per person + NIK + ID card name (the tax team computes the tax).",
+    "pph21Body": "Gross income per person: paid cash payouts + delivered non-cash rewards (Rupiah value), with NIK + ID card name. The tax team computes the tax.",
     "exportPph21": "Export recap",
     "missingKyc": "No NIK",
     "from": "From",

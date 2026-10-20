@@ -318,7 +318,7 @@ Deno.test("upload_proof: type sniffed from content, stored in payout-proofs, att
   assertEquals(core.named("attach_proof")[0].payload, { target: "batch", id: BATCH, proof_ref: ref });
 });
 
-Deno.test("pph21: NIK + KTP name per user, gross as given, no tax computed", async () => {
+Deno.test("pph21: NIK + KTP name per user, cash + non-cash gross as given, no tax computed", async () => {
   const nik = toPgBytea((await crypto.encrypt("kyc.nik", "3171011205900001")).ciphertext);
   const rpc = new FakeRpc({
     svc_platform_roles: () => ["admin_finance"],
@@ -333,7 +333,10 @@ Deno.test("pph21: NIK + KTP name per user, gross as given, no tax computed", asy
     svc_audit: () => null,
   });
   const core = new FakeCore({
-    pph21: () => [{ user_id: u(1), gross: "1500000.00" }, { user_id: u(2), gross: "50000.00" }],
+    pph21: () => [
+      { user_id: u(1), cash: "1500000.00", noncash: "0", gross: "1500000.00" },
+      { user_id: u(2), cash: "0", noncash: "50000.00", gross: "50000.00" },
+    ],
   });
   const storage = new FakeStorage();
   const handler = createPiiExportHandler({
@@ -348,7 +351,8 @@ Deno.test("pph21: NIK + KTP name per user, gross as given, no tax computed", asy
   assertEquals(res.body.data.missing_kyc, [u(2)]);
   assertEquals(
     storage.text("pii-exports/pph21/2026-09-01_2026-09-30.csv"),
-    `user_id,legal_name,nik,gross\r\n${u(1)},Andi Saputra,3171011205900001,1500000.00\r\n${u(2)},,,50000.00\r\n`,
+    `user_id,legal_name,nik,cash,noncash,gross\r\n${u(1)},Andi Saputra,3171011205900001,1500000.00,0,1500000.00\r\n` +
+      `${u(2)},,,0,50000.00,50000.00\r\n`,
   );
   const bad = await json(await handler(post({ action: "pph21", from: "2026-09-31", to: "2026-10-01" })));
   assertEquals(bad.body.error.code, "invalid_input");

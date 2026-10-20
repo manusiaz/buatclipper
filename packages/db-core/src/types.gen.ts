@@ -666,7 +666,7 @@ export type Database = {
                            },
 "bridge_pph21":
 { Args: { "p_from": string,"p_to": string }; Returns: {
-              "gross": number,"user_id": string
+              "cash": number,"gross": number,"noncash": number,"user_id": string
             }[]
                            },
 "bridge_raise_fraud_flag":

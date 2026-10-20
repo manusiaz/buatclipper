@@ -242,14 +242,17 @@ function isoDate(o: Record<string, unknown>, key: string): string {
   return v;
 }
 
-/** Recap of gross payments per person with NIK + KTP name. No tax is computed: rates are the finance/tax team's call. */
+/** Recap of gross income per person with NIK + KTP name: cash payouts + non-cash rewards valued in Rupiah (§5.4).
+ * No tax is computed: rates are the finance/tax team's call. */
 export async function exportPph21(deps: PiiExportDeps, actor: Actor, body: Record<string, unknown>) {
   const from = isoDate(body, "from");
   const to = isoDate(body, "to");
   const days = (Date.parse(to) - Date.parse(from)) / 86_400_000;
   if (days < 0 || days > 366) throw new HttpError(400, "invalid_range", "rentang tanggal 0–366 hari");
 
-  const recap = await deps.core().invoke<{ user_id: string; gross: string | number }[]>("pph21", { from, to });
+  const recap = await deps.core().invoke<
+    { user_id: string; cash: string | number; noncash: string | number; gross: string | number }[]
+  >("pph21", { from, to });
   const users = (recap ?? []).filter((r) => isUuid(r.user_id));
   const kycs = new Map(
     (await rpcByIds<KycRow>(deps.rpc, "svc_kyc", "p_user_ids", users.map((r) => r.user_id))).map((k) => [k.user_id, k]),
@@ -262,9 +265,9 @@ export async function exportPph21(deps: PiiExportDeps, actor: Actor, body: Recor
     let nik = "";
     if (k?.nik_enc && k.enc_key_version) nik = await crypto.decryptPg("kyc.nik", k.nik_enc, k.enc_key_version);
     else missing.push(r.user_id);
-    rows.push([r.user_id, k?.legal_name ?? "", nik, String(r.gross)]);
+    rows.push([r.user_id, k?.legal_name ?? "", nik, String(r.cash), String(r.noncash), String(r.gross)]);
   }
-  const csv = toCsv(["user_id", "legal_name", "nik", "gross"], rows);
+  const csv = toCsv(["user_id", "legal_name", "nik", "cash", "noncash", "gross"], rows);
   const { file_ref, url } = await publish(deps, `pph21/${from}_${to}.csv`, csv);
   await audit(deps, actor, "pii.export_tax", `pph21:${from}_${to}`, {
     rows: rows.length,

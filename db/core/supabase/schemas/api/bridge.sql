@@ -221,14 +221,23 @@ begin
 end $$;
 
 -- Alur 9: rekap bruto payout terbayar per clipper (dasar PPh 21), rentang tanggal WIB inklusif.
-create function api.bridge_pph21(p_from date, p_to date) returns table (user_id uuid, gross numeric)
+-- §5.4: penghasilan bruto clipper per periode (WIB) = payout tunai dibayar + reward non-tunai terkirim dinilai Rupiah
+-- (idr_value_per_unit reward type saat ini). Tarif PPh 21 tidak dihitung di sini (keputusan tim pajak).
+create function api.bridge_pph21(p_from date, p_to date) returns table (user_id uuid, cash numeric, noncash numeric, gross numeric)
 language plpgsql stable security definer set search_path = '' as $$
+declare
+  t0 timestamptz := p_from::timestamp at time zone 'Asia/Jakarta';
+  t1 timestamptz := (p_to + 1)::timestamp at time zone 'Asia/Jakarta';
 begin
   return query
-  select p.user_id, sum(p.amount)::numeric from finance.payouts p
-   where p.status = 'paid' and p.paid_at >= (p_from::timestamp at time zone 'Asia/Jakarta')
-     and p.paid_at < ((p_to + 1)::timestamp at time zone 'Asia/Jakarta')
-   group by p.user_id order by p.user_id;
+  select x.user_id, sum(x.cash), sum(x.noncash), sum(x.cash + x.noncash)
+    from (select p.user_id, p.amount::numeric as cash, 0::numeric as noncash from finance.payouts p
+           where p.status = 'paid' and p.paid_at >= t0 and p.paid_at < t1
+          union all
+          select f.user_id, 0, round(f.amount * rt.idr_value_per_unit, 2) from finance.fulfillments f
+            join market.reward_types rt on rt.id = f.reward_type_id
+           where f.status = 'delivered' and f.delivered_at >= t0 and f.delivered_at < t1) x
+   group by x.user_id order by x.user_id;
 end $$;
 
 -- Alur 3 (reward fisik/manual_export): klaim yang menunggu export ke brand. Hanya baca; data PII penerima ada di identity.

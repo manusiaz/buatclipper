@@ -1745,6 +1745,14 @@ reset role;
 select is((select count(*)::int from storage.objects where bucket_id = 'invoice-docs'), 1,
           'regresi R24-3: admin_finance bisa membersihkan PDF yang ditolak/diganti');
 
+-- Regresi audit 2 AB-7/AA-14 (§5.4 "reward non-tunai tetap punya nilai Rupiah, tetap tercatat untuk pajak"): rekap PPh 21
+-- = payout tunai dibayar + reward non-tunai terkirim dinilai Rupiah.
+create temp table t_pph as select * from api.bridge_pph21((now() at time zone 'Asia/Jakarta')::date - 1, (now() at time zone 'Asia/Jakarta')::date + 1);
+select ok((select noncash >= 50000 from t_pph where user_id = (select user_id from finance.fulfillments where id = (select id from t_pay where k = 'f1'))),
+          'regresi AB-7: voucher terkirim (1 × Rp50.000) masuk penghasilan bruto non-tunai');
+select is((select count(*)::int from t_pph where gross <> cash + noncash), 0, 'bruto = tunai + non-tunai');
+select is((select coalesce(sum(cash), 0) from t_pph), (select coalesce(sum(amount), 0) from finance.payouts where status = 'paid'), 'tunai = payout dibayar dalam periode');
+
 -- ========== Invarian akhir ==========
 select is((select count(*)::int from (select 1 from finance.ledger_entries e group by e.txn_id, e.reward_type_id having sum(e.amount) <> 0) x),
           0, 'akhir: ledger seimbang per transaksi per reward type');

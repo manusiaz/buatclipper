@@ -747,7 +747,7 @@
     "refundProofBody": "Transfer {amount} ke rekening brand, lalu unggah bukti.",
     "refundPaid": "Refund ditandai dibayar",
     "pph21": "Rekap PPh 21",
-    "pph21Body": "Bruto payout terbayar per orang + NIK + nama KTP (tarif pajak dihitung tim pajak).",
+    "pph21Body": "Penghasilan bruto per orang: payout tunai terbayar + reward non-tunai terkirim (nilai Rupiah), dengan NIK + nama KTP. Tarif pajak dihitung tim pajak.",
     "exportPph21": "Export rekap",
     "missingKyc": "Tanpa NIK",
     "from": "Dari",
