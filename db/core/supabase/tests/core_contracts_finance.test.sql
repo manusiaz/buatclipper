@@ -1826,6 +1826,20 @@ select ok((select noncash >= 50000 from t_pph where user_id = (select user_id fr
 select is((select count(*)::int from t_pph where gross <> cash + noncash), 0, 'bruto = tunai + non-tunai');
 select is((select coalesce(sum(cash), 0) from t_pph), (select coalesce(sum(amount), 0) from finance.payouts where status = 'paid'), 'tunai = payout dibayar dalam periode');
 
+-- Regresi audit 2 AA-5 (A3.7, R-18): instant processing ber-provider_ref yang callback-nya hilang dicek ulang (status di
+-- penyedia, tanpa kirim ulang) dan memunculkan alert; sebelumnya hanya yang tanpa provider_ref yang diurus.
+insert into finance.payouts (id, user_id, method_id, amount, fee, channel, idempotency_key, created_at) values
+  ('abababab-0000-0000-0000-000000000001', '11111111-0000-0000-0000-00000000000a', 'aaaaaaaa-0000-0000-0000-0000000000a1',
+   100000, 5000, 'instant', 'aa5-hanging', now() - interval '2 hours');
+update finance.payouts set status = 'processing', provider_ref = 'disb-hanging' where id = 'abababab-0000-0000-0000-000000000001';
+delete from ops.alerts where kind = 'payout.instant_stuck';
+select ok(finance.retry_instant_payouts() >= 1, 'regresi AA-5: instant processing ber-ref > 1 jam dikirim ke disburse (cek status)');
+select ok(exists (select 1 from net.http_request_queue q where convert_from(q.body, 'UTF8')::jsonb ->> 'payout_id' = 'abababab-0000-0000-0000-000000000001'),
+          'bridge disburse dipanggil untuk payout yang menggantung');
+select ok(exists (select 1 from ops.alerts where kind = 'payout.instant_stuck' and resolved_at is null), 'instant menggantung → alert finance');
+select is(api.bridge_get_payout('abababab-0000-0000-0000-000000000001') ->> 'provider_ref', 'disb-hanging',
+          'identity menerima provider_ref untuk membaca status, bukan mengirim ulang');
+
 -- ========== Invarian akhir ==========
 select is((select count(*)::int from (select 1 from finance.ledger_entries e group by e.txn_id, e.reward_type_id having sum(e.amount) <> 0) x),
           0, 'akhir: ledger seimbang per transaksi per reward type');

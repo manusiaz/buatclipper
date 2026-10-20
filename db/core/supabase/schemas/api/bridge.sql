@@ -164,7 +164,7 @@ begin
     raise exception 'not_found:payout' using errcode = 'P0002';
   end if;
   return jsonb_build_object('id', p.id, 'user_id', p.user_id, 'method_id', p.method_id, 'amount', p.amount, 'fee', p.fee,
-                            'net_amount', p.amount - p.fee, 'channel', p.channel, 'status', p.status);
+                            'net_amount', p.amount - p.fee, 'channel', p.channel, 'status', p.status, 'provider_ref', p.provider_ref);
 end $$;
 
 -- AB-6: refund org perorangan → identity membuka rekening bank pribadi dest_set_by (pemilik org) untuk transfer.

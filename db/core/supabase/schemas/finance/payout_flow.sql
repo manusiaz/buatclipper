@@ -406,7 +406,8 @@ begin
 end $$;
 
 -- Instant yang macet (alur 11): requested/processing tanpa provider_ref > 15 menit → bridge disburse dipanggil ulang (aman: idempotency
--- key penyedia = id payout). Macet > 1 jam → alert. Dipanggil job lifecycle.
+-- key penyedia = id payout). processing dengan provider_ref > 1 jam (callback hilang, A3.7) → disburse membaca status di penyedia
+-- (GET, tanpa kirim ulang). Macet > 1 jam → alert. Dipanggil job lifecycle.
 create function finance.retry_instant_payouts() returns int
 language plpgsql security definer set search_path = '' as $$
 declare
@@ -415,8 +416,9 @@ declare
   old int := 0;
 begin
   for r in select p.id, p.created_at from finance.payouts p
-            where p.channel = 'instant' and p.status in ('requested', 'processing') and p.provider_ref is null
-              and p.created_at <= now() - interval '15 minutes'
+            where p.channel = 'instant'
+              and ((p.status in ('requested', 'processing') and p.provider_ref is null and p.created_at <= now() - interval '15 minutes')
+                   or (p.status = 'processing' and p.provider_ref is not null and p.created_at <= now() - interval '1 hour'))
             order by p.created_at limit 200 loop
     perform ops.invoke_function('bridge', jsonb_build_object('action', 'disburse', 'payout_id', r.id));
     n := n + 1;

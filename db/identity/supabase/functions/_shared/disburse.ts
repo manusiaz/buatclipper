@@ -54,6 +54,8 @@ export class ProviderRejected extends Error {
 export interface DisbursementProvider {
   readonly name: string;
   send(req: DisburseRequest): Promise<DisburseResult>;
+  /** Status of a payout the provider already accepted (callback lost): read-only, never creates a transfer. */
+  status(providerRef: string): Promise<DisburseResult>;
   /** Maps a verified webhook body; null = event we do not act on (still answered 200). */
   parseCallback(body: unknown): CallbackResult | null;
 }
@@ -156,6 +158,15 @@ export class XenditProvider implements DisbursementProvider {
     throw new ProviderRejected(typeof body.error_code === "string" ? body.error_code : `HTTP_${status}`);
   }
 
+  async status(providerRef: string): Promise<DisburseResult> {
+    const { status, body } = await this.#request(`/v2/payouts/${encodeURIComponent(providerRef)}`, {
+      method: "GET",
+      headers: this.#headers(),
+    });
+    if (status === 200) return this.#result(body);
+    throw new HttpError(503, "provider_unavailable", "status payout di penyedia belum bisa dibaca");
+  }
+
   parseCallback(body: unknown): CallbackResult | null {
     const b = body as { event?: unknown; data?: XenditPayout } & XenditPayout;
     const d: XenditPayout = b && typeof b === "object" && b.data && typeof b.data === "object" ? b.data : b;
@@ -183,6 +194,9 @@ export class MockProvider implements DisbursementProvider {
   readonly name = "mock";
   send(req: DisburseRequest): Promise<DisburseResult> {
     return Promise.resolve({ providerRef: `mock-${req.payoutId}`, status: "paid" });
+  }
+  status(providerRef: string): Promise<DisburseResult> {
+    return Promise.resolve({ providerRef, status: "paid" });
   }
   parseCallback(): CallbackResult | null {
     return null;
@@ -220,6 +234,7 @@ interface CorePayout {
   fee: string | number;
   channel: string;
   status: string;
+  provider_ref?: string | null;
 }
 
 export interface DisburseDeps {
@@ -251,6 +266,12 @@ export async function runDisburse(
   if (p.channel !== "instant") throw new HttpError(409, "not_instant", "payout bukan instant");
   if (p.status !== "requested" && p.status !== "processing") {
     return { payout_id: payoutId, status: p.status, skipped: true }; // already settled: idempotent no-op
+  }
+  // A3.7 menggantung: penyedia sudah menerima transfer (provider_ref) tapi callback hilang → baca statusnya, jangan kirim ulang.
+  if (p.status === "processing" && p.provider_ref) {
+    const r = await deps.provider().status(p.provider_ref);
+    if (r.status !== "processing") await markInstant(core, payoutId, r.status, r.providerRef, r.error ?? null);
+    return { payout_id: payoutId, status: r.status, provider_ref: r.providerRef, error: r.error ?? null };
   }
 
   const [method] = await deps.rpc.invoke<MethodRow[]>("svc_payout_methods", { p_ids: [p.method_id] }) ?? [];

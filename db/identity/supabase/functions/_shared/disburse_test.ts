@@ -190,6 +190,7 @@ async function fixture(
       sent.push(r);
       return Promise.resolve({ providerRef: "disb-1", status: "processing" });
     },
+    status: (ref) => Promise.resolve({ providerRef: ref, status: "paid" }),
     parseCallback: () => null,
   };
   return { rpc, core, sent, deps: { core: () => core, rpc, crypto: () => crypto, provider: () => provider } };
@@ -253,6 +254,7 @@ Deno.test("disburse: provider rejection fails the payout; transient error leaves
   f.deps.provider = () => ({
     name: "x",
     send: () => Promise.reject(new ProviderRejected("INVALID_DESTINATION")),
+    status: () => Promise.reject(new Error("unused")),
     parseCallback: () => null,
   });
   assertEquals((await runDisburse(f.deps, PAYOUT)).status, "failed");
@@ -261,6 +263,7 @@ Deno.test("disburse: provider rejection fails the payout; transient error leaves
   g.deps.provider = () => ({
     name: "x",
     send: () => Promise.reject(new HttpError(503, "provider_unavailable")),
+    status: () => Promise.reject(new Error("unused")),
     parseCallback: () => null,
   });
   await assertRejects(() => runDisburse(g.deps, PAYOUT), HttpError, "provider_unavailable");
@@ -272,4 +275,32 @@ Deno.test("disburse: mock provider succeeds immediately (processing → paid)", 
   f.deps.provider = () => new MockProvider();
   assertEquals((await runDisburse(f.deps, PAYOUT)).status, "paid");
   assertEquals(f.core.named("mark_instant").map((c) => c.payload.status), ["processing", "paid"]);
+});
+
+Deno.test("disburse: processing payout with provider_ref (callback lost, A3.7) → status read, never sent again", async () => {
+  const f = await fixture({ payout: { status: "processing", provider_ref: "disb-9" } });
+  assertEquals(await runDisburse(f.deps, PAYOUT), {
+    payout_id: PAYOUT,
+    status: "paid",
+    provider_ref: "disb-9",
+    error: null,
+  });
+  assertEquals(f.sent.length, 0);
+  assertEquals(f.core.named("mark_instant").map((c) => c.payload), [
+    { payout_id: PAYOUT, status: "paid", provider_ref: "disb-9", error: null },
+  ]);
+});
+
+Deno.test("xendit status: GET /v2/payouts/{id}, Basic auth, mapped result; non-200 is transient", async () => {
+  const calls: { url: string; init: RequestInit }[] = [];
+  const ok = new XenditProvider("sk", (url, init) => {
+    calls.push({ url: String(url), init: init ?? {} });
+    return Promise.resolve(
+      new Response(JSON.stringify({ id: "disb-9", status: "FAILED", failure_code: "INSUFFICIENT_BALANCE" })),
+    );
+  }, "https://x.test");
+  assertEquals(await ok.status("disb-9"), { providerRef: "disb-9", status: "failed", error: "INSUFFICIENT_BALANCE" });
+  assertEquals([calls[0].url, calls[0].init.method], ["https://x.test/v2/payouts/disb-9", "GET"]);
+  const down = new XenditProvider("sk", () => Promise.resolve(new Response("{}", { status: 500 })), "https://x.test");
+  assertEquals((await assertRejects(() => down.status("disb-9"), HttpError)).code, "provider_unavailable");
 });
