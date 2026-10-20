@@ -743,6 +743,9 @@ export type Database = {
 "manage_org":
 { Args: { "p_action": string,"p_org": string,"p_params"?: Json }; Returns: undefined
                            },
+"manage_team":
+{ Args: { "p_action": string,"p_org": string,"p_role"?: string,"p_target": string }; Returns: undefined
+                           },
 "manage_user":
 { Args: { "p_action": string,"p_params"?: Json,"p_user": string }; Returns: undefined
                            },

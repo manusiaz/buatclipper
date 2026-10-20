@@ -620,7 +620,7 @@
     "copied": "Tersalin",
     "done": "Selesai",
     "cancel": "Batal",
-    "ownerOnly": "Hanya pemilik organisasi yang bisa mengundang anggota.",
+    "ownerOnly": "Hanya pemilik organisasi yang bisa mengundang dan mengelola anggota.",
     "viaAgency": "Kamu mengakses org ini lewat agency. Anggota dikelola pemilik org klien.",
     "members": "Anggota ({count})",
     "colMember": "Anggota",
@@ -636,7 +636,21 @@
     },
     "acceptedBy": "Diterima {name} · {date}",
     "expires": "Berlaku sampai {date}",
-    "manageNote": "Mengubah role atau mengeluarkan anggota dilakukan lewat tim Clipper."
+    "manageNote": "Org selalu punya minimal satu Pemilik. Anggota yang dikeluarkan langsung kehilangan akses.",
+    "colActions": "Aksi",
+    "roleFor": "Role {name}",
+    "remove": "Keluarkan {name}",
+    "removeTitle": "Keluarkan {name}?",
+    "removeBody": "Aksesnya ke organisasi ini langsung hilang. Bisa diundang lagi lewat link baru.",
+    "removeConfirm": "Keluarkan",
+    "revoke": "Cabut link",
+    "revokeTitle": "Cabut link undangan?",
+    "revokeBody": "Link ini tidak bisa dipakai lagi.",
+    "updated": {
+      "set_role": "Role diperbarui",
+      "remove": "Anggota dikeluarkan",
+      "revoke_invite": "Link undangan dicabut"
+    }
   },
   "settings": {
     "title": "Pengaturan",

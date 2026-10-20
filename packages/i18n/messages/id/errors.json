@@ -2,7 +2,7 @@
   "generic": "Terjadi kesalahan. Coba lagi.",
   "network": "Koneksi bermasalah. Periksa internet lalu coba lagi.",
   "auth": { "no_session": "Sesi kamu habis. Masuk lagi.", "forbidden": "Kamu tidak punya akses untuk aksi ini.", "kyc_required": "Lengkapi verifikasi identitas (KYC) dulu.", "mfa_required": "Aksi uang ini butuh verifikasi dua langkah (MFA). Aktifkan atau masuk ulang." },
-  "not_found": { "campaign": "Campaign tidak ditemukan.", "submission": "Submisi tidak ditemukan.", "org": "Organisasi tidak ditemukan.", "reward_type": "Reward type tidak ditemukan.", "invite": "Undangan tidak ditemukan.", "profile": "Profil tidak ditemukan.", "payout": "Penarikan tidak ditemukan.", "invoice": "Invoice tidak ditemukan." },
+  "not_found": { "campaign": "Campaign tidak ditemukan.", "submission": "Submisi tidak ditemukan.", "org": "Organisasi tidak ditemukan.", "reward_type": "Reward type tidak ditemukan.", "invite": "Undangan tidak ditemukan.", "profile": "Profil tidak ditemukan.", "payout": "Penarikan tidak ditemukan.", "invoice": "Invoice tidak ditemukan.", "member": "Anggota tidak ditemukan." },
   "not_eligible": {
     "campaign_not_live": "Campaign belum atau sedang tidak tayang.",
     "profile_missing": "Lengkapi profil dulu.",
@@ -86,5 +86,6 @@
   "delivery_in_flight": "Reward sedang dikirim. Tunggu hasilnya (maks 5 menit) sebelum membatalkan.",
   "delivery_unconfirmed": "Sudah ada percobaan kirim atau export. Pastikan ke penyedia bahwa reward tidak terkirim, lalu centang konfirmasi.",
   "export_stale": "Data berubah sejak export dimulai. Export ulang.",
-  "file_missing": "Berkas export tidak ditemukan. Export ulang."
+  "file_missing": "Berkas export tidak ditemukan. Export ulang.",
+  "last_owner": "Organisasi harus punya minimal satu Pemilik. Jadikan anggota lain Pemilik dulu."
 }

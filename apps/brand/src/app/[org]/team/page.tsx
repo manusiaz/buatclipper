@@ -2,7 +2,8 @@ import type { Metadata } from 'next';
 import { getLocale, getTranslations } from 'next-intl/server';
 import { Alert, Avatar, Badge, Card, CardContent, CardHeader, CardTitle, EmptyState, PageHeader, Table, TBody, TD, TH, THead, TR, formatDate } from '@clipper/ui';
 import { InviteDialog } from '@/features/org/invite-dialog';
-import { getOrgContext } from '@/lib/org';
+import { MemberActions, RevokeInvite } from '@/features/org/team-actions';
+import { getOrgContext, type OrgRole } from '@/lib/org';
 
 export async function generateMetadata(): Promise<Metadata> {
   return { title: (await getTranslations('brand.nav'))('team') };
@@ -37,6 +38,7 @@ export default async function TeamPage({ params }: { params: Promise<{ org: stri
               <TH>{t('team.colMember')}</TH>
               <TH>{t('team.colRole')}</TH>
               <TH>{t('team.colSince')}</TH>
+              {owner ? <TH><span className="sr-only">{t('team.colActions')}</span></TH> : null}
             </TR>
           </THead>
           <TBody>
@@ -59,6 +61,13 @@ export default async function TeamPage({ params }: { params: Promise<{ org: stri
                   </TD>
                   <TD><Badge tone={m.role === 'brand_owner' ? 'primary' : 'neutral'}>{t(`roles.${m.role ?? 'brand_viewer'}`)}</Badge></TD>
                   <TD muted>{m.created_at ? formatDate(m.created_at, loc) : '—'}</TD>
+                  {owner ? (
+                    <TD>
+                      {m.user_id && m.user_id !== claims.sub ? (
+                        <MemberActions orgId={orgId} userId={m.user_id} role={(m.role ?? 'brand_viewer') as OrgRole} name={name} />
+                      ) : null}
+                    </TD>
+                  ) : null}
                 </TR>
               );
             })}
@@ -85,6 +94,11 @@ export default async function TeamPage({ params }: { params: Promise<{ org: stri
                             ? t('team.acceptedBy', { name: by?.username ? `@${by.username}` : '—', date: formatDate(i.accepted_at!, loc) })
                             : t('team.expires', { date: i.expires_at ? formatDate(i.expires_at, loc) : '—' })}
                         </span>
+                        {state === 'pending' && i.id ? (
+                          <span className="ml-auto">
+                            <RevokeInvite orgId={orgId} inviteId={i.id} />
+                          </span>
+                        ) : null}
                       </li>
                     );
                   })}
@@ -93,7 +107,7 @@ export default async function TeamPage({ params }: { params: Promise<{ org: stri
             </CardContent>
           </Card>
         ) : null}
-        <p className="text-caption text-muted">{t('team.manageNote')}</p>
+        {owner ? <p className="text-caption text-muted">{t('team.manageNote')}</p> : null}
       </div>
     </>
   );

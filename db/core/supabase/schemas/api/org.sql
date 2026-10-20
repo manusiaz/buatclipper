@@ -174,6 +174,53 @@ begin
   return tok;
 end $$;
 
+-- B2 (policy:core.org-role "owner kelola member"): brand_owner langsung mengubah role, mengeluarkan anggota, atau mencabut
+-- undangan yang belum dipakai. Org dikunci supaya dua owner tidak saling menurunkan bersamaan (≥ 1 brand_owner).
+create function api.manage_team(p_org uuid, p_action text, p_target uuid, p_role text default null) returns void
+language plpgsql security definer set search_path = '' as $$
+declare
+  uid uuid := market.session_uid();
+  m market.org_members;
+  r market.org_role;
+begin
+  if not market.is_direct_member(p_org, uid, 'brand_owner') then
+    perform market.fail('auth:forbidden', 'hanya brand_owner org ini', '42501');
+  end if;
+  perform 1 from market.organizations where id = p_org for update;
+  if p_action = 'revoke_invite' then
+    delete from market.org_invites where id = p_target and org_id = p_org and accepted_at is null;
+    if not found then
+      perform market.fail('not_found:invite', null, 'P0002');
+    end if;
+  elsif p_action in ('set_role', 'remove') then
+    select * into m from market.org_members where org_id = p_org and user_id = p_target;
+    if m.user_id is null then
+      perform market.fail('not_found:member', null, 'P0002');
+    end if;
+    if p_action = 'set_role' then
+      r := p_role::market.org_role;
+      if r is null then
+        perform market.fail('invalid:role', 'role wajib');
+      end if;
+    end if;
+    if m.role = 'brand_owner' and r is distinct from 'brand_owner'
+       and not exists (select 1 from market.org_members o where o.org_id = p_org and o.role = 'brand_owner' and o.user_id <> m.user_id) then
+      perform market.fail('last_owner', 'org harus punya minimal satu brand_owner');
+    end if;
+    if p_action = 'remove' then
+      delete from market.org_members where org_id = p_org and user_id = m.user_id;
+    else
+      update market.org_members set role = r where org_id = p_org and user_id = m.user_id;
+    end if;
+  else
+    perform market.fail('invalid:action', coalesce(p_action, 'null'));
+  end if;
+  insert into ops.audit_logs (actor_id, action, target, before, after)
+  values (uid, 'org.team.' || p_action, 'org:' || p_org,
+          case when m.user_id is not null then jsonb_build_object('user_id', m.user_id, 'role', m.role) else jsonb_build_object('invite_id', p_target) end,
+          case when p_action = 'set_role' then jsonb_build_object('role', r) end);
+end $$;
+
 -- B2.2: terima undangan → profil dibuat dulu kalau belum ada → E-03. Sudah anggota → kembalikan org tanpa memakai token.
 create function api.accept_org_invite(p_token text) returns uuid
 language plpgsql security definer set search_path = '' as $$
@@ -460,7 +507,9 @@ revoke execute on function market.ensure_member_profile(uuid, text, text),
   market.decide_org(uuid, text, uuid, text, text, text) from public;
 revoke execute on function api.create_org(text, text, text, text, text, boolean), api.link_agency(uuid, uuid, text),
   api.create_org_invite(uuid, text), api.accept_org_invite(text), api.manage_org(uuid, text, jsonb),
-  api.save_reward_type(jsonb), api.upload_reward_codes(uuid, text[]), api.update_org(uuid, text, text, text, text) from public;
+  api.save_reward_type(jsonb), api.upload_reward_codes(uuid, text[]), api.update_org(uuid, text, text, text, text),
+  api.manage_team(uuid, text, uuid, text) from public;
 grant execute on function api.create_org(text, text, text, text, text, boolean), api.link_agency(uuid, uuid, text),
   api.create_org_invite(uuid, text), api.accept_org_invite(text), api.manage_org(uuid, text, jsonb),
-  api.save_reward_type(jsonb), api.upload_reward_codes(uuid, text[]), api.update_org(uuid, text, text, text, text) to authenticated;
+  api.save_reward_type(jsonb), api.upload_reward_codes(uuid, text[]), api.update_org(uuid, text, text, text, text),
+  api.manage_team(uuid, text, uuid, text) to authenticated;

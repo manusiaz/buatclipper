@@ -14,7 +14,8 @@
     "invite": "Invite not found.",
     "profile": "Profile not found.",
     "payout": "Withdrawal not found.",
-    "invoice": "Invoice not found."
+    "invoice": "Invoice not found.",
+    "member": "Member not found."
   },
   "not_eligible": {
     "campaign_not_live": "This campaign isn't live.",
@@ -101,5 +102,6 @@
   "delivery_in_flight": "This reward is being delivered. Wait for the result (up to 5 minutes) before cancelling.",
   "delivery_unconfirmed": "A delivery attempt or export already happened. Confirm with the provider that the reward was not delivered, then tick the confirmation.",
   "export_stale": "The data changed since the export started. Export again.",
-  "file_missing": "Export file not found. Export again."
+  "file_missing": "Export file not found. Export again.",
+  "last_owner": "The organization needs at least one Owner. Make another member an Owner first."
 }

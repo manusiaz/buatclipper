@@ -69,3 +69,13 @@ export async function updateOrg(orgId: string, input: { name: string; legal_name
   revalidatePath('/');
   return { ok: true };
 }
+
+/** B2 owner kelola anggota: ubah role, keluarkan, cabut undangan (≥ 1 brand_owner dijaga di DB). */
+export async function manageTeam(orgId: string, action: 'set_role' | 'remove' | 'revoke_invite', target: string, role?: OrgRole): Promise<Result> {
+  const { core } = await getOrgContext(orgId);
+  if (!isUuid(target)) return { ok: false, error: 'not_found:member' };
+  const { error } = await core.rpc('manage_team', { p_org: orgId, p_action: action, p_target: target, p_role: role });
+  if (error) return fail(error);
+  revalidatePath(`/${orgId}/team`);
+  return { ok: true };
+}

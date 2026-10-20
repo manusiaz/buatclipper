@@ -620,7 +620,7 @@
     "copied": "Copied",
     "done": "Done",
     "cancel": "Cancel",
-    "ownerOnly": "Only the organization owner can invite members.",
+    "ownerOnly": "Only the organization owner can invite and manage members.",
     "viaAgency": "You access this org through an agency. Members are managed by the client org’s owner.",
     "members": "Members ({count})",
     "colMember": "Member",
@@ -636,7 +636,21 @@
     },
     "acceptedBy": "Accepted by {name} · {date}",
     "expires": "Valid until {date}",
-    "manageNote": "Changing roles or removing members is done through the Clipper team."
+    "manageNote": "An organization always keeps at least one Owner. Removed members lose access immediately.",
+    "colActions": "Actions",
+    "roleFor": "Role for {name}",
+    "remove": "Remove {name}",
+    "removeTitle": "Remove {name}?",
+    "removeBody": "They lose access to this organization right away. You can invite them again with a new link.",
+    "removeConfirm": "Remove",
+    "revoke": "Revoke link",
+    "revokeTitle": "Revoke invite link?",
+    "revokeBody": "This link can no longer be used.",
+    "updated": {
+      "set_role": "Role updated",
+      "remove": "Member removed",
+      "revoke_invite": "Invite link revoked"
+    }
   },
   "settings": {
     "title": "Settings",
