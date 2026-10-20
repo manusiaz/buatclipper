@@ -1313,6 +1313,7 @@ reset role;
 select is((select status || ':' || (token_ref is null)::text from tracking.social_accounts where id = '99999999-0000-0000-0000-00000000000d'),
           'revoked:true', 'reset: status revoked, token_ref dilepas');
 -- Regresi review R34-1: refresh token yang sedang jalan saat reset tidak menghidupkan akun lagi.
+select api.worker_account_status('99999999-0000-0000-0000-00000000000d', 'expired');  -- polling lama dapat 401 (R35-1)
 select api.store_social_token('99999999-0000-0000-0000-00000000000d', '{"access_token":"refresh-telat"}');
 select api.worker_account_status('99999999-0000-0000-0000-00000000000d', 'verified');
 select is((select status || ':' || (token_ref is null)::text from tracking.social_accounts where id = '99999999-0000-0000-0000-00000000000d'),

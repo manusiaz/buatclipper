@@ -308,8 +308,9 @@ begin
   if not found then
     raise exception 'not_found:social_account' using errcode = 'P0002';
   end if;
-  -- revoked hanya pulih lewat sambung ulang pemilik (worker_upsert_social_account), bukan refresh yang sedang jalan (R34-1)
-  if a.status = 'disconnected' or (new_status = 'verified' and a.status = 'revoked') then
+  -- revoked lengket: hanya pulih lewat sambung ulang pemilik (worker_upsert_social_account), bukan hasil refresh/polling yang
+  -- sedang jalan — termasuk 'expired' yang akan membuka jalan refresh menulis token lagi (R34-1, R35-1)
+  if a.status in ('disconnected', 'revoked') then
     return;
   end if;
   if new_status = 'verified' then
