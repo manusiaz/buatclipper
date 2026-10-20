@@ -91,6 +91,7 @@ function setup(
     worker_account_status: () => null,
     worker_ack: () => true,
     worker_retry_later: () => null,
+    worker_defer: () => null,
     store_social_token: () => "secret-id",
   });
 }
@@ -146,6 +147,10 @@ Deno.test("track-worker: dequeue → snapshot/gone → ack; Retryable tidak di-a
   // §11 backoff: Retry-After penyedia (120 dtk) dipakai untuk pesan yang gagal
   assert.deepEqual(f.calls.filter((c) => c.fn === "worker_retry_later").map((c) => c.args), [
     { p_queue: "tracking", p_msg_id: 3, p_seconds: 120 },
+  ]);
+  // R16: next_poll_at ikut digeser (penundaan + lease 1 jam) → penjadwal tidak membuat pesan duplikat
+  assert.deepEqual(f.calls.filter((c) => c.fn === "worker_defer").map((c) => c.args), [
+    { p_submission: "s3", p_until: new Date(NOW + (120 + 3600) * 1000).toISOString() },
   ]);
   assert.deepEqual(f.calls[0].args, { p_queue: "tracking", p_qty: 20, p_vt_seconds: 300 });
 });

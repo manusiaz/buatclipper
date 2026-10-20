@@ -1320,6 +1320,14 @@ insert into t_ids select 'sf3', pg_temp.mk_sub('55555555-0000-0000-0000-00000000
 select api.worker_record_snapshot((select v::uuid from t_ids where k = 'sf3'), 150000, 20000, 900, 300, '#x', '{}', '{}');
 select ok(exists (select 1 from trust.fraud_flags where signal = 'FR-03' and target_id = (select v::uuid from t_ids where k = 'sf3')),
           'regresi G-6: akun lama follower 20 dengan 150rb views → FR-03');
+-- R16: follower tidak diketahui (YouTube hidden subscriber / Threads tanpa insight) bukan "follower sedikit"
+insert into market.profiles (id, username, display_name) values ('11111111-0000-0000-0000-0000000000f6', 'tersembunyi_f6', 'Tersembunyi');
+insert into tracking.social_accounts (user_id, platform, external_id, handle, followers, platform_created_at)
+values ('11111111-0000-0000-0000-0000000000f6', 'tiktok', 'tt-f6', '@tersembunyi', null, now() - interval '400 days');
+insert into t_ids select 'sf6', pg_temp.mk_sub('55555555-0000-0000-0000-0000000000f3', '11111111-0000-0000-0000-0000000000f6', 'vf6');
+select api.worker_record_snapshot((select v::uuid from t_ids where k = 'sf6'), 150000, 20000, 900, 300, '#x', '{}', '{}');
+select ok(not exists (select 1 from trust.fraud_flags where signal = 'FR-03' and target_id = (select v::uuid from t_ids where k = 'sf6')),
+          'regresi R16: follower null tidak memicu FR-03');
 
 -- Regresi G-7: teman satu perangkat dengan pengundang (FR-05) → bonus referral batal selama flag belum di-dismiss.
 insert into market.profiles (id, username, display_name) values
@@ -1347,7 +1355,13 @@ select is((select status::text from market.profiles where id = '11111111-0000-00
 set local role authenticated;
 select pg_temp.jwt('33333333-0000-0000-0000-0000000000e1', '{"app_roles":["admin_moderator"],"aal":"aal2"}');
 select api.manage_user('11111111-0000-0000-0000-0000000000f4', 'unban', '{"note":"salah orang"}');
-select api.manage_user('11111111-0000-0000-0000-0000000000f4', 'suspend', '{"days":30,"reason":"ban 30 hari"}');
+select api.manage_user('11111111-0000-0000-0000-0000000000f4', 'suspend',
+                       jsonb_build_object('until', now() + interval '1 hour', 'reason', 'ban login 1 jam'));
+reset role;
+select is((select suspended_until from market.profiles where id = '11111111-0000-0000-0000-0000000000f4'), now() + interval '1 hour',
+          'regresi R16: suspend core berakhir persis saat ban login berakhir');
+set local role authenticated;
+select pg_temp.jwt('33333333-0000-0000-0000-0000000000e1', '{"app_roles":["admin_moderator"],"aal":"aal2"}');
 select api.manage_user('11111111-0000-0000-0000-0000000000f4', 'unban', '{"note":"banding diterima"}');
 reset role;
 select is((select status::text || ':' || coalesce(suspended_until::text, 'null') from market.profiles where id = '11111111-0000-0000-0000-0000000000f4'),

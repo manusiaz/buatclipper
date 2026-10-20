@@ -54,20 +54,19 @@ export async function kycNotify(userId: string, decision: 'approve' | 'reject', 
 /** F-A07 ban_duration lewat identity admin-auth (refresh token ditolak). Status E-01 core tidak ikut berubah. */
 /**
  * F-A07: ban login (identity ban_duration) + status profil core (E-01) supaya JWT yang masih berlaku tidak bisa claim/submit.
- * Ban berdurasi ≤ 365 hari = suspend core dengan durasi sama (habis sendiri); lebih lama/permanen = banned (dicabut lewat Unban).
+ * Ban berdurasi = suspend core sampai banned_until yang sama persis (habis bersamaan); permanen = banned (dicabut lewat Unban).
  */
 export async function banUser(userId: string, fd: FormData): Promise<ActionResult> {
   await requireAdmin('admin_moderator');
   const choice = text(fd, 'duration');
-  const hours = choice === 'custom' ? Number(text(fd, 'hours')) | 0 : choice === 'permanent' ? Infinity : parseInt(choice, 10);
-  const duration = choice === 'custom' ? `${hours}h` : choice;
-  const r = await invokeFunction('identity', 'admin-auth', { action: 'ban_user', user_id: userId, duration }, 'admin');
+  const duration = choice === 'custom' ? `${Number(text(fd, 'hours')) | 0}h` : choice;
+  const r = await invokeFunction<{ banned_until: string | null }>('identity', 'admin-auth', { action: 'ban_user', user_id: userId, duration }, 'admin');
   if (!r.ok) return settleFn(r, '/users');
   const reason = text(fd, 'reason');
-  const days = Math.ceil(hours / 24);
+  const until = choice === 'permanent' ? null : r.data.banned_until;
   const db = await coreServer('admin');
-  const { error } = await db.rpc('manage_user', days <= 365
-    ? { p_user: userId, p_action: 'suspend', p_params: { days, reason } }
+  const { error } = await db.rpc('manage_user', until
+    ? { p_user: userId, p_action: 'suspend', p_params: { until, reason } }
     : { p_user: userId, p_action: 'ban', p_params: { reason } });
   return settle(error, '/users');
 }

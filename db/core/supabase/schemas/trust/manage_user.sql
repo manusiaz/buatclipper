@@ -10,6 +10,7 @@ declare
   pr market.profiles;
   delta int;
   days int;
+  until_at timestamptz;
 begin
   if not ops.has_admin('admin_ops', 'admin_moderator') then
     perform market.fail('auth:forbidden', 'butuh admin_ops/admin_moderator aal2', '42501');
@@ -31,17 +32,26 @@ begin
                                                                            where e.user_id = pr.id)))
      where id = pr.id;
   elsif p_action = 'suspend' then
-    days := market.jnum(prm -> 'days')::int;
-    if days is null or days not between 1 and 365 then
-      perform market.fail('invalid:days', 'suspend 1–365 hari');
+    -- {until}: sampai waktu persis (ban login berdurasi dari admin-auth); {days}: 1–365 hari.
+    if prm ? 'until' then
+      until_at := (prm ->> 'until')::timestamptz;
+      if until_at is null or until_at <= now() then
+        perform market.fail('invalid:until', 'until harus di masa depan');
+      end if;
+    else
+      days := market.jnum(prm -> 'days')::int;
+      if days is null or days not between 1 and 365 then
+        perform market.fail('invalid:days', 'suspend 1–365 hari');
+      end if;
+      until_at := now() + make_interval(days => days);
     end if;
     if pr.status not in ('active', 'suspended') then
       perform market.fail('invalid_state:' || pr.status);
     end if;
-    update market.profiles set status = 'suspended', suspended_until = now() + make_interval(days => days) where id = pr.id;
+    update market.profiles set status = 'suspended', suspended_until = until_at where id = pr.id;
     update market.claims set status = 'released' where user_id = pr.id and status = 'open';
     perform ops.enqueue_notification(pr.id, 'account.suspended',
-                                     jsonb_build_object('until', now() + make_interval(days => days), 'reason', prm ->> 'reason'));
+                                     jsonb_build_object('until', until_at, 'reason', prm ->> 'reason'));
   elsif p_action = 'unsuspend' then
     if pr.status <> 'suspended' then
       perform market.fail('invalid_state:' || pr.status);

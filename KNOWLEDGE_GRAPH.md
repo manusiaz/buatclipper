@@ -468,13 +468,13 @@ Arah: `A --tipe--> B` = A bergantung pada B. `?` = belum terverifikasi.
 | `page:admin/review` | calls | `api:rpc core.record_review` | apps/admin/src/features/moderation/actions.ts:29 |
 | `page:admin/review` | reads | `table:tracking.submissions` | PRD v0.3.1 §14 kg.yaml features.F-A05; kode baris 25 |
 | `page:admin/review` | wrapped-by | `layout:admin` | apps/admin/src/app/layout.tsx:20 |
-| `page:admin/users` | calls | `api:fn identity/admin-auth` | apps/admin/src/features/users/actions.ts:127 |
-| `page:admin/users` | calls | `api:rpc core.manage_org` | apps/admin/src/features/users/actions.ts:89 |
+| `page:admin/users` | calls | `api:fn identity/admin-auth` | apps/admin/src/features/users/actions.ts:126 |
+| `page:admin/users` | calls | `api:rpc core.manage_org` | apps/admin/src/features/users/actions.ts:88 |
 | `page:admin/users` | calls | `api:rpc core.record_review` | apps/admin/src/features/users/actions.ts:19 |
 | `page:admin/users` | calls | `api:rpc identity.admin_kyc_decision` | apps/admin/src/features/users/actions.ts:37 |
 | `page:admin/users` | calls | `api:rpc identity.admin_read` | apps/admin/src/features/users/user-detail.tsx:35 |
-| `page:admin/users` | calls | `api:rpc identity.admin_set_role` | apps/admin/src/features/users/actions.ts:140 |
-| `page:admin/users` | calls | `api:rpc core.manage_user` | apps/admin/src/features/users/actions.ts:171 |
+| `page:admin/users` | calls | `api:rpc identity.admin_set_role` | apps/admin/src/features/users/actions.ts:139 |
+| `page:admin/users` | calls | `api:rpc core.manage_user` | apps/admin/src/features/users/actions.ts:170 |
 | `page:admin/users` | calls | `api:rpc identity.admin_kyc_queue` | kode: (console)/users/page.tsx baris 138 (path ber-kurung) |
 | `page:admin/users` | calls | `api:rpc identity.admin_list_roles` | kode: (console)/users/page.tsx baris 265 (path ber-kurung) |
 | `page:admin/users` | reads | `api:view core.admin_profiles` | apps/admin/src/features/users/user-detail.tsx:20 |
@@ -807,7 +807,7 @@ Arah: `A --tipe--> B` = A bergantung pada B. `?` = belum terverifikasi.
 | `api:fn core/track-worker` | guarded-by | `policy:fn-cron-key` | db/core/supabase/functions/track-worker/index.ts:12 |
 | `api:fn core/track-worker` | reads | `table:tracking.submissions` | db/core/supabase/schemas/api/worker.sql:57 (rpc worker_submission_context) |
 | `api:fn core/track-worker` | reads | `table:vault.social-tokens` | db/core/supabase/schemas/api/worker.sql:63 (rpc worker_submission_context) |
-| `api:fn core/track-worker` | subscribes | `event:queue.tracking` | db/core/supabase/functions/track-worker/worker.ts:131 |
+| `api:fn core/track-worker` | subscribes | `event:queue.tracking` | db/core/supabase/functions/track-worker/worker.ts:133 |
 | `api:fn core/track-worker` | writes | `table:tracking.view_snapshots` | db/core/supabase/schemas/api/worker.sql:154 (rpc worker_record_snapshot) |
 | `api:fn core/track-worker` | writes | `table:trust.fraud_flags` | db/core/supabase/schemas/api/worker.sql:164 (rpc worker_record_snapshot → trust.raise_flag) |
 | `api:fn identity/admin-auth` | guarded-by | `policy:identity.admin-aal2` | db/identity/supabase/functions/admin-auth/handler.ts:33 |
@@ -918,12 +918,12 @@ Arah: `A --tipe--> B` = A bergantung pada B. `?` = belum terverifikasi.
 | `api:rpc core.manage_org` | writes | `table:market.organizations` | db/core/supabase/schemas/api/org.sql:244 |
 | `api:rpc core.manage_org` | writes | `table:market.profiles` | db/core/supabase/schemas/api/org.sql:20 (add_member → market.ensure_member_profile) |
 | `api:rpc core.manage_org` | writes | `table:ops.audit_logs` | db/core/supabase/schemas/api/org.sql:246 |
-| `api:rpc core.manage_user` | calls | `fn:enqueue_notification` | db/core/supabase/schemas/trust/manage_user.sql:43 |
-| `api:rpc core.manage_user` | guarded-by | `policy:core.admin-aal2` | db/core/supabase/schemas/trust/manage_user.sql:14 |
-| `api:rpc core.manage_user` | writes | `table:market.claims` | db/core/supabase/schemas/trust/manage_user.sql:42 |
+| `api:rpc core.manage_user` | calls | `fn:enqueue_notification` | db/core/supabase/schemas/trust/manage_user.sql:53 |
+| `api:rpc core.manage_user` | guarded-by | `policy:core.admin-aal2` | db/core/supabase/schemas/trust/manage_user.sql:15 |
+| `api:rpc core.manage_user` | writes | `table:market.claims` | db/core/supabase/schemas/trust/manage_user.sql:52 |
 | `api:rpc core.manage_user` | writes | `table:market.profiles` | db/core/supabase/schemas/trust/manage_user.sql:41 |
-| `api:rpc core.manage_user` | writes | `table:ops.audit_logs` | db/core/supabase/schemas/trust/manage_user.sql:64 |
-| `api:rpc core.manage_user` | writes | `table:trust.score_events` | db/core/supabase/schemas/trust/manage_user.sql:29 |
+| `api:rpc core.manage_user` | writes | `table:ops.audit_logs` | db/core/supabase/schemas/trust/manage_user.sql:74 |
+| `api:rpc core.manage_user` | writes | `table:trust.score_events` | db/core/supabase/schemas/trust/manage_user.sql:30 |
 | `api:rpc core.mark_batch_paid` | calls | `fn:enqueue_notification` | db/core/supabase/schemas/finance/payout_flow.sql:207 |
 | `api:rpc core.mark_batch_paid` | guarded-by | `policy:core.admin-aal2` | db/core/supabase/schemas/finance/payout_flow.sql:186 |
 | `api:rpc core.mark_batch_paid` | writes | `table:finance.ledger_entries` | db/core/supabase/schemas/finance/payout_flow.sql:211 (gagal → finance.return_payout → jurnal balik) |
@@ -2159,6 +2159,8 @@ Masalah sistem yang ditemukan saat menyusun PRD v0.2 dan saat dicek ulang (v0.2.
 | 2026-10-20 | `job:referral-bonus` | Audit PRD (G-7, C5.3): teman satu NIK/rekening/perangkat dengan pengundang tetap dibayar bonus | diperbaiki: bonus dilewati selama ada flag FR-04/FR-05 (belum dismissed) yang menghubungkan keduanya |
 | 2026-10-20 | `fn:enqueue_notification` | Audit PRD (G-13, A6.1/C2.5): kanal broadcast diabaikan (selalu email + push + in-app); mematikan email promosi ikut mematikan push | diperbaiki: payload.channels menentukan in_app/email/push (kolom ops.notifications.in_app, view menyaring); preferensi email promosi hanya untuk email; worker notify menghormati flag pesan |
 | 2026-10-20 | `page:admin/users` | Audit PRD (G-14, F-A07): ban dari manajemen user hanya ban login → JWT yang masih berlaku tetap bisa claim/submit, status core salah | diperbaiki: banUser juga manage_user core (≤ 365 hari = suspend durasi sama, lebih = ban); unban mencabut ban & suspend; dialog ban wajib alasan |
+| 2026-10-20 | `api:fn core/track-worker` | Review Claudex R16: backoff tertunda tapi penjadwal (lease next_poll_at 1 jam) membuat pesan baru yang memanggil API lebih awal; follower null (YouTube hidden / Threads) dianggap "sedikit" → FR-03 palsu menahan earning | diperbaiki: retry juga worker_defer next_poll_at (penundaan + 1 jam); FR-03 cabang follower hanya bila follower diketahui |
+| 2026-10-20 | `page:admin/users` | Review Claudex R16: ban login berdurasi dibulatkan ke hari & > 365 hari jadi ban core permanen | diperbaiki: suspend core sampai banned_until identity persis (manage_user suspend {until}); permanen → ban |
 ## Keputusan
 
 Keputusan yang sudah diambil — jangan dibahas ulang tanpa alasan baru.

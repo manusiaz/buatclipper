@@ -116,14 +116,16 @@ export async function runTrackWorker(deps: TrackDeps): Promise<TrackSummary> {
   };
   let flags: Record<string, boolean> | null = null;
   const readCt = new Map<number, number>();
-  const retryLater = async (ids: number[], retryAfterSec?: number) => {
+  // Pesan ditunda (vt) + next_poll_at digeser melewati penundaan + lease penjadwal (1 jam), supaya
+  // enqueue_due_submissions tidak membuat pesan baru yang memanggil API sebelum waktunya.
+  const retryLater = async (subId: string, ids: number[], retryAfterSec?: number) => {
+    let delay = 0;
     for (const id of ids) {
-      await rpc("worker_retry_later", {
-        p_queue: "tracking",
-        p_msg_id: id,
-        p_seconds: backoffSec(readCt.get(id) ?? 1, retryAfterSec),
-      });
+      const sec = backoffSec(readCt.get(id) ?? 1, retryAfterSec);
+      delay = Math.max(delay, sec);
+      await rpc("worker_retry_later", { p_queue: "tracking", p_msg_id: id, p_seconds: sec });
     }
+    await rpc("worker_defer", { p_submission: subId, p_until: new Date(now() + (delay + 3600) * 1000).toISOString() });
   };
 
   while (now() < deadline - 5_000) {
@@ -231,7 +233,7 @@ export async function runTrackWorker(deps: TrackDeps): Promise<TrackSummary> {
     }
     if (e instanceof Retryable) {
       s.retried += items.length;
-      await retryLater(items.flatMap((it) => it.msgIds), e.retryAfterSec);
+      for (const it of items) await retryLater(it.ctx.submission.id, it.msgIds, e.retryAfterSec);
       return false;
     }
     console.error("track batch failed", accountId, e instanceof Error ? e.message : e);
@@ -261,7 +263,7 @@ export async function runTrackWorker(deps: TrackDeps): Promise<TrackSummary> {
         s.gone++;
       } else if ("retry" in r) {
         s.retried++;
-        await retryLater(it.msgIds);
+        await retryLater(subId, it.msgIds);
         return;
       } else {
         console.error("track post failed", subId, r.reason);

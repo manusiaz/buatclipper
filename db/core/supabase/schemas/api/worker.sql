@@ -182,7 +182,7 @@ begin
     hold := true;
   end if;
   if (a.platform_created_at > now() - make_interval(days => (ops.cfg('trust.fraud.new_account_days', '14'))::int)
-      or coalesce(a.followers, 0) < (ops.cfg('trust.fraud.low_followers', '100'))::int)
+      or a.followers < (ops.cfg('trust.fraud.low_followers', '100'))::int)  -- follower tak diketahui (null) bukan "sedikit"
      and p_views >= (ops.cfg('trust.fraud.new_account_views', '100000'))::bigint then
     raised := trust.raise_flag('submission', s.id, 'FR-03', 60,
                                jsonb_build_object('views', p_views, 'account_created_at', a.platform_created_at,
