@@ -55,6 +55,13 @@ begin
                    and p.id not in (select h.payout_id from jsonb_to_recordset(coalesce(p_held, '[]')) h(payout_id uuid))) then
     raise exception 'export_stale' using errcode = 'P0001', detail = 'isi batch berubah sejak dibaca; ekspor ulang';
   end if;
+  -- R21-1: sanksi (ban/suspend/flag) di antara get_batch dan sekarang → CSV basi ditolak; ekspor ulang menahan payout itu.
+  -- Profil dikunci FOR SHARE supaya ban/suspend yang bersamaan menunggu sampai CSV ini diterima atau ditolak.
+  perform 1 from market.profiles pr where pr.id in (select p.user_id from finance.payouts p where p.id = any (coalesce(p_exported, '{}')))
+   order by pr.id for share;
+  if exists (select 1 from finance.payouts p where p.id = any (coalesce(p_exported, '{}')) and finance.payout_block(p.user_id, p.id) is not null) then
+    raise exception 'export_stale' using errcode = 'P0001', detail = 'clipper di CSV kena sanksi atau flag sejak dibaca; ekspor ulang';
+  end if;
   for x in select * from jsonb_to_recordset(coalesce(p_held, '[]')) h(payout_id uuid, reason text) loop
     update finance.payouts set status = 'on_hold', hold_reason = coalesce(nullif(btrim(x.reason), ''), 'export_check_failed')
      where id = x.payout_id and batch_id = b.id and status = 'requested';

@@ -1614,6 +1614,9 @@ update market.profiles set status = 'suspended', suspended_until = now() + inter
 select is((select x ->> 'blocked' from jsonb_array_elements(api.bridge_get_batch((select id from t_pay where k = 'ph_batch')) -> 'payouts') x
             where x ->> 'id' = (select id::text from t_pay where k = 'ph1')), 'profile_suspended',
           'regresi AA-1: batch disetujui → export menandai payout clipper yang disuspend (identity menahannya)');
+select throws_ok($$ select api.bridge_attach_export((select id from t_pay where k = 'ph_batch'), 'payout-exports/ph.csv', '[]',
+                    (select array_agg(p.id) from finance.payouts p where p.batch_id = (select id from t_pay where k = 'ph_batch') and p.status = 'requested')) $$,
+                 'P0001', 'export_stale', 'regresi R21-1: sanksi di antara get_batch dan attach_export → CSV basi ditolak');
 update market.profiles set status = 'active', suspended_until = null where id = '11111111-0000-0000-0000-000000000f10';
 set local role authenticated;
 select pg_temp.jwt('33333333-0000-0000-0000-0000000000e1', '{"app_roles":["admin_moderator"],"aal":"aal2"}');
