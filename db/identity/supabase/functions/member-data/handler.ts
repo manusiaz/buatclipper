@@ -2,6 +2,7 @@
 // C6.1, C2.4). Caller: end user with an identity JWT (browser on accounts.{domain} / app.{domain}).
 // Request bodies are never logged (§15.9).
 import type { Claims } from "../_shared/auth.ts";
+import type { CoreBridge } from "../_shared/bridge.ts";
 import { type PiiCrypto, toPgBytea } from "../_shared/crypto.ts";
 import { DbError, type Rpc, type Storage } from "../_shared/db.ts";
 import { action, HttpError, obj, okResponse, readJson, str, uuid, wrap } from "../_shared/http.ts";
@@ -11,6 +12,7 @@ import { type KycRow, normalizeName } from "../_shared/payouts.ts";
 export interface MemberDataDeps {
   verifyJwt: (req: Request) => Promise<Claims>;
   rpc: Rpc;
+  core: () => CoreBridge;
   userRpc: (jwt: string) => Rpc;
   storage: Storage;
   crypto: () => PiiCrypto;
@@ -79,6 +81,26 @@ function recipientData(raw: unknown): Record<string, string> {
   return out;
 }
 
+/** FR-04 (A2.1 "NIK atau rekening ganda → tolak + tandai fraud"): akun yang mencoba memakai NIK/rekening milik akun lain
+ * diberi fraud flag di core → withdraw diblok sampai direview. Pemegangnya ikut di payload (tanpa PII); gagal = tidak
+ * mengubah respons ke user. */
+async function flagReuse(deps: MemberDataDeps, user: string, kind: "nik" | "account", args: Record<string, unknown>) {
+  try {
+    const [h] =
+      (await deps.rpc.invoke<{ user_id: string | null; tombstone: boolean }[] | null>("svc_hash_holder", args)) ?? [];
+    if (h && h.user_id === user) return; // rekening/NIK miliknya sendiri
+    await deps.core().invoke("raise_fraud_flag", {
+      target_type: "profile",
+      target_id: user,
+      signal: "FR-04",
+      score: h?.tombstone ? 100 : 80,
+      details: { kind, related_user_ids: h?.user_id ? [h.user_id] : [], banned_holder: h?.tombstone ?? false },
+    });
+  } catch {
+    // flag terbuka per (target, sinyal) cukup satu; percobaan berikutnya mencoba lagi
+  }
+}
+
 async function submitKyc(deps: MemberDataDeps, c: Claims, body: Record<string, unknown>) {
   const legalName = normalizeLegalName(str(body, "legal_name", { max: 200 }));
   const info = assertAdultNik(str(body, "nik", { max: 40 }), (deps.today ?? todayJakarta)());
@@ -111,6 +133,7 @@ async function submitKyc(deps: MemberDataDeps, c: Claims, body: Record<string, u
   } catch (err) {
     if (err instanceof DbError && err.pgCode === "23505") {
       if (/NIK|kyc_nik_unique/.test(err.dbMessage)) {
+        await flagReuse(deps, c.sub, "nik", { p_nik_hash: toPgBytea(hash), p_bank_code: null, p_account_hash: null });
         throw new HttpError(409, "nik_taken", "NIK sudah dipakai akun lain");
       }
       throw new HttpError(409, "kyc_exists", "KYC sudah dikirim dan belum ditolak");
@@ -156,7 +179,14 @@ async function addPayoutMethod(deps: MemberDataDeps, c: Claims, body: Record<str
     });
   } catch (err) {
     if (err instanceof DbError) {
-      if (err.pgCode === "23505") throw new HttpError(409, "account_taken", "rekening sudah dipakai akun lain");
+      if (err.pgCode === "23505") {
+        await flagReuse(deps, c.sub, "account", {
+          p_nik_hash: null,
+          p_bank_code: bankCode,
+          p_account_hash: toPgBytea(hash),
+        });
+        throw new HttpError(409, "account_taken", "rekening sudah dipakai akun lain");
+      }
       if (err.pgCode === "22023" && /KYC dulu/.test(err.dbMessage)) {
         throw new HttpError(422, "kyc_required", "lengkapi KYC dulu");
       }

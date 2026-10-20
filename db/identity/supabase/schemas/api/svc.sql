@@ -26,6 +26,17 @@ language sql stable security definer set search_path = '' as $$
   order by pm.created_at desc;
 $$;
 
+-- FR-04: pemegang NIK / rekening yang dicoba dipakai ulang akun lain (payload fraud flag). tombstone = akun ter-ban.
+create function api.svc_hash_holder(p_nik_hash bytea, p_bank_code text, p_account_hash bytea)
+returns table (user_id uuid, tombstone boolean)
+language sql stable security definer set search_path = '' as $$
+  select k.user_id, k.user_id is null from member.kyc_records k where p_nik_hash is not null and k.nik_hash = p_nik_hash
+  union all
+  select pm.user_id, pm.user_id is null from member.payout_methods pm
+   where p_account_hash is not null and pm.bank_code = p_bank_code and pm.account_no_hash = p_account_hash
+  limit 1;
+$$;
+
 -- KYC per user. closed = baris tombstone akun yang sudah dihapus tapi masih wajib disimpan untuk pajak (retain_until):
 -- user_id-nya NULL, jadi dicari lewat jejak audit account.close (append-only) supaya rekap PPh 21 tetap bisa dibuat.
 create function api.svc_kyc(p_user_ids uuid[])
@@ -233,6 +244,7 @@ $$;
 
 revoke execute on function api.svc_payout_methods(uuid[]) from public, anon, authenticated;
 revoke execute on function api.svc_user_payout_methods(uuid) from public, anon, authenticated;
+revoke execute on function api.svc_hash_holder(bytea, text, bytea) from public, anon, authenticated;
 revoke execute on function api.svc_kyc(uuid[]) from public, anon, authenticated;
 revoke execute on function api.svc_recipients(uuid[]) from public, anon, authenticated;
 revoke execute on function api.svc_has_consent(uuid, text) from public, anon, authenticated;
@@ -247,6 +259,7 @@ revoke execute on function api.svc_audit(uuid, text, text, jsonb) from public, a
 revoke execute on function api.svc_my_data(uuid) from public, anon, authenticated;
 grant execute on function api.svc_payout_methods(uuid[]) to service_role;
 grant execute on function api.svc_user_payout_methods(uuid) to service_role;
+grant execute on function api.svc_hash_holder(bytea, text, bytea) to service_role;
 grant execute on function api.svc_kyc(uuid[]) to service_role;
 grant execute on function api.svc_recipients(uuid[]) to service_role;
 grant execute on function api.svc_has_consent(uuid, text) to service_role;

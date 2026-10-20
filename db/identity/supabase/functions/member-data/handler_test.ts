@@ -1,14 +1,17 @@
 import { assert, assertEquals } from "@std/assert";
 import { fromPgBytea, toHex, toPgBytea } from "../_shared/crypto.ts";
 import { DbError } from "../_shared/db.ts";
-import { claims, FakeRpc, FakeStorage, json, post, testCrypto } from "../_shared/testing.ts";
+import { claims, FakeCore, FakeRpc, FakeStorage, json, post, testCrypto } from "../_shared/testing.ts";
 import { createMemberDataHandler, normalizeAccountNo, normalizeLegalName } from "./handler.ts";
 
 const UID = "00000000-0000-0000-0000-0000000000a1";
 const TODAY = { y: 2026, m: 10, d: 19 };
 const crypto = testCrypto();
 
-function setup(rpcHandlers: Record<string, (a: Record<string, unknown>) => unknown> = {}) {
+function setup(
+  rpcHandlers: Record<string, (a: Record<string, unknown>) => unknown> = {},
+  coreHandlers: Record<string, (p: Record<string, unknown>) => unknown> = { raise_fraud_flag: () => "flag-1" },
+) {
   const rpc = new FakeRpc({
     store_kyc: () => null,
     store_payout_method: () => "00000000-0000-0000-0000-0000000001aa",
@@ -22,20 +25,23 @@ function setup(rpcHandlers: Record<string, (a: Record<string, unknown>) => unkno
       closed: false,
     }],
     svc_audit: () => null,
+    svc_hash_holder: () => [{ user_id: "00000000-0000-0000-0000-0000000000b9", tombstone: false }],
     ...rpcHandlers,
   });
+  const core = new FakeCore(coreHandlers);
   const userRpc = new FakeRpc({ record_consent: () => null });
   const storage = new FakeStorage();
   storage.files.set(`kyc-docs/${UID}/ktp.jpg`, { body: new Uint8Array([1]), contentType: "image/jpeg" });
   const handler = createMemberDataHandler({
     verifyJwt: () => Promise.resolve(claims(UID)),
     rpc,
+    core: () => core,
     userRpc: () => userRpc,
     storage,
     crypto: () => crypto,
     today: () => TODAY,
   });
-  return { rpc, userRpc, storage, handler };
+  return { rpc, userRpc, storage, core, handler };
 }
 
 const kyc = (over: Record<string, unknown> = {}) =>
@@ -86,6 +92,27 @@ Deno.test("submit_kyc: under 18 (female +40), bad NIK, foreign folder, missing p
     },
   });
   assertEquals((await json(await taken.handler(kyc()))).body.error.code, "nik_taken");
+  // FR-04: percobaan memakai NIK akun lain → fraud flag profil pencoba (withdraw diblok sampai direview)
+  assertEquals(taken.core.named("raise_fraud_flag")[0].payload, {
+    target_type: "profile",
+    target_id: UID,
+    signal: "FR-04",
+    score: 80,
+    details: { kind: "nik", related_user_ids: ["00000000-0000-0000-0000-0000000000b9"], banned_holder: false },
+  });
+  assertEquals(taken.rpc.named("svc_hash_holder")[0].args.p_nik_hash, toPgBytea(await crypto.hmac("3171011205900001")));
+  const banned = setup({
+    store_kyc: () => {
+      throw new DbError("23505", "NIK sudah dipakai akun lain");
+    },
+    svc_hash_holder: () => [{ user_id: null, tombstone: true }],
+  }, {
+    raise_fraud_flag: () => {
+      throw new Error("core down");
+    },
+  });
+  assertEquals((await json(await banned.handler(kyc()))).body.error.code, "nik_taken"); // flag gagal ≠ respons berubah
+  assertEquals(banned.core.named("raise_fraud_flag")[0].payload.score, 100); // NIK akun ter-ban dipakai lagi
   const pending = setup({
     store_kyc: () => {
       throw new DbError("23505", "KYC sudah dikirim dan belum ditolak");
@@ -157,6 +184,28 @@ Deno.test("add_payout_method: name must match KYC, duplicate → account_taken, 
     )).body.error.code,
     "account_taken",
   );
+  assertEquals(dup.core.named("raise_fraud_flag")[0].payload.details, {
+    kind: "account",
+    related_user_ids: ["00000000-0000-0000-0000-0000000000b9"],
+    banned_holder: false,
+  });
+  // rekening yang sudah miliknya sendiri → bukan sinyal fraud
+  const own = setup({
+    store_payout_method: () => {
+      throw new DbError("23505", "duplicate key value violates unique constraint");
+    },
+    svc_hash_holder: () => [{ user_id: UID, tombstone: false }],
+  });
+  await own.handler(
+    post({
+      action: "add_payout_method",
+      kind: "bank",
+      bank_code: "BCA",
+      account_no: "8881234567",
+      account_name: "Andi Saputra",
+    }),
+  );
+  assertEquals(own.core.named("raise_fraud_flag").length, 0);
 });
 
 Deno.test("e-wallet numbers: +62 / 62 / 0 spellings hash the same (FR-04)", async () => {

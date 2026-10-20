@@ -24,8 +24,8 @@ insert into member.legal_versions (kind, version, published_at, url) values
   ('privacy', '2026-10-01', now() - interval '1 day', 'https://contoh.id/legal/privacy');
 
 -- Hak akses: semua svc_* hanya untuk service_role, security definer, search_path kosong.
-select is((select count(*)::int from pg_proc p where p.pronamespace = 'api'::regnamespace and p.proname like 'svc\_%'), 14,
-          '14 fungsi svc_* ada');
+select is((select count(*)::int from pg_proc p where p.pronamespace = 'api'::regnamespace and p.proname like 'svc\_%'), 15,
+          '15 fungsi svc_* ada');
 select is((select count(*)::int from pg_proc p where p.pronamespace = 'api'::regnamespace and p.proname like 'svc\_%'
             and has_function_privilege('authenticated', p.oid, 'execute')), 0, 'authenticated tidak bisa EXECUTE svc_*');
 select is((select count(*)::int from pg_proc p where p.pronamespace = 'api'::regnamespace and p.proname like 'svc\_%'
@@ -82,6 +82,11 @@ select is((select array_agg(bank_code) from api.svc_user_payout_methods('0000000
           'svc_user_payout_methods (AB-6 refund perorangan): rekening bank aktif milik user itu saja');
 select is((select count(*)::int from api.svc_user_payout_methods('00000000-0000-0000-0000-0000000000b1')), 0,
           'svc_user_payout_methods: e-wallet tidak dipakai untuk refund');
+select is((select user_id from api.svc_hash_holder(sha256('NIK-B'::bytea), null, null)), '00000000-0000-0000-0000-0000000000b1'::uuid,
+          'svc_hash_holder (FR-04): pemegang NIK yang dicoba dipakai ulang');
+select is((select user_id from api.svc_hash_holder(null, 'BCA', sha256('ACC-A'::bytea))), '00000000-0000-0000-0000-0000000000a1'::uuid,
+          'svc_hash_holder: pemegang rekening (bank + hash)');
+select is((select count(*)::int from api.svc_hash_holder(null, 'BRI', sha256('ACC-A'::bytea))), 0, 'svc_hash_holder: bank lain = bukan pemegang');
 select is((select row(user_id, legal_name, nik_enc, enc_key_version, status::text, closed)::text
            from api.svc_kyc(array['00000000-0000-0000-0000-0000000000b1'::uuid])),
           row('00000000-0000-0000-0000-0000000000b1'::uuid, 'Budi Santoso', '\x0b01'::bytea, 2::smallint,

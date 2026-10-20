@@ -142,7 +142,7 @@ Wajib tetap benar setiap perubahan (dicek otomatis saat graph ini dibuat; cek ul
 | `api:fn identity/bridge` | api | db/identity/supabase/functions/bridge/index.ts | Terima panggilan core (HMAC): send_email, send_push, check_ids, disburse, ban_user; dari pg_cron (apikey): fraud_device_scan |  |
 | `api:fn identity/delete-account` | api | db/identity/supabase/functions/delete-account/index.ts | Orkestrasi hapus akun UU PDP (alur 7) |  |
 | `api:fn identity/disburse` | api | db/identity/supabase/functions/disburse/index.ts | Callback penyedia disbursement (POST /disburse/callback, header x-callback-token) → core mark_instant. Pengiriman instant withdraw dimulai core lewat identity/bridge aksi disburse (_shared/disburse.ts: cek pemilik & nama rekening, dekripsi, kirim ke Xendit) |  |
-| `api:fn identity/member-data` | api | db/identity/supabase/functions/member-data/index.ts | Tulis PII milik sendiri: KYC (NIK), rekening, data penerima. Verifikasi JWT, HMAC + enkripsi di fungsi, simpan lewat SQL khusus service role |  |
+| `api:fn identity/member-data` | api | db/identity/supabase/functions/member-data/index.ts | Tulis PII milik sendiri: KYC (NIK), rekening, data penerima. Verifikasi JWT, HMAC + enkripsi di fungsi, simpan lewat SQL khusus service role; NIK/rekening milik akun lain → ditolak + fraud flag FR-04 |  |
 | `api:fn identity/pii-export` | api | db/identity/supabase/functions/pii-export/index.ts | CSV ber-PII: payout (rekening) & reward fisik (alur 3); unduh ulang berkas yang sudah diserahkan (payout_csv batch exported, recipients_resign); rekening refund org perorangan (refund_destination) |  |
 | `api:rpc core.accept_org_invite` | api | db/core/supabase/schemas/api/org.sql | Terima undangan → org_members (alur 5) |  |
 | `api:rpc core.appeal_submission` | api | db/core/supabase/schemas/api/review.sql | hanya dari rejected, 1× (unique index), S-03 rejected → appealed |  |
@@ -872,8 +872,8 @@ Arah: `A --tipe--> B` = A bergantung pada B. `?` = belum terverifikasi.
 | `api:fn identity/delete-account` | writes | `table:auth.users` | db/identity/supabase/functions/delete-account/handler.ts:67 |
 | `api:fn identity/delete-account` | writes | `table:bucket.kyc-docs` | db/identity/supabase/functions/delete-account/handler.ts:66 |
 | `api:fn identity/delete-account` | writes | `table:member.consents` | db/identity/supabase/functions/delete-account/handler.ts:7 (deleteUser baris 67 → FK on delete cascade) |
-| `api:fn identity/delete-account` | writes | `table:member.kyc_records` | db/identity/supabase/schemas/api/svc.sql:152 (rpc svc_close_member: tombstone) |
-| `api:fn identity/delete-account` | writes | `table:member.payout_methods` | db/identity/supabase/schemas/api/svc.sql:172 (rpc svc_close_member) |
+| `api:fn identity/delete-account` | writes | `table:member.kyc_records` | db/identity/supabase/schemas/api/svc.sql:163 (rpc svc_close_member: tombstone) |
+| `api:fn identity/delete-account` | writes | `table:member.payout_methods` | db/identity/supabase/schemas/api/svc.sql:183 (rpc svc_close_member) |
 | `api:fn identity/delete-account` | writes | `table:member.recipient_details` | PRD v0.3.1 §15.5 alur 7 hapus PII (kecuali wajib pajak); kode: auth.admin.deleteUser (delete-account/handler.ts baris 67) → FK on delete cascade (member/recipient_details.sql baris 4) |
 | `api:fn identity/disburse` | calls | `api:fn core/bridge` | db/identity/supabase/functions/disburse/index.ts:14 (callback → core mark_instant) |
 | `api:fn identity/disburse` | calls | `ext:disbursement` | PRD v0.3.1 Lampiran A.3 identity/disburse (belum di kode: fungsi ini hanya menerima callback penyedia; panggilan ke penyedia = identity/bridge aksi disburse → _shared/disburse.ts runDisburse) |
@@ -881,15 +881,17 @@ Arah: `A --tipe--> B` = A bergantung pada B. `?` = belum terverifikasi.
 | `api:fn identity/disburse` | configured-by | `env:PII_ENC_KEY` | PRD v0.3.1 §15.7 dekripsi rekening (belum di kode: dekripsi di identity/bridge aksi disburse, bukan fungsi callback ini) |
 | `api:fn identity/disburse` | guarded-by | `policy:fn-verify-jwt` | PRD v0.3.1 §15.6 dipanggil user (belum di kode: callback penyedia dijaga header x-callback-token = DISBURSE_CALLBACK_TOKEN, _shared/disburse.ts baris 312) |
 | `api:fn identity/disburse` | reads | `table:member.payout_methods` | PRD v0.3.1 Lampiran A.3 identity/disburse dekripsi rekening (belum di kode: dibaca identity/bridge aksi disburse lewat rpc svc_payout_methods) |
-| `api:fn identity/member-data` | calls | `api:rpc identity.store_kyc` | db/identity/supabase/functions/member-data/handler.ts:102 |
-| `api:fn identity/member-data` | calls | `api:rpc identity.store_payout_method` | db/identity/supabase/functions/member-data/handler.ts:147 |
-| `api:fn identity/member-data` | calls | `api:rpc identity.store_recipient` | db/identity/supabase/functions/member-data/handler.ts:177 |
+| `api:fn identity/member-data` | calls | `api:fn core/bridge` | db/identity/supabase/functions/member-data/handler.ts:92 (raise_fraud_flag FR-04: NIK/rekening akun lain) |
+| `api:fn identity/member-data` | reads | `table:member.kyc_records` | db/identity/supabase/schemas/api/svc.sql:33 (rpc svc_hash_holder) |
+| `api:fn identity/member-data` | calls | `api:rpc identity.store_kyc` | db/identity/supabase/functions/member-data/handler.ts:124 |
+| `api:fn identity/member-data` | calls | `api:rpc identity.store_payout_method` | db/identity/supabase/functions/member-data/handler.ts:170 |
+| `api:fn identity/member-data` | calls | `api:rpc identity.store_recipient` | db/identity/supabase/functions/member-data/handler.ts:207 |
 | `api:fn identity/member-data` | configured-by | `env:PII_ENC_KEY` | db/identity/supabase/functions/_shared/crypto.ts:97 (PII_ENC_KEYS) |
 | `api:fn identity/member-data` | configured-by | `env:PII_HMAC_KEY` | db/identity/supabase/functions/_shared/crypto.ts:92 |
-| `api:fn identity/member-data` | guarded-by | `policy:fn-verify-jwt` | db/identity/supabase/functions/member-data/index.ts:10 |
-| `api:fn identity/member-data` | guarded-by | `policy:identity.rls-self` | PRD v0.3.1 §15.4 fungsi verifikasi JWT, hanya baris milik sub; kode: semua RPC memakai c.sub dari JWT (member-data/handler.ts baris 86, 103, 148, 178) |
+| `api:fn identity/member-data` | guarded-by | `policy:fn-verify-jwt` | db/identity/supabase/functions/member-data/index.ts:12 |
+| `api:fn identity/member-data` | guarded-by | `policy:identity.rls-self` | PRD v0.3.1 §15.4 fungsi verifikasi JWT, hanya baris milik sub; kode: semua RPC memakai c.sub dari JWT (member-data/handler.ts baris 108, 125, 156, 171, 208) |
 | `api:fn identity/member-data` | guarded-by | `policy:identity.unique-identity` | db/identity/supabase/schemas/api/member_data.sql:10 (rpc store_kyc, handler.ts baris 102) |
-| `api:fn identity/member-data` | reads | `table:member.kyc_records` | db/identity/supabase/schemas/api/svc.sql:36 (rpc svc_kyc, handler.ts baris 133) |
+| `api:fn identity/member-data` | reads | `table:member.kyc_records` | db/identity/supabase/schemas/api/svc.sql:47 (rpc svc_kyc, handler.ts baris 133) |
 | `api:fn identity/member-data` | writes | `table:member.consents` | db/identity/supabase/schemas/api/record_consent.sql:29 (rpc record_consent kind kyc, handler.ts baris 93) |
 | `api:fn identity/member-data` | writes | `table:member.kyc_records` | db/identity/supabase/schemas/api/member_data.sql:13 (rpc store_kyc) |
 | `api:fn identity/member-data` | writes | `table:member.payout_methods` | db/identity/supabase/schemas/api/member_data.sql:41 (rpc store_payout_method) |
@@ -899,14 +901,14 @@ Arah: `A --tipe--> B` = A bergantung pada B. `?` = belum terverifikasi.
 | `api:fn identity/pii-export` | configured-by | `env:PII_ENC_KEY` | db/identity/supabase/functions/_shared/crypto.ts:97 (PII_ENC_KEYS) |
 | `api:fn identity/pii-export` | guarded-by | `policy:fn-verify-jwt` | db/identity/supabase/functions/pii-export/index.ts:11 |
 | `api:fn identity/pii-export` | guarded-by | `policy:identity.admin-aal2` | db/identity/supabase/functions/pii-export/handler.ts:414 |
-| `api:fn identity/pii-export` | reads | `table:member.consents` | db/identity/supabase/schemas/api/svc.sql:61 (rpc svc_has_consent, handler.ts baris 237) |
-| `api:fn identity/pii-export` | reads | `table:member.kyc_records` | db/identity/supabase/schemas/api/svc.sql:36 (rpc svc_kyc) |
+| `api:fn identity/pii-export` | reads | `table:member.consents` | db/identity/supabase/schemas/api/svc.sql:72 (rpc svc_has_consent, handler.ts baris 237) |
+| `api:fn identity/pii-export` | reads | `table:member.kyc_records` | db/identity/supabase/schemas/api/svc.sql:47 (rpc svc_kyc) |
 | `api:fn identity/pii-export` | reads | `table:member.payout_methods` | db/identity/supabase/schemas/api/svc.sql:13 (rpc svc_payout_methods), db/identity/supabase/schemas/api/svc.sql:24 (rpc svc_user_payout_methods, refund perorangan) |
 | `api:fn identity/pii-export` | calls | `api:fn core/bridge` | db/identity/supabase/functions/pii-export/handler.ts:155 (get_refund) |
-| `api:fn identity/pii-export` | reads | `table:member.recipient_details` | db/identity/supabase/schemas/api/svc.sql:51 (rpc svc_recipients) |
+| `api:fn identity/pii-export` | reads | `table:member.recipient_details` | db/identity/supabase/schemas/api/svc.sql:62 (rpc svc_recipients) |
 | `api:fn identity/pii-export` | writes | `table:bucket.payout-proofs` | db/identity/supabase/functions/pii-export/handler.ts:227 |
 | `api:fn identity/pii-export` | writes | `table:bucket.pii-exports` | db/identity/supabase/functions/pii-export/handler.ts:46 |
-| `api:fn identity/pii-export` | writes | `table:member.audit_logs` | db/identity/supabase/schemas/api/svc.sql:195 (rpc svc_audit, handler.ts baris 42) |
+| `api:fn identity/pii-export` | writes | `table:member.audit_logs` | db/identity/supabase/schemas/api/svc.sql:206 (rpc svc_audit, handler.ts baris 42) |
 | `api:rpc core.accept_org_invite` | reads | `table:market.org_invites` | db/core/supabase/schemas/api/org.sql:231 |
 | `api:rpc core.accept_org_invite` | writes | `table:market.org_invites` | db/core/supabase/schemas/api/org.sql:249 |
 | `api:rpc core.accept_org_invite` | writes | `table:market.org_members` | db/core/supabase/schemas/api/org.sql:248 |
@@ -2251,6 +2253,7 @@ Masalah sistem yang ditemukan saat menyusun PRD v0.2 dan saat dicek ulang (v0.2.
 | 2026-10-20 | `page:admin/finance` | Audit PRD ulang (brand AB-6, B3.7/A3.6): refund brand tidak punya rekening tujuan sama sekali (email bilang "ke rekening organisasi", finance tidak tahu harus transfer ke mana), termasuk refund otomatis saat campaign dibatalkan | diperbaiki: api.set_refund_dest (status requested, aal2; badan = rekening a.n. nama legal org, perorangan = rekening bank pribadi pemilik di identity tanpa menyalin PII ke core/brand — invarian 1), approve_refund menolak refund_dest_missing, bridge_get_refund + identity svc_user_payout_methods + pii-export refund_destination (dicek seperti payout: KYC & nama, diaudit); UI brand (form refund + Isi rekening) dan admin (rekening badan / Lihat rekening perorangan) |
 | 2026-10-20 | `api:rpc core.manage_team` | Review Claudex R24: (1) org dikunci FOR UPDATE bentrok dengan KEY SHARE cek FK insert undangan → deadlock, penghapusan owner jadi korban (dibuktikan 2 sesi psql); (2) owner yang diturunkan admin lewat manage_org add_member tetap bisa kembali lewat link undangannya; (3) PDF faktur yang ditolak/diganti tertinggal tanpa jalan hapus | diperbaiki: kunci org FOR NO KEY UPDATE (manage_team, update_org; terbukti tanpa deadlock), pencabutan undangan pindah ke trigger org_members_revoke_owner_invites (semua jalur demosi/hapus), policy invoice_docs_delete (admin_finance) + attachFaktur memvalidasi nomor dulu dan menghapus berkas yang ditolak/diganti |
 | 2026-10-20 | `page:admin/finance` | Audit PRD ulang (AB-7/AA-14, §5.4 "reward non-tunai tetap punya nilai Rupiah, tetap tercatat untuk pajak"): rekap PPh 21 hanya menjumlah payout tunai; reward non-tunai terkirim tidak tercatat | diperbaiki: bridge_pph21 = payout tunai dibayar + fulfillment delivered × idr_value_per_unit per orang (kolom cash/noncash/gross), CSV pii-export ikut; tarif tetap dihitung tim pajak (keputusan sebelumnya) |
+| 2026-10-20 | `api:fn identity/member-data` | Audit PRD ulang (AA-2, FR-04 "Blok withdraw + review", A2.1 "NIK atau rekening ganda → tolak + tandai fraud"): NIK/rekening yang sudah dipakai akun lain hanya ditolak, tanpa sinyal fraud untuk direview | diperbaiki: member-data mengangkat fraud flag FR-04 pada profil pencoba lewat bridge raise_fraud_flag (pemegang dari identity svc_hash_holder di payload tanpa PII; NIK akun ter-ban = skor 100; duplikat milik sendiri bukan sinyal; gagal tidak mengubah respons) → payout_block fraud_flag + bonus referral batal |
 | 2026-10-20 | `api:fn core/social` | Audit PRD (G-1, F-C02/D-11): YouTube hanya bisa dihubungkan lewat OAuth Google; fallback kode di deskripsi channel tidak ada (YOUTUBE_API_KEY tak dipakai) | diperbaiki: aksi youtube_code / youtube_verify (kode CLIP-… per user+channel harus ada di deskripsi) → akun terverifikasi dengan token mode api_key; adapter memakai ?key= (tanpa Analytics, tanpa refresh); dialog di halaman Akun sosmed |
 ## Keputusan
 

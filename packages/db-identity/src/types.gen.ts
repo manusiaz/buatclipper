@@ -159,6 +159,11 @@ export type Database = {
 "svc_has_consent":
 { Args: { "p_kind": string,"p_user": string }; Returns: boolean
                            },
+"svc_hash_holder":
+{ Args: { "p_account_hash": string,"p_bank_code": string,"p_nik_hash": string }; Returns: {
+              "tombstone": boolean,"user_id": string
+            }[]
+                           },
 "svc_kyc":
 { Args: { "p_user_ids": (string)[] }; Returns: {
               "closed": boolean,"enc_key_version": number,"legal_name": string,"nik_enc": string,"status": "pending"|"approved"|"rejected","user_id": string
