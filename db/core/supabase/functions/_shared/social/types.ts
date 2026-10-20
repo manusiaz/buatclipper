@@ -80,6 +80,8 @@ export interface PlatformAdapter {
   getPost(token: StoredToken, postIdOrUrl: string): Promise<Video>;
   fetchMetrics(token: StoredToken, postIds: string[], opts?: FetchOptions): Promise<MetricResult[]>;
   refreshToken(token: StoredToken): Promise<StoredToken>;
+  /** YouTube saja: channel publik + deskripsinya (fallback kode deskripsi, D-11). */
+  channel?(ref: string): Promise<Profile & { description: string }>;
 }
 
 export class TokenExpired extends Error {

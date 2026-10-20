@@ -274,6 +274,21 @@
       "step3": "Pick Creator and finish the steps.",
       "step4": "Come back here and reconnect Instagram.",
       "retry": "Reconnect Instagram"
+    },
+    "youtubeCode": {
+      "cta": "No Google sign-in? Verify via channel description",
+      "title": "Verify YouTube channel",
+      "description": "Paste your channel link, put the code in your channel description, then verify. Views are read from public YouTube data.",
+      "channel": "Channel link or @handle",
+      "channelHelper": "Example: youtube.com/@yourchannel",
+      "getCode": "Get code",
+      "step1": "Open YouTube Studio → Customization → Basic info.",
+      "step2": "Paste this code into the {handle} channel description, then Publish.",
+      "step3": "Come back and press Verify. You can remove the code once verified.",
+      "copy": "Copy code",
+      "copied": "Code copied",
+      "verify": "Verify",
+      "limitNote": "Country and traffic-source data are unavailable without Google sign-in."
     }
   },
   "tasks": {
@@ -643,6 +658,10 @@
     "pkce_required": "The connection is misconfigured. Contact support.",
     "api_error": "The platform returned an error. Try again.",
     "bad_request": "Invalid request. Reload the page.",
-    "username_taken": "That username is taken."
+    "username_taken": "That username is taken.",
+    "bad_channel": "Channel link or @handle not recognized.",
+    "channel_not_found": "YouTube channel not found.",
+    "code_not_found": "The code isn't in the channel description yet. Make sure it's published, then try again.",
+    "fallback_unavailable": "Description verification isn't available yet. Use the Connect button."
   }
 }

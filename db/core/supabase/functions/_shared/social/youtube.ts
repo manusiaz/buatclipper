@@ -71,10 +71,33 @@ export function reportRows(body: Json): Record<string, string | number>[] {
   return (body?.rows ?? []).map((r: unknown[]) => Object.fromEntries(cols.map((c, i) => [c, r[i] as string | number])));
 }
 
-export function createYouTube(cfg: { clientId: string; clientSecret: string; fetch?: Fetch }): PlatformAdapter {
+/** Channel publik dari @handle, link youtube.com/@handle | /channel/UC…, atau id UC…. */
+export function channelQuery(input: string): { id: string } | { forHandle: string } | null {
+  let s = input.trim();
+  const url = /^(?:https?:\/\/)?(?:www\.|m\.)?youtube\.com\/(.+)$/i.exec(s);
+  if (url) {
+    const seg = url[1].split(/[?#]/)[0].split("/");
+    s = seg[0] === "channel" ? seg[1] ?? "" : seg[0];
+  }
+  if (/^UC[A-Za-z0-9_-]{22}$/.test(s)) return { id: s };
+  const handle = /^@([A-Za-z0-9._-]{3,30})$/.exec(s)?.[1];
+  return handle ? { forHandle: `@${handle}` } : null;
+}
+
+/** Token mode api_key (fallback D-11): channel diverifikasi lewat kode di deskripsi, data dibaca pakai API key. */
+export const isKeyMode = (t: StoredToken | null) => !t || t.meta?.mode === "api_key";
+
+export function createYouTube(
+  cfg: { clientId: string; clientSecret: string; apiKey?: string; fetch?: Fetch },
+): PlatformAdapter {
   const http: Http = defaultHttp(cfg.fetch);
-  const get = (url: string, t: StoredToken) =>
-    request(http, url, { headers: { authorization: `Bearer ${t.access_token}` } }, googleError);
+  const get = (url: string, t: StoredToken | null) => {
+    if (!isKeyMode(t)) {
+      return request(http, url, { headers: { authorization: `Bearer ${t!.access_token}` } }, googleError);
+    }
+    if (!cfg.apiKey) throw new AdapterError("fallback_unavailable", "YOUTUBE_API_KEY belum diset");
+    return request(http, qs(url, { key: cfg.apiKey }), {}, googleError);
+  };
 
   async function tokenCall(params: Record<string, string | undefined>, prev?: StoredToken): Promise<StoredToken> {
     const out = await request(http, YOUTUBE.token, {
@@ -136,12 +159,19 @@ export function createYouTube(cfg: { clientId: string; clientSecret: string; fet
     };
   }
 
-  async function profile(t: StoredToken): Promise<Profile> {
-    const ch =
-      (await get(qs(`${YOUTUBE.api}/channels`, { part: "snippet,statistics,contentDetails", mine: "true" }), t))?.items
-        ?.[0];
-    if (!ch) throw new AdapterError("no_channel", "akun Google ini belum punya channel YouTube");
+  async function channelOf(
+    t: StoredToken | null,
+    q: Record<string, string>,
+  ): Promise<Profile & { description: string }> {
+    const ch = (await get(qs(`${YOUTUBE.api}/channels`, { part: "snippet,statistics,contentDetails", ...q }), t))
+      ?.items?.[0];
+    if (!ch) {
+      throw isKeyMode(t)
+        ? new AdapterError("channel_not_found", "channel YouTube tidak ditemukan")
+        : new AdapterError("no_channel", "akun Google ini belum punya channel YouTube");
+    }
     return {
+      description: String(ch.snippet?.description ?? ""),
       externalId: ch.id,
       handle: String(ch.snippet?.customUrl ?? ch.snippet?.title ?? ch.id).replace(/^@/, ""),
       followers: ch.statistics?.hiddenSubscriberCount ? null : toInt(ch.statistics?.subscriberCount),
@@ -149,6 +179,9 @@ export function createYouTube(cfg: { clientId: string; clientSecret: string; fet
       tokenMeta: { channel_id: ch.id, uploads: ch.contentDetails?.relatedPlaylists?.uploads ?? "" },
     };
   }
+
+  const profile = (t: StoredToken): Promise<Profile> =>
+    channelOf(t, isKeyMode(t) ? { id: t.meta?.channel_id ?? "" } : { mine: "true" });
 
   return {
     platform: "youtube",
@@ -184,6 +217,12 @@ export function createYouTube(cfg: { clientId: string; clientSecret: string; fet
     },
 
     profile,
+
+    async channel(ref) {
+      const q = channelQuery(ref);
+      if (!q) throw new AdapterError("bad_channel", "link atau @handle channel YouTube tidak dikenali");
+      return await channelOf(null, q);
+    },
 
     async listVideos(t, sinceIso) {
       const since = Date.parse(sinceIso);
@@ -246,7 +285,7 @@ export function createYouTube(cfg: { clientId: string; clientSecret: string; fet
           continue;
         }
         let extra: Record<string, unknown> = {};
-        if (opts.final) {
+        if (opts.final && !isKeyMode(t)) { // Analytics butuh OAuth pemilik channel
           try {
             extra = await analytics(t, id, opts.postedAt?.[id] ?? v.snippet?.publishedAt);
           } catch (e) {
@@ -270,6 +309,7 @@ export function createYouTube(cfg: { clientId: string; clientSecret: string; fet
     },
 
     async refreshToken(t) {
+      if (isKeyMode(t)) return t;
       if (!t.refresh_token) throw new TokenExpired("refresh_token tidak ada");
       return await tokenCall({ grant_type: "refresh_token", refresh_token: t.refresh_token }, t).catch((e) => {
         if (e instanceof AdapterError) throw new TokenExpired(e.message);

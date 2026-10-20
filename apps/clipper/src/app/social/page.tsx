@@ -21,6 +21,7 @@ import { core, errorText, readSettings, uiLocale } from '@/features/lib/server';
 import { IgGuide } from '@/features/social/ig-guide';
 import { internalNext } from '@/features/social/oauth';
 import { PagePicker } from '@/features/social/page-picker';
+import { YoutubeCode } from '@/features/social/youtube-code';
 
 export const metadata: Metadata = { title: 'Akun sosmed' };
 
@@ -123,6 +124,7 @@ export default async function SocialPage({ searchParams }: Props) {
                       <Badge tone="neutral">{t('limit')}</Badge>
                     )}
                   </div>
+                  {p === 'youtube' && (mine.length < max || mine.some((a) => a.status !== 'verified')) ? <YoutubeCode /> : null}
                   {mine.length ? (
                     <ul className="flex flex-col divide-y divide-border rounded-card-sm border border-border">
                       {mine.map((a) => (

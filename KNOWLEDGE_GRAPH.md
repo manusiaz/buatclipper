@@ -322,7 +322,7 @@ Wajib tetap benar setiap perubahan (dicek otomatis saat graph ini dibuat; cek ul
 | `env:TIKTOK_CLIENT_SECRET` | env | db/core/supabase/config.toml | Secret TikTok — hanya Edge Functions core |  |
 | `env:TURNSTILE_SECRET` | env |  | Secret Cloudflare Turnstile — setelan CAPTCHA Auth identity | Tidak ada di repo: CAPTCHA Auth identity diatur di Dashboard/Management API (db/identity/supabase/config.toml baris 1–2) |
 | `env:VAPID_PRIVATE_KEY` | env | db/identity/supabase/config.toml | Kunci privat Web Push — hanya Edge Function identity (bridge) |  |
-| `env:YOUTUBE_API_KEY` | env |  | API key YouTube Data (fallback kode deskripsi) — Edge Functions core | Tidak dipakai: adapter YouTube memakai token OAuth (GOOGLE_CLIENT_ID/SECRET) |
+| `env:YOUTUBE_API_KEY` | env | db/core/supabase/config.toml | API key YouTube Data (fallback kode deskripsi D-11) — Edge Functions core; kosong = verifikasi deskripsi mati (fallback_unavailable) |  |
 | `config:eslint.imports` | config | scripts/check-arch.mjs | Arah import apps → packages; db-identity & invokeFunction identity dilarang di brand & web; secret tidak boleh dibaca app/package (`pnpm lint`) |  |
 | `config:ci` | config | .github/workflows/ci.yml | CI: job apps (pnpm lint/typecheck/test/build), functions (deno per project), db (supabase test db, db lint, db advisors per project) |  |
 | `config:host.accounts` | config |  | accounts.{domain} → project Vercel apps/accounts; Vercel Pro, region Functions sin1 | Vercel / Supabase dashboard + DNS |
@@ -536,8 +536,9 @@ Arah: `A --tipe--> B` = A bergantung pada B. `?` = belum terverifikasi.
 | `page:app/social` | configured-by | `env:NEXT_PUBLIC_GOOGLE_CLIENT_ID` | PRD v0.3.1 §15.7 client ID publik (belum di kode: app tidak membaca client ID; URL OAuth dibuat core/social, lihat mod:social) |
 | `page:app/social` | configured-by | `env:NEXT_PUBLIC_META_APP_ID` | PRD v0.3.1 §15.7 client ID publik (belum di kode: app tidak membaca client ID; URL OAuth dibuat core/social, lihat mod:social) |
 | `page:app/social` | configured-by | `env:NEXT_PUBLIC_TIKTOK_CLIENT_KEY` | PRD v0.3.1 §15.7 client ID publik (belum di kode: app tidak membaca client ID; URL OAuth dibuat core/social, lihat mod:social) |
-| `page:app/social` | reads | `table:tracking.social_accounts` | apps/clipper/src/app/social/page.tsx:55 |
-| `page:app/social` | routes-to | `api:GET app/api/oauth/[platform]/start` | apps/clipper/src/app/social/page.tsx:64 |
+| `page:app/social` | calls | `api:fn core/social` | apps/clipper/src/features/social/actions.ts:13 (social youtube_code / youtube_verify, fallback D-11) |
+| `page:app/social` | reads | `table:tracking.social_accounts` | apps/clipper/src/app/social/page.tsx:56 |
+| `page:app/social` | routes-to | `api:GET app/api/oauth/[platform]/start` | apps/clipper/src/app/social/page.tsx:65 |
 | `page:app/social` | wrapped-by | `layout:clipper` | apps/clipper/src/app/layout.tsx:31 |
 | `page:app/tasks` | calls | `api:rpc core.appeal_submission` | apps/clipper/src/features/tasks/actions.ts:15 |
 | `page:app/tasks` | reads | `table:market.claims` | apps/clipper/src/app/tasks/page.tsx:45 |
@@ -724,7 +725,7 @@ Arah: `A --tipe--> B` = A bergantung pada B. `?` = belum terverifikasi.
 | `mod:social` | calls | `ext:google` | db/core/supabase/functions/_shared/social/youtube.ts:24 |
 | `mod:social` | calls | `ext:meta` | db/core/supabase/functions/_shared/social/instagram.ts:23 (Graph API Meta) |
 | `mod:social` | calls | `ext:tiktok` | db/core/supabase/functions/_shared/social/tiktok.ts:20 |
-| `mod:social` | configured-by | `env:YOUTUBE_API_KEY` | PRD v0.3.1 §11 + D-11 fallback kode deskripsi (belum di kode: adapter YouTube memakai token OAuth, tanpa API key) |
+| `mod:social` | configured-by | `env:YOUTUBE_API_KEY` | db/core/supabase/functions/_shared/social/mod.ts:34 (YOUTUBE_API_KEY → createYouTube apiKey; token meta.mode api_key memakai ?key=) |
 | `mod:social` | configured-by | `env:NEXT_PUBLIC_GOOGLE_CLIENT_ID` | kode: _shared/social/mod.ts baris 19 (nama asli GOOGLE_CLIENT_ID) |
 | `mod:social` | configured-by | `env:NEXT_PUBLIC_META_APP_ID` | kode: _shared/social/mod.ts baris 18 (nama asli META_APP_ID) |
 | `mod:social` | configured-by | `env:NEXT_PUBLIC_TIKTOK_CLIENT_KEY` | kode: _shared/social/mod.ts baris 17 (nama asli TIKTOK_CLIENT_KEY) |
@@ -789,14 +790,14 @@ Arah: `A --tipe--> B` = A bergantung pada B. `?` = belum terverifikasi.
 | `api:fn core/refresh-tokens` | guarded-by | `policy:fn-cron-key` | db/core/supabase/functions/refresh-tokens/index.ts:11 |
 | `api:fn core/refresh-tokens` | writes | `table:tracking.social_accounts` | db/core/supabase/schemas/api/worker.sql:298 (rpc worker_account_status) |
 | `api:fn core/refresh-tokens` | writes | `table:vault.social-tokens` | db/core/supabase/functions/refresh-tokens/refresh.ts:43 (store_social_token → Vault) |
-| `api:fn core/social` | calls | `api:rpc core.missing_brief_tags` | db/core/supabase/functions/social/handler.ts:290 |
+| `api:fn core/social` | calls | `api:rpc core.missing_brief_tags` | db/core/supabase/functions/social/handler.ts:336 |
 | `api:fn core/social` | calls | `api:rpc core.store_social_token` | db/core/supabase/schemas/api/worker.sql:369 (rpc worker_upsert_social_account) |
-| `api:fn core/social` | calls | `mod:social` | db/core/supabase/functions/social/handler.ts:20 |
+| `api:fn core/social` | calls | `mod:social` | db/core/supabase/functions/social/handler.ts:21 |
 | `api:fn core/social` | configured-by | `env:GOOGLE_CLIENT_SECRET` | db/core/supabase/functions/_shared/social/mod.ts:19 |
 | `api:fn core/social` | configured-by | `env:META_APP_SECRET` | db/core/supabase/functions/_shared/social/mod.ts:18 |
 | `api:fn core/social` | configured-by | `env:TIKTOK_CLIENT_SECRET` | db/core/supabase/functions/_shared/social/mod.ts:17 |
-| `api:fn core/social` | guarded-by | `policy:fn-verify-jwt` | db/core/supabase/functions/social/handler.ts:277 |
-| `api:fn core/social` | reads | `table:market.claims` | db/core/supabase/functions/social/handler.ts:282 |
+| `api:fn core/social` | guarded-by | `policy:fn-verify-jwt` | db/core/supabase/functions/social/handler.ts:323 |
+| `api:fn core/social` | reads | `table:market.claims` | db/core/supabase/functions/social/handler.ts:328 |
 | `api:fn core/social` | writes | `table:tracking.social_accounts` | db/core/supabase/schemas/api/worker.sql:362 (rpc worker_upsert_social_account) |
 | `api:fn core/social` | writes | `table:tracking.submissions` | db/core/supabase/schemas/api/worker.sql:442 (rpc worker_create_submission) |
 | `api:fn core/social` | writes | `table:vault.social-tokens` | db/core/supabase/schemas/api/worker.sql:369 (api.store_social_token) |
@@ -2171,12 +2172,14 @@ Masalah sistem yang ditemukan saat menyusun PRD v0.2 dan saat dicek ulang (v0.2.
 | 2026-10-20 | `api:fn identity/bridge` | Audit PRD (G-12, F-X01 admin): alert operasional (tracking gagal, lonjakan fraud, payout gagal, selisih rekonsiliasi) hanya tercatat di dashboard, tanpa email ke admin | diperbaiki: ops.raise_alert → bridge core notify_admins → identity: email ke admin ber-role terkait + admin_super (svc_admin_ids), maks 1 per jenis per jam, idempoten per alert & admin; ADMIN_URL opsional supaya email lain tidak ikut gagal |
 | 2026-10-20 | `fn:accrue_earnings` | Audit PRD (G-2/G-4, §12 & C4.1): Trust Score tidak memengaruhi cap/hold; TikTok tidak punya cap lebih rendah & hold lebih panjang (satu max_per_clip & satu hold global) | diperbaiki: finance.clip_terms(trust, platform) dari public.finance.trust_tiers & public.finance.platform_rules → cap = max_per_clip × cap_pct tier × cap_pct platform (accrue), hold = hold tier minimal hold platform (release); default kode netral, nilai awal di seed; profil clipper menampilkan tier yang berlaku |
 | 2026-10-20 | `page:admin/finance` | Review interim (subagent, kuota Codex habis) C18: pencarian ledger dengan UUID submisi/refund tidak menemukan ref "<id>:…"; query OR lintas join tanpa indeks (scan penuh); dedupe announce tanpa indeks; eCPM memakai fee rule hari ini, bukan fee yang ditagih; margin retry_after 5 menit < lease penjadwal | diperbaiki: pencarian dipecah per kolom terindeks + awalan ref untuk UUID, indeks ledger_entries(ref_id text_pattern_ops), indeks parsial notifications campaign.new, eCPM = spend + fee invoice lunas diprorata ke spend, retry_after + 1 jam |
+| 2026-10-20 | `api:fn core/social` | Audit PRD (G-1, F-C02/D-11): YouTube hanya bisa dihubungkan lewat OAuth Google; fallback kode di deskripsi channel tidak ada (YOUTUBE_API_KEY tak dipakai) | diperbaiki: aksi youtube_code / youtube_verify (kode CLIP-… per user+channel harus ada di deskripsi) → akun terverifikasi dengan token mode api_key; adapter memakai ?key= (tanpa Analytics, tanpa refresh); dialog di halaman Akun sosmed |
 ## Keputusan
 
 Keputusan yang sudah diambil — jangan dibahas ulang tanpa alasan baru.
 
 | Tanggal | Keputusan | Alasan | Node terdampak |
 |---|---|---|---|
+| 2026-10-20 | Kode verifikasi deskripsi YouTube deterministik sha256(user:channel) tanpa secret | Yang dibuktikan kendali atas deskripsi channel, bukan kerahasiaan kode; kode user lain tidak berguna tanpa akses edit channel; tanpa state/secret baru | `api:fn core/social`, `mod:social` |
 | 2026-10-20 | Nilai awal tier Trust Score: skor ≥ 80 → cap 120% & hold 3 hari, ≥ 60 → cap 100% & hold 5 hari; TikTok cap 80% & hold minimal 10 hari | PRD tidak memberi angka; nilai konservatif, bisa diubah admin (ops.settings) | `fn:accrue_earnings`, `job:earning-release`, `page:app/profile` |
 | 2026-10-15 | D-12: DB dipisah jadi identity (login + PII) dan core (campaign, tracking, uang) | Permintaan owner: database member terpisah; core bocor tidak membuka PII | `ext:supabase-identity`, `ext:supabase-core`, semua `table:member.*` |
 | 2026-10-15 | Core tidak dipecah per fitur; pemisahan di core per schema | accrue_earnings wajib satu transaksi (§10.5 #4) | `fn:accrue_earnings`, `table:finance.*` |

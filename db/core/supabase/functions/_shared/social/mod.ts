@@ -31,7 +31,7 @@ export function adapterFor(p: Platform, fetch?: Fetch): PlatformAdapter {
     case "instagram":
       return createInstagram({ appId: id, appSecret: secret, fetch });
     case "youtube":
-      return createYouTube({ clientId: id, clientSecret: secret, fetch });
+      return createYouTube({ clientId: id, clientSecret: secret, apiKey: Deno.env.get("YOUTUBE_API_KEY"), fetch });
     case "threads":
       return createThreads({ appId: id, appSecret: secret, fetch });
     case "facebook":

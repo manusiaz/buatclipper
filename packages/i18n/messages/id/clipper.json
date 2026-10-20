@@ -274,6 +274,21 @@
       "step3": "Pilih Kreator, lalu ikuti langkahnya sampai selesai.",
       "step4": "Kembali ke sini dan hubungkan ulang Instagram.",
       "retry": "Hubungkan ulang Instagram"
+    },
+    "youtubeCode": {
+      "cta": "Tanpa login Google? Verifikasi lewat deskripsi channel",
+      "title": "Verifikasi channel YouTube",
+      "description": "Tempel link channel, pasang kode di deskripsi channel, lalu verifikasi. Views dibaca dari data publik YouTube.",
+      "channel": "Link atau @handle channel",
+      "channelHelper": "Contoh: youtube.com/@namachannel",
+      "getCode": "Ambil kode",
+      "step1": "Buka YouTube Studio → Kustomisasi → Info dasar.",
+      "step2": "Tempel kode ini di Deskripsi channel {handle}, lalu Publikasikan.",
+      "step3": "Kembali ke sini dan tekan Verifikasi. Kode boleh dihapus setelah terverifikasi.",
+      "copy": "Salin kode",
+      "copied": "Kode disalin",
+      "verify": "Verifikasi",
+      "limitNote": "Data negara & sumber traffic tidak tersedia tanpa login Google."
     }
   },
   "tasks": {
@@ -643,6 +658,10 @@
     "pkce_required": "Konfigurasi penghubungan salah. Hubungi bantuan.",
     "api_error": "Platform mengembalikan error. Coba lagi.",
     "bad_request": "Permintaan tidak valid. Muat ulang halaman.",
-    "username_taken": "Username sudah dipakai."
+    "username_taken": "Username sudah dipakai.",
+    "bad_channel": "Link atau @handle channel tidak dikenali.",
+    "channel_not_found": "Channel YouTube tidak ditemukan.",
+    "code_not_found": "Kode belum terbaca di deskripsi channel. Pastikan sudah dipublikasikan, lalu coba lagi.",
+    "fallback_unavailable": "Verifikasi lewat deskripsi channel belum aktif. Gunakan tombol Hubungkan."
   }
 }

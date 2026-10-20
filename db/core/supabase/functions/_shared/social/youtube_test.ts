@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { jsonRes, mockFetch, on } from "../testing.ts";
-import { createYouTube, isoDuration, videoIdFrom } from "./youtube.ts";
+import { channelQuery, createYouTube, isoDuration, videoIdFrom } from "./youtube.ts";
 import { AdapterError, isMetrics, Retryable, type StoredToken, TokenExpired } from "./types.ts";
 import quota from "./testdata/yt_quota.json" with { type: "json" };
 import auth from "./testdata/yt_auth.json" with { type: "json" };
@@ -134,4 +134,42 @@ Deno.test("youtube: parser URL & durasi", () => {
   assert.equal(videoIdFrom("https://evil.com/shorts/dQw4w9WgXcQ"), null);
   assert.equal(isoDuration("PT1M3S"), 63);
   assert.equal(isoDuration("P0D"), 0);
+});
+
+Deno.test("youtube: mode api_key (fallback D-11) pakai ?key= tanpa Bearer, profile by id, tanpa Analytics/refresh", async () => {
+  const K: StoredToken = { v: 1, access_token: "", meta: { ...T.meta!, mode: "api_key" } };
+  const m = mockFetch(
+    on("GET", "youtube.googleapis.com/youtube/v3/channels", () => jsonRes(200, channels)),
+    on(
+      "GET",
+      "youtube.googleapis.com/youtube/v3/videos",
+      (c) => jsonRes(200, { items: [video(c.url.searchParams.get("id")!)] }),
+    ),
+  );
+  const yt = createYouTube({ ...cfg, apiKey: "AIzaKEY", fetch: m.fetch });
+  assert.equal((await yt.profile(K)).externalId, CH);
+  const [r] = await yt.fetchMetrics(K, ["abcdefghijk"], { final: true });
+  assert.ok(isMetrics(r) && r.views === 1523 && !("analytics_error" in r.extra!));
+  assert.equal(await yt.refreshToken(K), K);
+  assert.ok(m.calls.every((c) => c.url.searchParams.get("key") === "AIzaKEY" && !c.headers.has("authorization")));
+  assert.equal(m.calls[0].url.searchParams.get("id"), CH);
+  assert.ok(!m.calls.some((c) => c.url.hostname.startsWith("youtubeanalytics")));
+  const ch = await yt.channel!("https://www.youtube.com/@clippersatu/shorts");
+  assert.equal(ch.externalId, CH);
+  assert.equal(m.calls.at(-1)!.url.searchParams.get("forHandle"), "@clippersatu");
+  await assert.rejects(
+    createYouTube({ ...cfg, fetch: m.fetch }).profile(K),
+    (e) => e instanceof AdapterError && e.code === "fallback_unavailable",
+  );
+});
+
+Deno.test("youtube: parser channel (@handle, /@handle, /channel/UC…, UC…)", () => {
+  const uc = "UCclipperSatu00000000000";
+  assert.deepEqual(channelQuery("@clipper.satu"), { forHandle: "@clipper.satu" });
+  assert.deepEqual(channelQuery("youtube.com/@clippersatu?si=x"), { forHandle: "@clippersatu" });
+  assert.deepEqual(channelQuery(`https://m.youtube.com/channel/${uc}/videos`), { id: uc });
+  assert.deepEqual(channelQuery(uc), { id: uc });
+  for (const bad of ["clippersatu", "https://evil.test/@x", "https://youtube.com/watch?v=abcdefghijk", "@a"]) {
+    assert.equal(channelQuery(bad), null, bad);
+  }
 });

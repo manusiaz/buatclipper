@@ -10,7 +10,14 @@ import {
   type Video,
 } from "../_shared/social/mod.ts";
 import { fakeRpc } from "../_shared/testing.ts";
-import { type AccountRow, createSocialHandler, mapRpcError, type SocialDeps, SUBMIT_ERRORS } from "./handler.ts";
+import {
+  type AccountRow,
+  createSocialHandler,
+  mapRpcError,
+  type SocialDeps,
+  SUBMIT_ERRORS,
+  youtubeCode,
+} from "./handler.ts";
 
 const USER: User = {
   id: "11111111-1111-4111-8111-111111111111",
@@ -265,4 +272,62 @@ Deno.test("social: mapRpcError hanya meneruskan kode yang dikenal", () => {
   const e = mapRpcError(new RpcError("f", "P0001", "profile_inactive"), SUBMIT_ERRORS);
   assert.deepEqual([e.status, e.code], [422, "profile_inactive"]);
   assert.equal(mapRpcError(new RpcError("f", "P0001", "secret_internal_state"), SUBMIT_ERRORS).code, "internal");
+});
+
+Deno.test("social: youtube_code → youtube_verify (kode di deskripsi) simpan akun token mode api_key", async () => {
+  const UC = "UCclipperSatu00000000000";
+  const code = await youtubeCode(USER.id, UC);
+  assert.match(code, /^CLIP-[0-9A-F]{10}$/);
+  assert.notEqual(code, await youtubeCode("44444444-4444-4444-8444-444444444444", UC));
+  let description = "channel klip";
+  const yt = adapter({
+    platform: "youtube",
+    channel: (ref: string) =>
+      Promise.resolve({
+        externalId: UC,
+        handle: ref.replace(/^@/, ""),
+        followers: null,
+        createdAt: "2021-03-04T05:06:07Z",
+        tokenMeta: { channel_id: UC, uploads: "UUclipperSatu00000000000" },
+        description,
+      }),
+  });
+  const { handler, calls } = deps({ worker_upsert_social_account: () => ACCOUNT }, { adapter: () => yt });
+  const res = await handler(post({ action: "youtube_code", channel: "@clippersatu" }));
+  assert.deepEqual(await res.json(), { channel_id: UC, handle: "clippersatu", code });
+
+  const miss = await handler(post({ action: "youtube_verify", channel: "@clippersatu" }));
+  assert.equal(miss.status, 422);
+  assert.equal((await miss.json()).error, "code_not_found");
+  assert.ok(!calls.some((c) => c.fn === "worker_upsert_social_account"));
+
+  description = `channel klip ${code}`;
+  const ok = await handler(post({ action: "youtube_verify", channel: "@clippersatu" }));
+  assert.equal(ok.status, 200);
+  const args = calls.find((c) => c.fn === "worker_upsert_social_account")!.args;
+  assert.deepEqual([args.p_user, args.p_platform, args.p_external_id, args.p_followers], [
+    USER.id,
+    "youtube",
+    UC,
+    null,
+  ]);
+  const tok = JSON.parse(args.p_token as string);
+  assert.deepEqual([tok.access_token, tok.expires_at, tok.meta], ["", null, {
+    channel_id: UC,
+    uploads: "UUclipperSatu00000000000",
+    mode: "api_key",
+  }]);
+});
+
+Deno.test("social: youtube_verify ditolak saat platform mati atau adapter tanpa fallback", async () => {
+  const off = deps({}, { flags: () => Promise.resolve({ youtube: false }) });
+  assert.equal(
+    (await (await off.handler(post({ action: "youtube_verify", channel: "@x12" }))).json()).error,
+    "platform_disabled",
+  );
+  const noFb = deps({}, { adapter: () => adapter({ platform: "youtube" }) });
+  assert.equal(
+    (await (await noFb.handler(post({ action: "youtube_code", channel: "@x12" }))).json()).error,
+    "fallback_unavailable",
+  );
 });

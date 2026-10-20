@@ -1,5 +1,5 @@
 // core/social (user JWT identity): connect OAuth sosmed, daftar video setelah claim, submit video (E-12).
-// Aksi POST {action, …}: authorize | connect | list_videos | submit. CORS hanya origin di APP_ORIGINS.
+// Aksi POST {action, …}: authorize | connect | youtube_code | youtube_verify | list_videos | submit. CORS hanya origin di APP_ORIGINS.
 import { type User, verifyUserJwt } from "../_shared/auth.ts";
 import { type Rpc, RpcError, serviceRpc, userClient } from "../_shared/db.ts";
 import { corsHeaders, envList, errorResponse, HttpError, json, randomToken, readJson } from "../_shared/http.ts";
@@ -13,6 +13,7 @@ import {
   type Platform,
   type PlatformAdapter,
   platformFlags,
+  type Profile,
   Retryable,
   type StoredToken,
   TokenExpired,
@@ -64,6 +65,13 @@ export const SUBMIT_ERRORS = [
   "account_inactive",
   "invalid", // invalid:url
 ] as const;
+
+/** Kode verifikasi channel YouTube: deterministik per (user, channel); bukti = kendali atas deskripsi channel. */
+export async function youtubeCode(userId: string, channelId: string): Promise<string> {
+  const d = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(`${userId}:${channelId}`));
+  return "CLIP-" +
+    [...new Uint8Array(d).slice(0, 5)].map((b) => b.toString(16).padStart(2, "0")).join("").toUpperCase();
+}
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -156,6 +164,38 @@ export function createSocialHandler(deps: SocialDeps): (req: Request) => Promise
     return mapAdapterError(e);
   }
 
+  async function upsert(user: User, platform: Platform, prof: Profile, token: StoredToken) {
+    let accountId: string;
+    try {
+      accountId = await deps.rpc<string>("worker_upsert_social_account", {
+        p_user: user.id,
+        p_platform: platform,
+        p_external_id: prof.externalId,
+        p_handle: prof.handle,
+        p_followers: prof.followers,
+        p_platform_created_at: prof.createdAt ?? null,
+        p_token: JSON.stringify(token),
+      });
+    } catch (e) {
+      throw mapRpcError(e, ["social_taken", "account_limit", "profile_inactive"]);
+    }
+    return { account_id: accountId, platform, handle: prof.handle, followers: prof.followers };
+  }
+
+  /** Fallback D-11: channel publik YouTube tanpa OAuth. */
+  async function youtubeChannel(user: User, body: Record<string, unknown>) {
+    await enabled("youtube");
+    const adapter = deps.adapter("youtube");
+    if (!adapter.channel) throw new HttpError(422, "fallback_unavailable");
+    let ch;
+    try {
+      ch = await adapter.channel(str(body, "channel", { max: 200 }));
+    } catch (e) {
+      return mapAdapterError(e);
+    }
+    return { ch, code: await youtubeCode(user.id, ch.externalId) };
+  }
+
   const actions: Record<string, (user: User, body: Record<string, unknown>) => Promise<unknown>> = {
     async authorize(_user, body) {
       const platform = body.platform;
@@ -187,22 +227,28 @@ export function createSocialHandler(deps: SocialDeps): (req: Request) => Promise
         if (e instanceof TokenExpired) throw new HttpError(422, "oauth_failed", e.message);
         return mapAdapterError(e);
       }
-      token = { ...token, meta: { ...token.meta, ...prof.tokenMeta } };
-      let accountId: string;
-      try {
-        accountId = await deps.rpc<string>("worker_upsert_social_account", {
-          p_user: user.id,
-          p_platform: platform,
-          p_external_id: prof.externalId,
-          p_handle: prof.handle,
-          p_followers: prof.followers,
-          p_platform_created_at: prof.createdAt ?? null,
-          p_token: JSON.stringify(token),
-        });
-      } catch (e) {
-        throw mapRpcError(e, ["social_taken", "account_limit", "profile_inactive"]);
+      return await upsert(user, platform, prof, { ...token, meta: { ...token.meta, ...prof.tokenMeta } });
+    },
+
+    async youtube_code(user, body) {
+      const { ch, code } = await youtubeChannel(user, body);
+      return { channel_id: ch.externalId, handle: ch.handle, code };
+    },
+
+    async youtube_verify(user, body) {
+      const { ch, code } = await youtubeChannel(user, body);
+      if (!ch.description.includes(code)) {
+        throw new HttpError(422, "code_not_found", "kode belum ada di deskripsi", code);
       }
-      return { account_id: accountId, platform, handle: prof.handle, followers: prof.followers };
+      const { description: _, ...prof } = ch;
+      return await upsert(user, "youtube", prof, {
+        v: 1,
+        access_token: "",
+        refresh_token: null,
+        expires_at: null,
+        scope: null,
+        meta: { ...prof.tokenMeta, mode: "api_key" },
+      });
     },
 
     async list_videos(user, body) {
