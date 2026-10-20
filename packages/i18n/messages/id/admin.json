@@ -861,7 +861,8 @@
     "ref": "Referensi kiriman",
     "refHelp": "Nomor resi / nomor voucher",
     "retry": "Kirim ulang",
-    "retried": "Dikirim ulang ke webhook brand"
+    "retried": "Dikirim ulang ke webhook brand",
+    "retryScheduled": "Kirim ulang berjalan…"
   },
   "config": {
     "title": "Config",

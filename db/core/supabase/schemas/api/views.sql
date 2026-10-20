@@ -91,7 +91,7 @@ create view api.payouts with (security_invoker = true) as
          paid_at
   from finance.payouts;
 create view api.fulfillments with (security_invoker = true) as
-  select id, user_id, reward_type_id, amount, recipient, status, delivered_ref, attempts, created_at, delivered_at
+  select id, user_id, reward_type_id, amount, recipient, status, delivered_ref, attempts, created_at, delivered_at, next_retry_at
   from finance.fulfillments;
 -- Admin (A5.1): CSV penerima yang sudah diserahkan ke brand; pending = klaim yang masih menunggu kiriman brand (unduh ulang).
 create view api.fulfillment_exports with (security_invoker = true) as

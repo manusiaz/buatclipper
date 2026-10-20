@@ -485,9 +485,9 @@ Arah: `A --tipe--> B` = A bergantung pada B. `?` = belum terverifikasi.
 | `page:admin/fulfillment` | calls | `api:fn identity/pii-export` | apps/admin/src/features/fulfillment/actions.ts:12 |
 | `page:admin/fulfillment` | calls | `api:rpc core.mark_fulfillment_delivered` | apps/admin/src/features/fulfillment/actions.ts:44 |
 | `page:admin/fulfillment` | calls | `api:rpc core.retry_fulfillment` | apps/admin/src/features/fulfillment/actions.ts:52 |
-| `api:rpc core.retry_fulfillment` | guarded-by | `policy:core.admin-aal2` | db/core/supabase/schemas/finance/fulfillment_admin.sql:43 |
-| `api:rpc core.retry_fulfillment` | writes | `table:finance.fulfillments` | db/core/supabase/schemas/finance/fulfillment_admin.sql:53 |
-| `api:rpc core.retry_fulfillment` | writes | `table:ops.audit_logs` | db/core/supabase/schemas/finance/fulfillment_admin.sql:54 |
+| `api:rpc core.retry_fulfillment` | guarded-by | `policy:core.admin-aal2` | db/core/supabase/schemas/finance/fulfillment_admin.sql:51 |
+| `api:rpc core.retry_fulfillment` | writes | `table:finance.fulfillments` | db/core/supabase/schemas/finance/fulfillment_admin.sql:61 |
+| `api:rpc core.retry_fulfillment` | writes | `table:ops.audit_logs` | db/core/supabase/schemas/finance/fulfillment_admin.sql:62 |
 | `page:admin/fulfillment` | calls | `api:rpc core.upload_reward_codes` | apps/admin/src/features/fulfillment/actions.ts:65 |
 | `page:admin/fulfillment` | calls | `api:rpc core.cancel_fulfillment` | apps/admin/src/features/fulfillment/actions.ts:32 |
 | `page:admin/fulfillment` | reads | `api:view core.fulfillment_exports` | kode: (console)/fulfillment/page.tsx baris 132 (path ber-kurung) |
@@ -991,7 +991,7 @@ Arah: `A --tipe--> B` = A bergantung pada B. `?` = belum terverifikasi.
 | `api:rpc core.mark_fulfillment_delivered` | guarded-by | `policy:core.admin-aal2` | db/core/supabase/schemas/finance/fulfillment_admin.sql:9 |
 | `api:rpc core.mark_fulfillment_delivered` | reads | `table:market.reward_types` | db/core/supabase/schemas/finance/fulfillment_admin.sql:21 |
 | `api:rpc core.mark_fulfillment_delivered` | writes | `table:finance.fulfillments` | db/core/supabase/schemas/finance/fulfillment_admin.sql:12, db/core/supabase/schemas/api/worker.sql:589 (api.worker_fulfillment_result, baris 28) |
-| `api:rpc core.mark_fulfillment_delivered` | writes | `table:ops.audit_logs` | db/core/supabase/schemas/finance/fulfillment_admin.sql:32 |
+| `api:rpc core.mark_fulfillment_delivered` | writes | `table:ops.audit_logs` | db/core/supabase/schemas/finance/fulfillment_admin.sql:40 |
 | `api:rpc core.cancel_payout` | writes | `table:finance.payouts` | db/core/supabase/schemas/finance/payout_flow.sql:341 |
 | `api:rpc core.cancel_fulfillment` | writes | `table:finance.fulfillments` | db/core/supabase/schemas/finance/payout_flow.sql:392 |
 | `api:view core.fulfillment_exports` | reads | `table:finance.fulfillments` | db/core/supabase/schemas/api/views.sql:100 |
@@ -2263,6 +2263,7 @@ Masalah sistem yang ditemukan saat menyusun PRD v0.2 dan saat dicek ulang (v0.2.
 | 2026-10-20 | `page:admin/fulfillment` | Audit PRD ulang (AA-4, C6.2 "webhook gagal terus → antre admin fulfillment", F-A10 tandai terkirim): webhook yang berhenti setelah 12× gagal hanya bisa dibatalkan; tidak ada kirim ulang atau tandai terkirim | diperbaiki: api.retry_fulfillment + worker mengambil webhook on_hold ber-next_retry_at (berhenti lagi setelah 12×), mark_fulfillment_delivered menerima webhook on_hold (bukan pool kode); tombol Kirim ulang/Tandai terkirim di admin. Bug NULL di NOT IN tertangkap tes sebelum commit |
 | 2026-10-20 | `api:fn identity/pii-export` | Review Claudex R26: (1) reset tujuan refund saat owner berubah juga mengenai refund yang transfernya sudah/sedang jalan → bisa disetujui & dibayar ulang; (2) set_refund_dest mengunci refund lalu anggota, kebalikan hapus owner → deadlock (dibuktikan 2 sesi psql) | diperbaiki: checkpoint transfer_started_at dicatat bridge_refund_revealed (identity memanggilnya sebelum menampilkan rekening; dicek ulang disetujui & owner sekarang, bridge_get_refund.dest_owner_current) dan trigger on_owner_lost tidak menyentuh refund yang transfernya sudah dimulai; set_refund_dest & bridge_refund_revealed mengunci anggota dulu baru refund (terbukti tanpa deadlock) |
 | 2026-10-20 | `api:fn identity/disburse` | Audit PRD ulang (AA-5, A3.7 "tindak lanjuti yang menggantung", R-18): instant processing yang sudah punya provider_ref tapi callback-nya hilang menggantung selamanya tanpa alert (retry hanya untuk yang tanpa provider_ref) | diperbaiki: retry_instant_payouts juga mengirim processing ber-ref > 1 jam ke disburse + alert payout.instant_stuck; disburse membaca status di penyedia (provider.status, GET /v2/payouts/{id}) untuk payout ber-ref — tidak pernah mengirim ulang (cegah transfer ganda); bridge_get_payout membawa provider_ref |
+| 2026-10-20 | `api:rpc core.mark_fulfillment_delivered` | Review Claudex R27: webhook macet yang sedang dikirim ulang worker (lease aktif / retry terjadwal) tetap bisa ditandai terkirim manual → reward bisa sampai dua kali | diperbaiki: tandai terkirim ditolak selama lease aktif (delivery_in_flight) atau kirim ulang terjadwal (invalid_state:retrying); api.fulfillments membawa next_retry_at, admin hanya menampilkan Kirim ulang/Tandai terkirim untuk webhook yang benar-benar berhenti |
 | 2026-10-20 | `api:fn core/social` | Audit PRD (G-1, F-C02/D-11): YouTube hanya bisa dihubungkan lewat OAuth Google; fallback kode di deskripsi channel tidak ada (YOUTUBE_API_KEY tak dipakai) | diperbaiki: aksi youtube_code / youtube_verify (kode CLIP-… per user+channel harus ada di deskripsi) → akun terverifikasi dengan token mode api_key; adapter memakai ?key= (tanpa Analytics, tanpa refresh); dialog di halaman Akun sosmed |
 ## Keputusan
 

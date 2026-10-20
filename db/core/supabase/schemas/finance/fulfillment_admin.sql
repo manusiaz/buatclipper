@@ -22,6 +22,14 @@ begin
                    and (rt.fulfillment = 'manual_export' or (rt.fulfillment = 'webhook' and f.status = 'on_hold'))) then
     perform market.fail('invalid:fulfillment', 'reward otomatis ditandai manual hanya webhook yang macet');
   end if;
+  -- webhook yang sedang dikirim worker (lease) atau sudah dijadwalkan kirim ulang belum "berhenti": konfirmasi manual bisa
+  -- membuat reward terkirim dua kali (R27-1)
+  if f.leased_until > now() then
+    perform market.fail('delivery_in_flight', 'reward sedang dikirim worker');
+  end if;
+  if f.next_retry_at is not null and (select rt.fulfillment from market.reward_types rt where rt.id = f.reward_type_id) = 'webhook' then
+    perform market.fail('invalid_state:retrying', 'kirim ulang terjadwal; tunggu hasilnya');
+  end if;
   if f.status not in ('requested', 'on_hold', 'processing') then
     perform market.fail('invalid_state:' || f.status);
   end if;

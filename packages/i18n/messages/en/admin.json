@@ -861,7 +861,8 @@
     "ref": "Delivery reference",
     "refHelp": "Tracking number / voucher number",
     "retry": "Retry",
-    "retried": "Resent to the brand webhook"
+    "retried": "Resent to the brand webhook",
+    "retryScheduled": "Retry in progress…"
   },
   "config": {
     "title": "Config",

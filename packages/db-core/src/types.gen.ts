@@ -222,14 +222,14 @@ export type Database = {
                   ]
                 },"fulfillments": {
                   Row: {
-                    "amount": number | null,"attempts": number | null,"created_at": string | null,"delivered_at": string | null,"delivered_ref": string | null,"id": string | null,"recipient": Json | null,"reward_type_id": string | null,"status": "requested"|"on_hold"|"processing"|"cancelled"|"delivered"|"failed"|"returned" | null,"user_id": string | null
+                    "amount": number | null,"attempts": number | null,"created_at": string | null,"delivered_at": string | null,"delivered_ref": string | null,"id": string | null,"next_retry_at": string | null,"recipient": Json | null,"reward_type_id": string | null,"status": "requested"|"on_hold"|"processing"|"cancelled"|"delivered"|"failed"|"returned" | null,"user_id": string | null
                   }
                   ComputedFields: never
                   Insert: {
-                           "amount"?: number | null,"attempts"?: number | null,"created_at"?: string | null,"delivered_at"?: string | null,"delivered_ref"?: string | null,"id"?: string | null,"recipient"?: Json | null,"reward_type_id"?: string | null,"status"?: "requested"|"on_hold"|"processing"|"cancelled"|"delivered"|"failed"|"returned" | null,"user_id"?: string | null
+                           "amount"?: number | null,"attempts"?: number | null,"created_at"?: string | null,"delivered_at"?: string | null,"delivered_ref"?: string | null,"id"?: string | null,"next_retry_at"?: string | null,"recipient"?: Json | null,"reward_type_id"?: string | null,"status"?: "requested"|"on_hold"|"processing"|"cancelled"|"delivered"|"failed"|"returned" | null,"user_id"?: string | null
                          }
                         Update: {
-                           "amount"?: number | null,"attempts"?: number | null,"created_at"?: string | null,"delivered_at"?: string | null,"delivered_ref"?: string | null,"id"?: string | null,"recipient"?: Json | null,"reward_type_id"?: string | null,"status"?: "requested"|"on_hold"|"processing"|"cancelled"|"delivered"|"failed"|"returned" | null,"user_id"?: string | null
+                           "amount"?: number | null,"attempts"?: number | null,"created_at"?: string | null,"delivered_at"?: string | null,"delivered_ref"?: string | null,"id"?: string | null,"next_retry_at"?: string | null,"recipient"?: Json | null,"reward_type_id"?: string | null,"status"?: "requested"|"on_hold"|"processing"|"cancelled"|"delivered"|"failed"|"returned" | null,"user_id"?: string | null
                          }
                         Relationships: [
                     

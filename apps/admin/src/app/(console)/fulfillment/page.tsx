@@ -120,7 +120,7 @@ async function TypeQueue({
   const [listRes, freeRes, exportsRes] = await Promise.all([
     db
       .from('fulfillments')
-      .select('id, user_id, amount, recipient, status, attempts, created_at')
+      .select('id, user_id, amount, recipient, status, attempts, created_at, next_retry_at')
       .eq('reward_type_id', id)
       .in('status', [...ACTIVE])
       .order('created_at')
@@ -230,10 +230,13 @@ async function TypeQueue({
                 </TD>
                 <TD align="right">
                   <div className="flex flex-wrap justify-end gap-2">
-                    {canOps && rt.fulfillment === 'webhook' && f.status === 'on_hold' ? (
+                    {canOps && rt.fulfillment === 'webhook' && f.status === 'on_hold' && f.next_retry_at ? (
+                      <span className="text-caption text-muted">{t('fulfillment.retryScheduled')}</span>
+                    ) : null}
+                    {canOps && rt.fulfillment === 'webhook' && f.status === 'on_hold' && !f.next_retry_at ? (
                       <ActionButton label={t('fulfillment.retry')} icon="refresh" variant="secondary" success={t('fulfillment.retried')} action={retryFulfillment.bind(null, f.id!)} />
                     ) : null}
-                    {canOps && (rt.fulfillment === 'manual_export' ? f.status !== 'failed' : rt.fulfillment === 'webhook' && f.status === 'on_hold') ? (
+                    {canOps && (rt.fulfillment === 'manual_export' ? f.status !== 'failed' : rt.fulfillment === 'webhook' && f.status === 'on_hold' && !f.next_retry_at) ? (
                       <ActionDialog
                         trigger={{ label: t('fulfillment.markDelivered'), variant: 'secondary', icon: 'check' }}
                         title={t('fulfillment.markDelivered')}

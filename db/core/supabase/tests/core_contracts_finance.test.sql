@@ -591,6 +591,17 @@ select lives_ok($$ select api.retry_fulfillment((select id from t_pay where k = 
 reset role;
 select is((select count(*)::int from api.worker_fulfillments_due(10) d where d.id = (select id from t_pay where k = 'f3')), 1,
           'worker mengambil webhook yang dikirim ulang');
+set local role authenticated;
+select pg_temp.jwt('33333333-0000-0000-0000-0000000000a0', '{"app_roles":["admin_ops"],"aal":"aal2"}');
+select throws_ok($$ select api.mark_fulfillment_delivered((select id from t_pay where k = 'f3'), 'BRAND-OK') $$, 'P0001', 'delivery_in_flight',
+                 'regresi R27-1: webhook yang sedang dikirim worker tidak bisa ditandai terkirim manual (cegah kirim dua kali)');
+reset role;
+update finance.fulfillments set leased_until = null where id = (select id from t_pay where k = 'f3');
+set local role authenticated;
+select pg_temp.jwt('33333333-0000-0000-0000-0000000000a0', '{"app_roles":["admin_ops"],"aal":"aal2"}');
+select throws_ok($$ select api.mark_fulfillment_delivered((select id from t_pay where k = 'f3'), 'BRAND-OK') $$, 'P0001', 'invalid_state:retrying',
+                 'kirim ulang terjadwal: tunggu hasilnya dulu');
+reset role;
 select api.worker_fulfillment_result((select id from t_pay where k = 'f3'), false, null, 'timeout') from generate_series(1, 12);
 select is((select status::text || ':' || attempts || ':' || (next_retry_at is null)::text from finance.fulfillments
             where id = (select id from t_pay where k = 'f3')), 'on_hold:12:true', 'gagal 12× lagi → berhenti lagi (tidak berulang tanpa batas)');
