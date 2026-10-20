@@ -221,3 +221,21 @@ Deno.test("bridge notify_admins: alert payout → admin_finance + admin_super, i
   const bad = await json(await s.handler(await signed("notify_admins", { kind: "budget.used", alert_id: 1 })));
   assertEquals([bad.status, bad.body.error.code], [400, "invalid_kind"]);
 });
+
+Deno.test("bridge notify_admins: satu email gagal → admin lain tetap dikirimi, respons 503 supaya core mengulang", async () => {
+  let calls = 0;
+  const s = setup({
+    email: () => ({
+      send: (m) => {
+        calls++;
+        return m.to === "andi@contoh.id" ? Promise.reject(new Error("429")) : Promise.resolve({ id: "re_1" });
+      },
+    }),
+  });
+  s.authAdmin.users.set("00000000-0000-0000-0000-0000000000ad", {
+    id: "00000000-0000-0000-0000-0000000000ad",
+    email: "su@contoh.id",
+  });
+  const res = await json(await s.handler(await signed("notify_admins", { kind: "reconcile.ledger", alert_id: 9 })));
+  assertEquals([res.status, res.body.error.code, calls], [503, "email_failed", 2]);
+});

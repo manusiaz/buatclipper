@@ -21,6 +21,7 @@ import {
   formatDateTime,
   formatIDR,
   formatNumber,
+  platformLabels,
   type Platform,
 } from '@clipper/ui';
 import { Brief } from '@/features/campaigns/brief';
@@ -28,7 +29,7 @@ import { categoryNames } from '@/features/campaigns/cards';
 import { parseDetail } from '@/features/campaigns/detail';
 import { DetailCta } from '@/features/claim/detail-cta';
 import { arr, budgetUsedRatio, cardRates, isPlatform, isUuid, maxViews, num, type RateRule } from '@/features/lib/pure';
-import { core, errorText, publicUrl, uiLocale } from '@/features/lib/server';
+import { core, errorText, myClipTerms, publicUrl, uiLocale } from '@/features/lib/server';
 import { formatAmount } from '@/features/lib/units';
 
 export const metadata: Metadata = { title: 'Detail campaign' };
@@ -52,7 +53,7 @@ export default async function CampaignDetailPage({ params, searchParams }: Props
   const files = d.assets.filter((a) => a.kind !== 'cover');
   const privatePaths = files.filter((a) => a.storage_path && a.bucket === 'campaign-assets').map((a) => a.storage_path!);
 
-  const [t, locale, categories, social, signed] = await Promise.all([
+  const [t, locale, categories, social, signed, terms] = await Promise.all([
     getTranslations('clipper'),
     uiLocale(),
     categoryNames(),
@@ -63,6 +64,7 @@ export default async function CampaignDetailPage({ params, searchParams }: Props
       .in('platform', platforms)
       .neq('status', 'disconnected'),
     privatePaths.length ? db.storage.from('campaign-assets').createSignedUrls(privatePaths, 3600) : Promise.resolve({ data: [] }),
+    myClipTerms(),
   ]);
   const signedUrl = new Map((signed.data ?? []).map((s) => [s.path, s.signedUrl]));
   const reasonText =
@@ -78,6 +80,17 @@ export default async function CampaignDetailPage({ params, searchParams }: Props
   const top = cardRates(d.rules, platforms, idr).sort((a, b) => b.ratePer1k - a.ratePer1k)[0];
   const views = maxViews(d.est_remaining_views);
   const used = budgetUsedRatio(d.budget_idr, d.remaining_idr);
+  // Cap efektif = max_per_clip pool × ketentuan Trust Score & platform clipper ini (sama dengan accrual).
+  const capText = (p: (typeof d.pools)[number]) => {
+    const by = new Map<number, Platform[]>();
+    for (const pf of platforms) {
+      const v = (num(p.max_per_clip) * num(terms[pf]?.cap_pct ?? 100)) / 100;
+      by.set(v, [...(by.get(v) ?? []), pf]);
+    }
+    return [...by]
+      .map(([v, pfs]) => (by.size > 1 ? `${formatAmount(v, p, locale)} (${pfs.map((x) => platformLabels[x]).join(', ')})` : formatAmount(v, p, locale)))
+      .join(' · ');
+  };
   const when = (v: string | null) => (v ? `${formatDateTime(v, locale, { dateStyle: 'long', timeStyle: 'short' })} WIB` : '—');
   const amount = (r: RateRule, v: unknown) =>
     formatAmount(num(v), { code: r.code ?? 'IDR', unit_label: r.unit_label ?? '', decimals: r.decimals ?? 0 }, locale);
@@ -212,7 +225,7 @@ export default async function CampaignDetailPage({ params, searchParams }: Props
               .filter((p) => p.max_per_clip)
               .map((p) => (
                 <li key={p.pool_id} className="tnum">
-                  {t('detail.cap', { amount: formatAmount(p.max_per_clip!, p, locale) })}
+                  {t('detail.cap', { amount: capText(p) })}
                 </li>
               ))}
           </ul>

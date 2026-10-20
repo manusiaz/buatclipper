@@ -1,4 +1,5 @@
 import { unstable_cache } from 'next/cache';
+import { hosts } from '@clipper/auth';
 import { core, deadline } from './core';
 import { ADMIN_FEE_PCT, MGMT_FEE_PCT } from '../features/landing/fees';
 import { publicSettings, type PublicSettings } from './settings';
@@ -41,7 +42,7 @@ export const getPublicSettings = unstable_cache(
   async (): Promise<PublicSettings> => {
     const { data, error } = await core.from('settings').select('key, value').in('key', KEYS).abortSignal(deadline(2500));
     if (error) throw new Error(error.message);
-    return publicSettings(data ?? []);
+    return publicSettings(data ?? [], hosts.app);
   },
   ['web:settings'],
   { revalidate: 300 },

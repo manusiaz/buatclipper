@@ -54,8 +54,9 @@ export default async function ProfilePage() {
   const effects: { key: string; ok: boolean | null; vars: Record<string, number> }[] = [
     { key: 'instant', ok: score >= instantMin, vars: { n: instantMin } },
     { key: 'premium', ok: null, vars: {} },
-    { key: 'cap', ok: capTier ? (mine?.cap ?? 100) > 100 : null, vars: { n: capTier?.min ?? 0, pct: mine && mine.cap > 100 ? mine.cap : capTier?.cap ?? 0 } },
-    { key: 'hold', ok: holdTier ? (mine?.hold ?? holdDays) < holdDays : null, vars: { n: holdTier?.min ?? 0, days: mine && mine.hold < holdDays ? mine.hold : holdTier?.hold ?? holdDays } },
+    // Tanpa tier yang menaikkan cap / memendekkan hold (config kosong) efeknya tidak ditampilkan, bukan "0%".
+    ...(capTier ? [{ key: 'cap', ok: (mine?.cap ?? 100) > 100, vars: { n: capTier.min, pct: mine && mine.cap > 100 ? mine.cap : capTier.cap } }] : []),
+    ...(holdTier ? [{ key: 'hold', ok: (mine?.hold ?? holdDays) < holdDays, vars: { n: holdTier.min, days: mine && mine.hold < holdDays ? mine.hold : holdTier.hold } }] : []),
   ];
 
   return (

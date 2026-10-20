@@ -9,3 +9,6 @@ select cron.schedule('notify-drain', '* * * * *', $$select ops.invoke_function('
 
 -- job:broadcast-dispatch (tiap menit): kirim broadcast yang sudah waktunya (F-A12; ops.dispatch_broadcasts, kontrak).
 select cron.schedule('broadcast-dispatch', '* * * * *', $$select ops.dispatch_broadcasts()$$);
+
+-- job:alert-notify (tiap 15 menit): ulangi email admin untuk alert yang belum terkirim (F-X01; ops.notify_alerts).
+select cron.schedule('alert-notify', '*/15 * * * *', $$select ops.notify_alerts()$$);

@@ -105,18 +105,25 @@ export async function notifyAdmins(
   const ids = (await deps.rpc.invoke<string[] | null>("svc_admin_ids", { p_roles: [role, "admin_super"] })) ?? [];
   const r = render("admin.alert", data, deps.links());
   let sent = 0;
+  let failed = 0;
   for (const id of ids) {
-    const user = await deps.authAdmin.getUser(id);
-    if (!user?.email) continue;
-    await deps.email().send({
-      to: user.email,
-      subject: r.subject,
-      text: r.text,
-      html: r.html,
-      idempotencyKey: `alert-${alertId || kind}-${id}`,
-    });
-    sent++;
+    try {
+      const user = await deps.authAdmin.getUser(id);
+      if (!user?.email) continue;
+      await deps.email().send({
+        to: user.email,
+        subject: r.subject,
+        text: r.text,
+        html: r.html,
+        idempotencyKey: `alert-${alertId || kind}-${id}`,
+      });
+      sent++;
+    } catch (e) {
+      failed++; // admin lain tetap dikirimi; core mengulang seluruhnya (idempotency key per alert & admin)
+      log("warn", { fn: "bridge", action: "notify_admins", error: e instanceof Error ? e.message : String(e) });
+    }
   }
+  if (failed) throw new HttpError(503, "email_failed", `${failed} email alert gagal`);
   return { sent };
 }
 

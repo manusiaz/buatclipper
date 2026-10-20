@@ -49,7 +49,12 @@ create policy pool_settlements_visible on finance.pool_settlements for select to
   using (exists (select 1 from finance.reward_pools p where p.id = pool_id));
 grant select on finance.pool_settlements to authenticated;
 
--- Earning rule view-based untuk rentang views kumulatif (p_from, p_to]. numeric penuh, tanpa pembulatan.
+-- Angka JSON di kunci p_key; selain angka → null.
+create function finance.jnum(p_obj jsonb, p_key text) returns numeric
+language sql immutable set search_path = '' as $$
+  select case when jsonb_typeof(p_obj -> p_key) = 'number' then (p_obj ->> p_key)::numeric end;
+$$;
+
 -- Ketentuan per clipper & platform (§12, C4.1): tier Trust Score (public.finance.trust_tiers: [{min_score, cap_pct,
 -- hold_days}]) membuka cap per klip lebih tinggi & hold lebih pendek; aturan platform (public.finance.platform_rules:
 -- {platform: {cap_pct, hold_days}}) menurunkan cap & memperpanjang hold untuk platform bersinyal miskin (TikTok).
@@ -57,19 +62,21 @@ grant select on finance.pool_settlements to authenticated;
 -- Tanpa setting = 100% & hold global.
 create function finance.clip_terms(p_trust int, p_platform text) returns table (cap_pct numeric, hold_days int)
 language sql stable set search_path = '' as $$
+  -- Nilai bukan angka (diedit admin di editor JSON) diabaikan, bukan menggagalkan accrual/release semua submisi.
   with t as (
     select coalesce((select x from jsonb_array_elements(case when jsonb_typeof(ops.cfg('public.finance.trust_tiers')) = 'array'
                                                              then ops.cfg('public.finance.trust_tiers') else '[]' end) x
-                      where (x ->> 'min_score')::int <= coalesce(p_trust, 0)
-                      order by (x ->> 'min_score')::int desc limit 1), '{}') as tier,
+                      where finance.jnum(x, 'min_score') <= coalesce(p_trust, 0)
+                      order by finance.jnum(x, 'min_score') desc limit 1), '{}') as tier,
            coalesce(ops.cfg('public.finance.platform_rules') -> p_platform, '{}') as rule
   )
-  select greatest(coalesce((t.tier ->> 'cap_pct')::numeric, 100), 0) * greatest(coalesce((t.rule ->> 'cap_pct')::numeric, 100), 0) / 100,
-         greatest(coalesce((t.tier ->> 'hold_days')::int, (ops.cfg('public.finance.hold_days', '7'))::int),
-                  coalesce((t.rule ->> 'hold_days')::int, 0))
+  select greatest(coalesce(finance.jnum(t.tier, 'cap_pct'), 100), 0) * greatest(coalesce(finance.jnum(t.rule, 'cap_pct'), 100), 0) / 100,
+         least(greatest(coalesce(round(finance.jnum(t.tier, 'hold_days')), (ops.cfg('public.finance.hold_days', '7'))::numeric),
+                        coalesce(round(finance.jnum(t.rule, 'hold_days')), 0), 0), 365)::int
     from t;
 $$;
 
+-- Earning rule view-based untuk rentang views kumulatif (p_from, p_to]. numeric penuh, tanpa pembulatan.
 create function finance.rule_amount(p_kind text, p_params jsonb, p_from bigint, p_to bigint) returns numeric
 language plpgsql immutable set search_path = '' as $$
 declare
@@ -470,7 +477,7 @@ begin
   end loop;
 end $$;
 
-revoke execute on function finance.clip_terms(int, text), finance.rule_amount(text, jsonb, bigint, bigint), finance.start_settlement(uuid),
+revoke execute on function finance.clip_terms(int, text), finance.jnum(jsonb, text), finance.rule_amount(text, jsonb, bigint, bigint), finance.start_settlement(uuid),
   finance.check_exhausted(uuid), finance.accrue_earnings(uuid, bigint), finance.correct_down(uuid, bigint, bigint),
   finance.reverse_earning(uuid, text), finance.settle_pool(uuid), finance.finalize_settlements(), finance.release_earnings()
   from public;

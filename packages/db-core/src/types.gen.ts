@@ -606,6 +606,9 @@ export type Database = {
 "approve_refund":
 { Args: { "p_refund": string }; Returns: undefined
                            },
+"bridge_alert_notified":
+{ Args: { "p_alert": number }; Returns: undefined
+                           },
 "bridge_attach_export":
 { Args: { "p_batch": string,"p_exported": (string)[],"p_file_ref": string,"p_held": Json }; Returns: undefined
                            },
@@ -728,6 +731,9 @@ export type Database = {
                            },
 "missing_brief_tags":
 { Args: { "p_campaign": string,"p_caption": string }; Returns: (string)[]
+                           },
+"my_clip_terms":
+{ Args: Record<PropertyKey, never>; Returns: Json
                            },
 "my_referral_code":
 { Args: Record<PropertyKey, never>; Returns: string

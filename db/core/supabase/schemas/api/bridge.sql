@@ -244,6 +244,12 @@ language sql stable security definer set search_path = '' as $$
   select exists (select 1 from finance.fulfillments f where f.reward_type_id = p_reward_type and f.export_ref = p_file_ref);
 $$;
 
+-- F-X01: email alert terkirim ke admin (bridge cron notify_admins sukses) → batas 1 email/jenis/jam mulai dihitung.
+create function api.bridge_alert_notified(p_alert bigint) returns void
+language sql security definer set search_path = '' as $$
+  update ops.alerts set notified_at = now() where id = p_alert and notified_at is null;
+$$;
+
 -- Alur 10: ID lintas DB yang dirujuk core (profil belum ditutup, rekening & penerima milik mereka).
 create function api.bridge_collect_ids() returns jsonb
 language plpgsql stable security definer set search_path = '' as $$
@@ -271,11 +277,13 @@ revoke execute on function api.bridge_get_batch(uuid), api.bridge_attach_export(
   api.bridge_attach_fulfillment_export(uuid, text, uuid[]), api.bridge_fulfillment_export_accepted(uuid, text),
   api.bridge_attach_proof(text, uuid, text), api.bridge_raise_fraud_flag(text, uuid, text, numeric, jsonb),
   api.bridge_close_account(uuid), api.bridge_get_payout(uuid), api.bridge_mark_instant(uuid, text, text, text),
-  api.bridge_pph21(date, date), api.bridge_fulfillment_export(uuid), api.bridge_collect_ids(), api.bridge_report_orphans(jsonb)
+  api.bridge_pph21(date, date), api.bridge_fulfillment_export(uuid), api.bridge_collect_ids(), api.bridge_report_orphans(jsonb),
+  api.bridge_alert_notified(bigint)
   from public, anon, authenticated;
 grant execute on function api.bridge_get_batch(uuid), api.bridge_attach_export(uuid, text, jsonb, uuid[]),
   api.bridge_attach_fulfillment_export(uuid, text, uuid[]), api.bridge_fulfillment_export_accepted(uuid, text),
   api.bridge_attach_proof(text, uuid, text), api.bridge_raise_fraud_flag(text, uuid, text, numeric, jsonb),
   api.bridge_close_account(uuid), api.bridge_get_payout(uuid), api.bridge_mark_instant(uuid, text, text, text),
-  api.bridge_pph21(date, date), api.bridge_fulfillment_export(uuid), api.bridge_collect_ids(), api.bridge_report_orphans(jsonb)
+  api.bridge_pph21(date, date), api.bridge_fulfillment_export(uuid), api.bridge_collect_ids(), api.bridge_report_orphans(jsonb),
+  api.bridge_alert_notified(bigint)
   to service_role;

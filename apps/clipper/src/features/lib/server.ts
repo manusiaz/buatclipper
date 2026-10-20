@@ -28,6 +28,13 @@ export async function fail(raw: string | null | undefined, detail?: unknown): Pr
   return { ok: false, code: raw || 'generic', message: await errorText(raw, detail) };
 }
 
+/** Cap & hold yang berlaku untuk clipper ini per platform (api.my_clip_terms = ketentuan accrual & release). */
+export async function myClipTerms(): Promise<Record<string, { cap_pct: number; hold_days: number }>> {
+  const db = await core();
+  const { data } = await db.rpc('my_clip_terms');
+  return data && typeof data === 'object' && !Array.isArray(data) ? (data as Record<string, { cap_pct: number; hold_days: number }>) : {};
+}
+
 /** Config public.* (ops.settings, terbaca semua user). */
 export async function readSettings(keys: string[]): Promise<Record<string, unknown>> {
   const db = await core();

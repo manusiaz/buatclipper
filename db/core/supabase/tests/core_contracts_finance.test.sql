@@ -396,7 +396,14 @@ select is((select count(*)::int from net.http_request_queue q where convert_from
           'regresi G-12: alert payout gagal → email admin lewat bridge (F-X01 admin)');
 select ops.raise_alert('payout.failed', 'warning', '{"payout_id":"x"}');
 select is((select count(*)::int from net.http_request_queue q where convert_from(q.body, 'UTF8')::jsonb ->> 'action' = 'notify_admins'
-            and convert_from(q.body, 'UTF8')::jsonb ->> 'kind' = 'payout.failed'), 1, 'alert beruntun dalam 1 jam tidak mengirim email lagi');
+            and convert_from(q.body, 'UTF8')::jsonb ->> 'kind' = 'payout.failed'), 2, 'regresi C19-2: email alert sebelumnya belum terkirim → alert berikutnya tetap dicoba kirim');
+select api.bridge_alert_notified((select max(id) from ops.alerts where kind = 'payout.failed'));
+select ops.raise_alert('payout.failed', 'warning', '{"payout_id":"y"}');
+select is((select count(*)::int from net.http_request_queue q where convert_from(q.body, 'UTF8')::jsonb ->> 'action' = 'notify_admins'
+            and convert_from(q.body, 'UTF8')::jsonb ->> 'kind' = 'payout.failed'), 2, 'alert beruntun dalam 1 jam setelah email terkirim tidak mengirim email lagi');
+insert into ops.alerts (kind, severity, payload) values ('reconcile.orphans', 'critical', '{}');
+select is(ops.notify_alerts('reconcile.orphans'), 1, 'regresi C19-2: job alert-notify mengulang alert yang emailnya belum terkirim');
+select is(ops.notify_alerts('payout.failed'), 0, 'job alert-notify tidak mengulang jenis yang sudah terkirim dalam 1 jam');
 select ops.raise_alert('payout.on_hold', 'warning', '{}');
 select is((select count(*)::int from net.http_request_queue q where convert_from(q.body, 'UTF8')::jsonb ->> 'action' = 'notify_admins'
             and convert_from(q.body, 'UTF8')::jsonb ->> 'kind' = 'payout.on_hold'), 0, 'alert di luar daftar F-X01 admin tidak dikirim email');
@@ -1055,8 +1062,8 @@ select is((select status::text from tracking.submissions where user_id = '111111
           'submisi yang menunggu review dihentikan');
 
 -- ========== M. Hak akses RPC service_role ==========
-select is((select count(*)::int from pg_proc p where p.pronamespace = 'api'::regnamespace and p.proname ~ '^(worker|bridge)_'), 30,
-          '30 RPC worker/bridge');
+select is((select count(*)::int from pg_proc p where p.pronamespace = 'api'::regnamespace and p.proname ~ '^(worker|bridge)_'), 31,
+          '31 RPC worker/bridge');
 select is((select count(*)::int from pg_proc p where p.pronamespace = 'api'::regnamespace and p.proname ~ '^(worker|bridge)_'
             and (has_function_privilege('authenticated', p.oid, 'execute') or has_function_privilege('anon', p.oid, 'execute'))), 0,
           'authenticated/anon tidak bisa EXECUTE RPC worker/bridge');
@@ -1424,6 +1431,11 @@ select pg_temp.snap((select v::uuid from t_ids where k = k1), 10000) from (value
 select is((select array_agg(ce.amount order by s.user_id) from finance.clip_earnings ce join tracking.submissions s on s.id = ce.submission_id
             where ce.pool_id = '66666666-0000-0000-0000-0000000000f8'), array[1200, 800]::numeric[],
           'regresi G-2/G-4: cap per klip = cap pool × tier skor (150%) × TikTok (80%) → Rp1.200 vs Rp800');
+set local role authenticated;
+select pg_temp.jwt('11111111-0000-0000-0000-0000000000f8');
+select is(api.my_clip_terms() -> 'tiktok', '{"cap_pct":120,"hold_days":10}'::jsonb,
+          'regresi C19-5/6: my_clip_terms = ketentuan accrual & release clipper ini (skor 85, TikTok)');
+reset role;
 update tracking.submissions set status = 'locked', locked_at = now() - interval '4 days'
  where id in (select v::uuid from t_ids where k in ('sf8', 'sf9'));
 select finance.release_earnings();
@@ -1433,7 +1445,14 @@ delete from ops.settings where key = 'public.finance.platform_rules';
 select finance.release_earnings();
 select is((select array_agg(status::text order by user_id) from tracking.submissions where id in (select v::uuid from t_ids where k in ('sf8', 'sf9'))),
           array['settled', 'locked'], 'tanpa aturan platform: skor 85 → hold 3 hari (dirilis), skor 50 → hold global 7 hari');
-delete from ops.settings where key = 'public.finance.trust_tiers';
+update ops.settings set value = '[{"min_score":72.5,"cap_pct":"80%","hold_days":"x"},{"min_score":"60","cap_pct":120}]'
+ where key = 'public.finance.trust_tiers';
+insert into ops.settings (key, value) values ('public.finance.platform_rules', '{"tiktok":{"cap_pct":80.5,"hold_days":10.6},"x":5}');
+select is((select array[ct.cap_pct, ct.hold_days] from finance.clip_terms(85, 'tiktok') ct),
+          array[80.5, 11]::numeric[], 'regresi C19-3: nilai config bukan angka diabaikan, desimal dibulatkan (tidak error)');
+select is((select ct.hold_days from finance.clip_terms(85, 'x') ct), (ops.cfg('public.finance.hold_days', '7'))::int,
+          'aturan platform bukan objek diabaikan → hold global');
+delete from ops.settings where key in ('public.finance.trust_tiers', 'public.finance.platform_rules');
 
 -- ========== Invarian akhir ==========
 select is((select count(*)::int from (select 1 from finance.ledger_entries e group by e.txn_id, e.reward_type_id having sum(e.amount) <> 0) x),

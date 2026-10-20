@@ -20,8 +20,8 @@ export function num(v: unknown): number | null {
   return null;
 }
 
-/** Baris ops.settings → nilai yang dipakai landing; kunci hilang/rusak → default PRD (§5, §7). */
-export function publicSettings(rows: Array<{ key: string | null; value: unknown }>): PublicSettings {
+/** Baris ops.settings → nilai yang dipakai landing; kunci hilang/rusak → default PRD (§5, §7). appUrl: host path banner. */
+export function publicSettings(rows: Array<{ key: string | null; value: unknown }>, appUrl = ''): PublicSettings {
   const get = (k: string) => rows.find((r) => r.key === `public.${k}`)?.value;
   const flags = get('flags.platforms');
   const enabled =
@@ -36,6 +36,6 @@ export function publicSettings(rows: Array<{ key: string | null; value: unknown 
     claimHours: num(get('market.claim_hours')) ?? 48,
     holdDays: num(get('finance.hold_days')) ?? 7,
     platforms: enabled.length ? enabled : ['tiktok', 'instagram', 'youtube'],
-    banners: parseHomeBanners(get('home.banners')),
+    banners: parseHomeBanners(get('home.banners'), appUrl),
   };
 }

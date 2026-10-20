@@ -36,18 +36,19 @@ describe('publicSettings', () => {
       {
         key: 'public.home.banners',
         value: [
-          { img: 'https://cdn.example/b1.webp', href: '/c/mpl', alt: 'MPL' },
+          { img: 'https://cdn.example/b1.webp', href: '/campaigns', alt: 'MPL' },
           { img: 'javascript:alert(1)', href: '/x', alt: 'x' }, // img bukan https/path → dibuang
           { img: '/banners/b2.png', href: '//evil.example', alt: 'y' }, // href protocol-relative → dibuang
           { img: 'banners/b3.png', href: 'https://brand.example/promo', alt: 'z' }, // path tanpa "/" → dinormalkan
         ],
       },
-    ]);
+    ], 'https://app.clipper.test');
     expect(s).toEqual({
       minWithdrawIdr: 50000, managedServiceIdr: 2500000, maxAccountsPerPlatform: 2, claimHours: 24, holdDays: 3, platforms: ['tiktok', 'youtube', 'threads'],
       banners: [
-        { img: 'https://cdn.example/b1.webp', href: '/c/mpl', alt: 'MPL' },
-        { img: '/banners/b3.png', href: 'https://brand.example/promo', alt: 'z' },
+        // regresi C19-1: path internal milik app clipper → dari landing diarahkan ke host app (bukan 404 di landing)
+        { img: 'https://cdn.example/b1.webp', href: 'https://app.clipper.test/campaigns', alt: 'MPL', external: false },
+        { img: 'https://app.clipper.test/banners/b3.png', href: 'https://brand.example/promo', alt: 'z', external: true },
       ],
     });
   });

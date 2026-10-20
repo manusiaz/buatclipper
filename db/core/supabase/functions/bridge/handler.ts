@@ -142,12 +142,16 @@ export function createBridgeHandler(deps: BridgeDeps): (req: Request) => Promise
   const cron: Record<string, (p: Payload) => Promise<unknown>> = {
     reconcile_ids: () => reconcileIds(deps),
     disburse: (p) => deps.identity("disburse", { payout_id: pick(p, "payout_id") }),
-    notify_admins: (p) =>
-      deps.identity("notify_admins", {
+    async notify_admins(p) {
+      const out = await deps.identity("notify_admins", {
         kind: pick(p, "kind"),
         severity: opt(p, "severity", "warning"),
         alert_id: opt(p, "alert_id"),
-      }),
+      });
+      // Gagal → notified_at tetap kosong → job alert-notify mengulang (ops.notify_alerts).
+      if (p.alert_id != null) await deps.rpc("bridge_alert_notified", { p_alert: Number(p.alert_id) });
+      return out;
+    },
     ban_user: (p) =>
       deps.identity("ban_user", {
         user_id: pick(p, "user_id"),

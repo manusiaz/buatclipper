@@ -8,6 +8,7 @@ create table ops.alerts (
   created_at timestamptz not null default now(),
   resolved_at timestamptz,
   resolved_by uuid,
+  notified_at timestamptz, -- email admin terkirim (bridge identity notify_admins sukses)
   constraint alerts_resolution check ((resolved_at is null) = (resolved_by is null))
 );
 create index alerts_open_idx on ops.alerts (kind, created_at desc) where resolved_at is null;
@@ -40,15 +41,31 @@ begin
     return null;
   end if;
   insert into ops.alerts (kind, severity, payload) values (p_kind, p_severity, coalesce(p_payload, '{}')) returning id into aid;
-  -- F-X01 admin (alur 4): job tracking gagal, lonjakan fraud, payout gagal, selisih rekonsiliasi → email admin terkait lewat
-  -- bridge identity (tanpa PII; payload tidak dikirim). Maks satu email per jenis per jam supaya alert beruntun tidak spam.
-  if p_kind in ('tracking.lag', 'tracking.final_missing', 'fraud.flag_spike', 'payout.failed', 'payout.instant_stuck',
-                'reconcile.ledger', 'reconcile.orphans')
-     and not exists (select 1 from ops.alerts a where a.kind = p_kind and a.id <> aid and a.created_at > now() - interval '1 hour') then
-    perform ops.invoke_function('bridge', jsonb_build_object('action', 'notify_admins', 'kind', p_kind, 'severity', p_severity,
-                                                             'alert_id', aid));
-  end if;
+  perform ops.notify_alerts(p_kind);
   return aid;
+end $$;
+
+-- F-X01 admin (alur 4): job tracking gagal, lonjakan fraud, payout gagal, selisih rekonsiliasi → email admin terkait lewat
+-- bridge identity (tanpa PII; payload tidak dikirim). Per jenis: alert terbuka terbaru yang belum terkirim (≤ 1 hari), maks
+-- satu email per jam dihitung dari email yang benar-benar terkirim (notified_at). Job alert-notify mengulang yang gagal.
+create function ops.notify_alerts(p_kind text default null) returns int
+language plpgsql security definer set search_path = '' as $$
+declare
+  r record;
+  n int := 0;
+begin
+  for r in select distinct on (a.kind) a.id, a.kind, a.severity from ops.alerts a
+            where a.kind in ('tracking.lag', 'tracking.final_missing', 'fraud.flag_spike', 'payout.failed', 'payout.instant_stuck',
+                             'reconcile.ledger', 'reconcile.orphans')
+              and (p_kind is null or a.kind = p_kind)
+              and a.notified_at is null and a.resolved_at is null and a.created_at > now() - interval '1 day'
+              and not exists (select 1 from ops.alerts b where b.kind = a.kind and b.notified_at > now() - interval '1 hour')
+            order by a.kind, a.id desc loop
+    perform ops.invoke_function('bridge', jsonb_build_object('action', 'notify_admins', 'kind', r.kind, 'severity', r.severity,
+                                                             'alert_id', r.id));
+    n := n + 1;
+  end loop;
+  return n;
 end $$;
 
 create function api.resolve_alert(p_id bigint) returns void
@@ -64,5 +81,6 @@ begin
   insert into ops.audit_logs (actor_id, action, target, after) values ((select auth.uid()), 'alert.resolve', 'alert:' || p_id, null);
 end $$;
 
-revoke execute on function ops.cfg(text, jsonb), ops.raise_alert(text, text, jsonb, interval), api.resolve_alert(bigint) from public;
+revoke execute on function ops.cfg(text, jsonb), ops.raise_alert(text, text, jsonb, interval), ops.notify_alerts(text),
+  api.resolve_alert(bigint) from public;
 grant execute on function api.resolve_alert(bigint) to authenticated;

@@ -144,5 +144,14 @@ begin
                             join market.reward_types rt on rt.id = x.reward_type_id), '[]'::jsonb));
 end $$;
 
-revoke execute on function api.campaign_detail(uuid), api.campaign_stats(uuid), api.my_stats() from public;
-grant execute on function api.campaign_detail(uuid), api.campaign_stats(uuid), api.my_stats() to authenticated;
+-- Cap & hold yang berlaku untuk clipper ini per platform (finance.clip_terms, satu sumber dengan accrual & release):
+-- {platform: {cap_pct, hold_days}} untuk cap efektif di detail campaign dan perkiraan tanggal Tersedia.
+create function api.my_clip_terms() returns jsonb
+language sql stable security definer set search_path = '' as $$
+  select jsonb_object_agg(p, jsonb_build_object('cap_pct', trim_scale(ct.cap_pct), 'hold_days', ct.hold_days))
+    from unnest(enum_range(null::market.platform)) p,
+         finance.clip_terms((select pr.trust_score from market.profiles pr where pr.id = market.session_uid()), p::text) ct;
+$$;
+
+revoke execute on function api.campaign_detail(uuid), api.campaign_stats(uuid), api.my_stats(), api.my_clip_terms() from public;
+grant execute on function api.campaign_detail(uuid), api.campaign_stats(uuid), api.my_stats(), api.my_clip_terms() to authenticated;

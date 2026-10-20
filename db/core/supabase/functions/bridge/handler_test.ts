@@ -94,7 +94,7 @@ Deno.test("bridge: HMAC salah / aksi tak dikenal / payload kurang / error RPC �
 
 Deno.test("bridge: cron apikey → disburse/ban_user diteruskan ke identity; tanpa apikey 401", async () => {
   const sent: [string, Record<string, unknown>][] = [];
-  const { h } = handler({}, (a, p) => {
+  const { h, calls } = handler({ bridge_alert_notified: () => null }, (a, p) => {
     sent.push([a, p]);
     return Promise.resolve({ ok: true });
   });
@@ -119,6 +119,23 @@ Deno.test("bridge: cron apikey → disburse/ban_user diteruskan ke identity; tan
     ["ban_user", { user_id: "u2", duration: "none" }],
     ["notify_admins", { kind: "payout.failed", severity: "warning", alert_id: 7 }],
   ]);
+  assert.deepEqual(calls.map((c) => [c.fn, c.args]), [["bridge_alert_notified", { p_alert: 7 }]]);
+});
+
+Deno.test("bridge: notify_admins gagal di identity → notified_at tidak diisi (job alert-notify mengulang)", async () => {
+  const { h, calls } = handler(
+    { bridge_alert_notified: () => null },
+    () => Promise.reject(new HttpError(503, "email_failed")),
+  );
+  const res = await h(
+    new Request("https://core.test/functions/v1/bridge", {
+      method: "POST",
+      headers: { apikey: "sb_secret_core" },
+      body: JSON.stringify({ action: "notify_admins", kind: "reconcile.ledger", alert_id: 3 }),
+    }),
+  );
+  assert.equal(res.status, 503);
+  assert.equal(calls.length, 0);
 });
 
 Deno.test("bridge: reconcile_ids → check_ids (dipecah per 1000) → bridge_report_orphans", async () => {
