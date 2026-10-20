@@ -404,7 +404,7 @@ Arah: `A --tipe--> B` = A bergantung pada B. `?` = belum terverifikasi.
 | `page:accounts/onboarding` | routes-to | `page:brand/new` | PRD v0.3.1 §6 B1.3; kode baris 31 (fallback hosts.brand/new) |
 | `page:accounts/onboarding` | wrapped-by | `layout:accounts` | apps/accounts/src/app/layout.tsx:20 |
 | `page:accounts/onboarding` | writes | `table:bucket.avatars` | apps/accounts/src/features/onboarding/actions.ts:31 |
-| `page:accounts/payout-methods` | calls | `api:fn identity/member-data` | apps/accounts/src/features/payout-methods/actions.ts:21 |
+| `page:accounts/payout-methods` | calls | `api:fn identity/member-data` | apps/accounts/src/features/payout-methods/actions.ts:22 |
 | `page:accounts/payout-methods` | routes-to | `page:app/wallet/withdraw` | PRD v0.3.1 §6 C1.13; kode baris 62 (kembali ke next); features/payout-methods/actions.ts baris 30 membawa method_id |
 | `page:accounts/payout-methods` | wrapped-by | `layout:accounts` | apps/accounts/src/app/layout.tsx:20 |
 | `page:accounts/privacy` | calls | `api:fn identity/delete-account` | apps/accounts/src/features/privacy/actions.ts:27 |
@@ -519,11 +519,11 @@ Arah: `A --tipe--> B` = A bergantung pada B. `?` = belum terverifikasi.
 | `page:app/campaigns/[id]` | reads | `table:market.rate_rules` | PRD v0.3.1 §14 kg.yaml features.F-C04; kode: lewat rpc campaign_detail (page.tsx baris 44) |
 | `page:app/campaigns/[id]` | routes-to | `page:accounts/kyc` | apps/clipper/src/features/campaigns/fix.ts:13 (fixFor, features/claim/detail-cta.tsx baris 77) |
 | `page:app/campaigns/[id]` | routes-to | `page:app/social` | apps/clipper/src/features/campaigns/fix.ts:11 |
-| `page:app/campaigns/[id]` | routes-to | `page:app/tasks` | apps/clipper/src/app/campaigns/[id]/page.tsx:400 |
+| `page:app/campaigns/[id]` | routes-to | `page:app/tasks` | apps/clipper/src/app/campaigns/[id]/page.tsx:403 |
 | `page:app/campaigns/[id]` | wrapped-by | `layout:clipper` | apps/clipper/src/app/layout.tsx:31 |
-| `page:app/leaderboard` | reads | `table:market.leaderboard_campaign` | apps/clipper/src/app/leaderboard/page.tsx:40 (view api.leaderboard scope campaign) |
-| `page:app/leaderboard` | reads | `table:market.leaderboard_weekly` | apps/clipper/src/app/leaderboard/page.tsx:38 (view api.leaderboard scope week) |
-| `page:app/leaderboard` | routes-to | `page:app/campaigns/[id]` | apps/clipper/src/app/leaderboard/page.tsx:75 |
+| `page:app/leaderboard` | reads | `table:market.leaderboard_campaign` | apps/clipper/src/app/leaderboard/page.tsx:43 (view api.leaderboard scope campaign) |
+| `page:app/leaderboard` | reads | `table:market.leaderboard_weekly` | apps/clipper/src/app/leaderboard/page.tsx:41 (view api.leaderboard scope week) |
+| `page:app/leaderboard` | routes-to | `page:app/campaigns/[id]` | apps/clipper/src/app/leaderboard/page.tsx:78 |
 | `page:app/leaderboard` | wrapped-by | `layout:clipper` | apps/clipper/src/app/layout.tsx:31 |
 | `page:app/login` | calls | `mod:auth` | apps/clipper/src/app/login/page.tsx:7 |
 | `page:app/login` | routes-to | `api:GET app/auth/callback` | packages/auth/src/actions.ts:62 (googleSignIn redirectTo origin app) |
@@ -537,7 +537,7 @@ Arah: `A --tipe--> B` = A bergantung pada B. `?` = belum terverifikasi.
 | `page:app/offline` | wrapped-by | `layout:clipper` | apps/clipper/src/app/layout.tsx:31 |
 | `page:app/profile` | reads | `table:market.profiles` | PRD v0.3.1 Lampiran B (market.profiles); kode baris 36 (view api.my_profile) |
 | `page:app/profile` | reads | `table:trust.score_events` | apps/clipper/src/app/profile/page.tsx:37 |
-| `page:app/profile` | routes-to | `page:app/leaderboard` | apps/clipper/src/app/profile/page.tsx:186 |
+| `page:app/profile` | routes-to | `page:app/leaderboard` | apps/clipper/src/app/profile/page.tsx:194 |
 | `page:app/profile` | wrapped-by | `layout:clipper` | apps/clipper/src/app/layout.tsx:31 |
 | `page:app/referral` | calls | `api:rpc core.my_referral_code` | apps/clipper/src/app/referral/page.tsx:21 |
 | `page:app/referral` | reads | `table:market.referrals` | apps/clipper/src/app/referral/page.tsx:22 |
@@ -562,8 +562,8 @@ Arah: `A --tipe--> B` = A bergantung pada B. `?` = belum terverifikasi.
 | `page:app/tasks` | reads | `table:market.claims` | apps/clipper/src/app/tasks/page.tsx:45 |
 | `page:app/tasks` | reads | `table:tracking.submissions` | apps/clipper/src/app/tasks/page.tsx:47 |
 | `page:app/tasks` | reads | `table:tracking.view_snapshots` | PRD v0.3.1 §14 kg.yaml features.F-C07 (belum di kode: views dari submissions.counted_views/last_snapshot_at, page.tsx baris 48) |
-| `page:app/tasks` | routes-to | `api:GET app/api/oauth/[platform]/start` | apps/clipper/src/app/tasks/page.tsx:231 (sambung ulang akun) |
-| `page:app/tasks` | routes-to | `page:app/wallet` | apps/clipper/src/app/tasks/page.tsx:269 |
+| `page:app/tasks` | routes-to | `api:GET app/api/oauth/[platform]/start` | apps/clipper/src/app/tasks/page.tsx:234 (sambung ulang akun) |
+| `page:app/tasks` | routes-to | `page:app/wallet` | apps/clipper/src/app/tasks/page.tsx:272 |
 | `page:app/tasks` | wrapped-by | `layout:clipper` | apps/clipper/src/app/layout.tsx:31 |
 | `page:app/wallet` | calls | `api:rpc core.my_clip_terms` | apps/clipper/src/features/lib/server.ts:34 (myClipTerms → rpc my_clip_terms: hold per platform untuk tanggal Tersedia) |
 | `page:app/wallet` | reads | `table:finance.ledger_accounts` | PRD v0.3.1 §14 kg.yaml features.F-C08; kode: view api.wallet_balances (features/wallet/data.ts baris 21) |
@@ -576,9 +576,9 @@ Arah: `A --tipe--> B` = A bergantung pada B. `?` = belum terverifikasi.
 | `page:app/wallet/withdraw` | calls | `api:rpc core.request_payout` | apps/clipper/src/features/withdraw/actions.ts:23 |
 | `page:app/wallet/withdraw` | calls | `api:rpc identity.my_payout_methods` | apps/clipper/src/app/wallet/withdraw/page.tsx:47 |
 | `page:app/wallet/withdraw` | reads | `api:view identity.my_recipients` | apps/clipper/src/app/wallet/withdraw/page.tsx:48 |
-| `page:app/wallet/withdraw` | routes-to | `page:accounts/kyc` | apps/clipper/src/app/wallet/withdraw/page.tsx:74 |
-| `page:app/wallet/withdraw` | routes-to | `page:accounts/payout-methods` | apps/clipper/src/app/wallet/withdraw/page.tsx:63 |
-| `page:app/wallet/withdraw` | routes-to | `page:app/wallet` | apps/clipper/src/app/wallet/withdraw/page.tsx:184 |
+| `page:app/wallet/withdraw` | routes-to | `page:accounts/kyc` | apps/clipper/src/app/wallet/withdraw/page.tsx:75 |
+| `page:app/wallet/withdraw` | routes-to | `page:accounts/payout-methods` | apps/clipper/src/app/wallet/withdraw/page.tsx:64 |
+| `page:app/wallet/withdraw` | routes-to | `page:app/wallet` | apps/clipper/src/app/wallet/withdraw/page.tsx:190 |
 | `page:app/wallet/withdraw` | typed-by | `fn:custom_access_token_hook` | PRD v0.3.1 §6.1 C1.11 checklist KYC dari claim kyc; kode baris 55 (claim kyc) |
 | `page:app/wallet/withdraw` | wrapped-by | `layout:clipper` | apps/clipper/src/app/layout.tsx:31 |
 | `page:brand/` | reads | `table:market.org_members` | apps/brand/src/app/page.tsx:20 |
@@ -957,8 +957,8 @@ Arah: `A --tipe--> B` = A bergantung pada B. `?` = belum terverifikasi.
 | `api:rpc core.mark_fulfillment_delivered` | reads | `table:market.reward_types` | db/core/supabase/schemas/finance/fulfillment_admin.sql:16 |
 | `api:rpc core.mark_fulfillment_delivered` | writes | `table:finance.fulfillments` | db/core/supabase/schemas/finance/fulfillment_admin.sql:12, db/core/supabase/schemas/api/worker.sql:587 (api.worker_fulfillment_result, baris 28) |
 | `api:rpc core.mark_fulfillment_delivered` | writes | `table:ops.audit_logs` | db/core/supabase/schemas/finance/fulfillment_admin.sql:29 |
-| `api:rpc core.cancel_payout` | writes | `table:finance.payouts` | db/core/supabase/schemas/finance/payout_flow.sql:323 |
-| `api:rpc core.cancel_fulfillment` | writes | `table:finance.fulfillments` | db/core/supabase/schemas/finance/payout_flow.sql:374 |
+| `api:rpc core.cancel_payout` | writes | `table:finance.payouts` | db/core/supabase/schemas/finance/payout_flow.sql:329 |
+| `api:rpc core.cancel_fulfillment` | writes | `table:finance.fulfillments` | db/core/supabase/schemas/finance/payout_flow.sql:380 |
 | `api:view core.fulfillment_exports` | reads | `table:finance.fulfillments` | db/core/supabase/schemas/api/views.sql:100 |
 | `api:view core.admin_ledger` | reads | `table:finance.ledger_entries` | db/core/supabase/schemas/api/views.sql:86 |
 | `api:rpc core.missing_brief_tags` | guarded-by | `policy:core.public-read` | db/core/supabase/schemas/api/brief.sql:4 (security invoker lewat api.campaigns) |
@@ -991,8 +991,8 @@ Arah: `A --tipe--> B` = A bergantung pada B. `?` = belum terverifikasi.
 | `api:rpc core.report_by_token` | reads | `table:tracking.submissions` | db/core/supabase/schemas/api/report_links.sql:55 (market.campaign_report) |
 | `api:rpc core.request_fulfillment` | reads | `table:market.profiles` | db/core/supabase/schemas/finance/payout_flow.sql:16 (finance.require_active_clipper) |
 | `api:rpc core.request_fulfillment` | reads | `table:market.reward_types` | db/core/supabase/schemas/finance/payout_flow.sql:251 |
-| `api:rpc core.request_fulfillment` | writes | `table:finance.fulfillments` | db/core/supabase/schemas/finance/payout_flow.sql:281 |
-| `api:rpc core.request_fulfillment` | writes | `table:finance.ledger_entries` | db/core/supabase/schemas/finance/payout_flow.sql:283 (finance.post) |
+| `api:rpc core.request_fulfillment` | writes | `table:finance.fulfillments` | db/core/supabase/schemas/finance/payout_flow.sql:287 |
+| `api:rpc core.request_fulfillment` | writes | `table:finance.ledger_entries` | db/core/supabase/schemas/finance/payout_flow.sql:289 (finance.post) |
 | `api:rpc core.request_payout` | reads | `table:finance.ledger_accounts` | db/core/supabase/schemas/finance/payout_flow.sql:76 |
 | `api:rpc core.request_payout` | reads | `table:finance.ledger_entries` | db/core/supabase/schemas/finance/payout_flow.sql:77 (finance.balance) |
 | `api:rpc core.request_payout` | reads | `table:market.profiles` | db/core/supabase/schemas/finance/payout_flow.sql:16 (finance.require_active_clipper) |
@@ -1077,10 +1077,10 @@ Arah: `A --tipe--> B` = A bergantung pada B. `?` = belum terverifikasi.
 | `fn:accrue_earnings` | writes | `table:finance.ledger_entries` | db/core/supabase/schemas/finance/earnings.sql:250 (finance.post) |
 | `fn:accrue_earnings` | writes | `table:finance.reward_pools` | db/core/supabase/schemas/finance/earnings.sql:235 |
 | `fn:accrue_earnings` | writes | `table:tracking.submissions` | db/core/supabase/schemas/finance/earnings.sql:178 |
-| `fn:custom_access_token_hook` | reads | `table:member.consents` | db/identity/supabase/schemas/member/custom_access_token_hook.sql:31 |
-| `fn:custom_access_token_hook` | reads | `table:member.kyc_records` | db/identity/supabase/schemas/member/custom_access_token_hook.sql:25 |
-| `fn:custom_access_token_hook` | reads | `table:member.legal_versions` | db/identity/supabase/schemas/member/custom_access_token_hook.sql:10 |
-| `fn:custom_access_token_hook` | reads | `table:member.platform_roles` | db/identity/supabase/schemas/member/custom_access_token_hook.sql:24 |
+| `fn:custom_access_token_hook` | reads | `table:member.consents` | db/identity/supabase/schemas/member/custom_access_token_hook.sql:32 |
+| `fn:custom_access_token_hook` | reads | `table:member.kyc_records` | db/identity/supabase/schemas/member/custom_access_token_hook.sql:26 |
+| `fn:custom_access_token_hook` | reads | `table:member.legal_versions` | db/identity/supabase/schemas/member/custom_access_token_hook.sql:11 |
+| `fn:custom_access_token_hook` | reads | `table:member.platform_roles` | db/identity/supabase/schemas/member/custom_access_token_hook.sql:25 |
 | `fn:enqueue_notification` | emits | `event:queue.email` | db/core/supabase/schemas/ops/enqueue_notification.sql:20 |
 | `fn:enqueue_notification` | reads | `table:ops.notification_prefs` | db/core/supabase/schemas/ops/enqueue_notification.sql:17 (hanya email promosi; push tetap) |
 | `fn:enqueue_notification` | writes | `table:ops.notifications` | db/core/supabase/schemas/ops/enqueue_notification.sql:14 |
@@ -1123,8 +1123,8 @@ Arah: `A --tipe--> B` = A bergantung pada B. `?` = belum terverifikasi.
 | `job:token-refresh` | configured-by | `env:CORE_SECRET_KEY` | db/core/supabase/schemas/ops/enqueue_notification.sql:36 (ops.invoke_function → header apikey) |
 | `job:track-due` | calls | `api:fn core/track-worker` | db/core/supabase/schemas/tracking/cron.sql:4 |
 | `job:track-due` | configured-by | `env:CORE_SECRET_KEY` | db/core/supabase/schemas/ops/enqueue_notification.sql:36 (ops.invoke_function → header apikey); cron track-worker, tracking/cron.sql baris 4 |
-| `job:track-due` | emits | `event:queue.tracking` | db/core/supabase/schemas/tracking/submissions.sql:61 |
-| `job:track-due` | reads | `table:tracking.submissions` | db/core/supabase/schemas/tracking/submissions.sql:56 |
+| `job:track-due` | emits | `event:queue.tracking` | db/core/supabase/schemas/tracking/submissions.sql:62 |
+| `job:track-due` | reads | `table:tracking.submissions` | db/core/supabase/schemas/tracking/submissions.sql:57 |
 | `job:trust-score` | reads | `table:trust.score_events` | db/core/supabase/schemas/trust/decisions.sql:101 |
 | `job:trust-score` | writes | `table:trust.score_events` | db/core/supabase/schemas/trust/decisions.sql:86 (clean_tenure per 30 hari bersih) |
 | `job:trust-score` | writes | `table:market.profiles` | db/core/supabase/schemas/trust/decisions.sql:99 |
@@ -1298,13 +1298,13 @@ Arah: `A --tipe--> B` = A bergantung pada B. `?` = belum terverifikasi.
 | `table:tracking.social_accounts` | guarded-by | `policy:core.iss-identity` | db/core/supabase/schemas/tracking/social_accounts.sql:40 |
 | `table:tracking.social_accounts` | guarded-by | `policy:core.rls-self` | db/core/supabase/schemas/tracking/social_accounts.sql:42 |
 | `table:tracking.social_accounts` | typed-by | `table:market.profiles` | db/core/supabase/schemas/tracking/social_accounts.sql:5 |
-| `table:tracking.submissions` | guarded-by | `policy:core.admin-aal2` | db/core/supabase/schemas/tracking/submissions.sql:44 |
-| `table:tracking.submissions` | guarded-by | `policy:core.iss-identity` | db/core/supabase/schemas/tracking/submissions.sql:39 |
-| `table:tracking.submissions` | guarded-by | `policy:core.rls-org` | db/core/supabase/schemas/tracking/submissions.sql:42 |
-| `table:tracking.submissions` | guarded-by | `policy:core.rls-self` | db/core/supabase/schemas/tracking/submissions.sql:41 |
+| `table:tracking.submissions` | guarded-by | `policy:core.admin-aal2` | db/core/supabase/schemas/tracking/submissions.sql:45 |
+| `table:tracking.submissions` | guarded-by | `policy:core.iss-identity` | db/core/supabase/schemas/tracking/submissions.sql:40 |
+| `table:tracking.submissions` | guarded-by | `policy:core.rls-org` | db/core/supabase/schemas/tracking/submissions.sql:43 |
+| `table:tracking.submissions` | guarded-by | `policy:core.rls-self` | db/core/supabase/schemas/tracking/submissions.sql:42 |
 | `table:tracking.submissions` | typed-by | `doc:spec/kg.yaml` | db/core/supabase/schemas/ops/state_triggers.sql:1 |
-| `table:tracking.submissions` | typed-by | `table:market.claims` | db/core/supabase/schemas/tracking/submissions.sql:25 |
-| `table:tracking.submissions` | typed-by | `table:tracking.social_accounts` | db/core/supabase/schemas/tracking/submissions.sql:27 |
+| `table:tracking.submissions` | typed-by | `table:market.claims` | db/core/supabase/schemas/tracking/submissions.sql:26 |
+| `table:tracking.submissions` | typed-by | `table:tracking.social_accounts` | db/core/supabase/schemas/tracking/submissions.sql:28 |
 | `table:tracking.view_snapshots` | guarded-by | `policy:core.inherit-parent` | db/core/supabase/schemas/tracking/view_snapshots.sql:22 |
 | `table:tracking.view_snapshots` | guarded-by | `policy:core.iss-identity` | db/core/supabase/schemas/tracking/view_snapshots.sql:20 |
 | `table:tracking.view_snapshots` | typed-by | `table:tracking.submissions` | db/core/supabase/schemas/tracking/view_snapshots.sql:5 |
@@ -1372,11 +1372,11 @@ Arah: `A --tipe--> B` = A bergantung pada B. `?` = belum terverifikasi.
 | `test:e2e.cross-host` | tests | `page:brand/` | e2e/journey.cjs:110 |
 | `test:e2e.cross-host` | tests | `page:www/` | e2e/journey.cjs:38 |
 | `test:e2e.cross-host` | tests | `page:www/c/[slug]` | e2e/journey.cjs:43 |
-| `test:member-data.integrity` | tests | `api:fn identity/member-data` | db/identity/supabase/tests/identity_access.test.sql:61 (SQL di balik member-data; handler dites Deno member-data/handler_test.ts) |
-| `test:member-data.integrity` | tests | `api:rpc identity.store_kyc` | db/identity/supabase/tests/identity_access.test.sql:64 |
+| `test:member-data.integrity` | tests | `api:fn identity/member-data` | db/identity/supabase/tests/identity_access.test.sql:69 (SQL di balik member-data; handler dites Deno member-data/handler_test.ts) |
+| `test:member-data.integrity` | tests | `api:rpc identity.store_kyc` | db/identity/supabase/tests/identity_access.test.sql:72 |
 | `test:member-data.integrity` | tests | `fn:custom_access_token_hook` | db/identity/supabase/tests/identity_access.test.sql:46 |
 | `test:member-data.integrity` | tests | `policy:identity.unique-identity` | PRD v0.3.1 §15.4 FR-04; kode: identity_access.test.sql baris 72–73 (FR-04 NIK ganda ditolak) |
-| `test:member-data.integrity` | tests | `table:member.push_subscriptions` | db/identity/supabase/tests/identity_access.test.sql:160 |
+| `test:member-data.integrity` | tests | `table:member.push_subscriptions` | db/identity/supabase/tests/identity_access.test.sql:168 |
 | `test:pwa.ios-login` | tests | `mod:auth` | PRD v0.3.1 R-17 sesi diset dari server |
 | `test:pwa.ios-login` | tests | `page:app/login` | PRD v0.3.1 R-17 |
 | `test:rls.access-matrix` | tests | `job:broadcast-dispatch` | db/core/supabase/tests/core_access.test.sql:288 |
@@ -1390,8 +1390,8 @@ Arah: `A --tipe--> B` = A bergantung pada B. `?` = belum terverifikasi.
 | `test:rls.access-matrix` | tests | `policy:core.org-role` | db/core/supabase/tests/core_access.test.sql:213 |
 | `test:rls.access-matrix` | tests | `policy:core.rls-org` | db/core/supabase/tests/core_access.test.sql:208 |
 | `test:rls.access-matrix` | tests | `policy:core.rls-self` | db/core/supabase/tests/core_access.test.sql:185 |
-| `test:rls.access-matrix` | tests | `policy:identity.admin-aal2` | db/identity/supabase/tests/identity_access.test.sql:112 |
-| `test:rls.access-matrix` | tests | `policy:identity.rls-self` | db/identity/supabase/tests/identity_access.test.sql:82 |
+| `test:rls.access-matrix` | tests | `policy:identity.admin-aal2` | db/identity/supabase/tests/identity_access.test.sql:120 |
+| `test:rls.access-matrix` | tests | `policy:identity.rls-self` | db/identity/supabase/tests/identity_access.test.sql:90 |
 | `test:rls.access-matrix` | tests | `table:finance.ledger_entries` | db/core/supabase/tests/core_access.test.sql:151 |
 | `test:rls.access-matrix` | tests | `table:finance.payout_batches` | db/core/supabase/tests/core_access.test.sql:153 |
 | `test:rls.access-matrix` | tests | `table:market.claims` | db/core/supabase/tests/core_access.test.sql:89 |
@@ -2195,6 +2195,7 @@ Masalah sistem yang ditemukan saat menyusun PRD v0.2 dan saat dicek ulang (v0.2.
 | 2026-10-20 | `fn:accrue_earnings` | Audit PRD (G-2/G-4, §12 & C4.1): Trust Score tidak memengaruhi cap/hold; TikTok tidak punya cap lebih rendah & hold lebih panjang (satu max_per_clip & satu hold global) | diperbaiki: finance.clip_terms(trust, platform) dari public.finance.trust_tiers & public.finance.platform_rules → cap = max_per_clip × cap_pct tier × cap_pct platform (accrue), hold = hold tier minimal hold platform (release); default kode netral, nilai awal di seed; profil clipper menampilkan tier yang berlaku |
 | 2026-10-20 | `page:admin/finance` | Review interim (subagent, kuota Codex habis) C18: pencarian ledger dengan UUID submisi/refund tidak menemukan ref "<id>:…"; query OR lintas join tanpa indeks (scan penuh); dedupe announce tanpa indeks; eCPM memakai fee rule hari ini, bukan fee yang ditagih; margin retry_after 5 menit < lease penjadwal | diperbaiki: pencarian dipecah per kolom terindeks + awalan ref untuk UUID, indeks ledger_entries(ref_id text_pattern_ops), indeks parsial notifications campaign.new, eCPM = spend + fee invoice lunas diprorata ke spend, retry_after + 1 jam |
 | 2026-10-20 | `api:fn core/social` | Audit PRD (G-5, F-A06/FR-07): sinyal konten duplikat lintas akun (hash cover) tidak ada | diperbaiki: submit menghitung dHash 64-bit cover (thumbnail JPEG platform, jpeg-js; cover polos/format lain → null) → tracking.submissions.cover_hash; worker_create_submission mem-flag FR-07 bila cover berjarak Hamming ≤ trust.fraud.cover_distance (6) dengan submisi akun sosmed lain ≤ 90 hari |
+| 2026-10-20 | `page:app/wallet/withdraw` | Audit PRD ulang per langkah journey (Codex, clipper AC-1…6): klaim reward ber-PII tetap jalan setelah share_with_brand dicabut (saldo terpotong, tertahan di export); rekening baru dari accounts tidak terpilih (method_id vs method); Tugas Saya menampilkan counted_views (0 sebelum min_views / beku saat flagged) sebagai views terakhir; "Hubungi bantuan" tanpa kontak; leaderboard "Minggu ini" menampilkan minggu terakhir yang ada datanya & per campaign hanya dari submisi sendiri | diperbaiki: claim consent_ok.share_with_brand (hook identity) + request_fulfillment menolak consent_required, form reward menonaktifkan & mengarahkan ke izin, refresh sesi setelah izin; initialMethod membaca method_id; tracking.submissions.last_views dari worker_record_snapshot; public.community.links.support → menu Bantuan + link di profil, withdraw, KYC, keamanan; minggu berjalan (weekStartUtc) + campaign mana pun yang terlihat + link dari detail campaign |
 | 2026-10-20 | `job:reconcile-daily` | Review Claudex R19: unggah bukti refund gagal lalu diulang dengan referensi lain → invalid:note tanpa jalan keluar di UI; dua transaksi paralel sama-sama mengirim email alert sejenis; retur bank (payout paid → failed) tidak membuka baris mutasi sampai rekonsiliasi harian | diperbaiki: refund approved boleh ganti referensi tanpa catatan + dialog terisi referensi tersimpan (api.org_refunds.bank_ref); pg_try_advisory_xact_lock per jenis alert (uji 2 sesi: 2 → 1 email); mark_batch_paid, pay_refund, confirm_invoice_payment menjalankan finance.reconcile_bank |
 | 2026-10-20 | `job:reconcile-daily` | Review interim C20: refund dibayar tak pernah punya bank_ref & payout boleh tanpa referensi → selamanya "tanpa mutasi" tanpa jalan koreksi; tab Mutasi bank membaca payload alert basi dan dedupe 20 jam menyembunyikan selisih baru; throttle email alert dari notified_at (asinkron) → N alert sejenis dalam satu transaksi = N email per admin (regresi C19) | diperbaiki: referensi wajib (mark_batch_paid; pay_refund setelah api.set_bank_ref yang diisi dialog bukti refund), api.set_bank_ref untuk koreksi (catatan + audit); api.bank_issues dibaca langsung; alert baru hanya untuk selisih yang belum termuat alert terbuka; ops.alerts.notify_requested_at menahan alert beruntun ≤ 15 menit (terlihat di transaksi yang sama) |
 | 2026-10-20 | `api:fn core/social` | Review interim C20-5: thumbnail Shorts YouTube (320×180, pillarbox hitam) hanya menyisakan ±16 bit dHash informatif → Shorts berbeda berjarak 0–4 bit → FR-07 palsu menahan earning | diperbaiki: bingkai polos di tepi dibuang sebelum dHash (Shorts berbeda kini 29–38 bit, re-encode ≤ 2); tes pillarbox membuktikan kode lama memberi jarak 4/4/0 |

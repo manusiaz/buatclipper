@@ -185,3 +185,10 @@ export function taskGroup(status: string): TaskGroup {
       return 'rejected'; // rejected, rejected_final, forfeited
   }
 }
+
+/** Senin 00:00 UTC minggu berjalan = date_trunc('week', …) di market.leaderboard_weekly (sesi DB UTC). */
+export function weekStartUtc(now: Date): Date {
+  const d = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
+  d.setUTCDate(d.getUTCDate() - ((d.getUTCDay() + 6) % 7));
+  return d;
+}

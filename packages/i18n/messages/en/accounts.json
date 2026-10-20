@@ -57,7 +57,12 @@
     "title": "Brand team invite",
     "body": "You have been invited to join a brand organisation on Clipper.",
     "bodyOrg": "You have been invited to join <b>{org}</b> as <b>{role}</b>.",
-    "roles": { "brand_owner": "Owner", "brand_manager": "Manager", "brand_finance": "Finance", "brand_viewer": "Viewer" },
+    "roles": {
+      "brand_owner": "Owner",
+      "brand_manager": "Manager",
+      "brand_finance": "Finance",
+      "brand_viewer": "Viewer"
+    },
     "what": "Once you accept, you can help manage campaigns, review clips, or handle billing depending on the role the organisation owner gave you.",
     "login": "Sign in to accept",
     "accept": "Accept invite",
@@ -94,7 +99,12 @@
   "kyc": {
     "title": "Identity verification (KYC)",
     "description": "One time only. Used for withdrawals and tax obligations.",
-    "status": { "none": "Not started", "pending": "Pending review", "approved": "Approved", "rejected": "Rejected" },
+    "status": {
+      "none": "Not started",
+      "pending": "Pending review",
+      "approved": "Approved",
+      "rejected": "Rejected"
+    },
     "noReason": "no details",
     "back": "Back",
     "toPayout": "Set up bank account",
@@ -124,7 +134,8 @@
     "submit": "Submit for verification",
     "uploading": "Uploading photo…",
     "sending": "Submitting…",
-    "submitted": "KYC submitted. We will let you know once it is reviewed."
+    "submitted": "KYC submitted. We will let you know once it is reviewed.",
+    "contactSupport": "Contact support"
   },
   "payout": {
     "title": "Bank accounts & recipients",
@@ -191,7 +202,8 @@
     "activeTitle": "Authenticator on",
     "activeBody": "This session is verified with two steps.",
     "continue": "Continue",
-    "lost": "Lost your phone or authenticator app? Contact support to reset MFA after we check your identity."
+    "lost": "Lost your phone or authenticator app? Contact support to reset MFA after we check your identity.",
+    "contactSupport": "Contact support"
   },
   "privacy": {
     "title": "Privacy & data",

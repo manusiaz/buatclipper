@@ -6,7 +6,7 @@ import { requireAccount } from '@clipper/auth/server';
 import { Alert, Button, Card, EmptyState, PageHeader, StatusBadge, formatDateTime } from '@clipper/ui';
 import { KycForm } from '@/features/kyc/kyc-form';
 import { identityDb } from '@/lib/identity';
-import { one, withParams, type SearchParams } from '@/lib/url';
+import { one, supportUrl, withParams, type SearchParams } from '@/lib/url';
 
 export async function generateMetadata(): Promise<Metadata> {
   return { title: (await getTranslations('accounts.meta'))('kyc') };
@@ -15,7 +15,7 @@ export async function generateMetadata(): Promise<Metadata> {
 export default async function KycPage({ searchParams }: { searchParams: SearchParams }) {
   await requireAccount();
   const next = one((await searchParams).next);
-  const [t, id] = await Promise.all([getTranslations('accounts.kyc'), identityDb()]);
+  const [t, id, support] = await Promise.all([getTranslations('accounts.kyc'), identityDb(), supportUrl()]);
   const { data: kyc, error } = await id
     .from('my_kyc')
     .select('legal_name, nik_last4, status, reject_reason, submitted_at, decided_at')
@@ -71,7 +71,11 @@ export default async function KycPage({ searchParams }: { searchParams: SearchPa
       ) : (
         <>
           {status === 'rejected' && (
-            <Alert tone="danger" title={t('rejectedTitle')}>
+            <Alert
+              tone="danger"
+              title={t('rejectedTitle')}
+              action={support ? { label: t('contactSupport'), href: support } : undefined}
+            >
               {t('rejectedBody', { reason: kyc?.reject_reason || t('noReason') })}
             </Alert>
           )}

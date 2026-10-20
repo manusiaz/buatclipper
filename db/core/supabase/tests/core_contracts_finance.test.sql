@@ -528,6 +528,10 @@ set local role authenticated;
 select pg_temp.jwt('11111111-0000-0000-0000-00000000000a');
 select throws_ok($$ select api.request_fulfillment('77777777-0000-0000-0000-000000000002', 50, '{"game_user_id":"123"}', null, 'ful-key-01') $$,
                  'P0001', 'recipient_ref_required', 'field pii (alamat) wajib lewat recipient_ref identity');
+select throws_ok($$ select api.request_fulfillment('77777777-0000-0000-0000-000000000002', 50, '{"game_user_id":"123"}', gen_random_uuid(),
+                    'ful-key-01') $$, 'P0001', 'consent_required:share_with_brand',
+                 'regresi AC-1 (C2.4): consent share_with_brand dicabut/tidak ada → reward ber-PII tidak bisa diklaim');
+select pg_temp.jwt('11111111-0000-0000-0000-00000000000a', '{"consent_ok":{"share_with_brand":true}}');
 select throws_ok($$ select api.request_fulfillment('77777777-0000-0000-0000-000000000002', 50, '{"game_user_id":"123","address":"Jl. X"}',
                     gen_random_uuid(), 'ful-key-01') $$, 'P0001', 'pii_in_recipient', 'nilai field pii tidak boleh disimpan di core');
 select throws_ok($$ select api.request_fulfillment('77777777-0000-0000-0000-000000000002', 50, '{}', gen_random_uuid(), 'ful-key-01') $$,
@@ -996,6 +1000,9 @@ select is((select status::text from tracking.submissions where id = (select v::u
 select is((api.worker_record_snapshot((select v::uuid from t_ids where k = 's10'), 101000, 2000, 0, 0, 'caption diedit', '{}') ->> 'flagged')::boolean,
           true, 'FR-06: hashtag wajib hilang dari caption → flag');
 select is((select status::text from tracking.submissions where id = (select v::uuid from t_ids where k = 's10')), 'flagged', 'FR-06 → submisi flagged');
+select is((select last_views::text || ':' || (last_views <> counted_views)::text from api.submissions
+            where id = (select v::uuid from t_ids where k = 's10')), '101000:true',
+          'regresi AC-3 (F-C07): Tugas Saya membaca views snapshot terakhir walau earning tertahan flag (counted_views berbeda)');
 select ok(exists (select 1 from trust.fraud_flags where target_id = (select v::uuid from t_ids where k = 's10') and signal = 'FR-06'
                   and details -> 'missing' ? '#mplid'), 'flag FR-06 mencatat tag yang hilang');
 select is(pg_temp.rule_amt((select v::uuid from t_ids where k = 's10'),

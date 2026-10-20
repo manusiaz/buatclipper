@@ -53,7 +53,7 @@ create view api.social_accounts with (security_invoker = true) as
   from tracking.social_accounts;
 create view api.submissions with (security_invoker = true) as
   select id, claim_id, user_id, campaign_id, social_account_id, platform, post_id, url, posted_at, status, counted_views,
-         last_snapshot_at, locked_at, created_at
+         last_snapshot_at, last_views, locked_at, created_at
   from tracking.submissions;
 create view api.view_snapshots with (security_invoker = true) as
   select id, submission_id, taken_at, views, likes, comments, shares, is_final from tracking.view_snapshots;

@@ -38,7 +38,7 @@ insert into ops.settings (key, value) values
   ('public.flags.instant_withdraw', 'false'),
   ('public.flags.ai_clip', 'false'),
   ('public.flags.platforms', '{"tiktok":true,"instagram":true,"youtube":true,"threads":false,"facebook":false,"x":false}'),
-  ('public.community.links', '{"discord":"","whatsapp":""}'),
+  ('public.community.links', '{"discord":"","whatsapp":"","support":""}'),  -- support = link https kontak bantuan (banding, akun ditangguhkan)
   ('public.ai_clip.url', '""'),
   ('public.home.banners', '[]'),
   ('public.finance.hold_days', '7'),

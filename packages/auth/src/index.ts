@@ -19,7 +19,7 @@ export interface Claims {
   aal: 'aal1' | 'aal2';
   app_roles: PlatformRole[];
   kyc: 'none' | 'pending' | 'approved' | 'rejected';
-  consent_ok: { clipper: boolean; brand: boolean };
+  consent_ok: { clipper: boolean; brand: boolean; share_with_brand?: boolean };
   exp: number;
 }
 

@@ -18,7 +18,7 @@ import {
   formatDate,
   formatNumber,
 } from '@clipper/ui';
-import { arr, num } from '@/features/lib/pure';
+import { arr, communityLinks, num } from '@/features/lib/pure';
 import { core, publicUrl, readSettings, uiLocale } from '@/features/lib/server';
 import { formatAmount } from '@/features/lib/units';
 import { EditProfile } from '@/features/profile/edit-profile';
@@ -35,7 +35,7 @@ export default async function ProfilePage() {
     db.rpc('my_stats'),
     db.from('my_profile').select('username,display_name,avatar_path,trust_score,status,suspended_until,created_at').maybeSingle(),
     db.from('score_events').select('id,delta,reason,created_at').eq('user_id', claims.sub).order('created_at', { ascending: false }).limit(30),
-    readSettings(['public.finance.instant_min_trust', 'public.finance.trust_tiers', 'public.finance.hold_days']),
+    readSettings(['public.finance.instant_min_trust', 'public.finance.trust_tiers', 'public.finance.hold_days', 'public.community.links']),
   ]);
   const s = (stats.data ?? {}) as Record<string, unknown>;
   const score = num(me.data?.trust_score ?? s.trust_score);
@@ -45,6 +45,7 @@ export default async function ProfilePage() {
   // Ambang dari config: instant (public.finance.instant_min_trust), cap & hold (public.finance.trust_tiers, §12);
   // campaign premium ditentukan per campaign (min Trust Score brand).
   const holdDays = num(settings['public.finance.hold_days']) || 7;
+  const support = communityLinks(settings['public.community.links']).find((l) => l.key === 'support')?.href ?? null;
   const tiers = arr<Record<string, unknown>>(settings['public.finance.trust_tiers'])
     .map((x) => ({ min: num(x.min_score), cap: num(x.cap_pct) || 100, hold: num(x.hold_days) || holdDays }))
     .sort((a, b) => a.min - b.min);
@@ -180,7 +181,14 @@ export default async function ProfilePage() {
         ) : (
           <EmptyState compact icon="history" tone="neutral" title={t('historyEmpty')} body={t('historyEmptyBody')} />
         )}
-        <p className="mt-3 text-caption text-muted">{t('appealNote')}</p>
+        <p className="mt-3 text-caption text-muted">
+          {t('appealNote')}{' '}
+          {support ? (
+            <a href={support} target="_blank" rel="noopener noreferrer" className="font-semibold text-link underline">
+              {t('contactSupport')}
+            </a>
+          ) : null}
+        </p>
       </Card>
 
       <Button href="/leaderboard" linkAs={Link} variant="secondary" iconLeft="leaderboard" fullWidth>

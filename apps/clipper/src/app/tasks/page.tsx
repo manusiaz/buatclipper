@@ -45,7 +45,7 @@ export default async function TasksPage({ searchParams }: Props) {
     db.from('claims').select('id,campaign_id,expires_at').eq('user_id', uid).eq('status', 'open').gt('expires_at', nowIso).order('expires_at'),
     db
       .from('submissions')
-      .select('id,campaign_id,social_account_id,platform,url,posted_at,status,counted_views,last_snapshot_at,locked_at,created_at')
+      .select('id,campaign_id,social_account_id,platform,url,posted_at,status,counted_views,last_views,last_snapshot_at,locked_at,created_at')
       .eq('user_id', uid)
       .order('created_at', { ascending: false })
       .limit(100),
@@ -195,7 +195,10 @@ export default async function TasksPage({ searchParams }: Props) {
                       <dl className="grid grid-cols-2 gap-2 text-caption">
                         <div className="rounded-chip bg-subtle px-2.5 py-2">
                           <dt className="text-muted">{t('tasks.views')}</dt>
-                          <dd className="text-body-s font-bold text-ink tnum">{formatNumber(num(s.counted_views), locale)}</dd>
+                          <dd className="text-body-s font-bold text-ink tnum">{formatNumber(num(s.last_views ?? s.counted_views), locale)}</dd>
+                          {s.last_views != null && num(s.last_views) !== num(s.counted_views) ? (
+                            <dd className="text-muted tnum">{t('tasks.counted', { n: formatNumber(num(s.counted_views), locale) })}</dd>
+                          ) : null}
                           <dd className="text-muted">
                             {s.last_snapshot_at ? (
                               <>

@@ -21,7 +21,8 @@
       "discord": "Komunitas Discord",
       "whatsapp": "Grup WhatsApp",
       "telegram": "Grup Telegram",
-      "other": "Komunitas {name}"
+      "other": "Komunitas {name}",
+      "support": "Bantuan"
     },
     "aiClip": "AI Clip",
     "aiClipHint": "Potong video panjang jadi klip (tab baru)",
@@ -212,7 +213,8 @@
     "mySubmissions": "Submisi kamu",
     "allTasks": "Semua tugas",
     "views": "{n} views",
-    "verifiedBrand": "Brand terverifikasi"
+    "verifiedBrand": "Brand terverifikasi",
+    "leaderboard": "Leaderboard campaign ini"
   },
   "submit": {
     "title": "Submit video",
@@ -339,7 +341,8 @@
       "helper": "Maksimal 1.000 karakter.",
       "submit": "Kirim banding",
       "sent": "Banding terkirim"
-    }
+    },
+    "counted": "Dihitung untuk earning: {n}"
   },
   "wallet": {
     "title": "Wallet",
@@ -486,8 +489,12 @@
       "emptyBody": "Reward seperti diamond atau voucher muncul di sini setelah earning-nya tersedia.",
       "toWallet": "Lihat reward",
       "privacyBadge": "Privasi",
-      "privacy": "Alamat & nomor HP tidak pernah disimpan di app ini."
-    }
+      "privacy": "Alamat & nomor HP tidak pernah disimpan di app ini.",
+      "consentTitle": "Izin berbagi data penerima dicabut",
+      "consentBody": "Reward ini dikirim brand ke alamat/HP kamu, jadi butuh izin berbagi data penerima ke brand. Beri izin lagi di halaman data penerima.",
+      "consentAction": "Beri izin"
+    },
+    "contactSupport": "Hubungi bantuan"
   },
   "notifications": {
     "title": "Notifikasi",
@@ -564,7 +571,8 @@
       "name": "Nama tampilan",
       "save": "Simpan",
       "saved": "Profil diperbarui"
-    }
+    },
+    "contactSupport": "Hubungi bantuan"
   },
   "leaderboard": {
     "title": "Leaderboard",

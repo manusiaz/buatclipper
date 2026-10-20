@@ -7,6 +7,7 @@ import {
   enabledPlatforms,
   errorKey,
   estimateRelease,
+  weekStartUtc,
   maxViews,
   nextBatchDate,
   recipientFields,
@@ -104,5 +105,13 @@ describe('misc', () => {
   });
   it('vapid key decode', () => {
     expect([...base64UrlToBytes('AQID_w')]).toEqual([1, 2, 3, 255]);
+  });
+});
+
+describe('weekStartUtc (AC-5 leaderboard Minggu ini)', () => {
+  it('Senin 00:00 UTC minggu berjalan, termasuk saat hari Minggu', () => {
+    expect(weekStartUtc(new Date('2026-10-20T03:00:00Z')).toISOString()).toBe('2026-10-19T00:00:00.000Z');
+    expect(weekStartUtc(new Date('2026-10-25T23:59:00Z')).toISOString()).toBe('2026-10-19T00:00:00.000Z');
+    expect(weekStartUtc(new Date('2026-10-19T00:00:00Z')).toISOString()).toBe('2026-10-19T00:00:00.000Z');
   });
 });

@@ -5,7 +5,7 @@ import { requireClipper } from '@clipper/auth/server';
 import { Button, EmptyState, Tabs, TabsContent, TabsList, TabsTrigger, formatDate } from '@clipper/ui';
 import { Board } from '@/features/leaderboard/board';
 import { CampaignPicker } from '@/features/leaderboard/campaign-picker';
-import { isUuid } from '@/features/lib/pure';
+import { isUuid, weekStartUtc } from '@/features/lib/pure';
 import { core, uiLocale } from '@/features/lib/server';
 
 export const metadata: Metadata = { title: 'Leaderboard' };
@@ -20,14 +20,17 @@ export default async function LeaderboardPage({ searchParams }: Props) {
   const sp = await searchParams;
   const uid = claims.sub;
   const db = await core();
-  const [t, locale, latest, mySubs] = await Promise.all([
+  const [t, locale, mySubs] = await Promise.all([
     getTranslations('clipper.leaderboard'),
     uiLocale(),
-    db.from('leaderboard').select('week_start').eq('scope', 'week').order('week_start', { ascending: false }).limit(1).maybeSingle(),
     db.from('submissions').select('campaign_id,created_at').eq('user_id', uid).order('created_at', { ascending: false }).limit(100),
   ]);
-  const week = latest.data?.week_start ?? null;
-  const campaignIds = [...new Set((mySubs.data ?? []).map((s) => s.campaign_id!).filter(Boolean))];
+  // Minggu ini = minggu berjalan (date_trunc('week') UTC di leaderboard_weekly), bukan minggu terakhir yang punya data.
+  const week = weekStartUtc(new Date()).toISOString();
+  // Campaign dari submisi sendiri + campaign yang dibuka dari detail (?campaign=; campaign privat tersaring RLS).
+  const campaignIds = [
+    ...new Set([...(isUuid(sp.campaign) ? [sp.campaign!] : []), ...(mySubs.data ?? []).map((s) => s.campaign_id!).filter(Boolean)]),
+  ];
   const titles = campaignIds.length ? (await db.from('campaigns').select('id,title').in('id', campaignIds)).data ?? [] : [];
   const options = campaignIds
     .map((id) => ({ id, title: titles.find((c) => c.id === id)?.title ?? '' }))
@@ -35,8 +38,8 @@ export default async function LeaderboardPage({ searchParams }: Props) {
   const selected = isUuid(sp.campaign) && options.some((o) => o.id === sp.campaign) ? sp.campaign! : options[0]?.id;
 
   const [weekRows, weekMine, campRows, campMine] = await Promise.all([
-    week ? db.from('leaderboard').select(COLS).eq('scope', 'week').eq('week_start', week).order('rank').limit(50) : Promise.resolve({ data: [] }),
-    week ? db.from('leaderboard').select(COLS).eq('scope', 'week').eq('week_start', week).eq('user_id', uid).maybeSingle() : Promise.resolve({ data: null }),
+    db.from('leaderboard').select(COLS).eq('scope', 'week').eq('week_start', week).order('rank').limit(50),
+    db.from('leaderboard').select(COLS).eq('scope', 'week').eq('week_start', week).eq('user_id', uid).maybeSingle(),
     selected ? db.from('leaderboard').select(COLS).eq('scope', 'campaign').eq('campaign_id', selected).order('rank').limit(50) : Promise.resolve({ data: [] }),
     selected
       ? db.from('leaderboard').select(COLS).eq('scope', 'campaign').eq('campaign_id', selected).eq('user_id', uid).maybeSingle()
@@ -56,7 +59,7 @@ export default async function LeaderboardPage({ searchParams }: Props) {
           </TabsTrigger>
         </TabsList>
         <TabsContent value="week" className="mt-4 flex flex-col gap-3">
-          {week ? <p className="text-caption text-muted">{t('weekOf', { date: formatDate(week, locale) })}</p> : null}
+          <p className="text-caption text-muted">{t('weekOf', { date: formatDate(week, locale) })}</p>
           {(weekRows.data ?? []).length ? (
             <Board rows={weekRows.data ?? []} mine={weekMine.data} uid={uid} locale={locale} />
           ) : (

@@ -3,6 +3,7 @@
 import { revalidatePath } from 'next/cache';
 import { safeNext } from '@clipper/auth';
 import { invokeFunction } from '@clipper/auth/server';
+import { refreshSession } from '@clipper/auth/actions';
 import { dbCode } from '@/lib/errors';
 import { identityDb } from '@/lib/identity';
 import { withParams } from '@/lib/url';
@@ -44,6 +45,7 @@ export async function saveRecipient(input: {
     const id = await identityDb();
     const { error } = await id.rpc('record_consent', { p_kind: 'share_with_brand' });
     if (error) return { ok: false, error: dbCode(error) };
+    await refreshSession('sso'); // claim consent_ok.share_with_brand dibaca core saat klaim reward
   }
   const data = Object.fromEntries(Object.entries(input.data).map(([k, v]) => [k, v.trim()]).filter(([, v]) => v));
   const r = await invokeFunction<{ recipient_ref: string }>('identity', 'member-data', {

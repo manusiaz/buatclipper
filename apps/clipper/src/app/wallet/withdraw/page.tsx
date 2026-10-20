@@ -19,7 +19,7 @@ import {
   formatIDR,
   type IconName,
 } from '@clipper/ui';
-import { isUuid, nextBatchDate, num, recipientFields } from '@/features/lib/pure';
+import { communityLinks, isUuid, nextBatchDate, num, recipientFields } from '@/features/lib/pure';
 import { core, errorText, readSettings, uiLocale } from '@/features/lib/server';
 import { balances } from '@/features/wallet/data';
 import { CashForm } from '@/features/withdraw/cash-form';
@@ -41,13 +41,14 @@ export default async function WithdrawPage({ searchParams }: Props) {
     getTranslations('clipper.withdraw'),
     uiLocale(),
     balances(claims.sub),
-    readSettings(['public.finance.min_withdraw_idr', 'public.flags.instant_withdraw', 'public.finance.instant_min_trust']),
+    readSettings(['public.finance.min_withdraw_idr', 'public.flags.instant_withdraw', 'public.finance.instant_min_trust', 'public.community.links']),
     db.from('my_profile').select('trust_score,status,suspended_until').maybeSingle(),
     db.from('fee_rules').select('instant_withdraw_fee').eq('scope', 'global').maybeSingle(),
     identityApi(supabase).rpc('my_payout_methods'),
     identityApi(supabase).from('my_recipients').select('id,reward_type_id'),
   ]);
   const min = num(settings['public.finance.min_withdraw_idr']) || 100_000;
+  const support = communityLinks(settings['public.community.links']).find((l) => l.key === 'support')?.href ?? null;
   const minTrust = num(settings['public.finance.instant_min_trust']) || 70;
   const flag = settings['public.flags.instant_withdraw'] === true;
   const trust = num(me.data?.trust_score);
@@ -108,6 +109,7 @@ export default async function WithdrawPage({ searchParams }: Props) {
         // Data penerima tersimpan di identity (api.my_recipients); ?recipient_ref dari accounts menimpa (baru disimpan).
         recipientRef: sp.reward_type === b.unit.id && isUuid(sp.recipient_ref) ? sp.recipient_ref! : (recipientOf.get(b.unit.id) ?? null),
         recipientHref: payoutUrl({ reward_type: b.unit.id, next: back }),
+        shareConsent: claims.consent_ok?.share_with_brand === true,
       };
     })
     .sort((a, b) => (a.id === sp.reward_type ? -1 : b.id === sp.reward_type ? 1 : 0));
@@ -115,7 +117,11 @@ export default async function WithdrawPage({ searchParams }: Props) {
   return (
     <div className="flex flex-col gap-4">
       {inactive ? (
-        <Alert tone="danger" title={t('inactiveTitle')}>
+        <Alert
+          tone="danger"
+          title={t('inactiveTitle')}
+          action={support ? { label: t('contactSupport'), href: support } : undefined}
+        >
           {t('inactiveBody')}
         </Alert>
       ) : null}
@@ -164,7 +170,7 @@ export default async function WithdrawPage({ searchParams }: Props) {
               }}
               nextBatch={formatDate(nextBatchDate(), locale)}
               disabled={inactive || available < min}
-              initialMethod={isUuid(sp.method) ? sp.method : undefined}
+              initialMethod={isUuid(sp.method_id) ? sp.method_id : isUuid(sp.method) ? sp.method : undefined}
             />
           ) : (
             <p className="text-center text-caption text-muted">{t('completeFirst')}</p>

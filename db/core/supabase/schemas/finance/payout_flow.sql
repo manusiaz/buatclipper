@@ -263,9 +263,15 @@ begin
              where coalesce((f ->> 'pii')::boolean, false) and rec ? (f ->> 'key')) then
     raise exception 'pii_in_recipient' using errcode = 'P0001';
   end if;
-  if p_recipient_ref is null and exists (select 1 from jsonb_array_elements(rt.recipient_schema) f
-                                         where coalesce((f ->> 'pii')::boolean, false)) then
-    raise exception 'recipient_ref_required' using errcode = 'P0001';
+  if exists (select 1 from jsonb_array_elements(rt.recipient_schema) f where coalesce((f ->> 'pii')::boolean, false)) then
+    if p_recipient_ref is null then
+      raise exception 'recipient_ref_required' using errcode = 'P0001';
+    end if;
+    -- C2.4/C6.1: alamat/HP hanya sampai ke brand dengan consent share_with_brand (claim JWT dari hook identity);
+    -- tanpa itu klaim reward ber-PII ditolak, bukan saldo terpotong lalu tertahan di export.
+    if not coalesce((select (auth.jwt() -> 'consent_ok' ->> 'share_with_brand')::boolean), false) then
+      raise exception 'consent_required:share_with_brand' using errcode = 'P0001';
+    end if;
   end if;
   if exists (select 1 from jsonb_array_elements(rt.recipient_schema) f
              where not coalesce((f ->> 'pii')::boolean, false) and coalesce((f ->> 'required')::boolean, true)

@@ -50,7 +50,15 @@ set local request.jwt.claims = '{"sub":"00000000-0000-0000-0000-00000000000a","r
 select lives_ok($$ select api.record_consent('age_18_plus') $$, 'pernyataan umur 18+ dicatat');
 reset role;
 select is((member.custom_access_token_hook('{"user_id":"00000000-0000-0000-0000-00000000000a","claims":{"sub":"00000000-0000-0000-0000-00000000000a"}}')
-           -> 'claims' -> 'consent_ok'), '{"brand": false, "clipper": true}'::jsonb, 'hook: consent_ok clipper true, brand false');
+           -> 'claims' -> 'consent_ok'), '{"brand": false, "clipper": true, "share_with_brand": false}'::jsonb,
+          'hook: consent_ok clipper true, brand false, share_with_brand false');
+set local role authenticated;
+set local request.jwt.claims = '{"sub":"00000000-0000-0000-0000-00000000000a","role":"authenticated","aal":"aal1"}';
+select api.record_consent('share_with_brand');
+reset role;
+select is((member.custom_access_token_hook('{"user_id":"00000000-0000-0000-0000-00000000000a","claims":{"sub":"00000000-0000-0000-0000-00000000000a"}}')
+           -> 'claims' -> 'consent_ok' ->> 'share_with_brand'), 'true',
+          'regresi AC-1: hook mengisi consent_ok.share_with_brand (dibaca core request_fulfillment)');
 select is((member.custom_access_token_hook('{"user_id":"00000000-0000-0000-0000-00000000000a","claims":{"sub":"00000000-0000-0000-0000-00000000000a"}}')
            -> 'claims' ->> 'kyc'), 'none', 'hook: kyc none sebelum KYC');
 select is((member.custom_access_token_hook('{"user_id":"00000000-0000-0000-0000-0000000000ad","claims":{"sub":"00000000-0000-0000-0000-0000000000ad"}}')

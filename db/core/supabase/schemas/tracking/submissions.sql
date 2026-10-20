@@ -15,6 +15,7 @@ create table tracking.submissions (
   status tracking.submission_status not null default 'validating',
   counted_views bigint not null default 0 check (counted_views >= 0),
   last_snapshot_at timestamptz,
+  last_views bigint check (last_views >= 0),  -- views snapshot terakhir apa adanya (F-C07); counted_views = yang dihitung earning
   next_poll_at timestamptz,
   retry_after timestamptz,  -- §11 backoff: API gagal/rate limit → penjadwal tidak mengantre ulang sebelum waktu ini
   cover_hash bigint,  -- FR-07: dHash 64-bit cover saat submit (perseptual; null = cover tidak terbaca)

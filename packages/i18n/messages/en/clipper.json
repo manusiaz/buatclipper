@@ -21,7 +21,8 @@
       "discord": "Discord community",
       "whatsapp": "WhatsApp group",
       "telegram": "Telegram group",
-      "other": "{name} community"
+      "other": "{name} community",
+      "support": "Help"
     },
     "aiClip": "AI Clip",
     "aiClipHint": "Cut long videos into clips (new tab)",
@@ -212,7 +213,8 @@
     "mySubmissions": "Your submissions",
     "allTasks": "All tasks",
     "views": "{n} views",
-    "verifiedBrand": "Verified brand"
+    "verifiedBrand": "Verified brand",
+    "leaderboard": "This campaign’s leaderboard"
   },
   "submit": {
     "title": "Submit video",
@@ -339,7 +341,8 @@
       "helper": "Up to 1,000 characters.",
       "submit": "Send appeal",
       "sent": "Appeal sent"
-    }
+    },
+    "counted": "Counted for earnings: {n}"
   },
   "wallet": {
     "title": "Wallet",
@@ -486,8 +489,12 @@
       "emptyBody": "Rewards like diamonds or vouchers show up here once the earnings are available.",
       "toWallet": "See rewards",
       "privacyBadge": "Privacy",
-      "privacy": "Addresses and phone numbers are never stored in this app."
-    }
+      "privacy": "Addresses and phone numbers are never stored in this app.",
+      "consentTitle": "Recipient data sharing is revoked",
+      "consentBody": "The brand ships this reward to your address/phone, so it needs permission to share recipient data with the brand. Grant it again on the recipient data page.",
+      "consentAction": "Grant permission"
+    },
+    "contactSupport": "Contact support"
   },
   "notifications": {
     "title": "Notifications",
@@ -564,7 +571,8 @@
       "name": "Display name",
       "save": "Save",
       "saved": "Profile updated"
-    }
+    },
+    "contactSupport": "Contact support"
   },
   "leaderboard": {
     "title": "Leaderboard",

@@ -230,6 +230,9 @@ export default async function CampaignDetailPage({ params, searchParams }: Props
               ))}
           </ul>
         ) : null}
+        <Button href={`/leaderboard?tab=campaign&campaign=${c.id}`} linkAs={Link} variant="ghost" size="sm" iconLeft="leaderboard" className="self-start">
+          {t('detail.leaderboard')}
+        </Button>
       </Card>
 
       {tags.length ? (

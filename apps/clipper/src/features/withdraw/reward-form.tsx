@@ -19,6 +19,8 @@ export interface RewardOption {
   fields: RecipientField[];
   recipientRef: string | null;
   recipientHref: string;
+  /** Claim consent_ok.share_with_brand: tanpa izin, reward ber-PII ditolak core (C2.4). */
+  shareConsent: boolean;
 }
 
 export function RewardForm({ option, disabled }: { option: RewardOption; disabled: boolean }) {
@@ -38,7 +40,7 @@ export function RewardForm({ option, disabled }: { option: RewardOption; disable
   const step = 1 / 10 ** option.decimals;
   const missing = inline.some((f) => f.required && !values[f.key]?.trim());
   const valid =
-    !disabled && amount > 0 && amount <= option.available && !missing && (!needsRef || !!option.recipientRef) && (!fixed || amount === 1);
+    !disabled && amount > 0 && amount <= option.available && !missing && (!needsRef || (!!option.recipientRef && option.shareConsent)) && (!fixed || amount === 1);
 
   const submit = () =>
     start(async () => {
@@ -95,7 +97,11 @@ export function RewardForm({ option, disabled }: { option: RewardOption; disable
             />
           </Field>
         ))}
-        {needsRef ? (
+        {needsRef && option.recipientRef && !option.shareConsent ? (
+          <Alert tone="warn" title={t('consentTitle')} action={{ label: t('consentAction'), href: option.recipientHref }}>
+            {t('consentBody')}
+          </Alert>
+        ) : needsRef ? (
           option.recipientRef ? (
             <p className="flex items-center gap-2 rounded-chip bg-success-bg px-3 py-2 text-caption font-semibold text-success-fg">
               <Icon name="check_circle" size={16} filled />
