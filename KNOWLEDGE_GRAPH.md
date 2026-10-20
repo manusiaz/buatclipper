@@ -174,7 +174,8 @@ Wajib tetap benar setiap perubahan (dicek otomatis saat graph ini dibuat; cek ul
 | `api:rpc core.manage_org` | api | db/core/supabase/schemas/api/org.sql | Admin buat/verifikasi org, fee custom, tambah anggota + stub profil (paket managed F-A03, F-A07) |  |
 | `api:rpc core.manage_user` | api | db/core/supabase/schemas/trust/manage_user.sql | Admin atas clipper: override Trust Score, suspend/unsuspend + audit log (F-A07) |  |
 | `api:rpc core.mark_batch_paid` | api | db/core/supabase/schemas/finance/payout_flow.sql | Tandai batch paid/gagal + jurnal (F-A08) |  |
-| `api:rpc core.mark_fulfillment_delivered` | api | db/core/supabase/schemas/finance/fulfillment_admin.sql | Admin tandai fulfillment manual_export terkirim dengan referensi kiriman + audit log (F-A10) |  |
+| `api:rpc core.mark_fulfillment_delivered` | api | db/core/supabase/schemas/finance/fulfillment_admin.sql | Admin tandai fulfillment manual_export (atau webhook macet yang dikonfirmasi brand) terkirim dengan referensi kiriman + audit log (F-A10) |  |
+| `api:rpc core.retry_fulfillment` | api | db/core/supabase/schemas/finance/fulfillment_admin.sql | Admin kirim ulang webhook macet (on_hold setelah 12× gagal): attempts 0, worker mengambil lagi, berhenti lagi setelah 12× gagal (J-A5) |  |
 | `api:rpc core.cancel_payout` | api | db/core/supabase/schemas/finance/payout_flow.sql | Admin finance batalkan payout on_hold / batch requested (bukan di batch approved: batch_locked) → dana kembali ke Tersedia + audit |  |
 | `api:rpc core.cancel_fulfillment` | api | db/core/supabase/schemas/finance/payout_flow.sql | S-06 batal klaim reward; ditolak saat kiriman berjalan (delivery_in_flight), butuh konfirmasi bila hasil kirim/export tidak pasti (delivery_unconfirmed) |  |
 | `api:rpc core.missing_brief_tags` | api | db/core/supabase/schemas/api/brief.sql | Hashtag/mention/link wajib yang belum ada di caption, urut brief; {} = lengkap, NULL = campaign tidak terlihat (sheet Submit, core/social, track-worker) |  |
@@ -483,7 +484,11 @@ Arah: `A --tipe--> B` = A bergantung pada B. `?` = belum terverifikasi.
 | `page:admin/fraud` | wrapped-by | `layout:admin` | apps/admin/src/app/layout.tsx:20 |
 | `page:admin/fulfillment` | calls | `api:fn identity/pii-export` | apps/admin/src/features/fulfillment/actions.ts:12 |
 | `page:admin/fulfillment` | calls | `api:rpc core.mark_fulfillment_delivered` | apps/admin/src/features/fulfillment/actions.ts:44 |
-| `page:admin/fulfillment` | calls | `api:rpc core.upload_reward_codes` | apps/admin/src/features/fulfillment/actions.ts:57 |
+| `page:admin/fulfillment` | calls | `api:rpc core.retry_fulfillment` | apps/admin/src/features/fulfillment/actions.ts:52 |
+| `api:rpc core.retry_fulfillment` | guarded-by | `policy:core.admin-aal2` | db/core/supabase/schemas/finance/fulfillment_admin.sql:43 |
+| `api:rpc core.retry_fulfillment` | writes | `table:finance.fulfillments` | db/core/supabase/schemas/finance/fulfillment_admin.sql:53 |
+| `api:rpc core.retry_fulfillment` | writes | `table:ops.audit_logs` | db/core/supabase/schemas/finance/fulfillment_admin.sql:54 |
+| `page:admin/fulfillment` | calls | `api:rpc core.upload_reward_codes` | apps/admin/src/features/fulfillment/actions.ts:65 |
 | `page:admin/fulfillment` | calls | `api:rpc core.cancel_fulfillment` | apps/admin/src/features/fulfillment/actions.ts:32 |
 | `page:admin/fulfillment` | reads | `api:view core.fulfillment_exports` | kode: (console)/fulfillment/page.tsx baris 132 (path ber-kurung) |
 | `page:admin/fulfillment` | reads | `table:finance.fulfillments` | PRD v0.3.1 §14 kg.yaml features.F-A10; kode baris 51 |
@@ -810,9 +815,9 @@ Arah: `A --tipe--> B` = A bergantung pada B. `?` = belum terverifikasi.
 | `api:fn core/fulfill` | calls | `ext:brand-webhook` | db/core/supabase/functions/fulfill/fulfill.ts:115 |
 | `api:fn core/fulfill` | guarded-by | `policy:fn-cron-key` | db/core/supabase/functions/fulfill/index.ts:10 |
 | `api:fn core/fulfill` | reads | `table:finance.fulfillments` | db/core/supabase/schemas/api/worker.sql:512 (rpc worker_fulfillments_due) |
-| `api:fn core/fulfill` | reads | `table:vault.social-tokens` | db/core/supabase/schemas/api/worker.sql:531 (secret webhook reward type di Vault core) |
-| `api:fn core/fulfill` | writes | `table:finance.fulfillments` | db/core/supabase/schemas/api/worker.sql:587 (rpc worker_fulfillment_result) |
-| `api:fn core/fulfill` | writes | `table:finance.reward_codes` | db/core/supabase/schemas/api/worker.sql:566 (rpc worker_assign_code) |
+| `api:fn core/fulfill` | reads | `table:vault.social-tokens` | db/core/supabase/schemas/api/worker.sql:533 (secret webhook reward type di Vault core) |
+| `api:fn core/fulfill` | writes | `table:finance.fulfillments` | db/core/supabase/schemas/api/worker.sql:589 (rpc worker_fulfillment_result) |
+| `api:fn core/fulfill` | writes | `table:finance.reward_codes` | db/core/supabase/schemas/api/worker.sql:568 (rpc worker_assign_code) |
 | `api:fn core/notify` | calls | `api:fn identity/bridge` | db/core/supabase/functions/notify/notify.ts:94 (send_email; send_push sesuai flag kanal pesan) |
 | `api:fn core/notify` | configured-by | `env:BRIDGE_SECRET_CORE_TO_IDENTITY` | db/core/supabase/functions/_shared/bridge.ts:66 |
 | `api:fn core/notify` | configured-by | `env:SUPABASE_DB_URL` | PRD v0.3.1 §15.8 Queue lewat koneksi Postgres langsung (belum di kode: queue dibaca lewat rpc api.worker_dequeue dengan secret key, bukan koneksi Postgres) |
@@ -937,8 +942,8 @@ Arah: `A --tipe--> B` = A bergantung pada B. `?` = belum terverifikasi.
 | `api:rpc core.manage_team` | writes | `table:market.org_members` | db/core/supabase/schemas/api/org.sql:211 |
 | `api:rpc core.manage_team` | writes | `table:ops.audit_logs` | db/core/supabase/schemas/api/org.sql:218 |
 | `api:rpc core.set_refund_dest` | guarded-by | `policy:core.org-role` | db/core/supabase/schemas/finance/refund_flow.sql:103 |
-| `api:rpc core.set_refund_dest` | writes | `table:finance.org_refunds` | db/core/supabase/schemas/finance/refund_flow.sql:123 |
-| `api:rpc core.set_refund_dest` | writes | `table:ops.audit_logs` | db/core/supabase/schemas/finance/refund_flow.sql:135 |
+| `api:rpc core.set_refund_dest` | writes | `table:finance.org_refunds` | db/core/supabase/schemas/finance/refund_flow.sql:127 |
+| `api:rpc core.set_refund_dest` | writes | `table:ops.audit_logs` | db/core/supabase/schemas/finance/refund_flow.sql:139 |
 | `api:rpc core.update_org` | guarded-by | `policy:core.org-role` | db/core/supabase/schemas/api/org.sql:471 |
 | `api:rpc core.update_org` | writes | `table:market.organizations` | db/core/supabase/schemas/api/org.sql:492 |
 | `api:rpc core.update_org` | writes | `table:ops.audit_logs` | db/core/supabase/schemas/api/org.sql:499 |
@@ -984,9 +989,9 @@ Arah: `A --tipe--> B` = A bergantung pada B. `?` = belum terverifikasi.
 | `api:rpc core.mark_batch_paid` | writes | `table:finance.payouts` | db/core/supabase/schemas/finance/payout_flow.sql:221 |
 | `api:rpc core.mark_batch_paid` | writes | `table:ops.audit_logs` | db/core/supabase/schemas/finance/payout_flow.sql:234 |
 | `api:rpc core.mark_fulfillment_delivered` | guarded-by | `policy:core.admin-aal2` | db/core/supabase/schemas/finance/fulfillment_admin.sql:9 |
-| `api:rpc core.mark_fulfillment_delivered` | reads | `table:market.reward_types` | db/core/supabase/schemas/finance/fulfillment_admin.sql:16 |
-| `api:rpc core.mark_fulfillment_delivered` | writes | `table:finance.fulfillments` | db/core/supabase/schemas/finance/fulfillment_admin.sql:12, db/core/supabase/schemas/api/worker.sql:587 (api.worker_fulfillment_result, baris 28) |
-| `api:rpc core.mark_fulfillment_delivered` | writes | `table:ops.audit_logs` | db/core/supabase/schemas/finance/fulfillment_admin.sql:29 |
+| `api:rpc core.mark_fulfillment_delivered` | reads | `table:market.reward_types` | db/core/supabase/schemas/finance/fulfillment_admin.sql:21 |
+| `api:rpc core.mark_fulfillment_delivered` | writes | `table:finance.fulfillments` | db/core/supabase/schemas/finance/fulfillment_admin.sql:12, db/core/supabase/schemas/api/worker.sql:589 (api.worker_fulfillment_result, baris 28) |
+| `api:rpc core.mark_fulfillment_delivered` | writes | `table:ops.audit_logs` | db/core/supabase/schemas/finance/fulfillment_admin.sql:32 |
 | `api:rpc core.cancel_payout` | writes | `table:finance.payouts` | db/core/supabase/schemas/finance/payout_flow.sql:341 |
 | `api:rpc core.cancel_fulfillment` | writes | `table:finance.fulfillments` | db/core/supabase/schemas/finance/payout_flow.sql:392 |
 | `api:view core.fulfillment_exports` | reads | `table:finance.fulfillments` | db/core/supabase/schemas/api/views.sql:100 |
@@ -1269,9 +1274,9 @@ Arah: `A --tipe--> B` = A bergantung pada B. `?` = belum terverifikasi.
 | `table:market.org_links` | guarded-by | `policy:core.iss-identity` | db/core/supabase/schemas/market/org_links.sql:17 |
 | `table:market.org_links` | guarded-by | `policy:core.org-role` | db/core/supabase/schemas/market/org_links.sql:19 |
 | `table:market.org_links` | typed-by | `table:market.organizations` | db/core/supabase/schemas/market/org_links.sql:4 |
-| `table:market.org_members` | guarded-by | `policy:core.admin-aal2` | db/core/supabase/schemas/market/org_members.sql:42 |
-| `table:market.org_members` | guarded-by | `policy:core.iss-identity` | db/core/supabase/schemas/market/org_members.sql:39 |
-| `table:market.org_members` | guarded-by | `policy:core.rls-org` | db/core/supabase/schemas/market/org_members.sql:41 |
+| `table:market.org_members` | guarded-by | `policy:core.admin-aal2` | db/core/supabase/schemas/market/org_members.sql:52 |
+| `table:market.org_members` | guarded-by | `policy:core.iss-identity` | db/core/supabase/schemas/market/org_members.sql:49 |
+| `table:market.org_members` | guarded-by | `policy:core.rls-org` | db/core/supabase/schemas/market/org_members.sql:51 |
 | `table:market.org_members` | typed-by | `table:market.organizations` | db/core/supabase/schemas/market/org_members.sql:3 |
 | `table:market.org_members` | typed-by | `table:market.profiles` | db/core/supabase/schemas/market/org_members.sql:4 |
 | `table:market.organizations` | guarded-by | `policy:core.admin-aal2` | db/core/supabase/schemas/market/organizations.sql:27 |
@@ -2255,6 +2260,7 @@ Masalah sistem yang ditemukan saat menyusun PRD v0.2 dan saat dicek ulang (v0.2.
 | 2026-10-20 | `page:admin/finance` | Audit PRD ulang (AB-7/AA-14, §5.4 "reward non-tunai tetap punya nilai Rupiah, tetap tercatat untuk pajak"): rekap PPh 21 hanya menjumlah payout tunai; reward non-tunai terkirim tidak tercatat | diperbaiki: bridge_pph21 = payout tunai dibayar + fulfillment delivered × idr_value_per_unit per orang (kolom cash/noncash/gross), CSV pii-export ikut; tarif tetap dihitung tim pajak (keputusan sebelumnya) |
 | 2026-10-20 | `api:fn identity/member-data` | Audit PRD ulang (AA-2, FR-04 "Blok withdraw + review", A2.1 "NIK atau rekening ganda → tolak + tandai fraud"): NIK/rekening yang sudah dipakai akun lain hanya ditolak, tanpa sinyal fraud untuk direview | diperbaiki: member-data mengangkat fraud flag FR-04 pada profil pencoba lewat bridge raise_fraud_flag (pemegang dari identity svc_hash_holder di payload tanpa PII; NIK akun ter-ban = skor 100; duplikat milik sendiri bukan sinyal; gagal tidak mengubah respons) → payout_block fraud_flag + bonus referral batal |
 | 2026-10-20 | `api:rpc core.set_refund_dest` | Review Claudex R25: (1) rekening pribadi refund org perorangan tetap milik owner yang sudah dikeluarkan/diturunkan → dana org ke orang luar; (2) owner badan mengubah nama legal (belum diverifikasi) jadi nama pribadinya lalu mengisi rekening pribadi | diperbaiki: trigger org_members_owner_lost (pengganti revoke_owner_invites) juga mengosongkan rekening pribadi refund belum dibayar milik owner itu + membatalkan persetujuan (audit refund.dest_reset); rekening perusahaan hanya diterima saat org terverifikasi (org_unverified) |
+| 2026-10-20 | `page:admin/fulfillment` | Audit PRD ulang (AA-4, C6.2 "webhook gagal terus → antre admin fulfillment", F-A10 tandai terkirim): webhook yang berhenti setelah 12× gagal hanya bisa dibatalkan; tidak ada kirim ulang atau tandai terkirim | diperbaiki: api.retry_fulfillment + worker mengambil webhook on_hold ber-next_retry_at (berhenti lagi setelah 12×), mark_fulfillment_delivered menerima webhook on_hold (bukan pool kode); tombol Kirim ulang/Tandai terkirim di admin. Bug NULL di NOT IN tertangkap tes sebelum commit |
 | 2026-10-20 | `api:fn core/social` | Audit PRD (G-1, F-C02/D-11): YouTube hanya bisa dihubungkan lewat OAuth Google; fallback kode di deskripsi channel tidak ada (YOUTUBE_API_KEY tak dipakai) | diperbaiki: aksi youtube_code / youtube_verify (kode CLIP-… per user+channel harus ada di deskripsi) → akun terverifikasi dengan token mode api_key; adapter memakai ?key= (tanpa Analytics, tanpa refresh); dialog di halaman Akun sosmed |
 ## Keputusan
 

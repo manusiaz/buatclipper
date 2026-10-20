@@ -37,11 +37,19 @@ export async function cancelFulfillment(id: string, fd: FormData): Promise<Actio
   return settle(error, '/fulfillment');
 }
 
-/** A5.1 tandai terkirim (manual_export) + referensi kiriman (resi/nomor voucher). admin_ops. */
+/** A5.1 tandai terkirim (manual_export, atau webhook macet yang dikonfirmasi brand) + referensi kiriman. admin_ops. */
 export async function markDelivered(id: string, fd: FormData): Promise<ActionResult> {
   await requireAdmin('admin_ops');
   const db = await coreServer('admin');
   const { error } = await db.rpc('mark_fulfillment_delivered', { p_fulfillment: id, p_ref: text(fd, 'ref') });
+  return settle(error, '/fulfillment');
+}
+
+/** J-A5 webhook macet (12× gagal): kirim ulang setelah brand memperbaiki endpoint. admin_ops. */
+export async function retryFulfillment(id: string): Promise<ActionResult> {
+  await requireAdmin('admin_ops');
+  const db = await coreServer('admin');
+  const { error } = await db.rpc('retry_fulfillment', { p_fulfillment: id });
   return settle(error, '/fulfillment');
 }
 

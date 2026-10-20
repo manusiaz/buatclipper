@@ -859,7 +859,9 @@
     "markDeliveredBody": "The clipper is notified that the reward was delivered.",
     "delivered": "Marked delivered",
     "ref": "Delivery reference",
-    "refHelp": "Tracking number / voucher number"
+    "refHelp": "Tracking number / voucher number",
+    "retry": "Retry",
+    "retried": "Resent to the brand webhook"
   },
   "config": {
     "title": "Config",

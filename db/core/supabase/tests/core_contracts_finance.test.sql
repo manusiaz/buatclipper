@@ -580,6 +580,20 @@ select is((select status::text || ':' || attempts from finance.fulfillments wher
 select is((select count(*)::int from ops.alerts where kind = 'fulfillment.stuck'), 2, 'alert fulfillment macet');
 -- Regresi review 2026-10-19 (R3): timeout ≠ pasti gagal → refund butuh konfirmasi brand; serah-terima CSV manual mengunci klaim.
 select ok((select delivery_uncertain from finance.fulfillments where id = (select id from t_pay where k = 'f3')), 'timeout → hasil tidak pasti');
+-- Regresi audit 2 AA-4 (C6.2/J-A5): webhook macet bisa dikirim ulang admin setelah brand memperbaiki endpoint
+select is((select count(*)::int from api.worker_fulfillments_due(10) d where d.id = (select id from t_pay where k = 'f3')), 0,
+          'webhook macet tidak dicoba lagi otomatis');
+set local role authenticated;
+select pg_temp.jwt('33333333-0000-0000-0000-0000000000a0', '{"app_roles":["admin_ops"],"aal":"aal2"}');
+select throws_ok($$ select api.retry_fulfillment((select id from t_pay where k = 'f2')) $$, 'P0001', 'invalid_state:on_hold',
+                 'pool kode kosong tidak "dikirim ulang" (unggah kode)');
+select lives_ok($$ select api.retry_fulfillment((select id from t_pay where k = 'f3')) $$, 'regresi AA-4: admin mengirim ulang webhook macet');
+reset role;
+select is((select count(*)::int from api.worker_fulfillments_due(10) d where d.id = (select id from t_pay where k = 'f3')), 1,
+          'worker mengambil webhook yang dikirim ulang');
+select api.worker_fulfillment_result((select id from t_pay where k = 'f3'), false, null, 'timeout') from generate_series(1, 12);
+select is((select status::text || ':' || attempts || ':' || (next_retry_at is null)::text from finance.fulfillments
+            where id = (select id from t_pay where k = 'f3')), 'on_hold:12:true', 'gagal 12× lagi → berhenti lagi (tidak berulang tanpa batas)');
 insert into finance.fulfillments (id, user_id, reward_type_id, amount, recipient, idempotency_key) values
   ('99999999-0000-0000-0000-0000000000e1', '11111111-0000-0000-0000-00000000000a', '77777777-0000-0000-0000-000000000002', 5,
    '{"game_user_id":"123"}', 'ful-export-test');
@@ -644,6 +658,23 @@ select lives_ok($$ select api.mark_fulfillment_delivered('99999999-0000-0000-000
 select lives_ok($$ select api.mark_fulfillment_delivered('99999999-0000-0000-0000-0000000000fd', 'RESI-123') $$, 'tandai ulang = no-op');
 select throws_ok($$ select api.mark_fulfillment_delivered((select id from t_pay where k = 'f2'), 'X') $$, 'P0001', 'invalid:fulfillment',
                  'reward code_pool tidak ditandai manual');
+reset role;
+insert into finance.fulfillments (id, user_id, reward_type_id, amount, idempotency_key) values
+  ('99999999-0000-0000-0000-0000000000fe', '11111111-0000-0000-0000-00000000000a', '77777777-0000-0000-0000-000000000004', 1, 'ful-webhook-stuck');
+set local role authenticated;
+select pg_temp.jwt('33333333-0000-0000-0000-0000000000a0', '{"app_roles":["admin_ops"],"aal":"aal2"}');
+select throws_ok($$ select api.mark_fulfillment_delivered('99999999-0000-0000-0000-0000000000fe', 'BRAND-OK') $$, 'P0001', 'invalid:fulfillment',
+                 'webhook yang masih dicoba otomatis tidak ditandai manual');
+reset role;
+update finance.fulfillments set status = 'on_hold', attempts = 12 where id = '99999999-0000-0000-0000-0000000000fe';
+set local role authenticated;
+select pg_temp.jwt('33333333-0000-0000-0000-0000000000a0', '{"app_roles":["admin_ops"],"aal":"aal2"}');
+select lives_ok($$ select api.mark_fulfillment_delivered('99999999-0000-0000-0000-0000000000fe', 'BRAND-OK') $$,
+                'regresi AA-4: webhook macet ditandai terkirim setelah brand konfirmasi');
+reset role;
+select is((select status::text from finance.fulfillments where id = '99999999-0000-0000-0000-0000000000fe'), 'delivered', 'webhook macet → delivered');
+set local role authenticated;
+select pg_temp.jwt('33333333-0000-0000-0000-0000000000a0', '{"app_roles":["admin_ops"],"aal":"aal2"}');
 select is(api.upload_reward_codes('77777777-0000-0000-0000-000000000003', array['VC-ADM']), 1, 'admin_ops mengunggah kode');
 -- F-A07: override Trust Score, suspend, unsuspend
 select throws_ok($$ select api.manage_user('11111111-0000-0000-0000-00000000000a', 'trust_override', '{"delta":-5}') $$, 'P0001', 'invalid:reason',

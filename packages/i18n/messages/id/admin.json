@@ -859,7 +859,9 @@
     "markDeliveredBody": "Clipper mendapat notifikasi reward terkirim.",
     "delivered": "Ditandai terkirim",
     "ref": "Referensi kiriman",
-    "refHelp": "Nomor resi / nomor voucher"
+    "refHelp": "Nomor resi / nomor voucher",
+    "retry": "Kirim ulang",
+    "retried": "Dikirim ulang ke webhook brand"
   },
   "config": {
     "title": "Config",

@@ -24,8 +24,8 @@ import {
   type UiLocale,
 } from '@clipper/ui';
 import { isUuid, param, rows, uniq, type SearchParams } from '@/lib/data';
-import { cancelFulfillment, exportRecipients, markDelivered, resignRecipients, uploadCodes } from '@/features/fulfillment/actions';
-import { ActionDialog } from '@/features/shared/action-dialog';
+import { cancelFulfillment, exportRecipients, markDelivered, resignRecipients, retryFulfillment, uploadCodes } from '@/features/fulfillment/actions';
+import { ActionButton, ActionDialog } from '@/features/shared/action-dialog';
 import { ExportPanel } from '@/features/shared/export-panel';
 import { JsonView } from '@/features/shared/json-view';
 import { rolesFor } from '@/features/shell/nav';
@@ -230,7 +230,10 @@ async function TypeQueue({
                 </TD>
                 <TD align="right">
                   <div className="flex flex-wrap justify-end gap-2">
-                    {canOps && rt.fulfillment === 'manual_export' && f.status !== 'failed' ? (
+                    {canOps && rt.fulfillment === 'webhook' && f.status === 'on_hold' ? (
+                      <ActionButton label={t('fulfillment.retry')} icon="refresh" variant="secondary" success={t('fulfillment.retried')} action={retryFulfillment.bind(null, f.id!)} />
+                    ) : null}
+                    {canOps && (rt.fulfillment === 'manual_export' ? f.status !== 'failed' : rt.fulfillment === 'webhook' && f.status === 'on_hold') ? (
                       <ActionDialog
                         trigger={{ label: t('fulfillment.markDelivered'), variant: 'secondary', icon: 'check' }}
                         title={t('fulfillment.markDelivered')}

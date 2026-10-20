@@ -515,7 +515,9 @@ begin
             -- (atau kodenya sudah terpasang tapi hasil kirim belum tercatat: worker mati di tengah jalan)
             or (f.status = 'on_hold' and f.last_error = 'code_pool_empty' and rt.fulfillment = 'code_pool'
                 and exists (select 1 from finance.reward_codes rc where rc.reward_type_id = f.reward_type_id
-                             and (rc.fulfillment_id is null or rc.fulfillment_id = f.id))))
+                             and (rc.fulfillment_id is null or rc.fulfillment_id = f.id)))
+            -- webhook macet yang dikirim ulang admin (api.retry_fulfillment: next_retry_at terisi lagi)
+            or (f.status = 'on_hold' and rt.fulfillment = 'webhook' and f.next_retry_at is not null))
        and rt.fulfillment in ('code_pool', 'webhook')
        and (f.next_retry_at is null or f.next_retry_at <= now())
      order by coalesce(f.next_retry_at, f.created_at), f.id
@@ -595,7 +597,7 @@ begin
     update finance.fulfillments set attempts = attempts + 1, last_error = left(p_error, 500), next_retry_at = now() + interval '5 minutes',
            leased_until = null, delivery_uncertain = delivery_uncertain or coalesce(p_error, '') !~ '^http_4[0-9][0-9]$'
      where id = f.id;
-    if f.attempts + 1 >= 12 and f.status = 'requested' then
+    if f.attempts + 1 >= 12 and f.status in ('requested', 'on_hold') then
       update finance.fulfillments set status = 'on_hold', next_retry_at = null where id = f.id;
       perform ops.raise_alert('fulfillment.stuck', 'warning',
                               jsonb_build_object('fulfillment_id', f.id, 'attempts', f.attempts + 1, 'error', left(p_error, 500)));

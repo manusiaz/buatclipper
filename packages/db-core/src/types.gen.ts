@@ -816,6 +816,9 @@ export type Database = {
 "resolve_fraud_flag":
 { Args: { "p_action": string,"p_flag": string,"p_note": string }; Returns: undefined
                            },
+"retry_fulfillment":
+{ Args: { "p_fulfillment": string }; Returns: undefined
+                           },
 "revoke_report_link":
 { Args: { "p_link": string }; Returns: undefined
                            },
