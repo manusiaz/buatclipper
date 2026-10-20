@@ -21,6 +21,7 @@ import {
 import { arr, communityLinks, num } from '@/features/lib/pure';
 import { core, publicUrl, readSettings, uiLocale } from '@/features/lib/server';
 import { formatAmount } from '@/features/lib/units';
+import { AppealButton } from '@/features/tasks/appeal-button';
 import { EditProfile } from '@/features/profile/edit-profile';
 
 export const metadata: Metadata = { title: 'Profil & Trust Score' };
@@ -29,12 +30,13 @@ export const metadata: Metadata = { title: 'Profil & Trust Score' };
 export default async function ProfilePage() {
   const { claims } = await requireClipper();
   const db = await core();
-  const [t, locale, stats, me, events, settings] = await Promise.all([
+  const [t, locale, stats, me, events, sanctions, settings] = await Promise.all([
     getTranslations('clipper.profile'),
     uiLocale(),
     db.rpc('my_stats'),
     db.from('my_profile').select('username,display_name,avatar_path,trust_score,status,suspended_until,created_at').maybeSingle(),
     db.from('score_events').select('id,delta,reason,created_at').eq('user_id', claims.sub).order('created_at', { ascending: false }).limit(30),
+    db.from('sanctions').select('id,kind,reason,created_at,appealed_at,decision,decision_note').order('created_at', { ascending: false }).limit(20),
     readSettings(['public.finance.instant_min_trust', 'public.finance.trust_tiers', 'public.finance.hold_days', 'public.community.links']),
   ]);
   const s = (stats.data ?? {}) as Record<string, unknown>;
@@ -155,6 +157,32 @@ export default async function ProfilePage() {
                   </li>
                 );
               })}
+          </ul>
+        </Card>
+      ) : null}
+
+      {(sanctions.data ?? []).length ? (
+        <Card>
+          <CardHeader>
+            <CardTitle>{t('sanctionsTitle')}</CardTitle>
+          </CardHeader>
+          <ul className="flex flex-col divide-y divide-border">
+            {sanctions.data!.map((x) => (
+              <li key={x.id} className="flex flex-col gap-1.5 py-2.5 first:pt-0 last:pb-0">
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="text-body-s font-bold text-ink">{t(`sanctions.${x.kind}`)}</span>
+                  <span className="text-caption text-muted">{x.created_at ? formatDate(x.created_at, locale) : ''}</span>
+                </div>
+                {x.reason ? <p className="text-caption break-words text-text-2">{x.reason}</p> : null}
+                {x.decision ? (
+                  <p className="text-caption text-text-2">{t(`appealResult.${x.decision}`)}{x.decision_note ? ` — ${x.decision_note}` : ''}</p>
+                ) : x.appealed_at ? (
+                  <p className="text-caption text-muted">{t('appealPending')}</p>
+                ) : (
+                  <div><AppealButton sanctionId={x.id!} /></div>
+                )}
+              </li>
+            ))}
           </ul>
         </Card>
       ) : null}

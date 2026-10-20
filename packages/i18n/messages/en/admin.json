@@ -455,6 +455,7 @@
       "FR-11": "Unusual traffic/country"
     },
     "actions": {
+      "warn": "Warn",
       "hold": "Hold",
       "reverse": "Reverse earnings",
       "suspend": "Suspend 30 days",
@@ -462,12 +463,31 @@
       "dismiss": "Dismiss"
     },
     "actionHelp": {
+      "warn": "First warning to the clipper (notification); the account stays active. Trust Score −5.",
       "hold": "Earnings/payout are held until decided.",
       "reverse": "Pending earnings return to the pool and the submission is forfeited. Trust Score −10.",
       "suspend": "The account cannot claim/withdraw for 30 days. Trust Score −20.",
       "ban": "Permanent ban: pending forfeited, claims released, sessions revoked in identity. Trust Score −50.",
       "dismiss": "Signal considered safe; the submission resumes tracking."
-    }
+    },
+    "appealsTitle": "Sanction appeals ({n})",
+    "sanctions": {
+      "warn": "Warning",
+      "hold": "Earnings held",
+      "reverse": "Earnings forfeited",
+      "suspend": "Suspension",
+      "ban": "Ban"
+    },
+    "sanctionReason": "Sanction reason: {reason}",
+    "decideAppeal": "Decide appeal",
+    "decideAppealBody": "Accepted: suspension/ban lifted, held earnings resume, Trust Score penalty restored (forfeited earnings are not re-posted). Rejected: final.",
+    "appealDecided": "Appeal decided",
+    "decision": "Decision",
+    "decisions": {
+      "upheld": "Reject (sanction stays)",
+      "overturned": "Accept (lift sanction)"
+    },
+    "decisionNote": "Reason for the decision"
   },
   "users": {
     "title": "Users & KYC",

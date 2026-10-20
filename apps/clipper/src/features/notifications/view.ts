@@ -58,6 +58,7 @@ export async function notificationViews(rows: NotificationRow[], locale: UiLocal
         agency: text(p, 'agency_org_name') || t('fallback.agency'),
         client: text(p, 'client_org_name') || t('fallback.client'),
         level: budgetLevel(p.pct),
+        decision: text(p, 'decision', 20),
       };
       const known = isEvent(event);
       // Kode alasan standar → label common.rejectReasons; pesan reviewer ikut di belakangnya.

@@ -553,11 +553,12 @@
       "submission_rejected": "Klip ditolak",
       "fraud_flag": "Terdeteksi aktivitas tidak wajar",
       "appeal_failed": "Banding ditolak",
-      "admin_override": "Penyesuaian oleh tim"
+      "admin_override": "Penyesuaian oleh tim",
+      "appeal_overturned": "Sanksi dibatalkan lewat banding"
     },
     "historyEmpty": "Skor belum berubah",
     "historyEmptyBody": "Skor awal 50. Submit klip yang sesuai brief untuk menaikkannya.",
-    "appealNote": "Skor turun karena fraud dan menurutmu keliru? Ajukan banding 1× lewat bantuan.",
+    "appealNote": "Skor turun karena sanksi dan menurutmu keliru? Banding 1× per sanksi di bagian Sanksi akun; pertanyaan lain lewat bantuan.",
     "toLeaderboard": "Lihat leaderboard",
     "edit": {
       "cta": "Ubah",
@@ -572,7 +573,29 @@
       "save": "Simpan",
       "saved": "Profil diperbarui"
     },
-    "contactSupport": "Hubungi bantuan"
+    "contactSupport": "Hubungi bantuan",
+    "sanctionsTitle": "Sanksi akun",
+    "sanctions": {
+      "warn": "Peringatan",
+      "hold": "Earning ditahan",
+      "reverse": "Earning hangus",
+      "suspend": "Akun ditangguhkan",
+      "ban": "Akun diblokir"
+    },
+    "appealResult": {
+      "upheld": "Banding ditolak (final)",
+      "overturned": "Banding dikabulkan"
+    },
+    "appealPending": "Banding sedang direview tim.",
+    "appeal": {
+      "cta": "Banding",
+      "title": "Banding sanksi",
+      "description": "Banding hanya bisa sekali per sanksi. Jelaskan kenapa sanksi ini keliru.",
+      "label": "Alasan banding",
+      "helper": "10–1.000 karakter.",
+      "submit": "Kirim banding",
+      "sent": "Banding terkirim"
+    }
   },
   "leaderboard": {
     "title": "Leaderboard",

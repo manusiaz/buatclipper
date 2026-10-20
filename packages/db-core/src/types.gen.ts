@@ -516,6 +516,20 @@ export type Database = {
                         Relationships: [
                     
                   ]
+                },"sanctions": {
+                  Row: {
+                    "appeal_message": string | null,"appealed_at": string | null,"created_at": string | null,"decided_at": string | null,"decision": string | null,"decision_note": string | null,"flag_id": string | null,"id": string | null,"kind": string | null,"reason": string | null,"user_id": string | null
+                  }
+                  ComputedFields: never
+                  Insert: {
+                           "appeal_message"?: string | null,"appealed_at"?: string | null,"created_at"?: string | null,"decided_at"?: string | null,"decision"?: string | null,"decision_note"?: string | null,"flag_id"?: string | null,"id"?: string | null,"kind"?: string | null,"reason"?: string | null,"user_id"?: string | null
+                         }
+                        Update: {
+                           "appeal_message"?: string | null,"appealed_at"?: string | null,"created_at"?: string | null,"decided_at"?: string | null,"decision"?: string | null,"decision_note"?: string | null,"flag_id"?: string | null,"id"?: string | null,"kind"?: string | null,"reason"?: string | null,"user_id"?: string | null
+                         }
+                        Relationships: [
+                    
+                  ]
                 },"score_events": {
                   Row: {
                     "created_at": string | null,"delta": number | null,"id": number | null,"reason": string | null,"user_id": string | null
@@ -610,6 +624,9 @@ export type Database = {
                            },
 "admin_overview":
 { Args: Record<PropertyKey, never>; Returns: Json
+                           },
+"appeal_sanction":
+{ Args: { "p_message": string,"p_sanction": string }; Returns: undefined
                            },
 "appeal_submission":
 { Args: { "p_message": string,"p_submission": string }; Returns: undefined
@@ -718,6 +735,9 @@ export type Database = {
                            },
 "create_report_link":
 { Args: { "p_campaign": string,"p_days"?: number }; Returns: string
+                           },
+"decide_sanction_appeal":
+{ Args: { "p_decision": string,"p_note": string,"p_sanction": string }; Returns: undefined
                            },
 "duplicate_campaign":
 { Args: { "p_as_template"?: boolean,"p_campaign": string }; Returns: string

@@ -455,6 +455,7 @@
       "FR-11": "Traffic/negara tidak wajar"
     },
     "actions": {
+      "warn": "Peringatan",
       "hold": "Tahan",
       "reverse": "Reverse earning",
       "suspend": "Suspend 30 hari",
@@ -462,12 +463,31 @@
       "dismiss": "Abaikan"
     },
     "actionHelp": {
+      "warn": "Peringatan pertama ke clipper (notifikasi), akun tetap aktif. Trust Score −5.",
       "hold": "Earning/payout ditahan sampai diputus.",
       "reverse": "Earning pending kembali ke pool dan submisi hangus. Trust Score −10.",
       "suspend": "Akun tidak bisa claim/withdraw 30 hari. Trust Score −20.",
       "ban": "Ban permanen: pending hangus, claim dilepas, sesi dicabut di identity. Trust Score −50.",
       "dismiss": "Sinyal dianggap aman; submisi kembali tracking."
-    }
+    },
+    "appealsTitle": "Banding sanksi ({n})",
+    "sanctions": {
+      "warn": "Peringatan",
+      "hold": "Tahan earning",
+      "reverse": "Earning hangus",
+      "suspend": "Suspend",
+      "ban": "Ban"
+    },
+    "sanctionReason": "Alasan sanksi: {reason}",
+    "decideAppeal": "Putuskan banding",
+    "decideAppealBody": "Dikabulkan: suspend/ban dicabut, earning yang ditahan lanjut, penalti Trust Score dikembalikan (earning yang sudah hangus tidak dijurnal ulang). Ditolak: final.",
+    "appealDecided": "Banding diputus",
+    "decision": "Keputusan",
+    "decisions": {
+      "upheld": "Tolak (sanksi tetap)",
+      "overturned": "Kabulkan (batalkan sanksi)"
+    },
+    "decisionNote": "Alasan keputusan"
   },
   "users": {
     "title": "User & KYC",

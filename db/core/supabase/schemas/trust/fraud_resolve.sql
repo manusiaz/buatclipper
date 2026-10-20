@@ -69,7 +69,7 @@ begin
   if not ops.has_admin('admin_moderator') then
     raise exception 'auth:forbidden' using errcode = '42501';
   end if;
-  if p_action is null or p_action not in ('hold', 'reverse', 'suspend', 'ban', 'dismiss') then
+  if p_action is null or p_action not in ('warn', 'hold', 'reverse', 'suspend', 'ban', 'dismiss') then
     raise exception 'invalid:action' using errcode = 'P0001';
   end if;
   select * into f from trust.fraud_flags ff where ff.id = p_flag for update;
@@ -132,10 +132,16 @@ begin
       update market.profiles set status = 'banned' where id = target_user and status <> 'closed';
       perform trust.apply_ban(target_user, f.signal, jsonb_build_object('signal', f.signal, 'flag_id', f.id));
       perform ops.invoke_function('bridge', jsonb_build_object('action', 'ban_user', 'user_id', target_user));
+    elsif p_action = 'warn' then
+      perform ops.enqueue_notification(target_user, 'account.warned', jsonb_build_object('signal', f.signal));
     end if;
   end if;
+  -- §12: setiap sanksi tercatat dan bisa dibanding sekali (trust.sanctions)
+  if p_action <> 'dismiss' and target_user is not null then
+    perform trust.record_sanction(target_user, p_action, f.id, p_note);
+  end if;
 
-  score_delta := case p_action when 'reverse' then -10 when 'suspend' then -20 when 'ban' then -50 end;
+  score_delta := case p_action when 'warn' then -5 when 'reverse' then -10 when 'suspend' then -20 when 'ban' then -50 end;
   if score_delta is not null and target_user is not null then
     insert into trust.score_events (user_id, delta, reason, ref_id, created_by) values (target_user, score_delta, 'fraud_flag', f.id::text, uid);
   end if;

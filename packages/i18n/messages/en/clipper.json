@@ -553,11 +553,12 @@
       "submission_rejected": "Clip rejected",
       "fraud_flag": "Unusual activity detected",
       "appeal_failed": "Appeal rejected",
-      "admin_override": "Adjusted by our team"
+      "admin_override": "Adjusted by our team",
+      "appeal_overturned": "Sanction lifted on appeal"
     },
     "historyEmpty": "Your score has not changed yet",
     "historyEmptyBody": "Everyone starts at 50. Submit clips that follow the brief to raise it.",
-    "appealNote": "Score lowered for fraud and you think it is wrong? Appeal once through support.",
+    "appealNote": "Score lowered by a sanction you think is wrong? Appeal each sanction once under Account sanctions; anything else through support.",
     "toLeaderboard": "See leaderboard",
     "edit": {
       "cta": "Edit",
@@ -572,7 +573,29 @@
       "save": "Save",
       "saved": "Profile updated"
     },
-    "contactSupport": "Contact support"
+    "contactSupport": "Contact support",
+    "sanctionsTitle": "Account sanctions",
+    "sanctions": {
+      "warn": "Warning",
+      "hold": "Earnings held",
+      "reverse": "Earnings forfeited",
+      "suspend": "Account suspended",
+      "ban": "Account banned"
+    },
+    "appealResult": {
+      "upheld": "Appeal rejected (final)",
+      "overturned": "Appeal accepted"
+    },
+    "appealPending": "Your appeal is being reviewed.",
+    "appeal": {
+      "cta": "Appeal",
+      "title": "Appeal this sanction",
+      "description": "You can appeal each sanction once. Explain why it is wrong.",
+      "label": "Reason",
+      "helper": "10–1,000 characters.",
+      "submit": "Send appeal",
+      "sent": "Appeal sent"
+    }
   },
   "leaderboard": {
     "title": "Leaderboard",

@@ -57,7 +57,8 @@
   },
   "account": {
     "suspended": { "title": "Your account is suspended", "body": "Suspended until {until}. Until then you cannot claim, submit or withdraw." },
-    "banned": { "title": "Your account is banned", "body": "The account was banned for breaking the terms of service. Contact support if you think this is a mistake." }
+    "banned": { "title": "Your account is banned", "body": "The account was banned for breaking the terms of service. Contact support if you think this is a mistake." },
+    "warned": { "title": "A warning on your account", "body": "We found activity that breaks the terms. This is a first warning; further violations can hold earnings or suspend the account. You can appeal in Profile." }
   },
   "invoice": {
     "issued": { "title": "Invoice {invoice} issued", "body": "{amount} is due {dueAt}. Pay via QRIS or bank transfer." },
@@ -85,5 +86,8 @@
   },
   "managed": {
     "draft_ready": { "title": "Campaign draft {campaign} is ready for approval", "body": "Check the summary, then approve and pay so the campaign can be reviewed." }
+  },
+  "sanction": {
+    "appeal_decided": { "title": "{decision, select, overturned {Appeal accepted} other {Appeal rejected}}", "body": "{decision, select, overturned {The sanction was lifted and its effects reversed where possible.} other {The sanction stays in place. The appeal decision is final.}}" }
   }
 }

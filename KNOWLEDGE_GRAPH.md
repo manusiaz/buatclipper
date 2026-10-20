@@ -79,7 +79,7 @@ Wajib tetap benar setiap perubahan (dicek otomatis saat graph ini dibuat; cek ul
 | `page:admin/campaigns/new` | page | apps/admin/src/app/(console)/campaigns/new/page.tsx | Builder admin / paket managed (F-A03) |  |
 | `page:admin/config` | page | apps/admin/src/app/(console)/config/page.tsx | Config & feature flag (F-A09) |  |
 | `page:admin/finance` | page | apps/admin/src/app/(console)/finance/page.tsx | Pembayaran masuk, batch & instant payout, refund, rekonsiliasi, PPh 21 (F-A08) |  |
-| `page:admin/fraud` | page | apps/admin/src/app/(console)/fraud/page.tsx | Fraud queue (F-A06) |  |
+| `page:admin/fraud` | page | apps/admin/src/app/(console)/fraud/page.tsx | Fraud queue (F-A06) + antrean banding sanksi (§12) |  |
 | `page:admin/fulfillment` | page | apps/admin/src/app/(console)/fulfillment/page.tsx | Fulfillment non-tunai (F-A10) |  |
 | `page:admin/login` | page | apps/admin/src/app/login/page.tsx | Login admin terpisah: kode OTP + TOTP |  |
 | `page:admin/pinned` | page | apps/admin/src/app/(console)/pinned/page.tsx | Pinned, kategori, banner (F-A04) |  |
@@ -188,6 +188,8 @@ Wajib tetap benar setiap perubahan (dicek otomatis saat graph ini dibuat; cek ul
 | `api:rpc core.request_payout` | api | db/core/supabase/schemas/finance/payout_flow.sql | Tarik saldo tersedia → payout requested (F-C09) |  |
 | `api:rpc core.set_refund_dest` | api | db/core/supabase/schemas/finance/refund_flow.sql | Rekening tujuan refund (status requested, aal2): badan = rekening perusahaan a.n. nama legal; perorangan = rekening pribadi pemilik di identity (owner_account) |  |
 | `api:rpc core.request_refund` | api | db/core/supabase/schemas/finance/refund_flow.sql | rollover → jurnal ke org_credit; refund → E-35 requested |  |
+| `api:rpc core.appeal_sanction` | api | db/core/supabase/schemas/trust/sanctions.sql | Clipper membanding sanksinya sendiri, sekali per sanksi (§12) |  |
+| `api:rpc core.decide_sanction_appeal` | api | db/core/supabase/schemas/trust/sanctions.sql | admin_moderator memutus banding sanksi; dikabulkan → suspend/ban dicabut, hold di-dismiss, penalti skor dikembalikan |  |
 | `api:rpc core.resolve_fraud_flag` | api | db/core/supabase/schemas/trust/fraud_resolve.sql | Tahan/reverse/suspend dari fraud queue (F-A06) |  |
 | `api:rpc core.revoke_report_link` | api | db/core/supabase/schemas/api/report_links.sql | Cabut link laporan read-only |  |
 | `api:rpc core.save_campaign` | api | db/core/supabase/schemas/api/campaigns.sql | Simpan campaign + rule + pool dari builder (F-B02/F-A03) |  |
@@ -288,6 +290,7 @@ Wajib tetap benar setiap perubahan (dicek otomatis saat graph ini dibuat; cek ul
 | `table:tracking.submissions` | table | db/core/supabase/schemas/tracking/submissions.sql | E-12 submisi |  |
 | `table:tracking.view_snapshots` | table | db/core/supabase/schemas/tracking/view_snapshots.sql | E-13 snapshot views (append-only) |  |
 | `table:trust.fraud_flags` | table | db/core/supabase/schemas/trust/fraud_flags.sql | E-20 fraud flag |  |
+| `table:trust.sanctions` | table | db/core/supabase/schemas/trust/sanctions.sql | §12 sanksi bertingkat per clipper (warn/hold/reverse/suspend/ban) + banding sekali |  |
 | `table:trust.review_decisions` | table | db/core/supabase/schemas/trust/review_decisions.sql | E-19 keputusan review |  |
 | `table:trust.score_events` | table | db/core/supabase/schemas/trust/score_events.sql | E-40 score_events |  |
 | `table:vault.social-tokens` | table | db/core/supabase/schemas/tracking/vault.sql | Supabase Vault core: token sosmed |  |
@@ -480,6 +483,8 @@ Arah: `A --tipe--> B` = A bergantung pada B. `?` = belum terverifikasi.
 | `page:admin/finance` | wrapped-by | `layout:admin` | apps/admin/src/app/layout.tsx:20 |
 | `page:admin/fraud` | calls | `api:fn identity/admin-auth` | PRD v0.3.1 §6 A4.2 ban → ban_duration (belum di kode: ban dari fraud queue = resolve_fraud_flag → core bridge ban_user → identity bridge, features/fraud/actions.ts baris 9) |
 | `page:admin/fraud` | calls | `api:rpc core.resolve_fraud_flag` | apps/admin/src/features/fraud/actions.ts:15 |
+| `page:admin/fraud` | calls | `api:rpc core.decide_sanction_appeal` | apps/admin/src/features/fraud/actions.ts:23 |
+| `page:admin/fraud` | reads | `table:trust.sanctions` | kode: (console)/fraud/page.tsx baris 35 (view api.sanctions, path ber-kurung) |
 | `page:admin/fraud` | reads | `table:trust.fraud_flags` | PRD v0.3.1 §14 kg.yaml features.F-A06; kode baris 29 |
 | `page:admin/fraud` | wrapped-by | `layout:admin` | apps/admin/src/app/layout.tsx:20 |
 | `page:admin/fulfillment` | calls | `api:fn identity/pii-export` | apps/admin/src/features/fulfillment/actions.ts:12 |
@@ -553,8 +558,10 @@ Arah: `A --tipe--> B` = A bergantung pada B. `?` = belum terverifikasi.
 | `page:app/offline` | routes-to | `page:app/campaigns` | apps/clipper/src/app/offline/page.tsx:12 |
 | `page:app/offline` | wrapped-by | `layout:clipper` | apps/clipper/src/app/layout.tsx:31 |
 | `page:app/profile` | reads | `table:market.profiles` | PRD v0.3.1 Lampiran B (market.profiles); kode baris 36 (view api.my_profile) |
-| `page:app/profile` | reads | `table:trust.score_events` | apps/clipper/src/app/profile/page.tsx:37 |
-| `page:app/profile` | routes-to | `page:app/leaderboard` | apps/clipper/src/app/profile/page.tsx:194 |
+| `page:app/profile` | reads | `table:trust.sanctions` | apps/clipper/src/app/profile/page.tsx:39 (view api.sanctions) |
+| `page:app/profile` | calls | `api:rpc core.appeal_sanction` | apps/clipper/src/features/profile/actions.ts:46 (AppealButton) |
+| `page:app/profile` | reads | `table:trust.score_events` | apps/clipper/src/app/profile/page.tsx:38 |
+| `page:app/profile` | routes-to | `page:app/leaderboard` | apps/clipper/src/app/profile/page.tsx:222 |
 | `page:app/profile` | wrapped-by | `layout:clipper` | apps/clipper/src/app/layout.tsx:31 |
 | `page:app/referral` | calls | `api:rpc core.my_referral_code` | apps/clipper/src/app/referral/page.tsx:21 |
 | `page:app/referral` | reads | `table:market.referrals` | apps/clipper/src/app/referral/page.tsx:22 |
@@ -981,7 +988,7 @@ Arah: `A --tipe--> B` = A bergantung pada B. `?` = belum terverifikasi.
 | `api:rpc core.manage_user` | guarded-by | `policy:core.admin-aal2` | db/core/supabase/schemas/trust/manage_user.sql:15 |
 | `api:rpc core.manage_user` | writes | `table:market.claims` | db/core/supabase/schemas/trust/manage_user.sql:52 |
 | `api:rpc core.manage_user` | writes | `table:market.profiles` | db/core/supabase/schemas/trust/manage_user.sql:51 (suspend/ban/unban, trust_override baris 31) |
-| `api:rpc core.manage_user` | writes | `table:ops.audit_logs` | db/core/supabase/schemas/trust/manage_user.sql:76 |
+| `api:rpc core.manage_user` | writes | `table:ops.audit_logs` | db/core/supabase/schemas/trust/manage_user.sql:78 |
 | `api:rpc core.manage_user` | writes | `table:trust.score_events` | db/core/supabase/schemas/trust/manage_user.sql:30 |
 | `api:rpc core.mark_batch_paid` | calls | `fn:enqueue_notification` | db/core/supabase/schemas/finance/payout_flow.sql:222 |
 | `api:rpc core.mark_batch_paid` | guarded-by | `policy:core.admin-aal2` | db/core/supabase/schemas/finance/payout_flow.sql:198 |
@@ -1041,9 +1048,9 @@ Arah: `A --tipe--> B` = A bergantung pada B. `?` = belum terverifikasi.
 | `api:rpc core.resolve_fraud_flag` | guarded-by | `policy:core.admin-aal2` | db/core/supabase/schemas/trust/fraud_resolve.sql:69 |
 | `api:rpc core.resolve_fraud_flag` | writes | `table:finance.ledger_entries` | db/core/supabase/schemas/trust/fraud_resolve.sql:117 (finance.reverse_earning → jurnal balik) |
 | `api:rpc core.resolve_fraud_flag` | writes | `table:market.profiles` | db/core/supabase/schemas/trust/fraud_resolve.sql:126 |
-| `api:rpc core.resolve_fraud_flag` | writes | `table:ops.audit_logs` | db/core/supabase/schemas/trust/fraud_resolve.sql:142 |
+| `api:rpc core.resolve_fraud_flag` | writes | `table:ops.audit_logs` | db/core/supabase/schemas/trust/fraud_resolve.sql:148 |
 | `api:rpc core.resolve_fraud_flag` | writes | `table:trust.fraud_flags` | db/core/supabase/schemas/trust/fraud_resolve.sql:105 |
-| `api:rpc core.resolve_fraud_flag` | writes | `table:trust.score_events` | db/core/supabase/schemas/trust/fraud_resolve.sql:140 |
+| `api:rpc core.resolve_fraud_flag` | writes | `table:trust.score_events` | db/core/supabase/schemas/trust/fraud_resolve.sql:146 |
 | `api:rpc core.resolve_fraud_flag` | calls | `api:fn core/bridge` | db/core/supabase/schemas/trust/fraud_resolve.sql:134 (ban → bridge ban_user) |
 | `api:rpc core.revoke_report_link` | guarded-by | `policy:core.org-role` | db/core/supabase/schemas/api/report_links.sql:32 |
 | `api:rpc core.revoke_report_link` | writes | `table:market.report_links` | db/core/supabase/schemas/api/report_links.sql:29 |
@@ -1351,6 +1358,16 @@ Arah: `A --tipe--> B` = A bergantung pada B. `?` = belum terverifikasi.
 | `table:tracking.view_snapshots` | guarded-by | `policy:core.inherit-parent` | db/core/supabase/schemas/tracking/view_snapshots.sql:22 |
 | `table:tracking.view_snapshots` | guarded-by | `policy:core.iss-identity` | db/core/supabase/schemas/tracking/view_snapshots.sql:20 |
 | `table:tracking.view_snapshots` | typed-by | `table:tracking.submissions` | db/core/supabase/schemas/tracking/view_snapshots.sql:5 |
+| `table:trust.sanctions` | guarded-by | `policy:core.admin-aal2` | db/core/supabase/schemas/trust/sanctions.sql:30 |
+| `table:trust.sanctions` | guarded-by | `policy:core.iss-identity` | db/core/supabase/schemas/trust/sanctions.sql:27 |
+| `table:trust.sanctions` | guarded-by | `policy:core.rls-self` | db/core/supabase/schemas/trust/sanctions.sql:29 |
+| `table:trust.sanctions` | typed-by | `table:trust.fraud_flags` | db/core/supabase/schemas/trust/sanctions.sql:8 |
+| `api:rpc core.appeal_sanction` | writes | `table:trust.sanctions` | db/core/supabase/schemas/trust/sanctions.sql:61 |
+| `api:rpc core.decide_sanction_appeal` | guarded-by | `policy:core.admin-aal2` | db/core/supabase/schemas/trust/sanctions.sql:75 |
+| `api:rpc core.decide_sanction_appeal` | writes | `table:trust.sanctions` | db/core/supabase/schemas/trust/sanctions.sql:91 |
+| `api:rpc core.decide_sanction_appeal` | writes | `table:ops.audit_logs` | db/core/supabase/schemas/trust/sanctions.sql:116 |
+| `api:rpc core.resolve_fraud_flag` | writes | `table:trust.sanctions` | db/core/supabase/schemas/trust/fraud_resolve.sql:141 (trust.record_sanction) |
+| `api:rpc core.manage_user` | writes | `table:trust.sanctions` | db/core/supabase/schemas/trust/manage_user.sql:56 (trust.record_sanction: suspend), db/core/supabase/schemas/trust/manage_user.sql:69 (ban) |
 | `table:trust.fraud_flags` | guarded-by | `policy:core.admin-aal2` | db/core/supabase/schemas/trust/fraud_flags.sql:21 |
 | `table:trust.fraud_flags` | guarded-by | `policy:core.iss-identity` | db/core/supabase/schemas/trust/fraud_flags.sql:19 |
 | `table:trust.review_decisions` | guarded-by | `policy:core.admin-aal2` | db/core/supabase/schemas/trust/review_decisions.sql:32 |
@@ -2267,6 +2284,7 @@ Masalah sistem yang ditemukan saat menyusun PRD v0.2 dan saat dicek ulang (v0.2.
 | 2026-10-20 | `api:rpc core.mark_fulfillment_delivered` | Review Claudex R27: webhook macet yang sedang dikirim ulang worker (lease aktif / retry terjadwal) tetap bisa ditandai terkirim manual → reward bisa sampai dua kali | diperbaiki: tandai terkirim ditolak selama lease aktif (delivery_in_flight) atau kirim ulang terjadwal (invalid_state:retrying); api.fulfillments membawa next_retry_at, admin hanya menampilkan Kirim ulang/Tandai terkirim untuk webhook yang benar-benar berhenti |
 | 2026-10-20 | `job:track-due` | Audit PRD ulang (AA-6, F-A01/F-X01 kesehatan tracking): saat track-worker mati, enqueue_due_submissions terus menggeser next_poll_at (+1 jam lease) sehingga alert tracking.lag & kartu overview "Tracking terlambat" tetap 0 — pesan cuma menumpuk di antrean | diperbaiki: tracking.lagging_count = submisi jatuh tempo > 2 jam ATAU pesan antrean tracking > 1 jam belum diproses; dipakai alert lifecycle dan api.admin_overview |
 | 2026-10-20 | `api:fn core/bridge` | Audit PRD ulang (AA-16, alur 7 hapus akun UU PDP): close_account hanya mengosongkan avatar_path; file foto profil di bucket publik avatars/{user_id}/ tetap bisa diakses lewat URL publik | diperbaiki: setelah close_account ok (baru/sudah tertutup), bridge menghapus semua objek avatars/{user_id}/ lewat Storage API (gagal → error, identity mengulang; close_account idempoten); diverifikasi ke storage lokal: URL publik tidak melayani file lagi |
+| 2026-10-20 | `table:trust.sanctions` | Audit PRD ulang (AA-8, §12 "sanksi bertingkat: peringatan → tahan → suspend 30 hari → ban; semua sanksi bisa dibanding sekali"): tidak ada sanksi peringatan dan sanksi akun tidak bisa dibanding (hanya submisi ditolak) | diperbaiki: trust.sanctions dicatat resolve_fraud_flag (aksi baru warn, −5) & manage_user; api.appeal_sanction (sekali) + api.decide_sanction_appeal (dikabulkan → suspend/ban dicabut + unban identity, hold di-dismiss, penalti skor kembali; earning hangus tidak dijurnal ulang); notifikasi account.warned & sanction.appeal_decided; Profil clipper (Sanksi akun + Banding) dan antrean banding di Fraud admin |
 | 2026-10-20 | `api:fn core/social` | Audit PRD (G-1, F-C02/D-11): YouTube hanya bisa dihubungkan lewat OAuth Google; fallback kode di deskripsi channel tidak ada (YOUTUBE_API_KEY tak dipakai) | diperbaiki: aksi youtube_code / youtube_verify (kode CLIP-… per user+channel harus ada di deskripsi) → akun terverifikasi dengan token mode api_key; adapter memakai ?key= (tanpa Analytics, tanpa refresh); dialog di halaman Akun sosmed |
 ## Keputusan
 

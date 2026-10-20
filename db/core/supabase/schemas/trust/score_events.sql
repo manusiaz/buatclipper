@@ -5,7 +5,7 @@ create table trust.score_events (
   user_id uuid not null references market.profiles (id),
   delta smallint not null check (delta <> 0 and delta between -100 and 100),
   reason text not null check (reason in ('submission_approved', 'clean_tenure', 'submission_rejected', 'fraud_flag',
-                                         'appeal_failed', 'admin_override')),
+                                         'appeal_failed', 'admin_override', 'appeal_overturned')),
   ref_id text,
   created_by uuid,
   created_at timestamptz not null default now(),

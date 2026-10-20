@@ -36,3 +36,15 @@ export async function saveProfile(input: { displayName: string; avatarPath: stri
   revalidatePath('/', 'layout');
   return ok(null);
 }
+
+/** §12 banding sanksi akun (sekali per sanksi, 10–1.000 karakter); diputus admin_moderator. */
+export async function appealSanction(sanctionId: string, message: string): Promise<Result> {
+  await requireClipper();
+  const text = (message ?? '').trim();
+  if (text.length < 10 || text.length > 1000) return fail('invalid:message');
+  const db = await core();
+  const { error } = await db.rpc('appeal_sanction', { p_sanction: sanctionId, p_message: text });
+  if (error) return fail(error.message);
+  revalidatePath('/profile');
+  return ok(null);
+}

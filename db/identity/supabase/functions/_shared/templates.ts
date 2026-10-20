@@ -42,6 +42,8 @@ export const EVENTS = [
   "refund.paid",
   "managed.draft_ready",
   "admin.alert",
+  "account.warned",
+  "sanction.appeal_decided",
 ] as const;
 
 export type NotificationEvent = (typeof EVENTS)[number];
@@ -541,6 +543,25 @@ const DEFS: Record<NotificationEvent, Def> = {
     ],
     cta: "Buka admin",
     url: (_p, l) => `${l.admin || l.app}/`,
+  }, // §12 sanksi bertingkat: peringatan (tingkat pertama) dan hasil banding sanksi (sekali per sanksi)
+  "account.warned": {
+    title: () => "Peringatan untuk akunmu",
+    lines: () => [
+      "Tim menemukan aktivitas yang melanggar ketentuan layanan. Ini peringatan pertama.",
+      "Pelanggaran berikutnya bisa membuat earning ditahan atau akun ditangguhkan. Kamu bisa membanding di halaman Profil.",
+    ],
+    cta: "Buka profil",
+    url: (_p, l) => join(l.app, "profile"),
+  },
+  "sanction.appeal_decided": {
+    title: (p) => txt(p, "decision", 20) === "overturned" ? "Banding dikabulkan" : "Banding ditolak",
+    lines: (p) => [
+      txt(p, "decision", 20) === "overturned"
+        ? "Sanksi dibatalkan dan efeknya dipulihkan sejauh memungkinkan."
+        : "Sanksi tetap berlaku. Keputusan banding bersifat final.",
+    ],
+    cta: "Buka profil",
+    url: (_p, l) => join(l.app, "profile"),
   },
 };
 

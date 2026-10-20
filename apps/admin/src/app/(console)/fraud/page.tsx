@@ -4,7 +4,7 @@ import { getLocale, getTranslations } from 'next-intl/server';
 import { coreServer, requireAdmin } from '@clipper/auth/server';
 import { Badge, Card, EmptyState, formatIDR, PageHeader, PlatformChip, RelativeTime, type Platform, type UiLocale } from '@clipper/ui';
 import { param, rows, uniq, type SearchParams } from '@/lib/data';
-import { resolveFlag, type FraudAction } from '@/features/fraud/actions';
+import { decideSanctionAppeal, resolveFlag, type FraudAction } from '@/features/fraud/actions';
 import { ActionDialog } from '@/features/shared/action-dialog';
 import { FilterBar } from '@/features/shared/filter-bar';
 import { JsonView } from '@/features/shared/json-view';
@@ -17,7 +17,8 @@ export async function generateMetadata(): Promise<Metadata> {
 const SIGNALS = Array.from({ length: 11 }, (_, i) => `FR-${String(i + 1).padStart(2, '0')}`);
 const TARGETS = ['submission', 'profile', 'social_account', 'payout'] as const;
 
-// F-A06 / A4.2: sinyal FR-xx (§12) per submisi/akun/payout dengan skor → hold / reverse / suspend / ban / dismiss.
+// F-A06 / A4.2: sinyal FR-xx (§12) per submisi/akun/payout dengan skor → warn / hold / reverse / suspend / ban / dismiss;
+// banding sanksi clipper (sekali per sanksi) diputus di sini juga.
 export default async function FraudPage({ searchParams }: { searchParams: Promise<SearchParams> }) {
   await requireAdmin(...rolesFor('fraud'));
   const [t, locale, sp, db] = await Promise.all([getTranslations('admin'), getLocale(), searchParams, coreServer('admin')]);
@@ -31,7 +32,8 @@ export default async function FraudPage({ searchParams }: { searchParams: Promis
     .order('score', { ascending: false, nullsFirst: false }).order('created_at').limit(100);
   if (SIGNALS.includes(signal)) q = q.eq('signal', signal);
   if (TARGETS.includes(target as never)) q = q.eq('target_type', target);
-  const flags = rows(await q);
+  const [flags, appeals] = [rows(await q), rows(await db.from('sanctions').select('id, user_id, kind, reason, created_at, appeal_message, appealed_at')
+    .not('appealed_at', 'is', null).is('decision', null).order('appealed_at').limit(50))];
   const idsOf = (type: string) => uniq(flags.filter((f) => f.target_type === type).map((f) => f.target_id));
 
   const [subs, accts, pays] = await Promise.all([
@@ -42,7 +44,7 @@ export default async function FraudPage({ searchParams }: { searchParams: Promis
   const sub = new Map(rows(subs).map((s) => [s.id, s]));
   const acct = new Map(rows(accts).map((a) => [a.id, a]));
   const pay = new Map(rows(pays).map((p) => [p.id, p]));
-  const userIds = uniq([...idsOf('profile'), ...[...sub.values()].map((s) => s.user_id), ...[...acct.values()].map((a) => a.user_id), ...[...pay.values()].map((p) => p.user_id)]);
+  const userIds = uniq([...appeals.map((x) => x.user_id), ...idsOf('profile'), ...[...sub.values()].map((s) => s.user_id), ...[...acct.values()].map((a) => a.user_id), ...[...pay.values()].map((p) => p.user_id)]);
   const [profs, camps] = await Promise.all([
     db.from('profiles').select('id, username, display_name').in('id', userIds),
     db.from('campaigns').select('id, title').in('id', uniq([...sub.values()].map((s) => s.campaign_id))),
@@ -55,6 +57,7 @@ export default async function FraudPage({ searchParams }: { searchParams: Promis
     f.target_type === 'profile' ? f.target_id : f.target_type === 'submission' ? sub.get(f.target_id)?.user_id : f.target_type === 'social_account' ? acct.get(f.target_id)?.user_id : pay.get(f.target_id)?.user_id;
 
   const actionsFor = (f: (typeof flags)[number]): { a: FraudAction; variant: 'secondary' | 'danger' | 'tertiary'; noteRequired: boolean }[] => [
+    { a: 'warn', variant: 'secondary', noteRequired: true },
     ...(f.status === 'open' ? [{ a: 'hold' as const, variant: 'secondary' as const, noteRequired: false }] : []),
     ...(f.target_type === 'submission' || f.target_type === 'profile' ? [{ a: 'reverse' as const, variant: 'secondary' as const, noteRequired: true }] : []),
     { a: 'suspend', variant: 'secondary', noteRequired: true },
@@ -75,6 +78,42 @@ export default async function FraudPage({ searchParams }: { searchParams: Promis
           { kind: 'select', name: 'target', label: t('fraud.target'), value: target, options: [all, ...TARGETS.map((x) => ({ value: x, label: t(`fraud.targets.${x}`) }))] },
         ]}
       />
+      {appeals.length ? (
+        <section aria-labelledby="appeals" className="mb-6 flex flex-col gap-3">
+          <h2 id="appeals" className="text-h5 text-ink">{t('fraud.appealsTitle', { n: appeals.length })}</h2>
+          <ul className="flex flex-col gap-3">
+            {appeals.map((x) => {
+              const p = prof.get(x.user_id!);
+              return (
+                <Card as="li" key={x.id} padding="md" className="flex flex-col gap-2">
+                  <div className="flex flex-wrap items-center gap-2 text-body-s">
+                    <Badge tone="warn">{t(`fraud.sanctions.${x.kind}`)}</Badge>
+                    {p ? <Link href={`/users?user=${p.id}`} className="font-semibold text-link hover:underline">@{p.username}</Link> : null}
+                    <RelativeTime value={x.appealed_at!} locale={loc} className="text-caption text-muted" />
+                  </div>
+                  {x.reason ? <p className="text-caption text-muted">{t('fraud.sanctionReason', { reason: x.reason })}</p> : null}
+                  <p className="text-body-s break-words text-ink">{x.appeal_message}</p>
+                  <div className="flex flex-wrap gap-2 border-t border-border pt-3">
+                    <ActionDialog
+                      trigger={{ label: t('fraud.decideAppeal'), variant: 'primary' }}
+                      title={t('fraud.decideAppeal')}
+                      description={t('fraud.decideAppealBody')}
+                      submitLabel={t('fraud.decideAppeal')}
+                      success={t('fraud.appealDecided')}
+                      action={decideSanctionAppeal.bind(null, x.id!)}
+                      fields={[
+                        { kind: 'select', name: 'decision', label: t('fraud.decision'), required: true, defaultValue: 'upheld',
+                          options: [{ value: 'upheld', label: t('fraud.decisions.upheld') }, { value: 'overturned', label: t('fraud.decisions.overturned') }] },
+                        { kind: 'textarea', name: 'note', label: t('fraud.decisionNote'), required: true, maxLength: 500 },
+                      ]}
+                    />
+                  </div>
+                </Card>
+              );
+            })}
+          </ul>
+        </section>
+      ) : null}
       {flags.length === 0 ? (
         <EmptyState icon="shield" tone="success" title={t('fraud.empty')} body={t('fraud.emptyBody')} />
       ) : (

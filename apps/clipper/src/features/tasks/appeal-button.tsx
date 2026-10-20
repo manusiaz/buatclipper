@@ -3,10 +3,12 @@
 import { useState, useTransition } from 'react';
 import { useTranslations } from 'next-intl';
 import { Alert, Button, Dialog, DialogContent, DialogTrigger, Field, Textarea, toast } from '@clipper/ui';
+import { appealSanction } from '@/features/profile/actions';
 import { appealSubmission } from './actions';
 
-export function AppealButton({ submissionId }: { submissionId: string }) {
-  const t = useTranslations('clipper.tasks.appeal');
+/** Banding sekali: submisi ditolak (Tugas Saya) atau sanksi akun (Profil, §12). */
+export function AppealButton({ submissionId, sanctionId }: { submissionId?: string; sanctionId?: string }) {
+  const t = useTranslations(sanctionId ? 'clipper.profile.appeal' : 'clipper.tasks.appeal');
   const [open, setOpen] = useState(false);
   const [text, setText] = useState('');
   const [error, setError] = useState<string | null>(null);
@@ -15,7 +17,7 @@ export function AppealButton({ submissionId }: { submissionId: string }) {
   const send = () =>
     start(async () => {
       setError(null);
-      const r = await appealSubmission(submissionId, text);
+      const r = sanctionId ? await appealSanction(sanctionId, text) : await appealSubmission(submissionId!, text);
       if (!r.ok) return setError(r.message);
       toast.success(t('sent'));
       setOpen(false);

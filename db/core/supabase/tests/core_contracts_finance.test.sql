@@ -963,6 +963,44 @@ select ok(exists (select 1 from ops.notifications where event = 'account.banned'
 select ok(exists (select 1 from net.http_request_queue q where convert_from(q.body, 'UTF8')::jsonb ->> 'action' = 'ban_user'
                   and convert_from(q.body, 'UTF8')::jsonb ->> 'user_id' = '11111111-0000-0000-0000-00000000000e'), 'ban → bridge identity admin-auth');
 select is((select count(*)::int from ops.audit_logs where action = 'fraud_flag.resolve'), 6, 'semua sanksi tercatat di audit log');
+-- Regresi audit 2 AA-8 (§12 sanksi bertingkat, "bisa dibanding sekali"): peringatan + catatan sanksi + banding sekali
+select is((select string_agg(kind, ',' order by created_at, kind) from trust.sanctions where user_id = '11111111-0000-0000-0000-00000000000b'),
+          'hold,reverse,suspend', 'setiap sanksi fraud queue tercatat per clipper');
+insert into t_pay select 'fl6', trust.raise_flag('profile', '11111111-0000-0000-0000-00000000000a', 'FR-05', 30, '{}');
+set local role authenticated;
+select pg_temp.jwt('33333333-0000-0000-0000-0000000000e1', '{"app_roles":["admin_moderator"],"aal":"aal2"}');
+select lives_ok($$ select api.resolve_fraud_flag((select id from t_pay where k = 'fl6'), 'warn', 'perangkat dipakai bersama') $$,
+                'regresi AA-8: sanksi peringatan (tingkat pertama)');
+reset role;
+select ok(exists (select 1 from ops.notifications where event = 'account.warned' and user_id = '11111111-0000-0000-0000-00000000000a'),
+          'peringatan → notifikasi ke clipper');
+select is((select delta from trust.score_events where ref_id = (select id::text from t_pay where k = 'fl6')), -5::smallint, 'peringatan -5 Trust Score');
+select is((select status::text from market.profiles where id = '11111111-0000-0000-0000-00000000000a'), 'active', 'peringatan tidak memblokir akun');
+insert into t_pay select 'sanc_b', id from trust.sanctions where user_id = '11111111-0000-0000-0000-00000000000b' and kind = 'suspend';
+set local role authenticated;
+select pg_temp.jwt('11111111-0000-0000-0000-00000000000a');
+select throws_ok($$ select api.appeal_sanction((select id from t_pay where k = 'sanc_b'), 'bukan saya pelakunya') $$,
+                 'P0002', 'not_found:sanction', 'clipper tidak bisa membanding sanksi orang lain');
+select pg_temp.jwt('11111111-0000-0000-0000-00000000000b');
+select is((select count(*)::int from api.sanctions), 3, 'clipper melihat sanksinya sendiri saja');
+select lives_ok($$ select api.appeal_sanction((select id from api.sanctions where kind = 'suspend'), 'Perangkat itu milik adik saya, bukan akun ganda.') $$,
+                'regresi AA-8: clipper membanding suspend');
+select throws_ok($$ select api.appeal_sanction((select id from api.sanctions where kind = 'suspend'), 'banding kedua kali ya') $$, 'P0001',
+                 'already_appealed', 'banding hanya sekali per sanksi');
+select pg_temp.jwt('33333333-0000-0000-0000-0000000000e1', '{"app_roles":["admin_moderator"],"aal":"aal2"}');
+select lives_ok($$ select api.decide_sanction_appeal((select id from api.sanctions where kind = 'suspend' and user_id = '11111111-0000-0000-0000-00000000000b'),
+                                                    'overturned', 'bukti perangkat keluarga') $$, 'moderator membatalkan sanksi lewat banding');
+select throws_ok($$ select api.decide_sanction_appeal((select id from api.sanctions where kind = 'suspend' and user_id = '11111111-0000-0000-0000-00000000000b'),
+                                                     'upheld', 'ubah lagi') $$, 'P0001', 'invalid_state:appeal', 'keputusan banding final');
+reset role;
+select is((select status::text || ':' || coalesce(suspended_until::text, '-') from market.profiles where id = '11111111-0000-0000-0000-00000000000b'),
+          'active:-', 'banding dikabulkan → suspend dicabut');
+select is((select delta from trust.score_events where reason = 'appeal_overturned' and user_id = '11111111-0000-0000-0000-00000000000b'), 20::smallint,
+          'penalti Trust Score suspend dikembalikan');
+select ok(exists (select 1 from ops.notifications where event = 'sanction.appeal_decided' and user_id = '11111111-0000-0000-0000-00000000000b'
+                  and payload ->> 'decision' = 'overturned'), 'clipper dikabari hasil banding');
+-- fixture bagian berikut mengandalkan budi masih disuspend
+update market.profiles set status = 'suspended', suspended_until = now() + interval '30 days' where id = '11111111-0000-0000-0000-00000000000b';
 
 -- ========== I. worker_create_submission (core/social, E-12) ==========
 insert into market.campaigns (id, org_id, slug, title, type, platforms, start_at, submit_deadline, created_by, review_mode, required_hashtags,
