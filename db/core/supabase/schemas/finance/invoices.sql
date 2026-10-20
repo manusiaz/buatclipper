@@ -20,6 +20,8 @@ create table finance.invoices (
   credit_applied numeric(18, 2) not null default 0 check (credit_applied >= 0),
   -- D-09: porsi budget yang didanai kredit rollover (sisa budget campaign lama, fee-nya sudah dibayar) → tanpa fee baru.
   fee_exempt numeric(18, 2) not null default 0 check (fee_exempt >= 0),
+  -- Fee sebelum dibebaskan ({mgmt_fee, admin_fee, tax}); diisi selama fee_exempt > 0 supaya ubah/lepas kredit bisa dihitung ulang.
+  fee_gross jsonb,
   paid_at timestamptz,
   confirmed_by uuid,
   faktur_no text,

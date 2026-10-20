@@ -1637,8 +1637,24 @@ select is((select mgmt_fee + admin_fee + tax from finance.invoices where id = (s
           'invoice campaign terbit dengan fee 15% + 5% + pajak 11% (belum tahu sumber dana)');
 set local role authenticated;
 select pg_temp.jwt('22222222-0000-0000-0000-0000000000c1', '{"aal":"aal2"}');
-select is(api.pay_invoice_with_credit((select id from t_pay where k = 'inv_roll')) ->> 'paid', 'true',
-          'kredit rollover membayar budget penuh');
+select api.pay_invoice_with_credit((select id from t_pay where k = 'inv_roll'), 500000);
+reset role;
+select is((select array[fee_exempt, mgmt_fee + admin_fee + tax, credit_applied] from finance.invoices where id = (select id from t_pay where k = 'inv_roll')),
+          array[500000, 111000, 500000]::numeric[], 'kredit sebagian: hanya porsi rollover yang dipakai bebas fee');
+set local role authenticated;
+select pg_temp.jwt('22222222-0000-0000-0000-0000000000c1', '{"aal":"aal2"}');
+select api.pay_invoice_with_credit((select id from t_pay where k = 'inv_roll'), 0);
+reset role;
+select is((select array[fee_exempt, mgmt_fee + admin_fee + tax, total, credit_applied] from finance.invoices
+            where id = (select id from t_pay where k = 'inv_roll')),
+          array[0, 222000, 1222000, 0]::numeric[], 'regresi R22-1: lepas kredit → fee & pajak kembali penuh (bebas fee hanya selama didanai rollover)');
+-- UI (InvoiceCredit) mengirim creditCap = min(total sebelum bebas fee, kredit tersedia); total turun setelah fee dibebaskan.
+create temp table t_cap as select least(1222000, finance.org_credit_available('44444444-0000-0000-0000-000000000001')) as v;
+grant select on t_cap to authenticated;
+set local role authenticated;
+select pg_temp.jwt('22222222-0000-0000-0000-0000000000c1', '{"aal":"aal2"}');
+select is(api.pay_invoice_with_credit((select id from t_pay where k = 'inv_roll'), (select v from t_cap)) ->> 'paid', 'true',
+          'regresi R22-2: jumlah dari UI (≥ total setelah bebas fee) melunasi invoice, bukan insufficient_credit');
 reset role;
 select is((select array[fee_exempt, mgmt_fee, admin_fee, tax, total] from finance.invoices where id = (select id from t_pay where k = 'inv_roll')),
           array[1000000, 0, 0, 0, 1000000]::numeric[],

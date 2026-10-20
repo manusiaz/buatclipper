@@ -196,6 +196,7 @@ declare
   new_mgmt numeric;
   new_adm numeric;
   new_tax numeric;
+  g jsonb;
 begin
   select * into inv from finance.invoices i where i.id = p_invoice for update;
   if not found or not ops.is_org_member(inv.org_id, 'brand_owner', 'brand_finance') then
@@ -218,29 +219,38 @@ begin
     perform market.fail('campaign_already_funded');
   end if;
   perform pg_advisory_xact_lock(hashtextextended('org_credit:' || inv.org_id, 0));
-  -- Porsi budget yang didanai rollover tidak dikenai fee lagi (sekali per invoice): fee mgmt/admin dihitung ulang atas dasar
-  -- dikurangi porsi itu, pajak ikut, total turun sebelum kredit diterapkan.
-  if inv.kind in ('campaign', 'topup') and inv.fee_exempt = 0 then
-    ex := least(finance.rollover_available(inv.org_id), finance.org_credit_available(inv.org_id) + inv.credit_applied, inv.subtotal,
-                coalesce(p_amount, inv.subtotal));
+  -- Porsi budget yang didanai rollover (≤ kredit yang dipakai) tidak dikenai fee lagi: fee mgmt/admin dihitung ulang dari fee
+  -- awal (fee_gross) atas dasar dikurangi porsi itu, pajak ikut, total turun sebelum kredit diterapkan. Dihitung ulang tiap
+  -- cadangan berubah; dilepas (0) → fee awal kembali. Rollover yang sudah dipakai invoice ini tetap tersedia untuknya.
+  if inv.kind in ('campaign', 'topup') then
+    g := coalesce(inv.fee_gross, jsonb_build_object('mgmt_fee', inv.mgmt_fee, 'admin_fee', inv.admin_fee, 'tax', inv.tax));
+    ex := least(finance.rollover_available(inv.org_id) + inv.fee_exempt, finance.org_credit_available(inv.org_id) + inv.credit_applied,
+                inv.subtotal, coalesce(p_amount, inv.subtotal));
     base := inv.subtotal + finance.noncash_value_idr(inv.campaign_id, case when inv.kind = 'topup' then inv.pool_topups end);
     if ex > 0 and base > 0 then
-      new_mgmt := round((base - ex) * inv.mgmt_fee / base, 2);
-      new_adm := round((base - ex) * inv.admin_fee / base, 2);
+      new_mgmt := round((base - ex) * (g ->> 'mgmt_fee')::numeric / base, 2);
+      new_adm := round((base - ex) * (g ->> 'admin_fee')::numeric / base, 2);
       new_tax := round((new_mgmt + new_adm + inv.service_fee)
                        * coalesce((select (st.value #>> '{}')::numeric from ops.settings st where st.key = 'public.billing.tax_pct'), 11) / 100, 2);
-      update finance.invoices set fee_exempt = ex, mgmt_fee = new_mgmt, admin_fee = new_adm, tax = new_tax,
-             total = subtotal + new_mgmt + new_adm + service_fee + new_tax
-       where id = inv.id returning * into inv;
+    else
+      ex := 0;
+      new_mgmt := (g ->> 'mgmt_fee')::numeric;
+      new_adm := (g ->> 'admin_fee')::numeric;
+      new_tax := (g ->> 'tax')::numeric;
     end if;
+    update finance.invoices set fee_exempt = ex, fee_gross = case when ex > 0 then g end, mgmt_fee = new_mgmt, admin_fee = new_adm,
+           tax = new_tax, total = subtotal + new_mgmt + new_adm + service_fee + new_tax,
+           credit_applied = least(credit_applied, subtotal + new_mgmt + new_adm + service_fee + new_tax)
+     where id = inv.id returning * into inv;
   end if;
   -- tersedia + cadangan invoice ini sendiri = yang boleh dipakai untuk invoice ini
   want := least(inv.total, finance.org_credit_available(inv.org_id) + inv.credit_applied);
   if p_amount is not null then
-    if p_amount > want then
+    -- diminta ≥ total (mis. total turun karena fee rollover dibebaskan) dan kredit cukup = bayar penuh
+    if p_amount > want and want < inv.total then
       perform market.fail('insufficient_credit', format('kredit bisa dipakai %s, diminta %s', want, p_amount));
     end if;
-    want := p_amount;
+    want := least(p_amount, want);
   elsif want <= inv.credit_applied then
     perform market.fail('insufficient_credit', 'tidak ada kredit tersedia');
   end if;
