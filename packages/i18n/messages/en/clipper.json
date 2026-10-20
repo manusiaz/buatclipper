@@ -507,11 +507,13 @@
       },
       "cap": {
         "title": "Higher per-clip caps",
-        "body": "Brands can set bigger earning caps for trusted clippers."
+        "tier": "Per-clip cap {pct}% (score ≥ {n})",
+        "body": "Brands' per-clip earning cap is multiplied by {pct}% for trusted clippers."
       },
       "hold": {
         "title": "Shorter hold period",
-        "body": "Earnings move from Pending to Available sooner."
+        "tier": "Hold period {days} days (score ≥ {n})",
+        "body": "Earnings move from Pending to Available after {days} days (riskier platforms still hold longer)."
       }
     },
     "views": "Total views",

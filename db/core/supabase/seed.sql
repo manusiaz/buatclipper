@@ -42,6 +42,9 @@ insert into ops.settings (key, value) values
   ('public.ai_clip.url', '""'),
   ('public.home.banners', '[]'),
   ('public.finance.hold_days', '7'),
+  -- §12 / C4.1: tier Trust Score → cap per klip & hold; TikTok (sinyal paling miskin) cap lebih rendah & hold lebih panjang.
+  ('public.finance.trust_tiers', '[{"min_score":80,"cap_pct":120,"hold_days":3},{"min_score":60,"cap_pct":100,"hold_days":5}]'),
+  ('public.finance.platform_rules', '{"tiktok":{"cap_pct":80,"hold_days":10}}'),
   ('finance.settlement_threshold_pct', '5'),
   ('finance.referral_bonus_pct', '5'),
   ('finance.referral_bonus_days', '90'),

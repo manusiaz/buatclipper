@@ -1404,6 +1404,37 @@ reset role;
 select is((select status::text || ':' || coalesce(suspended_until::text, 'null') from market.profiles where id = '11111111-0000-0000-0000-0000000000f4'),
           'active:null', 'unban juga mencabut suspend hasil ban berdurasi');
 
+-- Regresi G-2/G-4 (§12, C4.1): Trust Score tinggi → cap per klip lebih tinggi & hold lebih pendek; TikTok → cap lebih rendah
+-- & hold lebih panjang (config per platform). Pool cap Rp1.000/klip, rate Rp1/view.
+insert into ops.settings (key, value) values
+  ('public.finance.trust_tiers', '[{"min_score":80,"cap_pct":150,"hold_days":3},{"min_score":60,"cap_pct":100,"hold_days":5}]'),
+  ('public.finance.platform_rules', '{"tiktok":{"cap_pct":80,"hold_days":10}}')
+on conflict (key) do update set value = excluded.value;
+insert into market.profiles (id, username, display_name, trust_score) values
+  ('11111111-0000-0000-0000-0000000000f8', 'tepercaya_f8', 'Tepercaya', 85), ('11111111-0000-0000-0000-0000000000f9', 'biasa_f9', 'Biasa', 50);
+insert into tracking.social_accounts (user_id, platform, external_id, handle, status, followers, platform_created_at) values
+  ('11111111-0000-0000-0000-0000000000f8', 'tiktok', 'tt-f8', '@tepercaya', 'verified', 5000, now() - interval '400 days'),
+  ('11111111-0000-0000-0000-0000000000f9', 'tiktok', 'tt-f9', '@biasa', 'verified', 5000, now() - interval '400 days');
+select pg_temp.mk_campaign('55555555-0000-0000-0000-0000000000f8', 'trust-terms', 0);
+select pg_temp.mk_pool('55555555-0000-0000-0000-0000000000f8', '66666666-0000-0000-0000-0000000000f8', 1000000, 1000);
+select pg_temp.mk_rule('55555555-0000-0000-0000-0000000000f8', '66666666-0000-0000-0000-0000000000f8', 'per_1k_views', '{"rate":1000}');
+insert into t_ids select 'sf8', pg_temp.mk_sub('55555555-0000-0000-0000-0000000000f8', '11111111-0000-0000-0000-0000000000f8', 'vf8');
+insert into t_ids select 'sf9', pg_temp.mk_sub('55555555-0000-0000-0000-0000000000f8', '11111111-0000-0000-0000-0000000000f9', 'vf9');
+select pg_temp.snap((select v::uuid from t_ids where k = k1), 10000) from (values ('sf8'), ('sf9')) x(k1);
+select is((select array_agg(ce.amount order by s.user_id) from finance.clip_earnings ce join tracking.submissions s on s.id = ce.submission_id
+            where ce.pool_id = '66666666-0000-0000-0000-0000000000f8'), array[1200, 800]::numeric[],
+          'regresi G-2/G-4: cap per klip = cap pool × tier skor (150%) × TikTok (80%) → Rp1.200 vs Rp800');
+update tracking.submissions set status = 'locked', locked_at = now() - interval '4 days'
+ where id in (select v::uuid from t_ids where k in ('sf8', 'sf9'));
+select finance.release_earnings();
+select is((select array_agg(status::text order by user_id) from tracking.submissions where id in (select v::uuid from t_ids where k in ('sf8', 'sf9'))),
+          array['locked', 'locked'], 'hold TikTok (min 10 hari) berlaku walau tier skor memberi 3 hari');
+delete from ops.settings where key = 'public.finance.platform_rules';
+select finance.release_earnings();
+select is((select array_agg(status::text order by user_id) from tracking.submissions where id in (select v::uuid from t_ids where k in ('sf8', 'sf9'))),
+          array['settled', 'locked'], 'tanpa aturan platform: skor 85 → hold 3 hari (dirilis), skor 50 → hold global 7 hari');
+delete from ops.settings where key = 'public.finance.trust_tiers';
+
 -- ========== Invarian akhir ==========
 select is((select count(*)::int from (select 1 from finance.ledger_entries e group by e.txn_id, e.reward_type_id having sum(e.amount) <> 0) x),
           0, 'akhir: ledger seimbang per transaksi per reward type');

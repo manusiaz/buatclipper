@@ -50,6 +50,26 @@ create policy pool_settlements_visible on finance.pool_settlements for select to
 grant select on finance.pool_settlements to authenticated;
 
 -- Earning rule view-based untuk rentang views kumulatif (p_from, p_to]. numeric penuh, tanpa pembulatan.
+-- Ketentuan per clipper & platform (§12, C4.1): tier Trust Score (public.finance.trust_tiers: [{min_score, cap_pct,
+-- hold_days}]) membuka cap per klip lebih tinggi & hold lebih pendek; aturan platform (public.finance.platform_rules:
+-- {platform: {cap_pct, hold_days}}) menurunkan cap & memperpanjang hold untuk platform bersinyal miskin (TikTok).
+-- cap_pct dikalikan ke max_per_clip pool; hold = hold tier (atau public.finance.hold_days), minimal hold platform.
+-- Tanpa setting = 100% & hold global.
+create function finance.clip_terms(p_trust int, p_platform text) returns table (cap_pct numeric, hold_days int)
+language sql stable set search_path = '' as $$
+  with t as (
+    select coalesce((select x from jsonb_array_elements(case when jsonb_typeof(ops.cfg('public.finance.trust_tiers')) = 'array'
+                                                             then ops.cfg('public.finance.trust_tiers') else '[]' end) x
+                      where (x ->> 'min_score')::int <= coalesce(p_trust, 0)
+                      order by (x ->> 'min_score')::int desc limit 1), '{}') as tier,
+           coalesce(ops.cfg('public.finance.platform_rules') -> p_platform, '{}') as rule
+  )
+  select greatest(coalesce((t.tier ->> 'cap_pct')::numeric, 100), 0) * greatest(coalesce((t.rule ->> 'cap_pct')::numeric, 100), 0) / 100,
+         greatest(coalesce((t.tier ->> 'hold_days')::int, (ops.cfg('public.finance.hold_days', '7'))::int),
+                  coalesce((t.rule ->> 'hold_days')::int, 0))
+    from t;
+$$;
+
 create function finance.rule_amount(p_kind text, p_params jsonb, p_from bigint, p_to bigint) returns numeric
 language plpgsql immutable set search_path = '' as $$
 declare
@@ -128,6 +148,7 @@ declare
   amt numeric;
   remaining numeric;
   in_settle boolean;
+  cap_pct numeric;
 begin
   select * into s from tracking.submissions t where t.id = p_submission for update;
   if not found then
@@ -141,6 +162,8 @@ begin
     return;  -- flagged/belum approved: Δ menunggu; dihitung dari counted_views saat kembali tracking
   end if;
   select * into c from market.campaigns k where k.id = s.campaign_id;
+  select ct.cap_pct into cap_pct
+    from finance.clip_terms((select pr.trust_score from market.profiles pr where pr.id = s.user_id), s.platform::text) ct;
   v := snap.views;
   base := s.counted_views;
   if snap.is_final and v < base then
@@ -177,7 +200,7 @@ begin
     continue when coalesce(raw, 0) <= 0;
 
     select * into p from finance.reward_pools fp where fp.id = r.pool_id;
-    amt := trunc(least(raw, p.max_per_clip - coalesce((select sum(x.amount + x.demand) from finance.clip_earnings x
+    amt := trunc(least(raw, p.max_per_clip * cap_pct / 100 - coalesce((select sum(x.amount + x.demand) from finance.clip_earnings x
                                                         where x.submission_id = s.id and x.pool_id = p.id), 0)), 10);
     continue when amt <= 0;
     remaining := p.total - p.allocated;
@@ -392,7 +415,10 @@ declare
   fee numeric;
 begin
   for s in select t.id, t.user_id, t.campaign_id from tracking.submissions t
-            where t.status = 'locked' and t.locked_at <= now() - make_interval(days => hold)
+            where t.status = 'locked'
+              and t.locked_at <= now() - make_interval(days => coalesce(
+                    (select ct.hold_days from finance.clip_terms((select pr.trust_score from market.profiles pr where pr.id = t.user_id),
+                                                                 t.platform::text) ct), hold))
               and not exists (select 1 from trust.fraud_flags f where f.status in ('open', 'held')
                               and ((f.target_type = 'submission' and f.target_id = t.id)
                                 or (f.target_type = 'profile' and f.target_id = t.user_id)
@@ -444,7 +470,7 @@ begin
   end loop;
 end $$;
 
-revoke execute on function finance.rule_amount(text, jsonb, bigint, bigint), finance.start_settlement(uuid),
+revoke execute on function finance.clip_terms(int, text), finance.rule_amount(text, jsonb, bigint, bigint), finance.start_settlement(uuid),
   finance.check_exhausted(uuid), finance.accrue_earnings(uuid, bigint), finance.correct_down(uuid, bigint, bigint),
   finance.reverse_earning(uuid, text), finance.settle_pool(uuid), finance.finalize_settlements(), finance.release_earnings()
   from public;

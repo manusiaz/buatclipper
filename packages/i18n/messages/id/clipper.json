@@ -507,11 +507,13 @@
       },
       "cap": {
         "title": "Cap per klip lebih tinggi",
-        "body": "Brand bisa memberi batas earning lebih besar untuk clipper tepercaya."
+        "tier": "Cap per klip {pct}% (skor ≥ {n})",
+        "body": "Batas earning per klip dari brand dikalikan {pct}% untuk clipper tepercaya."
       },
       "hold": {
         "title": "Masa tahan lebih pendek",
-        "body": "Earning lebih cepat pindah dari Pending ke Tersedia."
+        "tier": "Masa tahan {days} hari (skor ≥ {n})",
+        "body": "Earning pindah dari Pending ke Tersedia setelah {days} hari (platform berisiko tetap lebih lama)."
       }
     },
     "views": "Total views",

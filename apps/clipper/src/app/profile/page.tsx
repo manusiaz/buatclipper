@@ -35,19 +35,27 @@ export default async function ProfilePage() {
     db.rpc('my_stats'),
     db.from('my_profile').select('username,display_name,avatar_path,trust_score,status,suspended_until,created_at').maybeSingle(),
     db.from('score_events').select('id,delta,reason,created_at').eq('user_id', claims.sub).order('created_at', { ascending: false }).limit(30),
-    readSettings(['public.finance.instant_min_trust']),
+    readSettings(['public.finance.instant_min_trust', 'public.finance.trust_tiers', 'public.finance.hold_days']),
   ]);
   const s = (stats.data ?? {}) as Record<string, unknown>;
   const score = num(me.data?.trust_score ?? s.trust_score);
   const instantMin = num(settings['public.finance.instant_min_trust']) || 70;
   const earnings = arr<Record<string, unknown>>(s.earnings);
   const name = me.data?.display_name || me.data?.username || claims.email || '';
-  // Hanya instant withdraw yang punya ambang config (public.finance.instant_min_trust); efek lain ditentukan per campaign.
-  const effects: { key: string; ok: boolean | null }[] = [
-    { key: 'instant', ok: score >= instantMin },
-    { key: 'premium', ok: null },
-    { key: 'cap', ok: null },
-    { key: 'hold', ok: null },
+  // Ambang dari config: instant (public.finance.instant_min_trust), cap & hold (public.finance.trust_tiers, §12);
+  // campaign premium ditentukan per campaign (min Trust Score brand).
+  const holdDays = num(settings['public.finance.hold_days']) || 7;
+  const tiers = arr<Record<string, unknown>>(settings['public.finance.trust_tiers'])
+    .map((x) => ({ min: num(x.min_score), cap: num(x.cap_pct) || 100, hold: num(x.hold_days) || holdDays }))
+    .sort((a, b) => a.min - b.min);
+  const capTier = tiers.find((x) => x.cap > 100);
+  const holdTier = tiers.find((x) => x.hold < holdDays);
+  const mine = [...tiers].reverse().find((x) => score >= x.min);
+  const effects: { key: string; ok: boolean | null; vars: Record<string, number> }[] = [
+    { key: 'instant', ok: score >= instantMin, vars: { n: instantMin } },
+    { key: 'premium', ok: null, vars: {} },
+    { key: 'cap', ok: capTier ? (mine?.cap ?? 100) > 100 : null, vars: { n: capTier?.min ?? 0, pct: mine && mine.cap > 100 ? mine.cap : capTier?.cap ?? 0 } },
+    { key: 'hold', ok: holdTier ? (mine?.hold ?? holdDays) < holdDays : null, vars: { n: holdTier?.min ?? 0, days: mine && mine.hold < holdDays ? mine.hold : holdTier?.hold ?? holdDays } },
   ];
 
   return (
@@ -97,8 +105,10 @@ export default async function ProfilePage() {
                 <Icon name={e.ok ? 'check' : e.ok === null ? 'trending_up' : 'lock'} size={16} />
               </span>
               <div className="min-w-0">
-                <p className="text-body-s font-bold text-ink">{t(`effects.${e.key}.title`, { n: instantMin })}</p>
-                <p className="text-caption text-muted">{t(`effects.${e.key}.body`, { n: instantMin, score })}</p>
+                <p className="text-body-s font-bold text-ink">
+                  {e.ok !== null && e.key !== 'instant' ? t(`effects.${e.key}.tier`, e.vars) : t(`effects.${e.key}.title`, e.vars)}
+                </p>
+                <p className="text-caption text-muted">{t(`effects.${e.key}.body`, { ...e.vars, score })}</p>
               </div>
             </li>
           ))}
