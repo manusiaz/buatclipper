@@ -30,7 +30,8 @@ end $$;
 
 -- Anggota langsung org (bukan lewat agency): dipakai aksi pengelolaan anggota & persetujuan tautan agency.
 -- FOR SHARE: pemanggil yang sedang dikeluarkan/diturunkan oleh transaksi lain menunggu commit-nya lalu ditolak (R23-1),
--- bukan lolos memakai otoritas lama. Fungsi yang juga mengunci org (manage_team, update_org) mengunci org dulu.
+-- bukan lolos memakai otoritas lama. Fungsi yang juga mengunci org (manage_team, update_org) mengunci org dulu dengan
+-- FOR NO KEY UPDATE: tidak bentrok dengan KEY SHARE dari cek FK insert (undangan, anggota) → tanpa deadlock (R24-1).
 create function market.is_direct_member(p_org uuid, p_user uuid, variadic p_roles market.org_role[] default '{}') returns boolean
 language plpgsql security definer set search_path = '' as $$
 begin

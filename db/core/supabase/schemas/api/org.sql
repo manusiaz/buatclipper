@@ -183,7 +183,7 @@ declare
   m market.org_members;
   r market.org_role;
 begin
-  perform 1 from market.organizations where id = p_org for update;
+  perform 1 from market.organizations where id = p_org for no key update;
   if not market.is_direct_member(p_org, uid, 'brand_owner') then
     perform market.fail('auth:forbidden', 'hanya brand_owner org ini', '42501');
   end if;
@@ -211,10 +211,6 @@ begin
       delete from market.org_members where org_id = p_org and user_id = m.user_id;
     else
       update market.org_members set role = r where org_id = p_org and user_id = m.user_id;
-    end if;
-    -- link undangan yang dibuat owner itu tidak boleh jadi jalan kembali setelah dikeluarkan/diturunkan
-    if m.role = 'brand_owner' and r is distinct from 'brand_owner' then
-      delete from market.org_invites where org_id = p_org and created_by = m.user_id and accepted_at is null;
     end if;
   else
     perform market.fail('invalid:action', coalesce(p_action, 'null'));
@@ -471,7 +467,7 @@ declare
   v_npwp text := nullif(regexp_replace(coalesce(p_npwp, ''), '[^0-9]', '', 'g'), '');
   legal_changed boolean;
 begin
-  select * into o from market.organizations where id = p_org for update;
+  select * into o from market.organizations where id = p_org for no key update;
   if not market.is_direct_member(p_org, uid, 'brand_owner') then
     perform market.fail('auth:forbidden', 'hanya brand_owner org ini', '42501');
   end if;

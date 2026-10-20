@@ -1732,7 +1732,18 @@ select is((select faktur_no || '|' || faktur_path from api.invoices where id = (
 select is((select count(*)::int from storage.objects where bucket_id = 'invoice-docs'), 1, 'brand billing bisa mengunduh PDF faktur');
 select pg_temp.jwt('22222222-0000-0000-0000-0000000000d9');
 select is((select count(*)::int from storage.objects where bucket_id = 'invoice-docs'), 0, 'bukan anggota billing org tidak bisa mengunduh');
+select set_config('storage.allow_delete_query', 'true', true);  -- seperti Storage API (RLS tetap berlaku)
+select pg_temp.jwt('22222222-0000-0000-0000-0000000000c1', '{"aal":"aal2"}');
+delete from storage.objects where bucket_id = 'invoice-docs';
 reset role;
+insert into storage.objects (bucket_id, name) values ('invoice-docs', '44444444-0000-0000-0000-000000000001/orphan.pdf');
+select is((select count(*)::int from storage.objects where bucket_id = 'invoice-docs'), 2, 'brand tidak bisa menghapus berkas faktur');
+set local role authenticated;
+select pg_temp.jwt('33333333-0000-0000-0000-0000000000f1', '{"app_roles":["admin_finance"],"aal":"aal2"}');
+delete from storage.objects where bucket_id = 'invoice-docs' and name = '44444444-0000-0000-0000-000000000001/orphan.pdf';
+reset role;
+select is((select count(*)::int from storage.objects where bucket_id = 'invoice-docs'), 1,
+          'regresi R24-3: admin_finance bisa membersihkan PDF yang ditolak/diganti');
 
 -- ========== Invarian akhir ==========
 select is((select count(*)::int from (select 1 from finance.ledger_entries e group by e.txn_id, e.reward_type_id having sum(e.amount) <> 0) x),

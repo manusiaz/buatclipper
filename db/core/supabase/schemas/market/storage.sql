@@ -19,6 +19,8 @@ create policy avatars_own_update on storage.objects for update to authenticated 
   using (bucket_id = 'avatars' and (storage.foldername(name))[1] = (select auth.jwt() ->> 'sub'));
 create policy invoice_docs_write on storage.objects for insert to authenticated  -- policy:core.admin-aal2
   with check (bucket_id = 'invoice-docs' and (select ops.has_admin('admin_finance')));
+create policy invoice_docs_delete on storage.objects for delete to authenticated  -- policy:core.admin-aal2
+  using (bucket_id = 'invoice-docs' and (select ops.has_admin('admin_finance')));
 create policy invoice_docs_read on storage.objects for select to authenticated  -- policy:core.org-role
   using (bucket_id = 'invoice-docs'
          and ((select ops.is_org_member(((storage.foldername(name))[1])::uuid, 'brand_owner', 'brand_finance'))

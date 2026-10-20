@@ -365,6 +365,19 @@ select is((select count(*)::int from api.organizations where id = '44444444-0000
 reset role;
 select is((select array_agg(action order by id) from ops.audit_logs where action like 'org.team.%'),
           array['org.team.set_role', 'org.team.revoke_invite', 'org.team.set_role', 'org.team.remove'], 'kelola anggota tercatat di audit');
+-- R24-2: demosi owner lewat jalur admin (manage_org add_member) juga mencabut link undangan yang ia buat
+set local role authenticated;
+select pg_temp.jwt('33333333-0000-0000-0000-0000000000ad', '{admin_ops}', 'aal2');
+select api.manage_org('44444444-0000-0000-0000-000000000001', 'add_member',
+                      '{"user_id":"11111111-0000-0000-0000-0000000000f3","role":"brand_owner","username":"own_f3"}');
+select pg_temp.jwt('11111111-0000-0000-0000-0000000000f3');
+insert into t_ids (k, tok) select 'invite_f3', api.create_org_invite('44444444-0000-0000-0000-000000000001', 'brand_owner');
+select pg_temp.jwt('33333333-0000-0000-0000-0000000000ad', '{admin_ops}', 'aal2');
+select api.manage_org('44444444-0000-0000-0000-000000000001', 'add_member', '{"user_id":"11111111-0000-0000-0000-0000000000f3","role":"brand_viewer"}');
+select pg_temp.jwt('11111111-0000-0000-0000-0000000000f2');
+select throws_ok($$ select api.accept_org_invite((select tok from t_ids where k = 'invite_f3')) $$, 'P0002', 'not_found:invite',
+                 'regresi R24-2: owner yang diturunkan admin tidak bisa kembali lewat link undangannya');
+reset role;
 
 -- Agency: request → approve (brand_owner klien) → akses → revoke
 set local role authenticated;

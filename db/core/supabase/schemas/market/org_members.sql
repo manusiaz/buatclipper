@@ -22,6 +22,19 @@ end $$;
 create trigger org_members_keep_owner before update or delete on market.org_members
   for each row execute function market.keep_one_owner();
 
+-- Owner yang dikeluarkan/diturunkan lewat jalur mana pun (manage_team, admin manage_org add_member, tutup akun): link undangan
+-- belum dipakai yang ia buat dicabut, supaya tidak jadi jalan kembali (R23-1, R24-2).
+create function market.revoke_owner_invites() returns trigger
+language plpgsql set search_path = '' as $$
+begin
+  if old.role = 'brand_owner' and (tg_op = 'DELETE' or new.role <> 'brand_owner') then
+    delete from market.org_invites where org_id = old.org_id and created_by = old.user_id and accepted_at is null;
+  end if;
+  return null;
+end $$;
+create trigger org_members_revoke_owner_invites after update or delete on market.org_members
+  for each row execute function market.revoke_owner_invites();
+
 alter table market.org_members enable row level security;
 create policy org_members_iss on market.org_members as restrictive for all to authenticated  -- policy:core.iss-identity
   using ((select ops.iss_ok())) with check ((select ops.iss_ok()));

@@ -82,12 +82,17 @@ export async function attachFaktur(invoiceId: string, fd: FormData): Promise<Act
   if (!(file instanceof File) || file.size === 0) return { ok: false, error: 'invalid:file' };
   if (file.size > 5 * 1024 * 1024) return { ok: false, error: 'payload_too_large' };
   if (file.type !== 'application/pdf') return { ok: false, error: 'unsupported_type' };
-  const { data: inv } = await db.from('invoices').select('org_id').eq('id', invoiceId).maybeSingle();
+  const no = text(fd, 'faktur_no');
+  if (!/^[0-9][0-9.-]{11,24}$/.test(no)) return { ok: false, error: 'invalid:faktur_no' }; // sama dengan api.attach_faktur
+  const { data: inv } = await db.from('invoices').select('org_id, faktur_path').eq('id', invoiceId).maybeSingle();
   if (!inv?.org_id) return { ok: false, error: 'not_found:invoice' };
   const path = `${inv.org_id}/${invoiceId}/${crypto.randomUUID()}.pdf`;
   const up = await db.storage.from('invoice-docs').upload(path, file, { contentType: 'application/pdf' });
   if (up.error) return { ok: false, error: 'upload_failed' };
-  const { error } = await db.rpc('attach_faktur', { p_invoice: invoiceId, p_faktur_no: text(fd, 'faktur_no'), p_path: path });
+  const { error } = await db.rpc('attach_faktur', { p_invoice: invoiceId, p_faktur_no: no, p_path: path });
+  // berkas yang tidak (lagi) dirujuk invoice dihapus: unggahan yang ditolak, atau faktur lama yang diganti
+  const stale = error ? path : inv.faktur_path && inv.faktur_path !== path ? inv.faktur_path : null;
+  if (stale) await db.storage.from('invoice-docs').remove([stale]);
   return settle(error, '/finance');
 }
 
