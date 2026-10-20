@@ -28,8 +28,12 @@ export interface PoolCost {
 }
 
 export interface CostSummary {
-  /** Budget creator = Σ pool.total × idr_value_per_unit, round 2 (invoice subtotal). */
+  /** Pool Rupiah yang ditagih = invoice subtotal (finance.campaign_budget_idr: reward type IDR global). */
   budgetIdr: number;
+  /** Nilai Rupiah pool non-tunai (stok brand, mis. Diamonds): dasar fee & pajak, tidak ditagih (finance.noncash_value_idr). */
+  nonCashIdr: number;
+  /** Budget creator = budgetIdr + nonCashIdr (nilai semua reward untuk clipper). */
+  creatorValueIdr: number;
   mgmtFee: number;
   adminFee: number;
   /** Paket managed (invoice managed_service), 0 for self-serve. */
@@ -108,10 +112,19 @@ export function costSummary(draft: CampaignDraft, ctx: CostContext): CostSummary
     };
   });
 
-  const raw = add(...draft.pools.map((pool) => mul(dec(pool.total ?? 0), dec(ctx.rewardTypes.find((r) => r.id === pool.reward_type_id)?.idr_value_per_unit ?? 0))));
-  const sub = round(raw, 2);
-  const mgmt = round(mul(sub, pct(fee.mgmt_fee_pct)), 2);
-  const adm = round(mul(sub, pct(fee.admin_fee_pct)), 2);
+  const value = (cash: boolean) =>
+    add(
+      ...draft.pools
+        .map((pool) => ({ pool, rt: ctx.rewardTypes.find((r) => r.id === pool.reward_type_id) }))
+        .filter(({ rt }) => (rt?.code === 'IDR' && !rt.owner_org_id) === cash)
+        .map(({ pool, rt }) => mul(dec(pool.total ?? 0), dec(rt?.idr_value_per_unit ?? 0))),
+    );
+  // Sama dengan issue_invoice: subtotal = pool Rupiah; fee atas (Rupiah + nilai non-tunai), dibulatkan per baris.
+  const sub = round(value(true), 2);
+  const nonCash = round(value(false), 2);
+  const base = add(sub, nonCash);
+  const mgmt = round(mul(base, pct(fee.mgmt_fee_pct)), 2);
+  const adm = round(mul(base, pct(fee.admin_fee_pct)), 2);
   const taxRate = pct(ctx.taxPct);
   const campaignTax = round(mul(add(mgmt, adm), taxRate), 2);
   const svc = draft.service_mode === 'managed' ? round(dec(ctx.managedServiceIdr), 2) : dec(0);
@@ -121,6 +134,8 @@ export function costSummary(draft: CampaignDraft, ctx: CostContext): CostSummary
 
   return {
     budgetIdr: toNumber(sub),
+    nonCashIdr: toNumber(nonCash),
+    creatorValueIdr: toNumber(base),
     mgmtFee: toNumber(mgmt),
     adminFee: toNumber(adm),
     serviceFee: toNumber(svc),

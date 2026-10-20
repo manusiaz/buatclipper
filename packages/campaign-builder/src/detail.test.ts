@@ -148,7 +148,7 @@ describe('draftFromDetail', () => {
       { kind: 'document', storage_path: `${ORG}/${CAMPAIGN}/internal/brief.pdf`, audience: 'internal', size_bytes: 5000 },
     ]);
     // Same budget as the read model.
-    expect(costSummary(draftFromDetail(detail), ctx).budgetIdr).toBe(detail.budget_idr);
+    expect(costSummary(draftFromDetail(detail), ctx).creatorValueIdr).toBe(detail.budget_idr);
     // Second pass is stable.
     expect(toSavePayload(draftFromDetail(detail))).toEqual(p);
   });

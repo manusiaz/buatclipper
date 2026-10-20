@@ -124,7 +124,7 @@ describe('render smoke test (SSR, every message resolves)', () => {
       </Host>,
     );
     expect(summary).toContain('Ringkasan biaya');
-    expect(summary).toContain('Rp30.270.000'); // 22,5 jt budget + 4,5 jt fee + 2,5 jt managed + 770 rb tax
+    expect(summary).toContain('Rp17.770.000'); // regresi AB-3: 10 jt Rupiah ditagih + 4,5 jt fee (atas 22,5 jt nilai) + 2,5 jt managed + 770 rb pajak; Diamonds tidak ditagih
   });
 
   it('builder renders a draft loaded from api.campaign_detail', () => {

@@ -46,11 +46,14 @@ describe('costSummary (mirror of finance.issue_invoice)', () => {
       ],
     });
     const s = costSummary(d, ctx);
-    expect(s.budgetIdr).toBe(32_500_000);
+    // Regresi AB-3: invoice menagih pool Rupiah saja (20 jt); Diamonds = stok brand, hanya dasar fee (§5.2, issue_invoice).
+    expect(s.budgetIdr).toBe(20_000_000);
+    expect(s.nonCashIdr).toBe(12_500_000);
+    expect(s.creatorValueIdr).toBe(32_500_000);
     expect(s.mgmtFee).toBe(4_875_000);
     expect(s.adminFee).toBe(1_625_000);
     expect(s.tax).toBe(715_000);
-    expect(s.total).toBe(39_715_000);
+    expect(s.total).toBe(27_215_000);
     expect(s.perPool[1]).toMatchObject({ unit_label: 'Diamonds', total: 50_000, budgetIdr: 12_500_000 });
     // 50.000 Diamonds at 8 / 1.000 views = 6.250.000 views; 20 jt at Rp4.000 = 5.000.000 views
     expect(s.perPool[1]!.est?.max).toBe(6_250_000);
@@ -64,17 +67,18 @@ describe('costSummary (mirror of finance.issue_invoice)', () => {
     });
     const odd = { ...ctx, rewardTypes: [...ctx.rewardTypes, { ...ctx.rewardTypes[0]!, id: 'rt-odd', code: 'ODD', idr_value_per_unit: 333.33 }] };
     const s = costSummary(d, odd);
-    expect(s.budgetIdr).toBe(333.33);
+    expect(s.budgetIdr).toBe(0); // non-tunai: tidak ditagih
+    expect(s.creatorValueIdr).toBe(333.33);
     expect(s.mgmtFee).toBe(50); // 49.9995 → 50.00
     expect(s.adminFee).toBe(16.67); // 16.6665 → 16.67
     expect(s.tax).toBe(7.33); // 66.67 × 0.11 = 7.3337 → 7.33
-    expect(s.total).toBe(407.33);
+    expect(s.total).toBe(74);
   });
 
   it('no float drift on decimal totals (0.1 + 0.2 style)', () => {
     const d = validDraft({ pools: [{ key: 'p', id: null, reward_type_id: 'rt-dec', total: 0.3, max_per_clip: 0.1 }], rules: [] });
     const dec = { ...ctx, rewardTypes: [{ ...ctx.rewardTypes[0]!, id: 'rt-dec', code: 'DEC', idr_value_per_unit: 0.1, decimals: 2 }] };
-    expect(costSummary(d, dec).budgetIdr).toBe(0.03);
+    expect(costSummary(d, dec).nonCashIdr).toBe(0.03);
   });
 
   it('admin fee override (draft.fee = set) wins over the effective fee', () => {

@@ -256,6 +256,12 @@ export function SummaryStep({ draft, update, ctx, locked, t, locale, errorOf, go
             <dt className="text-body-s text-text-2">{t('summary.budgetLine')}</dt>
             <dd className="font-semibold tnum">{idr(cost.budgetIdr, locale)}</dd>
           </div>
+          {cost.nonCashIdr > 0 ? (
+            <div className="flex items-baseline justify-between gap-3 py-2.5">
+              <dt className="text-body-s text-text-2">{t('summary.nonCashLine')}</dt>
+              <dd className="text-body-s text-muted tnum">{idr(cost.nonCashIdr, locale)}</dd>
+            </div>
+          ) : null}
           <div className="flex items-baseline justify-between gap-3 py-2.5">
             <dt className="text-body-s text-text-2">{t('summary.mgmtFee', { pct: cost.mgmtFeePct })}</dt>
             <dd className="font-semibold tnum">{idr(cost.mgmtFee, locale)}</dd>

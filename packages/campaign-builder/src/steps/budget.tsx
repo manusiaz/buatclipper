@@ -85,7 +85,7 @@ export function BudgetStep({ draft, update, ctx, locked, t, locale, errorOf }: S
         </ol>
         <div className="flex items-center justify-between gap-3 rounded-card-sm border border-border px-4 py-3">
           <span className="text-label text-ink">{t('budget.totalBudget')}</span>
-          <span className="text-h6 tnum">{idr(summary.budgetIdr, locale)}</span>
+          <span className="text-h6 tnum">{idr(summary.creatorValueIdr, locale)}</span>
         </div>
       </Section>
 

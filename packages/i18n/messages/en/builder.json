@@ -372,7 +372,7 @@
     "tierRange": "{from}–{to}: {amount}",
     "tierOpen": "> {from}: {amount}",
     "cost": "Cost summary",
-    "budgetLine": "Creator budget",
+    "budgetLine": "Rupiah budget (billed)",
     "mgmtFee": "Management fee {pct}%",
     "adminFee": "Platform admin fee {pct}%",
     "serviceFee": "Team-assisted package",
@@ -408,7 +408,8 @@
     "notReady": "Some things still need fixing before you can submit.",
     "unverified": "Your organization isn't verified yet. You can submit once it's verified.",
     "suspended": "The organization is suspended.",
-    "template": "Templates can't be submitted. Duplicate it into a campaign first."
+    "template": "Templates can't be submitted. Duplicate it into a campaign first.",
+    "nonCashLine": "Non-cash reward value (brand stock, fee base — not billed)"
   },
   "upload": {
     "tooBig": "File too large. Max {max}.",

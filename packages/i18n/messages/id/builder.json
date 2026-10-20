@@ -372,7 +372,7 @@
     "tierRange": "{from}–{to}: {amount}",
     "tierOpen": "> {from}: {amount}",
     "cost": "Ringkasan biaya",
-    "budgetLine": "Budget creator",
+    "budgetLine": "Budget Rupiah (ditagih)",
     "mgmtFee": "Management fee {pct}%",
     "adminFee": "Platform admin fee {pct}%",
     "serviceFee": "Paket Dibantu tim",
@@ -408,7 +408,8 @@
     "notReady": "Masih ada yang perlu dilengkapi sebelum diajukan.",
     "unverified": "Organisasi kamu belum diverifikasi. Ajukan bisa setelah verifikasi selesai.",
     "suspended": "Organisasi lagi disuspend.",
-    "template": "Template nggak bisa diajukan. Duplikat dulu jadi campaign."
+    "template": "Template nggak bisa diajukan. Duplikat dulu jadi campaign.",
+    "nonCashLine": "Nilai reward non-tunai (stok brand, dasar fee — tidak ditagih)"
   },
   "upload": {
     "tooBig": "File kegedean. Maks {max}.",
