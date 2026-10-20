@@ -1358,9 +1358,9 @@ Arah: `A --tipe--> B` = A bergantung pada B. `?` = belum terverifikasi.
 | `table:ops.settings` | guarded-by | `policy:core.admin-aal2` | db/core/supabase/schemas/ops/settings.sql:14 |
 | `table:ops.settings` | guarded-by | `policy:core.iss-identity` | db/core/supabase/schemas/ops/settings.sql:11 |
 | `table:ops.settings` | guarded-by | `policy:core.public-read` | db/core/supabase/schemas/ops/settings.sql:13 |
-| `table:tracking.social_accounts` | guarded-by | `policy:core.admin-aal2` | db/core/supabase/schemas/tracking/social_accounts.sql:43 |
-| `table:tracking.social_accounts` | guarded-by | `policy:core.iss-identity` | db/core/supabase/schemas/tracking/social_accounts.sql:40 |
-| `table:tracking.social_accounts` | guarded-by | `policy:core.rls-self` | db/core/supabase/schemas/tracking/social_accounts.sql:42 |
+| `table:tracking.social_accounts` | guarded-by | `policy:core.admin-aal2` | db/core/supabase/schemas/tracking/social_accounts.sql:48 |
+| `table:tracking.social_accounts` | guarded-by | `policy:core.iss-identity` | db/core/supabase/schemas/tracking/social_accounts.sql:45 |
+| `table:tracking.social_accounts` | guarded-by | `policy:core.rls-self` | db/core/supabase/schemas/tracking/social_accounts.sql:47 |
 | `table:tracking.social_accounts` | typed-by | `table:market.profiles` | db/core/supabase/schemas/tracking/social_accounts.sql:5 |
 | `table:tracking.submissions` | guarded-by | `policy:core.admin-aal2` | db/core/supabase/schemas/tracking/submissions.sql:45 |
 | `table:tracking.submissions` | guarded-by | `policy:core.iss-identity` | db/core/supabase/schemas/tracking/submissions.sql:40 |
@@ -2318,6 +2318,7 @@ Masalah sistem yang ditemukan saat menyusun PRD v0.2 dan saat dicek ulang (v0.2.
 | 2026-10-20 | `api:rpc core.resolve_fraud_flag` | Audit PRD ulang AA-22 (A4.2 "Tahan, reverse earning, suspend, atau ban → Clipper menerima notifikasi"): tahan tidak mengabari; reverse atas submisi locked diam; salinan submission.forfeited selalu menyebut video tidak bisa diakses walau penyebabnya fraud | diperbaiki: event earning.held (template identity + render clipper + i18n); reverse mengabari submisi locked yang earning-nya belum rilis; copy forfeited dibedakan reason fraud:* |
 | 2026-10-20 | `api:rpc core.reset_social_account` | Review Claudex R34: (1) refresh token yang sedang jalan saat admin mereset menulis token baru (store_social_token) lalu worker_account_status('verified') menghidupkan akun revoked; (2) campaign musik review brand yang tidak direview 72 jam di-auto-approve tanpa verifikasi sound | diperbaiki: store_social_token menolak akun selain verified/token_expired, worker_account_status tidak memverifikasi ulang akun revoked (hanya sambung ulang pemilik); trust.auto_approve_overdue melewati submisi musik TikTok |
 | 2026-10-20 | `api:fn core/track-worker` | Review Claudex R35: hasil polling lama (401 → worker_account_status('expired')) mengubah akun revoked menjadi token_expired sehingga refresh yang sedang jalan bisa menulis token lagi dan menghidupkan akun yang direset | diperbaiki: worker_account_status tidak mengubah akun revoked/disconnected sama sekali; hanya sambung ulang pemilik yang memulihkan |
+| 2026-10-20 | `table:tracking.social_accounts` | Review Claudex R36: trigger batas akun per platform ikut memeriksa setiap perubahan status, jadi setelah admin menurunkan public.market.max_accounts_per_platform semua polling 401, refresh, reset admin, dan sambung ulang akun lama gagal 23514 | diperbaiki: tracking.check_account_limit hanya membatasi insert, disconnected → aktif, dan pindah user/platform |
 
 ## Keputusan
 

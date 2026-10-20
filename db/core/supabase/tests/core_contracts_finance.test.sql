@@ -1307,9 +1307,16 @@ select throws_ok($$ select api.reset_social_account('99999999-0000-0000-0000-000
 select pg_temp.jwt('33333333-0000-0000-0000-0000000000c1', '{"app_roles":["admin_support"],"aal":"aal2"}');
 select throws_ok($$ select api.reset_social_account('99999999-0000-0000-0000-00000000000d', ' ') $$, 'P0001', 'invalid:reason',
                  'reset koneksi wajib alasan');
-select lives_ok($$ select api.reset_social_account('99999999-0000-0000-0000-00000000000d', 'token macet, permintaan clipper') $$,
-                'regresi AA-10: admin_support mereset koneksi akun sosmed');
 reset role;
+-- Regresi review R36-1: batas akun per platform diturunkan → perubahan status akun yang sudah ada tetap jalan.
+insert into ops.settings (key, value) values ('public.market.max_accounts_per_platform', '0')
+  on conflict (key) do update set value = excluded.value;
+set local role authenticated;
+select pg_temp.jwt('33333333-0000-0000-0000-0000000000c1', '{"app_roles":["admin_support"],"aal":"aal2"}');
+select lives_ok($$ select api.reset_social_account('99999999-0000-0000-0000-00000000000d', 'token macet, permintaan clipper') $$,
+                'regresi AA-10/R36-1: admin_support mereset koneksi akun sosmed (walau batas akun diturunkan)');
+reset role;
+update ops.settings set value = '3' where key = 'public.market.max_accounts_per_platform';
 select is((select status || ':' || (token_ref is null)::text from tracking.social_accounts where id = '99999999-0000-0000-0000-00000000000d'),
           'revoked:true', 'reset: status revoked, token_ref dilepas');
 -- Regresi review R34-1: refresh token yang sedang jalan saat reset tidak menghidupkan akun lagi.
