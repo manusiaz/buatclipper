@@ -211,9 +211,9 @@ export function createBridgeHandler(deps: BridgeDeps): (req: Request) => Promise
         case "disburse":
           return okResponse(await runDisburse(deps, uuid(payload, "payout_id")));
         case "ban_user":
-          // core mengirim unban: true untuk membuka login (banding sanksi dikabulkan, R30-2)
+          // core bridge meneruskan unban sebagai duration "none" (banding sanksi dikabulkan, R30-2/R32-1)
           return okResponse(
-            payload.unban === true
+            payload.duration === "none"
               ? await unbanUser(deps, { id: null, isSuper: false }, uuid(payload, "user_id"))
               : await banUser(deps, { id: null, isSuper: false }, uuid(payload, "user_id"), payload.duration),
           );

@@ -183,9 +183,9 @@ Deno.test("bridge ban_user from core: bans clipper, refuses admin target", async
   assertEquals(admin.body.error.code, "target_is_admin");
 });
 
-Deno.test("bridge ban_user unban from core: lifts login ban (sanction appeal overturned)", async () => {
+Deno.test("bridge ban_user duration none from core bridge: lifts login ban (sanction appeal overturned)", async () => {
   const s = setup();
-  const res = await json(await s.handler(await signed("ban_user", { user_id: USER, unban: true, duration: null })));
+  const res = await json(await s.handler(await signed("ban_user", { user_id: USER, duration: "none" })));
   assertEquals(res.body.data, { user_id: USER, banned_until: null });
   assertEquals(s.authAdmin.bans, [{ id: USER, duration: "none" }]);
   assertEquals(s.rpc.named("svc_audit")[0].args.p_action, "auth.unban");
