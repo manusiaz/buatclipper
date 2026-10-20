@@ -1,6 +1,6 @@
 // core/bridge (PRD §15.5). Dua jenis pemanggil:
 //  - identity (HMAC BRIDGE_SECRET_IDENTITY_TO_CORE): get_batch, attach_export, attach_proof, raise_fraud_flag, close_account,
-//    get_payout, get_refund, mark_instant, pph21, fulfillment_export, attach_fulfillment_export,
+//    get_payout, get_refund, refund_revealed, mark_instant, pph21, fulfillment_export, attach_fulfillment_export,
 //    fulfillment_export_accepted → RPC bridge_* 1:1.
 //  - pg_cron/pg_net (header apikey): reconcile_ids (alur 10), disburse (alur 11), ban_user, notify_admins (alert F-X01)
 //    → diteruskan ke bridge identity.
@@ -60,6 +60,10 @@ export const INBOUND: Record<string, { fn: string; args: (p: Payload) => Payload
   close_account: { fn: "bridge_close_account", args: (p) => ({ p_user: pick(p, "user_id") }) },
   get_payout: { fn: "bridge_get_payout", args: (p) => ({ p_payout: pick(p, "payout_id") }) },
   get_refund: { fn: "bridge_get_refund", args: (p) => ({ p_refund: pick(p, "refund_id") }) },
+  refund_revealed: {
+    fn: "bridge_refund_revealed",
+    args: (p) => ({ p_refund: pick(p, "refund_id"), p_dest_set_by: pick(p, "dest_set_by") }),
+  },
   mark_instant: {
     fn: "bridge_mark_instant",
     args: (p) => ({

@@ -19,6 +19,9 @@ create table finance.org_refunds (
   dest_account text check (dest_account ~ '^[0-9]{5,20}$'),
   dest_name text check (length(dest_name) between 2 and 200),
   dest_set_by uuid,
+  -- Rekening pribadi sudah dibuka finance untuk transfer (identity pii-export → bridge_refund_revealed): sejak itu tujuan
+  -- tidak di-reset walau owner berubah, supaya transfer yang sedang/sudah jalan bisa diselesaikan tanpa dibayar dua kali.
+  transfer_started_at timestamptz,
   created_at timestamptz not null default now(),
   paid_at timestamptz,
   constraint org_refunds_idempotency_unique unique (idempotency_key),

@@ -99,17 +99,22 @@ declare
   acct text := regexp_replace(coalesce(p_dest ->> 'account_no', ''), '[\s.-]', '', 'g');
   norm_name text := lower(regexp_replace(coalesce(p_dest ->> 'account_name', ''), '[^[:alnum:]]', '', 'g'));
 begin
-  select * into r from finance.org_refunds x where x.id = p_refund for update;
+  select * into r from finance.org_refunds x where x.id = p_refund;
   if not found or not ops.is_org_member(r.org_id, 'brand_owner', 'brand_finance') then
     raise exception 'not_found:refund' using errcode = 'P0002';
   end if;
   if coalesce(auth.jwt() ->> 'aal', '') <> 'aal2' then
     raise exception 'auth:mfa_required' using errcode = '42501';
   end if;
+  select * into o from market.organizations x where x.id = r.org_id;
+  -- baris anggota dikunci (FOR SHARE) sebelum baris refund: urutan sama dengan hapus owner → trigger on_owner_lost (R26-2)
+  if o.org_type <> 'badan' and not market.is_direct_member(r.org_id, uid, 'brand_owner') then
+    raise exception 'auth:forbidden' using errcode = '42501', detail = 'org perorangan: rekening refund milik pemilik org';
+  end if;
+  select * into r from finance.org_refunds x where x.id = p_refund for update;
   if r.status <> 'requested' then
     raise exception 'invalid_state:%', r.status using errcode = 'P0001';
   end if;
-  select * into o from market.organizations x where x.id = r.org_id;
   if o.org_type = 'badan' then
     -- nama legal yang baru diubah belum terverifikasi tidak boleh jadi dasar rekening tujuan (R25-2)
     if o.status <> 'verified' then
@@ -128,9 +133,6 @@ begin
            dest_set_by = uid
      where id = r.id;
   else
-    if not market.is_direct_member(r.org_id, uid, 'brand_owner') then
-      raise exception 'auth:forbidden' using errcode = '42501', detail = 'org perorangan: rekening refund milik pemilik org';
-    end if;
     if p_dest ->> 'owner_account' is distinct from 'true' then
       raise exception 'invalid:owner_account' using errcode = 'P0001';
     end if;

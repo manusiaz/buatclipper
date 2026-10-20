@@ -367,12 +367,16 @@ Deno.test("refund_destination: approved perorangan refund → owner's newest val
     approved_by: u(51),
     dest_set_by: u(1),
     company_account: false,
+    dest_owner_current: true,
     amount: "100000.00",
     fee: "2500.00",
     ...over,
   });
   const run = async (r: Record<string, unknown>) => {
-    const s = await setup({}, ["admin_finance"], "aal2", undefined, { get_refund: () => r });
+    const s = await setup({}, ["admin_finance"], "aal2", undefined, {
+      get_refund: () => r,
+      refund_revealed: () => null,
+    });
     const all = await Promise.all([method(5, u(5)), method(1, u(1), { account_name: "  user   1 " })]);
     // svc_user_payout_methods: rekening aktif milik user, terbaru dulu
     s.rpc.on("svc_user_payout_methods", (a) => all.filter((x) => x.user_id === a.p_user));
@@ -388,6 +392,10 @@ Deno.test("refund_destination: approved perorangan refund → owner's newest val
   });
   const a = ok.s.rpc.named("svc_audit")[0].args;
   assertEquals([a.p_actor, a.p_action, a.p_target], [FIN, "pii.refund_destination", `refund:${REF}`]);
+  // R26-1: transfer dimulai dicatat di core sebelum rekening ditampilkan
+  assertEquals(ok.s.core.named("refund_revealed")[0].payload, { refund_id: REF, dest_set_by: u(1) });
+  const moved = await run(refund({ dest_owner_current: false }));
+  assertEquals([moved.res.body.error.code, moved.res.body.error.message], ["refund_dest_invalid", "owner_changed"]);
 
   assertEquals(
     (await run(refund({ status: "requested", approved_by: null }))).res.body.error.code,

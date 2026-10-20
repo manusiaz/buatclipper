@@ -672,6 +672,9 @@ export type Database = {
 "bridge_raise_fraud_flag":
 { Args: { "p_details": Json,"p_score": number,"p_signal": string,"p_target_id": string,"p_target_type": string }; Returns: string
                            },
+"bridge_refund_revealed":
+{ Args: { "p_dest_set_by": string,"p_refund": string }; Returns: undefined
+                           },
 "bridge_report_orphans":
 { Args: { "p_missing": Json }; Returns: undefined
                            },

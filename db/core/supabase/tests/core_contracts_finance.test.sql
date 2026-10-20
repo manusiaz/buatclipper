@@ -1144,8 +1144,8 @@ select is((select status::text from tracking.submissions where user_id = '111111
           'submisi yang menunggu review dihentikan');
 
 -- ========== M. Hak akses RPC service_role ==========
-select is((select count(*)::int from pg_proc p where p.pronamespace = 'api'::regnamespace and p.proname ~ '^(worker|bridge)_'), 32,
-          '32 RPC worker/bridge');
+select is((select count(*)::int from pg_proc p where p.pronamespace = 'api'::regnamespace and p.proname ~ '^(worker|bridge)_'), 33,
+          '33 RPC worker/bridge');
 select is((select count(*)::int from pg_proc p where p.pronamespace = 'api'::regnamespace and p.proname ~ '^(worker|bridge)_'
             and (has_function_privilege('authenticated', p.oid, 'execute') or has_function_privilege('anon', p.oid, 'execute'))), 0,
           'authenticated/anon tidak bisa EXECUTE RPC worker/bridge');
@@ -1301,7 +1301,7 @@ select lives_ok($$ select api.set_refund_dest((select id from t_pay where k = 'r
                 'regresi AB-6: pemilik org perorangan memakai rekening pribadinya di Akun (identity)');
 reset role;
 select is(api.bridge_get_refund((select id from t_pay where k = 'ref_p')) - 'id' - 'requested_by',
-          '{"status":"requested","approved_by":null,"company_account":false,"dest_set_by":"22222222-0000-0000-0000-0000000000a1","amount":100000.00,"fee":2500.00}'::jsonb,
+          '{"status":"requested","approved_by":null,"company_account":false,"dest_set_by":"22222222-0000-0000-0000-0000000000a1","amount":100000.00,"fee":2500.00,"dest_owner_current":true}'::jsonb,
           'bridge_get_refund: identity membuka rekening pribadi dest_set_by');
 -- R25-1: owner yang dikeluarkan tidak boleh tetap jadi tujuan refund: rekening dikosongkan, persetujuan batal
 update market.org_members set role = 'brand_owner' where org_id = '44444444-0000-0000-0000-0000000000e7'
@@ -1316,6 +1316,22 @@ select is((select status || ':' || coalesce(dest_set_by::text, '-') || ':' || co
           'regresi R25-1: owner dikeluarkan → rekening pribadinya lepas dari refund, persetujuan batal');
 select ok(exists (select 1 from ops.audit_logs where action = 'refund.dest_reset' and target = 'refund:' || (select id from t_pay where k = 'ref_p')),
           'reset rekening refund tercatat di audit');
+-- R26-1: rekening sudah dibuka finance (transfer dimulai) → tidak di-reset walau owner berubah (tidak dibayar dua kali)
+set local role authenticated;
+select pg_temp.jwt('22222222-0000-0000-0000-0000000000c1', '{"aal":"aal2"}');
+select api.set_refund_dest((select id from t_pay where k = 'ref_p'), '{"owner_account":true}');
+select pg_temp.jwt('33333333-0000-0000-0000-0000000000f1', '{"app_roles":["admin_finance"],"aal":"aal2"}');
+select api.approve_refund((select id from t_pay where k = 'ref_p'));
+reset role;
+select throws_ok($$ select api.bridge_refund_revealed((select id from t_pay where k = 'ref_p'), '22222222-0000-0000-0000-0000000000a1') $$,
+                 'P0001', 'refund_dest_invalid', 'rekening hanya dibuka untuk tujuan yang disetujui & owner sekarang');
+select lives_ok($$ select api.bridge_refund_revealed((select id from t_pay where k = 'ref_p'), '22222222-0000-0000-0000-0000000000c1') $$,
+                'identity mencatat transfer dimulai sebelum menampilkan rekening');
+insert into market.org_members (org_id, user_id, role) values ('44444444-0000-0000-0000-0000000000e7', '22222222-0000-0000-0000-0000000000a1', 'brand_owner');
+delete from market.org_members where org_id = '44444444-0000-0000-0000-0000000000e7' and user_id = '22222222-0000-0000-0000-0000000000c1';
+select is((select status || ':' || coalesce(dest_set_by::text, '-') from finance.org_refunds where id = (select id from t_pay where k = 'ref_p')),
+          'approved:22222222-0000-0000-0000-0000000000c1',
+          'regresi R26-1: transfer yang sudah dimulai diselesaikan dengan bukti, tidak di-reset jadi refund baru');
 select throws_ok($$ select api.bridge_attach_proof('refund', (select id from t_pay where k = 'refund'), 'payout-proofs/refund-1.pdf') $$,
                  'P0001', 'invalid:bank_ref', 'regresi C20-2: refund tidak bisa ditandai dibayar tanpa referensi mutasi bank');
 set local role authenticated;

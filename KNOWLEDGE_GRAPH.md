@@ -798,9 +798,9 @@ Arah: `A --tipe--> B` = A bergantung pada B. `?` = belum terverifikasi.
 | `api:GET brand/[org]/campaigns/[id]/report.csv` | reads | `table:tracking.view_snapshots` | apps/brand/src/app/[org]/campaigns/[id]/report.csv/route.ts:42 |
 | `api:GET identity/.well-known/openid-configuration` | reads | `config:identity-signing-key` | PRD v0.3.1 §15.6 public key di JWKS |
 | `api:fn core/bridge` | configured-by | `env:BRIDGE_SECRET_IDENTITY_TO_CORE` | db/core/supabase/functions/bridge/index.ts:10 |
-| `api:fn core/bridge` | guarded-by | `policy:bridge-hmac` | db/core/supabase/functions/bridge/handler.ts:167 |
-| `api:fn core/bridge` | reads | `table:finance.fulfillments` | db/core/supabase/schemas/api/bridge.sql:250 (rpc bridge_fulfillment_export), db/core/supabase/schemas/api/bridge.sql:237 (rpc bridge_pph21: reward non-tunai terkirim, §5.4) |
-| `api:fn core/bridge` | writes | `table:finance.fulfillments` | db/core/supabase/schemas/api/bridge.sql:271 (rpc bridge_attach_fulfillment_export: klaim di CSV → processing + export_ref) |
+| `api:fn core/bridge` | guarded-by | `policy:bridge-hmac` | db/core/supabase/functions/bridge/handler.ts:171 |
+| `api:fn core/bridge` | reads | `table:finance.fulfillments` | db/core/supabase/schemas/api/bridge.sql:274 (rpc bridge_fulfillment_export), db/core/supabase/schemas/api/bridge.sql:261 (rpc bridge_pph21: reward non-tunai terkirim, §5.4) |
+| `api:fn core/bridge` | writes | `table:finance.fulfillments` | db/core/supabase/schemas/api/bridge.sql:295 (rpc bridge_attach_fulfillment_export: klaim di CSV → processing + export_ref) |
 | `api:fn core/bridge` | reads | `table:finance.ledger_entries` | db/core/supabase/schemas/api/bridge.sql:129 (rpc bridge_close_account: cek saldo) |
 | `api:fn core/bridge` | reads | `table:finance.org_refunds` | db/core/supabase/schemas/api/bridge.sql:176 (rpc bridge_get_refund) |
 | `api:fn core/bridge` | reads | `table:finance.payout_batches` | db/core/supabase/schemas/api/bridge.sql:11 (rpc bridge_get_batch) |
@@ -811,7 +811,7 @@ Arah: `A --tipe--> B` = A bergantung pada B. `?` = belum terverifikasi.
 | `api:fn core/bridge` | writes | `table:tracking.social_accounts` | db/core/supabase/schemas/api/bridge.sql:148 (rpc bridge_close_account) |
 | `api:fn core/bridge` | writes | `table:trust.fraud_flags` | db/core/supabase/schemas/api/bridge.sql:111 (rpc bridge_raise_fraud_flag → trust.raise_flag) |
 | `api:fn core/bridge` | writes | `table:vault.social-tokens` | db/core/supabase/schemas/api/bridge.sql:145 (rpc bridge_close_account: hapus token) |
-| `api:fn core/bridge` | calls | `api:fn identity/bridge` | db/core/supabase/functions/bridge/handler.ts:145 (cron disburse & ban_user → identity) |
+| `api:fn core/bridge` | calls | `api:fn identity/bridge` | db/core/supabase/functions/bridge/handler.ts:149 (cron disburse & ban_user → identity) |
 | `api:fn core/fulfill` | calls | `ext:brand-webhook` | db/core/supabase/functions/fulfill/fulfill.ts:115 |
 | `api:fn core/fulfill` | guarded-by | `policy:fn-cron-key` | db/core/supabase/functions/fulfill/index.ts:10 |
 | `api:fn core/fulfill` | reads | `table:finance.fulfillments` | db/core/supabase/schemas/api/worker.sql:512 (rpc worker_fulfillments_due) |
@@ -905,13 +905,13 @@ Arah: `A --tipe--> B` = A bergantung pada B. `?` = belum terverifikasi.
 | `api:fn identity/pii-export` | configured-by | `env:BRIDGE_SECRET_IDENTITY_TO_CORE` | db/identity/supabase/functions/_shared/bridge.ts:136 |
 | `api:fn identity/pii-export` | configured-by | `env:PII_ENC_KEY` | db/identity/supabase/functions/_shared/crypto.ts:97 (PII_ENC_KEYS) |
 | `api:fn identity/pii-export` | guarded-by | `policy:fn-verify-jwt` | db/identity/supabase/functions/pii-export/index.ts:11 |
-| `api:fn identity/pii-export` | guarded-by | `policy:identity.admin-aal2` | db/identity/supabase/functions/pii-export/handler.ts:414 |
+| `api:fn identity/pii-export` | guarded-by | `policy:identity.admin-aal2` | db/identity/supabase/functions/pii-export/handler.ts:418 |
 | `api:fn identity/pii-export` | reads | `table:member.consents` | db/identity/supabase/schemas/api/svc.sql:72 (rpc svc_has_consent, handler.ts baris 237) |
 | `api:fn identity/pii-export` | reads | `table:member.kyc_records` | db/identity/supabase/schemas/api/svc.sql:47 (rpc svc_kyc) |
 | `api:fn identity/pii-export` | reads | `table:member.payout_methods` | db/identity/supabase/schemas/api/svc.sql:13 (rpc svc_payout_methods), db/identity/supabase/schemas/api/svc.sql:24 (rpc svc_user_payout_methods, refund perorangan) |
-| `api:fn identity/pii-export` | calls | `api:fn core/bridge` | db/identity/supabase/functions/pii-export/handler.ts:155 (get_refund) |
+| `api:fn identity/pii-export` | calls | `api:fn core/bridge` | db/identity/supabase/functions/pii-export/handler.ts:156 (get_refund), db/identity/supabase/functions/pii-export/handler.ts:180 (refund_revealed) |
 | `api:fn identity/pii-export` | reads | `table:member.recipient_details` | db/identity/supabase/schemas/api/svc.sql:62 (rpc svc_recipients) |
-| `api:fn identity/pii-export` | writes | `table:bucket.payout-proofs` | db/identity/supabase/functions/pii-export/handler.ts:227 |
+| `api:fn identity/pii-export` | writes | `table:bucket.payout-proofs` | db/identity/supabase/functions/pii-export/handler.ts:231 |
 | `api:fn identity/pii-export` | writes | `table:bucket.pii-exports` | db/identity/supabase/functions/pii-export/handler.ts:46 |
 | `api:fn identity/pii-export` | writes | `table:member.audit_logs` | db/identity/supabase/schemas/api/svc.sql:206 (rpc svc_audit, handler.ts baris 42) |
 | `api:rpc core.accept_org_invite` | reads | `table:market.org_invites` | db/core/supabase/schemas/api/org.sql:231 |
@@ -942,8 +942,8 @@ Arah: `A --tipe--> B` = A bergantung pada B. `?` = belum terverifikasi.
 | `api:rpc core.manage_team` | writes | `table:market.org_members` | db/core/supabase/schemas/api/org.sql:211 |
 | `api:rpc core.manage_team` | writes | `table:ops.audit_logs` | db/core/supabase/schemas/api/org.sql:218 |
 | `api:rpc core.set_refund_dest` | guarded-by | `policy:core.org-role` | db/core/supabase/schemas/finance/refund_flow.sql:103 |
-| `api:rpc core.set_refund_dest` | writes | `table:finance.org_refunds` | db/core/supabase/schemas/finance/refund_flow.sql:127 |
-| `api:rpc core.set_refund_dest` | writes | `table:ops.audit_logs` | db/core/supabase/schemas/finance/refund_flow.sql:139 |
+| `api:rpc core.set_refund_dest` | writes | `table:finance.org_refunds` | db/core/supabase/schemas/finance/refund_flow.sql:132 |
+| `api:rpc core.set_refund_dest` | writes | `table:ops.audit_logs` | db/core/supabase/schemas/finance/refund_flow.sql:141 |
 | `api:rpc core.update_org` | guarded-by | `policy:core.org-role` | db/core/supabase/schemas/api/org.sql:471 |
 | `api:rpc core.update_org` | writes | `table:market.organizations` | db/core/supabase/schemas/api/org.sql:492 |
 | `api:rpc core.update_org` | writes | `table:ops.audit_logs` | db/core/supabase/schemas/api/org.sql:499 |
@@ -1148,7 +1148,7 @@ Arah: `A --tipe--> B` = A bergantung pada B. `?` = belum terverifikasi.
 | `job:notify-drain` | calls | `api:fn core/notify` | db/core/supabase/schemas/ops/cron.sql:8 |
 | `job:notify-drain` | configured-by | `env:CORE_SECRET_KEY` | db/core/supabase/schemas/ops/enqueue_notification.sql:36 (ops.invoke_function → header apikey) |
 | `job:reconcile-daily` | calls | `api:fn core/bridge` | db/core/supabase/schemas/finance/cron.sql:9 |
-| `job:reconcile-daily` | calls | `api:fn identity/bridge` | db/core/supabase/functions/bridge/handler.ts:110 |
+| `job:reconcile-daily` | calls | `api:fn identity/bridge` | db/core/supabase/functions/bridge/handler.ts:114 |
 | `job:reconcile-daily` | configured-by | `env:BRIDGE_SECRET_CORE_TO_IDENTITY` | db/core/supabase/functions/_shared/bridge.ts:66 |
 | `job:reconcile-daily` | reads | `table:finance.ledger_entries` | db/core/supabase/schemas/finance/reconcile.sql:15 |
 | `job:referral-bonus` | writes | `table:finance.ledger_entries` | db/core/supabase/schemas/finance/referral_bonus.sql:34 (finance.post) |
@@ -1206,9 +1206,9 @@ Arah: `A --tipe--> B` = A bergantung pada B. `?` = belum terverifikasi.
 | `table:finance.ledger_entries` | guarded-by | `policy:core.inherit-parent` | db/core/supabase/schemas/finance/ledger_entries.sql:60 |
 | `table:finance.ledger_entries` | guarded-by | `policy:core.iss-identity` | db/core/supabase/schemas/finance/ledger_entries.sql:58 |
 | `table:finance.ledger_entries` | typed-by | `table:finance.ledger_accounts` | db/core/supabase/schemas/finance/ledger_entries.sql:22 |
-| `table:finance.org_refunds` | guarded-by | `policy:core.admin-aal2` | db/core/supabase/schemas/finance/org_refunds.sql:39 |
-| `table:finance.org_refunds` | guarded-by | `policy:core.iss-identity` | db/core/supabase/schemas/finance/org_refunds.sql:35 |
-| `table:finance.org_refunds` | guarded-by | `policy:core.org-role` | db/core/supabase/schemas/finance/org_refunds.sql:37 |
+| `table:finance.org_refunds` | guarded-by | `policy:core.admin-aal2` | db/core/supabase/schemas/finance/org_refunds.sql:42 |
+| `table:finance.org_refunds` | guarded-by | `policy:core.iss-identity` | db/core/supabase/schemas/finance/org_refunds.sql:38 |
+| `table:finance.org_refunds` | guarded-by | `policy:core.org-role` | db/core/supabase/schemas/finance/org_refunds.sql:40 |
 | `table:finance.org_refunds` | typed-by | `table:market.campaigns` | db/core/supabase/schemas/finance/org_refunds.sql:6 |
 | `table:finance.org_refunds` | typed-by | `table:market.organizations` | db/core/supabase/schemas/finance/org_refunds.sql:5 |
 | `table:finance.payout_batches` | guarded-by | `policy:core.admin-aal2` | db/core/supabase/schemas/finance/payout_batches.sql:23 |
@@ -1274,9 +1274,9 @@ Arah: `A --tipe--> B` = A bergantung pada B. `?` = belum terverifikasi.
 | `table:market.org_links` | guarded-by | `policy:core.iss-identity` | db/core/supabase/schemas/market/org_links.sql:17 |
 | `table:market.org_links` | guarded-by | `policy:core.org-role` | db/core/supabase/schemas/market/org_links.sql:19 |
 | `table:market.org_links` | typed-by | `table:market.organizations` | db/core/supabase/schemas/market/org_links.sql:4 |
-| `table:market.org_members` | guarded-by | `policy:core.admin-aal2` | db/core/supabase/schemas/market/org_members.sql:52 |
-| `table:market.org_members` | guarded-by | `policy:core.iss-identity` | db/core/supabase/schemas/market/org_members.sql:49 |
-| `table:market.org_members` | guarded-by | `policy:core.rls-org` | db/core/supabase/schemas/market/org_members.sql:51 |
+| `table:market.org_members` | guarded-by | `policy:core.admin-aal2` | db/core/supabase/schemas/market/org_members.sql:53 |
+| `table:market.org_members` | guarded-by | `policy:core.iss-identity` | db/core/supabase/schemas/market/org_members.sql:50 |
+| `table:market.org_members` | guarded-by | `policy:core.rls-org` | db/core/supabase/schemas/market/org_members.sql:52 |
 | `table:market.org_members` | typed-by | `table:market.organizations` | db/core/supabase/schemas/market/org_members.sql:3 |
 | `table:market.org_members` | typed-by | `table:market.profiles` | db/core/supabase/schemas/market/org_members.sql:4 |
 | `table:market.organizations` | guarded-by | `policy:core.admin-aal2` | db/core/supabase/schemas/market/organizations.sql:27 |
@@ -2261,6 +2261,7 @@ Masalah sistem yang ditemukan saat menyusun PRD v0.2 dan saat dicek ulang (v0.2.
 | 2026-10-20 | `api:fn identity/member-data` | Audit PRD ulang (AA-2, FR-04 "Blok withdraw + review", A2.1 "NIK atau rekening ganda → tolak + tandai fraud"): NIK/rekening yang sudah dipakai akun lain hanya ditolak, tanpa sinyal fraud untuk direview | diperbaiki: member-data mengangkat fraud flag FR-04 pada profil pencoba lewat bridge raise_fraud_flag (pemegang dari identity svc_hash_holder di payload tanpa PII; NIK akun ter-ban = skor 100; duplikat milik sendiri bukan sinyal; gagal tidak mengubah respons) → payout_block fraud_flag + bonus referral batal |
 | 2026-10-20 | `api:rpc core.set_refund_dest` | Review Claudex R25: (1) rekening pribadi refund org perorangan tetap milik owner yang sudah dikeluarkan/diturunkan → dana org ke orang luar; (2) owner badan mengubah nama legal (belum diverifikasi) jadi nama pribadinya lalu mengisi rekening pribadi | diperbaiki: trigger org_members_owner_lost (pengganti revoke_owner_invites) juga mengosongkan rekening pribadi refund belum dibayar milik owner itu + membatalkan persetujuan (audit refund.dest_reset); rekening perusahaan hanya diterima saat org terverifikasi (org_unverified) |
 | 2026-10-20 | `page:admin/fulfillment` | Audit PRD ulang (AA-4, C6.2 "webhook gagal terus → antre admin fulfillment", F-A10 tandai terkirim): webhook yang berhenti setelah 12× gagal hanya bisa dibatalkan; tidak ada kirim ulang atau tandai terkirim | diperbaiki: api.retry_fulfillment + worker mengambil webhook on_hold ber-next_retry_at (berhenti lagi setelah 12×), mark_fulfillment_delivered menerima webhook on_hold (bukan pool kode); tombol Kirim ulang/Tandai terkirim di admin. Bug NULL di NOT IN tertangkap tes sebelum commit |
+| 2026-10-20 | `api:fn identity/pii-export` | Review Claudex R26: (1) reset tujuan refund saat owner berubah juga mengenai refund yang transfernya sudah/sedang jalan → bisa disetujui & dibayar ulang; (2) set_refund_dest mengunci refund lalu anggota, kebalikan hapus owner → deadlock (dibuktikan 2 sesi psql) | diperbaiki: checkpoint transfer_started_at dicatat bridge_refund_revealed (identity memanggilnya sebelum menampilkan rekening; dicek ulang disetujui & owner sekarang, bridge_get_refund.dest_owner_current) dan trigger on_owner_lost tidak menyentuh refund yang transfernya sudah dimulai; set_refund_dest & bridge_refund_revealed mengunci anggota dulu baru refund (terbukti tanpa deadlock) |
 | 2026-10-20 | `api:fn core/social` | Audit PRD (G-1, F-C02/D-11): YouTube hanya bisa dihubungkan lewat OAuth Google; fallback kode di deskripsi channel tidak ada (YOUTUBE_API_KEY tak dipakai) | diperbaiki: aksi youtube_code / youtube_verify (kode CLIP-… per user+channel harus ada di deskripsi) → akun terverifikasi dengan token mode api_key; adapter memakai ?key= (tanpa Analytics, tanpa refresh); dialog di halaman Akun sosmed |
 ## Keputusan
 

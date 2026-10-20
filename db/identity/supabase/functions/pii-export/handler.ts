@@ -145,6 +145,7 @@ interface CoreRefund {
   approved_by: string | null;
   dest_set_by: string | null;
   company_account: boolean;
+  dest_owner_current: boolean;
   amount: string | number;
   fee: string | number;
 }
@@ -158,6 +159,7 @@ export async function refundDestination(deps: PiiExportDeps, actor: Actor, refun
     throw new HttpError(409, "refund_not_approved", "refund belum disetujui");
   }
   if (!r.dest_set_by || r.company_account) throw new HttpError(409, "refund_dest_missing", "bukan rekening identity");
+  if (!r.dest_owner_current) throw new HttpError(409, "refund_dest_invalid", "owner_changed");
   const owner = r.dest_set_by;
   const methods = (await deps.rpc.invoke<MethodRow[] | null>("svc_user_payout_methods", { p_user: owner })) ?? [];
   const [k] = (await rpcByIds<KycRow>(deps.rpc, "svc_kyc", "p_user_ids", [owner])).filter((x) => !x.closed);
@@ -174,6 +176,8 @@ export async function refundDestination(deps: PiiExportDeps, actor: Actor, refun
     throw new HttpError(409, "refund_dest_invalid", reason ?? "method_missing");
   }
   const ref = refOf(method);
+  // R26-1: transfer dimulai dicatat di core dulu (dicek ulang: masih disetujui & owner); sesudahnya tujuan tidak di-reset.
+  await deps.core().invoke("refund_revealed", { refund_id: r.id, dest_set_by: owner });
   const accountNo = await deps.crypto().decryptPg("payout.account_no", method.account_no_enc!, method.enc_key_version!);
   await audit(deps, actor, "pii.refund_destination", `refund:${r.id}`, { method_id: method.id });
   return {
