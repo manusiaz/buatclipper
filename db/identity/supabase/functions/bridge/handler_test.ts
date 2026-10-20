@@ -183,6 +183,14 @@ Deno.test("bridge ban_user from core: bans clipper, refuses admin target", async
   assertEquals(admin.body.error.code, "target_is_admin");
 });
 
+Deno.test("bridge ban_user unban from core: lifts login ban (sanction appeal overturned)", async () => {
+  const s = setup();
+  const res = await json(await s.handler(await signed("ban_user", { user_id: USER, unban: true, duration: null })));
+  assertEquals(res.body.data, { user_id: USER, banned_until: null });
+  assertEquals(s.authAdmin.bans, [{ id: USER, duration: "none" }]);
+  assertEquals(s.rpc.named("svc_audit")[0].args.p_action, "auth.unban");
+});
+
 Deno.test("fraud_device_scan (cron apikey): one FR-05 flag per account, no IP or user agent sent to core", async () => {
   const s = setup();
   const res = await json(await s.handler(post({ action: "fraud_device_scan" }, { apikey: "sb_secret_test" })));

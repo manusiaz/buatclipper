@@ -20,7 +20,7 @@ import {
   uuidList,
   wrap,
 } from "../_shared/http.ts";
-import { banUser } from "../_shared/moderation.ts";
+import { banUser, unbanUser } from "../_shared/moderation.ts";
 import { type PushSender, sendPushToUser } from "../_shared/push.ts";
 import { isKnownEvent, type Links, PROMO_EVENTS, render, safeHttpsUrl } from "../_shared/templates.ts";
 
@@ -211,8 +211,11 @@ export function createBridgeHandler(deps: BridgeDeps): (req: Request) => Promise
         case "disburse":
           return okResponse(await runDisburse(deps, uuid(payload, "payout_id")));
         case "ban_user":
+          // core mengirim unban: true untuk membuka login (banding sanksi dikabulkan, R30-2)
           return okResponse(
-            await banUser(deps, { id: null, isSuper: false }, uuid(payload, "user_id"), payload.duration),
+            payload.unban === true
+              ? await unbanUser(deps, { id: null, isSuper: false }, uuid(payload, "user_id"))
+              : await banUser(deps, { id: null, isSuper: false }, uuid(payload, "user_id"), payload.duration),
           );
         default:
           throw new HttpError(400, "unknown_action", "action tidak dikenal");

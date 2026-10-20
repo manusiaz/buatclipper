@@ -143,6 +143,6 @@ grant update (read_at) on api.notifications to authenticated;
 grant insert (user_id, email_promotions), update (email_promotions, updated_at) on api.notification_prefs to authenticated;
 -- §12 sanksi & bandingnya: clipper melihat miliknya (RLS), admin_moderator/admin_support semua.
 create view api.sanctions with (security_invoker = true) as
-  select id, user_id, kind, flag_id, reason, created_at, appeal_message, appealed_at, decision, decision_note, decided_at
+  select id, user_id, kind, flag_id, reason, created_at, until, lifted_at, appeal_message, appealed_at, decision, decision_note, decided_at
   from trust.sanctions;
 grant select on api.sanctions to authenticated;

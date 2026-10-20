@@ -526,9 +526,17 @@
       "submission_rejected": "Submisi ditolak",
       "appeal_failed": "Banding gagal",
       "fraud_flag": "Fraud flag",
-      "admin_override": "Diubah admin"
+      "admin_override": "Diubah admin",
+      "appeal_overturned": "Sanksi dibatalkan lewat banding"
     },
     "flags": "Fraud flag",
+    "sanctions": "Riwayat sanksi",
+    "sanctionLifted": "Dicabut admin",
+    "appealPending": "Banding menunggu keputusan",
+    "recordAppeal": "Catat banding",
+    "recordAppealBody": "Untuk clipper yang tidak bisa login (ban / suspend login) dan membanding lewat tim bantuan. Banding hanya sekali per sanksi dan masuk antrean moderator.",
+    "appealMessage": "Isi banding dari clipper",
+    "appealRecorded": "Banding dicatat dan masuk antrean moderator",
     "kyc": "KYC",
     "kycNoAccess": "Data KYC hanya untuk moderator, support, dan finance.",
     "kycReadFailed": "Gagal membaca data KYC dari identity.",

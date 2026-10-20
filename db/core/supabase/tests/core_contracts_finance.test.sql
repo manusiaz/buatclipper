@@ -698,6 +698,8 @@ select pg_temp.jwt('11111111-0000-0000-0000-00000000000b');
 select throws_ok($$ select api.manage_user('11111111-0000-0000-0000-00000000000a', 'suspend', '{"days":3,"reason":"x"}') $$, '42501', 'auth:forbidden',
                  'clipper tidak bisa mengelola user');
 reset role;
+select ok((select lifted_at is not null from trust.sanctions where user_id = '11111111-0000-0000-0000-00000000000a' and kind = 'suspend'),
+          'regresi R30-4: unsuspend menandai sanksi suspend dicabut');
 select is((select status::text || ':' || delivered_ref from finance.fulfillments where id = '99999999-0000-0000-0000-0000000000fd'), 'delivered:RESI-123',
           'reward manual delivered dengan resi');
 select is((select trust_score from market.profiles where id = '11111111-0000-0000-0000-00000000000a'),
@@ -999,6 +1001,65 @@ select is((select delta from trust.score_events where reason = 'appeal_overturne
           'penalti Trust Score suspend dikembalikan');
 select ok(exists (select 1 from ops.notifications where event = 'sanction.appeal_decided' and user_id = '11111111-0000-0000-0000-00000000000b'
                   and payload ->> 'decision' = 'overturned'), 'clipper dikabari hasil banding');
+-- Regresi review R30-4/R30-3: membatalkan satu sanksi menghitung ulang status dari sanksi lain yang masih berlaku,
+-- dan ban login identity disamakan (sisa durasi / dibuka); R30-1: clipper yang login-nya diblokir membanding lewat bantuan.
+insert into t_pay select 'r30a', trust.record_sanction('11111111-0000-0000-0000-00000000000b', 'suspend', null, 'manual a', now() + interval '10 days', false);
+insert into t_pay select 'r30b', trust.record_sanction('11111111-0000-0000-0000-00000000000b', 'suspend', null, 'manual b', now() + interval '40 days', true);
+update market.profiles set status = 'suspended', suspended_until = now() + interval '40 days' where id = '11111111-0000-0000-0000-00000000000b';
+set local role authenticated;
+select pg_temp.jwt('11111111-0000-0000-0000-00000000000b');
+select throws_ok($$ select api.record_sanction_appeal((select id from t_pay where k = 'r30a'), 'dicatat oleh saya sendiri') $$, '42501',
+                 'auth:forbidden', 'banding lewat bantuan hanya dicatat admin_support/admin_moderator');
+select pg_temp.jwt('33333333-0000-0000-0000-0000000000c1', '{"app_roles":["admin_support"],"aal":"aal2"}');
+select lives_ok($$ select api.record_sanction_appeal((select id from t_pay where k = 'r30a'), 'Clipper menelepon: akun dipakai bersama keluarga.') $$,
+                'regresi R30-1: admin_support mencatat banding atas nama clipper');
+select lives_ok($$ select api.record_sanction_appeal((select id from t_pay where k = 'r30b'), 'Login diblokir, banding lewat email bantuan.') $$,
+                'banding sanksi yang memblokir login lewat bantuan');
+select pg_temp.jwt('33333333-0000-0000-0000-0000000000e1', '{"app_roles":["admin_moderator"],"aal":"aal2"}');
+select api.decide_sanction_appeal((select id from t_pay where k = 'r30a'), 'overturned', 'suspend lama keliru');
+reset role;
+select ok((select status = 'suspended' and suspended_until = (select until from trust.sanctions where id = (select id from t_pay where k = 'r30b'))
+           from market.profiles where id = '11111111-0000-0000-0000-00000000000b'),
+          'regresi R30-4: suspend lain yang lebih lama tetap berlaku setelah satu suspend dibatalkan');
+select is((select count(*)::int from net.http_request_queue q where convert_from(q.body, 'UTF8')::jsonb ->> 'action' = 'ban_user'
+           and convert_from(q.body, 'UTF8')::jsonb ->> 'user_id' = '11111111-0000-0000-0000-00000000000b'), 0,
+          'suspend tanpa blokir login dibatalkan → login identity tidak diubah');
+select ok(exists (select 1 from ops.audit_logs where action = 'sanction.appeal_record' and target = 'sanction:' || (select id from t_pay where k = 'r30a')),
+          'banding lewat bantuan tercatat audit log');
+insert into t_pay select 'r30c', trust.record_sanction('11111111-0000-0000-0000-00000000000b', 'ban', null, 'ban manual', null, true);
+update market.profiles set status = 'banned' where id = '11111111-0000-0000-0000-00000000000b';
+set local role authenticated;
+select pg_temp.jwt('33333333-0000-0000-0000-0000000000c1', '{"app_roles":["admin_support"],"aal":"aal2"}');
+select api.record_sanction_appeal((select id from t_pay where k = 'r30c'), 'Ban keliru, bukan akun ganda.');
+select pg_temp.jwt('33333333-0000-0000-0000-0000000000e1', '{"app_roles":["admin_moderator"],"aal":"aal2"}');
+select api.decide_sanction_appeal((select id from t_pay where k = 'r30c'), 'overturned', 'ban keliru');
+reset role;
+select is((select status::text from market.profiles where id = '11111111-0000-0000-0000-00000000000b'), 'suspended',
+          'regresi R30-4: ban dibatalkan saat suspend lain berlaku → kembali suspended, bukan active');
+select is((select (convert_from(q.body, 'UTF8')::jsonb ->> 'unban') || ':' || (convert_from(q.body, 'UTF8')::jsonb ->> 'duration')
+           from net.http_request_queue q where convert_from(q.body, 'UTF8')::jsonb ->> 'action' = 'ban_user'
+           and convert_from(q.body, 'UTF8')::jsonb ->> 'user_id' = '11111111-0000-0000-0000-00000000000b' order by q.id desc limit 1),
+          'false:960h', 'regresi R30-3: ban dibatalkan → ban login identity dipendekkan ke sisa suspend yang memblokir login');
+set local role authenticated;
+select pg_temp.jwt('33333333-0000-0000-0000-0000000000e1', '{"app_roles":["admin_moderator"],"aal":"aal2"}');
+select api.decide_sanction_appeal((select id from t_pay where k = 'r30b'), 'overturned', 'tidak terbukti');
+reset role;
+select is((select status::text || ':' || coalesce(suspended_until::text, '-') from market.profiles where id = '11111111-0000-0000-0000-00000000000b'),
+          'active:-', 'semua sanksi pembatas dibatalkan → active');
+select is((select convert_from(q.body, 'UTF8')::jsonb ->> 'unban' from net.http_request_queue q
+           where convert_from(q.body, 'UTF8')::jsonb ->> 'action' = 'ban_user'
+           and convert_from(q.body, 'UTF8')::jsonb ->> 'user_id' = '11111111-0000-0000-0000-00000000000b' order by q.id desc limit 1),
+          'true', 'regresi R30-3: suspend yang memblokir login dibatalkan → login identity dibuka');
+-- Regresi review R30-5: peringatan atas flag submisi yang ditahan → submisi lanjut tracking (earning tidak ditahan).
+insert into t_ids select 's9r', pg_temp.mk_sub('55555555-0000-0000-0000-0000000000a9', '11111111-0000-0000-0000-00000000000d', 'v9r');
+insert into t_pay select 'fl7', trust.raise_flag('submission', (select v::uuid from t_ids where k = 's9r'), 'FR-03', 40, '{}');
+set local role authenticated;
+select pg_temp.jwt('33333333-0000-0000-0000-0000000000e1', '{"app_roles":["admin_moderator"],"aal":"aal2"}');
+select api.resolve_fraud_flag((select id from t_pay where k = 'fl7'), 'hold', 'cek');
+select api.resolve_fraud_flag((select id from t_pay where k = 'fl7'), 'warn', 'cukup peringatan');
+reset role;
+select is((select status::text from tracking.submissions where id = (select v::uuid from t_ids where k = 's9r')), 'tracking',
+          'regresi R30-5: warn melepas tahanan submisi');
 -- fixture bagian berikut mengandalkan budi masih disuspend
 update market.profiles set status = 'suspended', suspended_until = now() + interval '30 days' where id = '11111111-0000-0000-0000-00000000000b';
 

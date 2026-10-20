@@ -6,6 +6,7 @@ import { identityApi } from '@clipper/db-identity';
 import { Alert, Avatar, Badge, Card, CardHeader, CardTitle, formatDateTime, formatNumber, Icon, PlatformChip, RelativeTime, StatusBadge, type Platform, type UiLocale } from '@clipper/ui';
 import { must, rows } from '@/lib/data';
 import { ActionDialog } from '@/features/shared/action-dialog';
+import { recordSanctionAppeal } from '@/features/fraud/actions';
 import { banUser, kycDecision, kycNotify, manageUser, unbanUser } from './actions';
 
 export const KYC_REJECT_REASONS = ['photo_unreadable', 'name_mismatch', 'nik_invalid', 'not_ktp', 'duplicate', 'other'] as const;
@@ -16,12 +17,14 @@ export async function UserDetail({ userId, claims, loc, back = '/users' }: { use
   const isMod = hasRole(claims, 'admin_moderator');
   const canManage = hasRole(claims, 'admin_ops', 'admin_moderator');
   const canReadKyc = hasRole(claims, 'admin_moderator', 'admin_support', 'admin_finance');
-  const [profRes, scoreRes, acctRes, flagRes, decRes] = await Promise.all([
+  const canAppeal = hasRole(claims, 'admin_support', 'admin_moderator');
+  const [profRes, scoreRes, acctRes, flagRes, decRes, sancRes] = await Promise.all([
     db.from('admin_profiles').select('id, username, display_name, trust_score, status, suspended_until, created_at').eq('id', userId).maybeSingle(),
     db.from('score_events').select('id, delta, reason, created_at').eq('user_id', userId).order('created_at', { ascending: false }).limit(10),
     db.from('social_accounts').select('id, platform, handle, status, followers, verified_at').eq('user_id', userId),
     db.from('fraud_flags').select('id, signal, status, score, created_at').eq('target_type', 'profile').eq('target_id', userId).order('created_at', { ascending: false }).limit(10),
     db.from('review_decisions').select('decision, reason_code, created_at').eq('target_type', 'kyc').eq('target_id', userId).order('created_at', { ascending: false }).limit(1),
+    db.from('sanctions').select('id, kind, reason, created_at, until, lifted_at, appealed_at, decision').eq('user_id', userId).order('created_at', { ascending: false }).limit(10),
   ]);
   const p = must(profRes);
   if (!p) return <Alert tone="warn">{t('users.userMissing')}</Alert>;
@@ -165,6 +168,34 @@ export async function UserDetail({ userId, claims, loc, back = '/users' }: { use
             {scores.length === 0 ? <li className="text-muted">—</li> : null}
           </ul>
         </section>
+        {rows(sancRes).length ? (
+          <section className="flex flex-col gap-2">
+            <h3 className="text-label text-ink">{t('users.sanctions')}</h3>
+            <ul className="flex flex-col gap-2 text-body-s">
+              {rows(sancRes).map((x) => (
+                <li key={x.id} className="flex flex-wrap items-center gap-2">
+                  <Badge tone={x.decision === 'overturned' || x.lifted_at ? 'neutral' : 'warn'} size="sm">{t(`fraud.sanctions.${x.kind}`)}</Badge>
+                  <RelativeTime value={x.created_at!} locale={loc} className="text-caption text-muted" />
+                  {x.reason ? <span className="min-w-0 break-words text-text-2">{x.reason}</span> : null}
+                  <span className="ml-auto text-caption text-muted">
+                    {x.decision ? t(`fraud.decisions.${x.decision}`) : x.appealed_at ? t('users.appealPending') : x.lifted_at ? t('users.sanctionLifted') : null}
+                  </span>
+                  {canAppeal && !x.appealed_at ? (
+                    <ActionDialog
+                      trigger={{ label: t('users.recordAppeal'), icon: 'support_agent' }}
+                      title={t('users.recordAppeal')}
+                      description={t('users.recordAppealBody')}
+                      submitLabel={t('users.recordAppeal')}
+                      success={t('users.appealRecorded')}
+                      action={recordSanctionAppeal.bind(null, x.id!)}
+                      fields={[{ kind: 'textarea', name: 'message', label: t('users.appealMessage'), required: true, maxLength: 1000 }]}
+                    />
+                  ) : null}
+                </li>
+              ))}
+            </ul>
+          </section>
+        ) : null}
         {rows(flagRes).length ? (
           <section className="flex flex-col gap-2">
             <h3 className="text-label text-ink">{t('users.flags')}</h3>

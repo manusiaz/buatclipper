@@ -526,9 +526,17 @@
       "submission_rejected": "Submission rejected",
       "appeal_failed": "Appeal failed",
       "fraud_flag": "Fraud flag",
-      "admin_override": "Adjusted by admin"
+      "admin_override": "Adjusted by admin",
+      "appeal_overturned": "Sanction lifted on appeal"
     },
     "flags": "Fraud flags",
+    "sanctions": "Sanction history",
+    "sanctionLifted": "Lifted by admin",
+    "appealPending": "Appeal awaiting decision",
+    "recordAppeal": "Record appeal",
+    "recordAppealBody": "For clippers who cannot sign in (ban / login suspension) and appeal through the support team. One appeal per sanction; it goes to the moderator queue.",
+    "appealMessage": "Appeal text from the clipper",
+    "appealRecorded": "Appeal recorded and sent to the moderator queue",
     "kyc": "KYC",
     "kycNoAccess": "KYC data is for moderators, support, and finance only.",
     "kycReadFailed": "Failed to read KYC data from identity.",

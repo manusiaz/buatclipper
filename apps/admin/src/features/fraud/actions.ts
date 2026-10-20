@@ -23,3 +23,11 @@ export async function decideSanctionAppeal(sanctionId: string, fd: FormData): Pr
   const { error } = await db.rpc('decide_sanction_appeal', { p_sanction: sanctionId, p_decision: text(fd, 'decision'), p_note: text(fd, 'note') });
   return settle(error, '/fraud', '/users');
 }
+
+/** R30-1: clipper yang login-nya diblokir (ban / suspend login) membanding lewat bantuan; dicatat admin_support atas namanya. */
+export async function recordSanctionAppeal(sanctionId: string, fd: FormData): Promise<ActionResult> {
+  await requireAdmin('admin_support', 'admin_moderator');
+  const db = await coreServer('admin');
+  const { error } = await db.rpc('record_sanction_appeal', { p_sanction: sanctionId, p_message: text(fd, 'message') });
+  return settle(error, '/users', '/fraud');
+}

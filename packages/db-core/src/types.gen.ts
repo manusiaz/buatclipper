@@ -518,14 +518,14 @@ export type Database = {
                   ]
                 },"sanctions": {
                   Row: {
-                    "appeal_message": string | null,"appealed_at": string | null,"created_at": string | null,"decided_at": string | null,"decision": string | null,"decision_note": string | null,"flag_id": string | null,"id": string | null,"kind": string | null,"reason": string | null,"user_id": string | null
+                    "appeal_message": string | null,"appealed_at": string | null,"created_at": string | null,"decided_at": string | null,"decision": string | null,"decision_note": string | null,"flag_id": string | null,"id": string | null,"kind": string | null,"lifted_at": string | null,"reason": string | null,"until": string | null,"user_id": string | null
                   }
                   ComputedFields: never
                   Insert: {
-                           "appeal_message"?: string | null,"appealed_at"?: string | null,"created_at"?: string | null,"decided_at"?: string | null,"decision"?: string | null,"decision_note"?: string | null,"flag_id"?: string | null,"id"?: string | null,"kind"?: string | null,"reason"?: string | null,"user_id"?: string | null
+                           "appeal_message"?: string | null,"appealed_at"?: string | null,"created_at"?: string | null,"decided_at"?: string | null,"decision"?: string | null,"decision_note"?: string | null,"flag_id"?: string | null,"id"?: string | null,"kind"?: string | null,"lifted_at"?: string | null,"reason"?: string | null,"until"?: string | null,"user_id"?: string | null
                          }
                         Update: {
-                           "appeal_message"?: string | null,"appealed_at"?: string | null,"created_at"?: string | null,"decided_at"?: string | null,"decision"?: string | null,"decision_note"?: string | null,"flag_id"?: string | null,"id"?: string | null,"kind"?: string | null,"reason"?: string | null,"user_id"?: string | null
+                           "appeal_message"?: string | null,"appealed_at"?: string | null,"created_at"?: string | null,"decided_at"?: string | null,"decision"?: string | null,"decision_note"?: string | null,"flag_id"?: string | null,"id"?: string | null,"kind"?: string | null,"lifted_at"?: string | null,"reason"?: string | null,"until"?: string | null,"user_id"?: string | null
                          }
                         Relationships: [
                     
@@ -804,6 +804,9 @@ export type Database = {
                            },
 "record_review":
 { Args: { "p_decision": string,"p_message"?: string,"p_note"?: string,"p_reason"?: string,"p_target_id": string,"p_target_type": string }; Returns: undefined
+                           },
+"record_sanction_appeal":
+{ Args: { "p_message": string,"p_sanction": string }; Returns: undefined
                            },
 "release_payout":
 { Args: { "p_note": string,"p_payout": string }; Returns: undefined

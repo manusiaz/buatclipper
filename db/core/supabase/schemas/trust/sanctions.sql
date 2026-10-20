@@ -9,6 +9,11 @@ create table trust.sanctions (
   reason text check (length(reason) <= 500),
   created_by uuid,
   created_at timestamptz not null default now(),
+  -- suspend: sampai kapan; login_blocked = login identity ikut diblokir (ban login berdurasi dari admin Users / ban permanen).
+  -- lifted_at = dicabut admin di luar banding (unsuspend/unban). Status akun dihitung ulang dari sanksi yang masih berlaku.
+  until timestamptz,
+  login_blocked boolean not null default false,
+  lifted_at timestamptz,
   appeal_message text check (length(appeal_message) between 10 and 1000),
   appealed_at timestamptz,
   decision text check (decision in ('upheld', 'overturned')),
@@ -31,24 +36,22 @@ create policy sanctions_admin_read on trust.sanctions for select to authenticate
   using ((select ops.has_admin('admin_moderator', 'admin_support')));
 grant select on trust.sanctions to authenticated;
 
-create function trust.record_sanction(p_user uuid, p_kind text, p_flag uuid, p_reason text) returns uuid
+create function trust.record_sanction(p_user uuid, p_kind text, p_flag uuid, p_reason text, p_until timestamptz default null,
+                                      p_login_blocked boolean default false) returns uuid
 language sql security definer set search_path = '' as $$
-  insert into trust.sanctions (user_id, kind, flag_id, reason, created_by)
-  values (p_user, p_kind, p_flag, left(nullif(btrim(p_reason), ''), 500), (select auth.uid()))
+  insert into trust.sanctions (user_id, kind, flag_id, reason, created_by, until, login_blocked)
+  values (p_user, p_kind, p_flag, left(nullif(btrim(p_reason), ''), 500), (select auth.uid()), p_until, coalesce(p_login_blocked, false))
   returning id;
 $$;
 
--- Clipper membanding sanksinya sendiri, sekali per sanksi; masuk antrean moderasi (tab Banding sanksi).
-create function api.appeal_sanction(p_sanction uuid, p_message text) returns void
+-- Banding sekali per sanksi; dipakai clipper sendiri (api.appeal_sanction) dan tim bantuan atas nama clipper yang login-nya
+-- diblokir (api.record_sanction_appeal, R30-1).
+create function trust.file_appeal(p_sanction uuid, p_user uuid, p_message text) returns void
 language plpgsql security definer set search_path = '' as $$
 declare
-  uid uuid := (select auth.uid());
   s trust.sanctions;
 begin
-  if uid is null or not ops.iss_ok() then
-    raise exception 'auth:no_session' using errcode = '42501';
-  end if;
-  select * into s from trust.sanctions x where x.id = p_sanction and x.user_id = uid for update;
+  select * into s from trust.sanctions x where x.id = p_sanction and (p_user is null or x.user_id = p_user) for update;
   if not found then
     raise exception 'not_found:sanction' using errcode = 'P0002';
   end if;
@@ -61,6 +64,31 @@ begin
   update trust.sanctions set appeal_message = btrim(p_message), appealed_at = now() where id = s.id;
 end $$;
 
+-- Clipper membanding sanksinya sendiri, sekali per sanksi; masuk antrean moderasi (tab Banding sanksi).
+create function api.appeal_sanction(p_sanction uuid, p_message text) returns void
+language plpgsql security definer set search_path = '' as $$
+declare
+  uid uuid := (select auth.uid());
+  s trust.sanctions;
+begin
+  if uid is null or not ops.iss_ok() then
+    raise exception 'auth:no_session' using errcode = '42501';
+  end if;
+  perform trust.file_appeal(p_sanction, uid, p_message);
+end $$;
+
+-- Clipper yang login-nya diblokir (ban / suspend login) membanding lewat bantuan; admin_support mencatatnya.
+create function api.record_sanction_appeal(p_sanction uuid, p_message text) returns void
+language plpgsql security definer set search_path = '' as $$
+begin
+  if not ops.has_admin('admin_support', 'admin_moderator') then
+    raise exception 'auth:forbidden' using errcode = '42501';
+  end if;
+  perform trust.file_appeal(p_sanction, null, p_message);
+  insert into ops.audit_logs (actor_id, action, target, after)
+  values ((select auth.uid()), 'sanction.appeal_record', 'sanction:' || p_sanction, jsonb_build_object('via', 'support'));
+end $$;
+
 -- admin_moderator memutus banding. Dibatalkan → efeknya dibalik sejauh aman: suspend → aktif lagi; ban → aktif + login dibuka
 -- (bridge ban_user unban); tahan earning → flag di-dismiss & tracking lanjut; penalti Trust Score dikembalikan. Earning yang
 -- sudah hangus (reverse/ban) tidak dijurnal ulang otomatis — keputusan finance terpisah.
@@ -71,6 +99,9 @@ declare
   s trust.sanctions;
   restore smallint;
   sub uuid;
+  still_banned boolean;
+  sus_until timestamptz;
+  login_until timestamptz;
 begin
   if not ops.has_admin('admin_moderator') then
     raise exception 'auth:forbidden' using errcode = '42501';
@@ -91,11 +122,24 @@ begin
   update trust.sanctions set decision = p_decision, decision_note = left(btrim(p_note), 500), decided_by = uid, decided_at = now()
    where id = s.id;
   if p_decision = 'overturned' then
-    if s.kind = 'suspend' then
-      update market.profiles set status = 'active', suspended_until = null where id = s.user_id and status = 'suspended';
-    elsif s.kind = 'ban' then
-      update market.profiles set status = 'active', suspended_until = null where id = s.user_id and status = 'banned';
-      perform ops.invoke_function('bridge', jsonb_build_object('action', 'ban_user', 'user_id', s.user_id, 'unban', true));
+    if s.kind in ('suspend', 'ban') and s.lifted_at is null then
+      -- Status akun dihitung ulang dari sanksi lain yang masih berlaku (R30-4): ban lain → tetap; suspend lain → sampai until
+      -- terjauh; tidak ada → aktif. Login identity disamakan (R30-3): sisa ban login berdurasi, atau dibuka.
+      perform 1 from market.profiles p where p.id = s.user_id for update;
+      select exists (select 1 from trust.sanctions o where o.user_id = s.user_id and o.id <> s.id and o.kind = 'ban'
+                      and o.decision is distinct from 'overturned' and o.lifted_at is null) into still_banned;
+      select max(o.until), max(o.until) filter (where o.login_blocked) into sus_until, login_until
+        from trust.sanctions o where o.user_id = s.user_id and o.id <> s.id and o.kind = 'suspend'
+         and o.decision is distinct from 'overturned' and o.lifted_at is null and o.until > now();
+      if not still_banned then
+        update market.profiles set status = (case when sus_until is null then 'active' else 'suspended' end)::market.profile_status, suspended_until = sus_until
+         where id = s.user_id and status in ('suspended', 'banned');
+        if s.login_blocked or s.kind = 'ban' then
+          perform ops.invoke_function('bridge', jsonb_build_object('action', 'ban_user', 'user_id', s.user_id,
+                   'unban', login_until is null,
+                   'duration', case when login_until is not null then ceil(extract(epoch from login_until - now()) / 3600)::int || 'h' end));
+        end if;
+      end if;
     elsif s.kind = 'hold' and s.flag_id is not null then
       update trust.fraud_flags set status = 'dismissed', resolved_by = uid, resolved_at = now() where id = s.flag_id and status = 'held';
       sub := (select f.target_id from trust.fraud_flags f where f.id = s.flag_id and f.target_type = 'submission');
@@ -118,6 +162,7 @@ begin
           jsonb_build_object('decision', p_decision, 'note', left(btrim(p_note), 500)));
 end $$;
 
-revoke execute on function trust.record_sanction(uuid, text, uuid, text), api.appeal_sanction(uuid, text),
-  api.decide_sanction_appeal(uuid, text, text) from public;
-grant execute on function api.appeal_sanction(uuid, text), api.decide_sanction_appeal(uuid, text, text) to authenticated;
+revoke execute on function trust.record_sanction(uuid, text, uuid, text, timestamptz, boolean), trust.file_appeal(uuid, uuid, text),
+  api.appeal_sanction(uuid, text), api.record_sanction_appeal(uuid, text), api.decide_sanction_appeal(uuid, text, text) from public;
+grant execute on function api.appeal_sanction(uuid, text), api.record_sanction_appeal(uuid, text), api.decide_sanction_appeal(uuid, text, text)
+  to authenticated;

@@ -134,11 +134,17 @@ begin
       perform ops.invoke_function('bridge', jsonb_build_object('action', 'ban_user', 'user_id', target_user));
     elsif p_action = 'warn' then
       perform ops.enqueue_notification(target_user, 'account.warned', jsonb_build_object('signal', f.signal));
+      -- peringatan = earning tetap jalan: submisi yang ditahan flag ini lanjut tracking bila tak ada flag lain (R30-5)
+      if sub.status = 'flagged' and not exists (select 1 from trust.fraud_flags o where o.target_type = 'submission'
+                                                 and o.target_id = sub.id and o.status in ('open', 'held')) then
+        update tracking.submissions set status = 'tracking', next_poll_at = coalesce(next_poll_at, now()) where id = sub.id;
+      end if;
     end if;
   end if;
-  -- §12: setiap sanksi tercatat dan bisa dibanding sekali (trust.sanctions)
+  -- §12: setiap sanksi tercatat dan bisa dibanding sekali (trust.sanctions); ban fraud queue juga memblokir login identity
   if p_action <> 'dismiss' and target_user is not null then
-    perform trust.record_sanction(target_user, p_action, f.id, p_note);
+    perform trust.record_sanction(target_user, p_action, f.id, p_note,
+                                  case when p_action = 'suspend' then now() + interval '30 days' end, p_action = 'ban');
   end if;
 
   score_delta := case p_action when 'warn' then -5 when 'reverse' then -10 when 'suspend' then -20 when 'ban' then -50 end;
