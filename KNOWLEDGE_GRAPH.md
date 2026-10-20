@@ -1489,7 +1489,7 @@ Arah: `A --tipe--> B` = A bergantung pada B. `?` = belum terverifikasi.
 | `doc:deploy/deploy.sh` | documents | `env:PII_HMAC_KEY` | deploy/keys.mjs:60 |
 | `doc:deploy/deploy.sh` | documents | `env:PII_ENC_KEY` | deploy/keys.mjs:61 (PII_ENC_KEYS) |
 | `doc:deploy/deploy.sh` | documents | `env:VAPID_PRIVATE_KEY` | deploy/keys.mjs:66 |
-| `doc:deploy/deploy.sh` | documents | `env:IDENTITY_ISSUER` | deploy/deploy.sh:109 |
+| `doc:deploy/deploy.sh` | documents | `env:IDENTITY_ISSUER` | deploy/deploy.sh:117 |
 | `doc:deploy/deploy.sh` | documents | `fn:custom_access_token_hook` | deploy/supabase/identity.yml:17 (GOTRUE_HOOK_CUSTOM_ACCESS_TOKEN_URI) |
 | `doc:scripts/dev-stack.sh` | documents | `env:BRIDGE_SECRET_IDENTITY_TO_CORE` | scripts/dev-stack.sh:18 |
 | `doc:scripts/dev-stack.sh` | documents | `env:IDENTITY_ISSUER` | scripts/dev-stack.sh:39 |
@@ -2331,6 +2331,7 @@ Masalah sistem yang ditemukan saat menyusun PRD v0.2 dan saat dicek ulang (v0.2.
 | 2026-10-20 | `api:fn core/track-worker` | Review Claudex R35: hasil polling lama (401 → worker_account_status('expired')) mengubah akun revoked menjadi token_expired sehingga refresh yang sedang jalan bisa menulis token lagi dan menghidupkan akun yang direset | diperbaiki: worker_account_status tidak mengubah akun revoked/disconnected sama sekali; hanya sambung ulang pemilik yang memulihkan |
 | 2026-10-20 | `table:tracking.social_accounts` | Review Claudex R36: trigger batas akun per platform ikut memeriksa setiap perubahan status, jadi setelah admin menurunkan public.market.max_accounts_per_platform semua polling 401, refresh, reset admin, dan sambung ulang akun lama gagal 23514 | diperbaiki: tracking.check_account_limit hanya membatasi insert, disconnected → aktif, dan pindah user/platform |
 | 2026-10-20 | `doc:deploy/deploy.sh` | Deploy self-hosted (permintaan user: server sendiri): compose resmi Supabase mengisi SUPABASE_SECRET_KEYS={"default":""} → firstKey core mengembalikan "" (?? tidak jatuh ke service_role) sehingga semua Edge Function core gagal misconfigured; migration init `CREATE EXTENSION "pg_net"` tanpa IF NOT EXISTS gagal di image yang sudah memasang pg_net (self-hosted webhooks.sql, juga project hosted yang mengaktifkan pg_net) | diperbaiki: firstKey core mengabaikan key kosong (+ tes); CREATE EXTENSION IF NOT EXISTS di kedua init migration. Deploy diuji di sandbox: 18 container sehat, pgTAP core 972 + identity 119 di DB self-hosted, e2e lintas host 9/9 lewat Caddy, bridge identity↔core, service key core ditolak identity (401) |
+| 2026-10-20 | `doc:deploy/deploy.sh` | Review Claudex R38 + cek sendiri: (1) .dockerignore hanya mengecualikan .env di root → apps/*/.env.local ikut ke image; (2) setenv membuat file .env sementara 0644 → secret stack terbaca user lain selama deploy, config.env tidak dibatasi; (3) login Google identity tidak dikonfigurasi di GoTrue self-hosted; (4) .env stack disalin sekali → variabel baru compose resmi hilang saat SUPABASE_REF dinaikkan; (5) migration baru dijalankan tanpa backup | diperbaiki: **/.env*; umask 077 di setenv + chmod 600 config.env; GOTRUE_EXTERNAL_GOOGLE_* dari GOOGLE_LOGIN_CLIENT_ID/SECRET; kunci baru .env.example ditambahkan tiap deploy; pg_dump -Fc ke deploy/stack/<p>/backups sebelum migration pertama yang tertunda (diuji: backup 84 tabel, hanya stack yang punya migration baru) |
 
 ## Keputusan
 

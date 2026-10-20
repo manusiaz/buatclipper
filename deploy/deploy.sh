@@ -18,6 +18,7 @@ DEPLOY=$PWD ROOT=$(cd .. && pwd)
 SUPABASE_REF=${SUPABASE_REF:-d897e1462ad33ee9c7daba8cfee8f14e303c0cf5}
 
 [ -f config.env ] || { echo "deploy/config.env belum ada: cp deploy/config.env.example deploy/config.env lalu isi"; exit 1; }
+chmod 600 config.env   # berisi kredensial SMTP/OAuth
 set -a; . ./config.env; set +a
 SCHEME=${SCHEME:-https}
 [[ "${DOMAIN:-}" =~ ^[a-z0-9]([a-z0-9.-]*[a-z0-9])?$ ]] || { echo "DOMAIN tidak valid: '${DOMAIN:-}'"; exit 1; }
@@ -35,10 +36,10 @@ load_secrets() {
   while IFS='=' read -r k v; do [ -n "$k" ] && export "$k=$v"; done < secrets.env
 }
 
-setenv() { # file key value — ganti/tambah baris tanpa menafsirkan isi value
-  K="$2" V="$3" awk 'BEGIN { k = ENVIRON["K"]; v = ENVIRON["V"] }
+setenv() { # file key value — ganti/tambah baris tanpa menafsirkan isi value; file pengganti 0600 sejak dibuat
+  (umask 077 && K="$2" V="$3" awk 'BEGIN { k = ENVIRON["K"]; v = ENVIRON["V"] }
     index($0, k "=") == 1 { if (!done) print k "=" v; done = 1; next } { print }
-    END { if (!done) print k "=" v }' "$1" > "$1.tmp" && mv "$1.tmp" "$1"
+    END { if (!done) print k "=" v }' "$1" > "$1.tmp") && mv "$1.tmp" "$1"
 }
 
 fetch_supabase() {
@@ -59,8 +60,12 @@ prepare_stack() { # identity|core
   copy_tree stack/.supabase/docker "$dir" --exclude=./volumes/db/data --exclude=./volumes/storage --exclude=./volumes/functions
   mkdir -p "$dir/volumes/functions" "$dir/volumes/storage"
   cp supabase/common.yml "$dir/clipper.common.yml"; cp "supabase/$p.yml" "$dir/clipper.$p.yml"
-  [ -f "$dir/.env" ] || cp "$dir/.env.example" "$dir/.env"
-  local e=$dir/.env pub
+  local e=$dir/.env pub line
+  [ -f "$e" ] || (umask 077 && cp "$dir/.env.example" "$e")
+  # SUPABASE_REF dinaikkan → variabel baru compose resmi ikut masuk (nilai lama tidak disentuh).
+  while IFS= read -r line; do
+    if [[ "$line" =~ ^([A-Z0-9_]+)= ]] && ! grep -q "^${BASH_REMATCH[1]}=" "$e"; then printf '%s\n' "$line" >> "$e"; fi
+  done < "$dir/.env.example"
   [ "$p" = identity ] && pub=$AUTH || pub=$API
   # EXTRA_COMPOSE_FILES (config.env, pisah ':'): override tambahan, mis. docker-compose.s3.yml resmi untuk storage S3.
   setenv "$e" COMPOSE_FILE "docker-compose.yml:clipper.common.yml:clipper.$p.yml${EXTRA_COMPOSE_FILES:+:$EXTRA_COMPOSE_FILES}"
@@ -94,6 +99,9 @@ prepare_stack() { # identity|core
     setenv "$e" ENABLE_EMAIL_AUTOCONFIRM true   # login OTP: email terverifikasi saat kode dipakai
     for k in SMTP_HOST SMTP_PORT SMTP_USER SMTP_PASS SMTP_ADMIN_EMAIL SMTP_SENDER_NAME; do setenv "$e" "$k" "${!k:-}"; done
     setenv "$e" AUTH_EMAIL_RATE_LIMIT "${AUTH_EMAIL_RATE_LIMIT:-1000}"
+    # Login Google (packages/auth signInWithOAuth): client OAuth Google di identity, terpisah dari koneksi YouTube core.
+    setenv "$e" GOOGLE_LOGIN_ENABLED "$([ -n "${GOOGLE_LOGIN_CLIENT_ID:-}" ] && echo true || echo false)"
+    setenv "$e" GOOGLE_LOGIN_CLIENT_ID "${GOOGLE_LOGIN_CLIENT_ID:-}"; setenv "$e" GOOGLE_LOGIN_SECRET "${GOOGLE_LOGIN_SECRET:-}"
     for k in PII_HMAC_KEY PII_ENC_KEYS PII_ENC_KEY_VERSION VAPID_PUBLIC_KEY VAPID_PRIVATE_KEY DISBURSE_CALLBACK_TOKEN; do
       setenv "$e" "$k" "${!k}"
     done
@@ -166,9 +174,17 @@ select vault.create_secret(:'key', :'key_name') where not exists (select 1 from 
 SQL
   psql_db "$p" -c "create schema if not exists supabase_migrations;
     create table if not exists supabase_migrations.schema_migrations (version text not null primary key, statements text[], name text)"
+  local applied backup=
+  applied=$(psql_db "$p" -tA -c "select version from supabase_migrations.schema_migrations")
   for f in "$ROOT/db/$p/supabase/migrations/"*.sql; do
     v=$(basename "$f" .sql); n=${v#*_}; v=${v%%_*}
-    [ -n "$(psql_db "$p" -tA -c "select 1 from supabase_migrations.schema_migrations where version = '$v'")" ] && continue
+    grep -qx "$v" <<< "$applied" && continue
+    if [ -z "$backup" ] && [ -n "$applied" ]; then   # DB sudah berisi + ada migration baru → backup dulu (pg_restore)
+      backup=stack/$p/backups/pre-$v-$(date +%Y%m%d%H%M%S).dump
+      mkdir -p "stack/$p/backups"
+      (umask 077 && docker exec "$p-db" pg_dump -h localhost -U supabase_admin -d postgres -Fc > "$backup")
+      echo "  $p: backup $backup"
+    fi
     echo "  $p: migration $v $n"
     { cat "$f"; printf "\ninsert into supabase_migrations.schema_migrations (version, name) values ('%s', '%s');\n" "$v" "$n"; } \
       | psql_db "$p" -1

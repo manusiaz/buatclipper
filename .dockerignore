@@ -3,9 +3,9 @@
 **/.next
 **/*.tsbuildinfo
 .git
-.env
-.env.*
-!.env.example
+**/.env
+**/.env.*
+!**/.env.example
 db
 deploy
 e2e
