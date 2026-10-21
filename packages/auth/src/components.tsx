@@ -29,6 +29,7 @@ export function LoginForm({ kind, next, google = kind === 'sso', turnstileSiteKe
   const [code, setCode] = useState('');
   const [error, setError] = useState<string | null>(initialError ?? null);
   const [captcha, setCaptcha] = useState<string | undefined>();
+  const [captchaRound, setCaptchaRound] = useState(0);
   const [resendIn, setResendIn] = useState(0);
   const [pending, start] = useTransition();
 
@@ -44,6 +45,11 @@ export function LoginForm({ kind, next, google = kind === 'sso', turnstileSiteKe
     start(async () => {
       setError(null);
       const r = await sendOtp(kind, email, captcha);
+      // Token Turnstile sekali pakai (Auth identity menghabiskannya walau kirim gagal) → widget dipasang ulang untuk token baru.
+      if (turnstileSiteKey) {
+        setCaptcha(undefined);
+        setCaptchaRound((n) => n + 1);
+      }
       if (!r.ok) return setError(r.error);
       setStep('code');
       setResendIn(RESEND_SECONDS);
@@ -92,7 +98,7 @@ export function LoginForm({ kind, next, google = kind === 'sso', turnstileSiteKe
               autoFocus
             />
           </Field>
-          {turnstileSiteKey && <Turnstile siteKey={turnstileSiteKey} onToken={setCaptcha} />}
+          {turnstileSiteKey && <Turnstile key={captchaRound} siteKey={turnstileSiteKey} onToken={setCaptcha} />}
           <Button type="submit" fullWidth loading={pending} disabled={!email || (!!turnstileSiteKey && !captcha)}>
             {t('sendCode')}
           </Button>
@@ -133,11 +139,18 @@ export function LoginForm({ kind, next, google = kind === 'sso', turnstileSiteKe
           <Button type="submit" fullWidth loading={pending} disabled={code.length !== 6}>
             {t('verify')}
           </Button>
+          {turnstileSiteKey && <Turnstile key={captchaRound} siteKey={turnstileSiteKey} onToken={setCaptcha} />}
           <div className="flex items-center justify-between text-body-s">
             <Button type="button" variant="link" size="sm" onClick={() => setStep('email')}>
               {t('changeEmail')}
             </Button>
-            <Button type="button" variant="link" size="sm" disabled={resendIn > 0 || pending} onClick={send}>
+            <Button
+              type="button"
+              variant="link"
+              size="sm"
+              disabled={resendIn > 0 || pending || (!!turnstileSiteKey && !captcha)}
+              onClick={send}
+            >
               {resendIn > 0 ? t('resendIn', { seconds: resendIn }) : t('resend')}
             </Button>
           </div>
