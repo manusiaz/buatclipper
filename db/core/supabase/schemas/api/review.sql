@@ -99,7 +99,7 @@ begin
     if p_decision not in ('approve', 'reject', 'overturn', 'uphold') then
       perform market.fail('invalid:decision', coalesce(p_decision, 'null'));
     end if;
-    select sb.id, sb.status, k.org_id, k.review_mode into s
+    select sb.id, sb.status, sb.user_id, k.org_id, k.review_mode into s
       from tracking.submissions sb join market.campaigns k on k.id = sb.campaign_id where sb.id = p_target_id
        for update of sb; -- otorisasi brand memakai status yang sama dengan yang diubah keputusan (tidak balapan dengan reject+banding)
     if s.id is null then
@@ -107,6 +107,7 @@ begin
     end if;
     is_admin := ops.has_admin('admin_moderator');
     if not is_admin and not (s.review_mode = 'brand' and s.status = 'in_review'
+                             and s.user_id <> uid  -- tidak mereview clip sendiri (R67)
                              and ops.is_org_member(s.org_id, 'brand_owner', 'brand_manager')) then
       perform market.fail('auth:forbidden', 'butuh admin_moderator aal2 atau brand_owner/brand_manager (review brand)', '42501');
     end if;

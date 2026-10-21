@@ -1167,6 +1167,12 @@ select throws_ok($$ select api.worker_create_submission('11111111-0000-0000-0000
 select throws_ok($$ select api.worker_create_submission('11111111-0000-0000-0000-00000000000a', '88888888-0000-0000-0000-0000000000b0',
                     '99999999-0000-0000-0000-00000000000a', 'x', 'https://tiktok.com/x', now() - interval '1 hour', '#mplid', 5) $$, 'P0001',
                  'duration_out_of_range', 'submit: durasi di luar batas');
+-- Regresi R67: bergabung ke org pemilik campaign setelah claim → submit ditolak own_org.
+insert into market.org_members (org_id, user_id, role) values ('44444444-0000-0000-0000-000000000001', '11111111-0000-0000-0000-00000000000a', 'brand_manager');
+select throws_ok($$ select api.worker_create_submission('11111111-0000-0000-0000-00000000000a', '88888888-0000-0000-0000-0000000000b0',
+                    '99999999-0000-0000-0000-00000000000a', 'x', 'https://tiktok.com/x', now() - interval '1 hour', '#mplid', 30) $$, 'P0001',
+                 'not_eligible:own_org', 'R67: anggota org pemilik (bergabung setelah claim) tidak bisa submit');
+delete from market.org_members where org_id = '44444444-0000-0000-0000-000000000001' and user_id = '11111111-0000-0000-0000-00000000000a';
 -- Regresi R63: syarat follower/umur akun berlaku untuk akun yang dipakai submit.
 set local session_replication_role = replica;
 update market.campaigns set min_followers = 1000000000 where id = '55555555-0000-0000-0000-0000000000b0';

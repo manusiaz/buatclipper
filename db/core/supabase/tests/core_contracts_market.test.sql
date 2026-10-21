@@ -966,6 +966,18 @@ select throws_ok($$ select api.record_review('submission', 'aaaaaaaa-0000-0000-0
 select pg_temp.jwt('22222222-0000-0000-0000-0000000000a2');
 select throws_ok($$ select api.record_review('submission', 'aaaaaaaa-0000-0000-0000-000000000071', 'approve') $$, '42501', 'auth:forbidden',
                  'org lain tidak bisa mereview');
+-- Regresi R67: clipper yang kemudian jadi brand_manager org pemilik tidak bisa mereview clip sendiri.
+reset role;
+insert into market.org_members (org_id, user_id, role)
+select org_id, '11111111-0000-0000-0000-00000000000a', 'brand_manager' from market.campaigns where id = '55555555-0000-0000-0000-000000000007';
+set local role authenticated;
+select pg_temp.jwt('11111111-0000-0000-0000-00000000000a');
+select throws_ok($$ select api.record_review('submission', 'aaaaaaaa-0000-0000-0000-000000000071', 'approve') $$, '42501', 'auth:forbidden',
+                 'R67: brand_manager tidak bisa mereview submisi miliknya sendiri');
+reset role;
+delete from market.org_members where user_id = '11111111-0000-0000-0000-00000000000a'
+   and org_id = (select org_id from market.campaigns where id = '55555555-0000-0000-0000-000000000007');
+set local role authenticated;
 select pg_temp.jwt('22222222-0000-0000-0000-0000000000a1');
 select lives_ok($$ select api.record_review('submission', 'aaaaaaaa-0000-0000-0000-000000000071', 'approve') $$,
                 'brand_owner approve submisi campaign review brand');

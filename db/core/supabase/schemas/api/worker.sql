@@ -447,6 +447,12 @@ begin
   if not (a.platform = any (c.platforms)) then
     raise exception 'platform_not_allowed' using errcode = 'P0001';
   end if;
+  -- own_org dicek ulang: bergabung ke org pemilik (langsung / lewat agency) setelah claim tidak boleh lolos (R67).
+  if exists (select 1 from market.org_members m where m.org_id = c.org_id and m.user_id = p_user)
+     or exists (select 1 from market.org_links l join market.org_members m on m.org_id = l.agency_org_id
+                 where l.client_org_id = c.org_id and l.approved_at is not null and l.revoked_at is null and m.user_id = p_user) then
+    raise exception 'not_eligible:own_org' using errcode = 'P0001';
+  end if;
   -- Syarat akun dicek per akun yang dipakai submit, bukan cukup satu akun lolos saat claim (claim_check).
   if coalesce(a.followers, 0) < c.min_followers then
     raise exception 'not_eligible:min_followers' using errcode = 'P0001';
