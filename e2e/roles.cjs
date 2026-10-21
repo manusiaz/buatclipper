@@ -702,7 +702,7 @@ let pages = {};
 const errors = [];
 let stepNo = 0;
 async function shot(page, name) {
-  await page.screenshot({ path: `${OUT}/${String(stepNo).padStart(2, '0')}-${String(++shotN).padStart(2, '0')}-${name}.png`, fullPage: true });
+  await page.screenshot({ path: `${OUT}/${String(stepNo).padStart(2, '0')}-${String(++shotN).padStart(2, '0')}-${name}.png`, fullPage: true, caret: 'initial' });
 }
 
 (async () => {
