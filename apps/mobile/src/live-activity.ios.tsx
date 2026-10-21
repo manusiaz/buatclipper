@@ -75,9 +75,15 @@ const Payout = createLiveActivity<PayoutActivity>('Payout', (p: PayoutActivity, 
 
 const SAVED = 'clipper.apns.tokens';
 
-async function remember(token: string) {
-  const list = JSON.parse((await AsyncStorage.getItem(SAVED)) ?? '[]') as string[];
-  if (!list.includes(token)) await AsyncStorage.setItem(SAVED, JSON.stringify([...list, token].slice(-20)));
+// Serial: dua simpan bersamaan (push-to-start + token activity) tidak boleh saling menimpa daftar — token yang hilang
+// dari daftar tidak ikut dihapus saat keluar.
+let remembering: Promise<void> = Promise.resolve();
+function remember(token: string) {
+  remembering = remembering.then(async () => {
+    const list = JSON.parse((await AsyncStorage.getItem(SAVED)) ?? '[]') as string[];
+    if (!list.includes(token)) await AsyncStorage.setItem(SAVED, JSON.stringify([...list, token].slice(-20)));
+  });
+  return remembering;
 }
 
 // Keluar (releaseLiveActivities) menutup pendaftaran dulu: listener & poll dihentikan, simpan yang sedang jalan ditunggu,
@@ -111,8 +117,12 @@ async function link(uid: string) {
   const fresh = Payout.getInstances().filter((a) => !linked.has(a.getId()));
   if (!fresh.length || released) return;
   fresh.forEach((a) => linked.add(a.getId()));
-  const { data, error } = await core.from('payouts').select('id').eq('user_id', uid).eq('status', 'processing').order('created_at', { ascending: false }).limit(1).maybeSingle();
-  if (error) return fresh.forEach((a) => linked.delete(a.getId()));
+  const unlink = () => fresh.forEach((a) => linked.delete(a.getId()));
+  const { data, error } = await core.from('payouts').select('id').eq('user_id', uid).eq('status', 'processing').order('created_at', { ascending: false }).limit(1).maybeSingle().then(
+    (r) => r,
+    () => ({ data: null, error: true }),
+  );
+  if (error) return unlink();
   await Promise.all(
     fresh.map(async (a) => {
       const id = a.getId();

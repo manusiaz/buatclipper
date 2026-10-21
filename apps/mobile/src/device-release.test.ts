@@ -79,6 +79,13 @@ describe('token Live Activity saat keluar', () => {
     expect(deleted.at(-1)).toEqual(['ab12']);
     expect(store.has('clipper.apns.tokens')).toBe(false);
   });
+  it('simpan bersamaan tidak saling menimpa daftar token (semua ikut dihapus saat keluar)', async () => {
+    await syncLiveActivities('user-a');
+    onStartToken!({ activityPushToStartToken: 'AA01' });
+    onStartToken!({ activityPushToStartToken: 'BB02' });
+    await releaseLiveActivities();
+    expect(deleted.at(-1)?.sort()).toEqual(['aa01', 'bb02']);
+  });
   it('token yang datang saat/selesai keluar tidak didaftarkan ulang ke akun lama', async () => {
     await syncLiveActivities('user-a');
     const listener = onStartToken!;
