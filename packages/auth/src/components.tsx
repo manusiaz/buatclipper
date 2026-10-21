@@ -160,6 +160,12 @@ export function LoginForm({ kind, next, google = kind === 'sso', turnstileSiteKe
   );
 }
 
+// Satu pendaftaran TOTP per halaman per jenis sesi. Setelah verifyOtp admin, LoginForm (langkah mfa_enroll) dan halaman login
+// (dirender ulang server karena Server Action menyetel cookie sesi) sama-sama memasang MfaPanel; tanpa ini dua mfaEnroll saling
+// menghapus faktor yang belum diverifikasi, sehingga QR/kunci yang sempat tampil milik faktor yang sudah dihapus → kode benar
+// ditolak "Kode authenticator salah". Gagal → dihapus supaya bisa dicoba lagi.
+const enrolling: Partial<Record<SessionKind, ReturnType<typeof mfaEnroll>>> = {};
+
 export interface MfaPanelProps {
   kind: SessionKind;
   mode: 'enroll' | 'challenge';
@@ -181,9 +187,12 @@ export function MfaPanel({ kind, mode, next, onDone }: MfaPanelProps) {
     if (mode !== 'enroll' || started.current) return;
     started.current = true;
     start(async () => {
-      const r = await mfaEnroll(kind);
+      const r = await (enrolling[kind] ??= mfaEnroll(kind));
       if (r.ok) setEnroll(r);
-      else setError(r.error);
+      else {
+        delete enrolling[kind];
+        setError(r.error);
+      }
     });
   }, [kind, mode]);
 

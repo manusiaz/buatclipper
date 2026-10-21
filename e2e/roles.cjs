@@ -676,6 +676,8 @@ step('brand-stats', ['brand'], async ({ brand }) => {
   check(/18\.000/.test(body), 'dashboard menampilkan 18.000 views valid');
   check(/200\.000/.test(body), 'dashboard menampilkan spend Rp200.000');
   check(/1\.800\.000/.test(body), 'dashboard menampilkan sisa pool Rp1.800.000');
+  check(/\b1 clipper\b/.test(body), 'dashboard: 2 klip dari 1 clipper');
+  check(/10%/.test(body), 'utilisasi budget 10%');
   log('brand: dashboard views 18.000, spend 200.000, sisa 1.800.000');
 });
 
