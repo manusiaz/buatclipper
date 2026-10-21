@@ -595,6 +595,16 @@ select is(pg_temp.bal('11111111-0000-0000-0000-00000000000a', 'withdrawn', '7777
           'klaim: Diamonds available → withdrawn');
 select is((select count(*)::int from api.bridge_fulfillment_export('77777777-0000-0000-0000-000000000002')), 1, 'export klaim manual ke brand');
 insert into finance.reward_codes (reward_type_id, code, uploaded_by) values ('77777777-0000-0000-0000-000000000003', 'VC-1', '22222222-0000-0000-0000-0000000000a1');
+-- Regresi R71: flag profil open memblok reward non-tunai (klaim baru, kiriman worker, export manual) seperti payout tunai.
+insert into trust.fraud_flags (target_type, target_id, signal, score) values ('profile', '11111111-0000-0000-0000-00000000000a', 'FR-04', 80);
+select is(array[(select count(*)::int from api.worker_fulfillments_due(10)), (select count(*)::int from api.bridge_fulfillment_export('77777777-0000-0000-0000-000000000002'))],
+          array[0, 0], 'R71: flag profil open → klaim yang sudah antre tidak dikirim worker / tidak diekspor ke brand');
+set local role authenticated;
+select pg_temp.jwt('11111111-0000-0000-0000-00000000000a');
+select throws_ok($$ select api.request_fulfillment('77777777-0000-0000-0000-000000000003', 1, '{}', null, 'ful-key-r71') $$,
+                 'P0001', 'payout_blocked', 'R71: flag profil open → klaim reward non-tunai baru ditolak');
+reset role;
+delete from trust.fraud_flags where target_id = '11111111-0000-0000-0000-00000000000a' and signal = 'FR-04';
 select is((select count(*)::int from api.worker_fulfillments_due(10)), 3, 'worker fulfill: 2 code_pool + 1 webhook jatuh tempo');
 select is((select count(*)::int from api.worker_fulfillments_due(10)), 0, 'lease 5 menit: tidak diambil dua kali');
 -- Regresi review R4: worker mati sebelum mencatat hasil → lease kedaluwarsa diambil ulang = hasil kiriman lama tidak pasti.

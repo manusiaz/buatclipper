@@ -280,6 +280,7 @@ begin
   select f.id, f.user_id, f.amount::numeric, f.recipient, f.recipient_ref
     from finance.fulfillments f join market.reward_types rt on rt.id = f.reward_type_id
    where f.reward_type_id = p_reward_type and f.status = 'requested' and rt.fulfillment = 'manual_export'
+     and not finance.withdraw_blocked(f.user_id)
    order by f.created_at, f.id;
 end $$;
 

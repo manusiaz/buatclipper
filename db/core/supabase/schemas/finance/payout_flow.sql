@@ -20,6 +20,12 @@ begin
   return pr;
 end $$;
 
+-- FR-04/FR-05: flag profil open/held memblok semua nilai keluar (payout tunai + reward non-tunai) sampai direview.
+create function finance.withdraw_blocked(p_user uuid) returns boolean
+language sql stable security definer set search_path = '' as $$
+  select exists (select 1 from trust.fraud_flags f where f.target_type = 'profile' and f.target_id = p_user and f.status in ('open', 'held'));
+$$;
+
 create function api.request_payout(p_method uuid, p_amount numeric, p_channel text, p_idempotency text)
 returns finance.payouts
 language plpgsql security definer set search_path = '' as $$
@@ -50,8 +56,8 @@ begin
   if p_channel is null or p_channel not in ('batch', 'instant') then
     raise exception 'invalid:channel' using errcode = 'P0001';
   end if;
-  if exists (select 1 from trust.fraud_flags f where f.target_type = 'profile' and f.target_id = pr.id and f.status in ('open', 'held')) then
-    raise exception 'payout_blocked' using errcode = 'P0001';  -- FR-04/FR-05: blok withdraw sampai direview
+  if finance.withdraw_blocked(pr.id) then
+    raise exception 'payout_blocked' using errcode = 'P0001';
   end if;
   if p_amount is null or p_amount <> trunc(p_amount) then
     raise exception 'invalid:amount' using errcode = 'P0001';
@@ -317,6 +323,9 @@ begin
     raise exception 'recipient_incomplete' using errcode = 'P0001';
   end if;
 
+  if finance.withdraw_blocked(pr.id) then
+    raise exception 'payout_blocked' using errcode = 'P0001';  -- R71: reward non-tunai juga nilai keluar
+  end if;
   wallet := finance.account('user_wallet', pr.id, rt.id);
   perform 1 from finance.ledger_accounts a where a.id = wallet for update;
   if finance.balance(wallet, 'available') < p_amount then
@@ -458,7 +467,7 @@ begin
   return n;
 end $$;
 
-revoke execute on function finance.require_active_clipper(), finance.return_payout(uuid, text), finance.retry_instant_payouts(),
+revoke execute on function finance.require_active_clipper(), finance.withdraw_blocked(uuid), finance.return_payout(uuid, text), finance.retry_instant_payouts(),
   finance.payout_notice(finance.payouts, numeric), finance.payout_eta(text), finance.notify_payout_processing(finance.payouts),
   finance.unwind_payout_journal(finance.payouts), api.cancel_payout(uuid, text), api.cancel_fulfillment(uuid, text, boolean),
   api.request_payout(uuid, numeric, text, text), api.create_payout_batch(timestamptz), api.approve_payout_batch(uuid),

@@ -571,6 +571,7 @@ begin
             or (f.status = 'on_hold' and rt.fulfillment = 'webhook' and f.next_retry_at is not null))
        and rt.fulfillment in ('code_pool', 'webhook')
        and (f.next_retry_at is null or f.next_retry_at <= now())
+       and not finance.withdraw_blocked(f.user_id)  -- flag profil setelah klaim → tidak dikirim sampai direview (R71)
      order by coalesce(f.next_retry_at, f.created_at), f.id
      limit greatest(coalesce(p_limit, 20), 1)
      for update of f skip locked),
