@@ -100,7 +100,8 @@ begin
       perform market.fail('invalid:decision', coalesce(p_decision, 'null'));
     end if;
     select sb.id, sb.status, k.org_id, k.review_mode into s
-      from tracking.submissions sb join market.campaigns k on k.id = sb.campaign_id where sb.id = p_target_id;
+      from tracking.submissions sb join market.campaigns k on k.id = sb.campaign_id where sb.id = p_target_id
+       for update of sb; -- otorisasi brand memakai status yang sama dengan yang diubah keputusan (tidak balapan dengan reject+banding)
     if s.id is null then
       perform market.fail('not_found:submission', null, 'P0002');
     end if;
