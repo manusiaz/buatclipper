@@ -75,10 +75,13 @@ begin
     if fin is not null then
       perform finance.accrue_earnings(r.id, fin);
       update tracking.submissions set status = 'locked', locked_at = now(), next_poll_at = null where id = r.id and status = 'tracking';
-    elsif r.window_end + grace <= now() then
+    -- Grace dihitung dari yang terakhir: akhir window atau masuk tracking (approve/overturn telat) → poll final sempat jalan (R69).
+    elsif greatest(r.window_end, coalesce((select max(d.created_at) from trust.review_decisions d
+                                            where d.target_type = 'submission' and d.target_id = r.id
+                                              and d.decision in ('approve', 'auto_approve', 'overturn')), r.window_end)) + grace <= now() then
       update tracking.submissions set status = 'locked', locked_at = now(), next_poll_at = null where id = r.id;
       perform ops.raise_alert('tracking.final_missing', 'warning', jsonb_build_object('submission_id', r.id));
-    elsif r.next_poll_at > now() + interval '1 hour' then
+    elsif r.next_poll_at is null or r.next_poll_at > now() + interval '1 hour' then
       update tracking.submissions set next_poll_at = now() where id = r.id;
     end if;
   end loop;

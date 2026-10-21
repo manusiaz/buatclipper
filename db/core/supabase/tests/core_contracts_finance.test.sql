@@ -1531,6 +1531,10 @@ insert into t_ids select 's15c', pg_temp.mk_sub('55555555-0000-0000-0000-0000000
 update tracking.submissions set next_poll_at = now() + interval '10 hours' where id = (select v::uuid from t_ids where k = 's15a');
 update tracking.submissions set next_poll_at = null where id = (select v::uuid from t_ids where k = 's15b');
 update tracking.submissions set next_poll_at = now() - interval '3 hours' where id = (select v::uuid from t_ids where k = 's15c');
+-- R69: di-approve telat (window sudah lewat + grace) → masih dapat poll final, tidak langsung dikunci tanpa snapshot.
+insert into t_ids select 's15d', pg_temp.mk_sub('55555555-0000-0000-0000-0000000000b5', '11111111-0000-0000-0000-00000000000d', 'v15d', now() - interval '40 days');
+update tracking.submissions set next_poll_at = null where id = (select v::uuid from t_ids where k = 's15d');
+insert into trust.review_decisions (target_type, target_id, decision) values ('submission', (select v::uuid from t_ids where k = 's15d'), 'approve');
 update finance.payouts set created_at = now() - interval '20 minutes' where id = (select id from t_pay where k = 'i3');
 select market.run_lifecycle();
 select is((select count(*)::int from net.http_request_queue q where convert_from(q.body, 'UTF8')::jsonb ->> 'action' = 'disburse'
@@ -1568,6 +1572,8 @@ select is((select next_poll_at from tracking.submissions where id = (select v::u
           'akhir view window tanpa snapshot final → poll final diantrekan');
 select is((select status::text from tracking.submissions where id = (select v::uuid from t_ids where k = 's15b')), 'locked',
           'poll final tidak datang dalam masa tenggang → locked dengan views terakhir');
+select is((select status::text || ':' || (next_poll_at = now())::text from tracking.submissions where id = (select v::uuid from t_ids where k = 's15d')), 'tracking:true',
+          'R69: approve telat → grace dihitung dari approve, poll final masih ditunggu');
 select ok(exists (select 1 from ops.alerts where kind = 'tracking.final_missing'), 'alert snapshot final hilang');
 select ok(exists (select 1 from ops.alerts where kind = 'tracking.lag' and (payload ->> 'overdue')::int >= 1), 'alert job tracking terlambat > 2 jam');
 update tracking.submissions set locked_at = now() - interval '8 days' where id = (select v::uuid from t_ids where k = 's14');
