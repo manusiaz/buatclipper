@@ -29,6 +29,8 @@ import { controlCampaign, type ControlAction } from './actions';
 
 export interface ControlRule {
   id: string;
+  /** Versi rule yang sama lintas raise_rate (lineage_id ?? id): pilihan tetap menunjuk rule pengganti. */
+  lineage: string;
   kind: string;
   platform: string | null;
   code: string;
@@ -79,11 +81,11 @@ export function ControlPanel({
   const [busy, setBusy] = useState<string | null>(null);
   const [, start] = useTransition();
   const [deadline, setDeadline] = useState(() => toWibInput(submitDeadline));
-  const [ruleId, setRuleId] = useState(rules[0]?.id ?? '');
+  const [lineage, setLineage] = useState(rules[0]?.lineage ?? '');
   const [values, setValues] = useState<Record<string, string>>({});
   const [topup, setTopup] = useState<Record<string, string>>({});
   const running = RUNNING.includes(status);
-  const rule = rules.find((r) => r.id === ruleId);
+  const rule = rules.find((r) => r.lineage === lineage) ?? rules[0];
   const tiers = (Array.isArray(rule?.params.tiers) ? rule.params.tiers : []) as Record<string, unknown>[];
 
   const run = (key: string, input: ControlAction, done?: () => void) =>
@@ -219,9 +221,9 @@ export function ControlPanel({
             >
               <Field label={t('rule')}>
                 <Select
-                  value={ruleId}
+                  value={rule?.id ?? ''}
                   onValueChange={(v) => {
-                    setRuleId(v);
+                    setLineage(rules.find((r) => r.id === v)?.lineage ?? '');
                     setValues({});
                   }}
                   options={rules.map((r) => ({

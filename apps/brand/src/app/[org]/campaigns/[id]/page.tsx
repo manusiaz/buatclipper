@@ -58,7 +58,7 @@ export default async function CampaignDashboardPage({
     getLocale(),
     core.rpc('campaign_stats', { p_campaign: id }),
     core.from('budget_alerts').select('kind, created_at').eq('campaign_id', id).order('created_at'),
-    core.from('rate_rules').select('id, kind, platform, pool_id, params, effective_to').eq('campaign_id', id).or(`effective_to.is.null,effective_to.gt.${now}`),
+    core.from('rate_rules').select('id, lineage_id, kind, platform, pool_id, params, effective_to').eq('campaign_id', id).or(`effective_to.is.null,effective_to.gt.${now}`).order('effective_from'),
     invite ? core.from('campaign_invites').select('user_id, created_at').eq('campaign_id', id).order('created_at', { ascending: false }).limit(500) : null,
     core.from('report_links').select('id, created_at, expires_at, revoked_at').eq('campaign_id', id).order('created_at', { ascending: false }),
     publicSettings(core, ['public.billing.pin_price_per_week_idr']),
@@ -71,7 +71,7 @@ export default async function CampaignDashboardPage({
   const controlRules: ControlRule[] = (rules ?? []).flatMap((r) => {
     const pool = r.pool_id ? poolById.get(r.pool_id) : undefined;
     return r.id && r.kind
-      ? [{ id: r.id, kind: r.kind, platform: r.platform, code: pool?.code ?? '', unitLabel: pool?.code === 'IDR' ? 'Rp' : (pool?.unitLabel ?? ''), params: (r.params ?? {}) as Record<string, unknown> }]
+      ? [{ id: r.id, lineage: r.lineage_id ?? r.id, kind: r.kind, platform: r.platform, code: pool?.code ?? '', unitLabel: pool?.code === 'IDR' ? 'Rp' : (pool?.unitLabel ?? ''), params: (r.params ?? {}) as Record<string, unknown> }]
       : [];
   });
   const inviteRows = invites?.data ?? [];

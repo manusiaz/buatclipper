@@ -426,14 +426,14 @@ export type Database = {
                   ]
                 },"rate_rules": {
                   Row: {
-                    "campaign_id": string | null,"effective_from": string | null,"effective_to": string | null,"id": string | null,"kind": string | null,"params": Json | null,"platform": "tiktok"|"instagram"|"youtube"|"threads"|"facebook"|"x" | null,"pool_id": string | null,"reward_type_id": string | null
+                    "campaign_id": string | null,"effective_from": string | null,"effective_to": string | null,"id": string | null,"kind": string | null,"lineage_id": string | null,"params": Json | null,"platform": "tiktok"|"instagram"|"youtube"|"threads"|"facebook"|"x" | null,"pool_id": string | null,"reward_type_id": string | null
                   }
                   ComputedFields: never
                   Insert: {
-                           "campaign_id"?: string | null,"effective_from"?: string | null,"effective_to"?: string | null,"id"?: string | null,"kind"?: string | null,"params"?: Json | null,"platform"?: "tiktok"|"instagram"|"youtube"|"threads"|"facebook"|"x" | null,"pool_id"?: string | null,"reward_type_id"?: string | null
+                           "campaign_id"?: string | null,"effective_from"?: string | null,"effective_to"?: string | null,"id"?: string | null,"kind"?: string | null,"lineage_id"?: string | null,"params"?: Json | null,"platform"?: "tiktok"|"instagram"|"youtube"|"threads"|"facebook"|"x" | null,"pool_id"?: string | null,"reward_type_id"?: string | null
                          }
                         Update: {
-                           "campaign_id"?: string | null,"effective_from"?: string | null,"effective_to"?: string | null,"id"?: string | null,"kind"?: string | null,"params"?: Json | null,"platform"?: "tiktok"|"instagram"|"youtube"|"threads"|"facebook"|"x" | null,"pool_id"?: string | null,"reward_type_id"?: string | null
+                           "campaign_id"?: string | null,"effective_from"?: string | null,"effective_to"?: string | null,"id"?: string | null,"kind"?: string | null,"lineage_id"?: string | null,"params"?: Json | null,"platform"?: "tiktok"|"instagram"|"youtube"|"threads"|"facebook"|"x" | null,"pool_id"?: string | null,"reward_type_id"?: string | null
                          }
                         Relationships: [
                     

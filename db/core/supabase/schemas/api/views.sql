@@ -13,7 +13,7 @@ create view api.campaigns with (security_invoker = true) as
 create view api.campaign_assets with (security_invoker = true) as
   select id, campaign_id, kind, storage_path, url, size_bytes, audience, created_at from market.campaign_assets;
 create view api.rate_rules with (security_invoker = true) as
-  select id, campaign_id, kind, reward_type_id, pool_id, platform, params, effective_from, effective_to from market.rate_rules;
+  select id, campaign_id, kind, reward_type_id, pool_id, platform, params, effective_from, effective_to, lineage_id from market.rate_rules;
 create view api.reward_types with (security_invoker = true) as
   select id, owner_org_id, code, name, kind, unit_label, idr_value_per_unit, decimals, fulfillment, recipient_schema, stock
   from market.reward_types;
