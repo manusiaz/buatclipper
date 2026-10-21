@@ -10,6 +10,8 @@
 services:
   studio:
     container_name: ${STACK}-studio
+    healthcheck:   # resmi: 3×5 dtk tanpa masa start → boot pertama di VPS kecil "unhealthy", api-gw (depends_on) batal start
+      start_period: 120s
   api-gw:
     container_name: ${STACK}-gw
     ports: !override

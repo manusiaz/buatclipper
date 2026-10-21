@@ -11,11 +11,14 @@
 #   Satu server:           deploy/deploy.sh up all   (secret dibuat otomatis bila belum ada)
 #   Admin pertama:         deploy/deploy.sh admin email@domain   (di server identity / satu server) → login di admin.{DOMAIN}
 #                          dengan kode OTP email, lalu daftarkan authenticator (MFA wajib)
+#   Pra-cek sebelum up:    deploy/deploy.sh check [peran]   (compose, secret, DNS, koneksi ke server lain)
+#   Backup harian (cron):  15 2 * * * /path/deploy/deploy.sh backup [peran] >> /var/log/clipper-backup.log 2>&1
+#                          → deploy/stack/*/backups (dump DB + file Storage, BACKUP_KEEP_DAYS); salin ke luar server
 #   deploy/deploy.sh down [peran] · deploy/deploy.sh status
 #
 # DNS A: auth.{DOMAIN} → server identity, api.{DOMAIN} → server core, {DOMAIN} + accounts./app./brand./admin. → server app.
-# Syarat tiap server: Docker Engine + compose ≥ 2.24, git, port 80/443 terbuka. Backup: deploy/secrets.env +
-# deploy/stack/*/volumes/db/data (+ dump otomatis di deploy/stack/*/backups). Studio (dashboard DB) tidak publik:
+# Syarat tiap server: Docker Engine + compose ≥ 2.24.4 (tag !override), git, port 80/443 terbuka. deploy/secrets.env
+# disimpan terpisah dari backup (tanpa kunci PII/Vault dump tidak terbaca utuh). Studio (dashboard DB) tidak publik:
 # ssh -L 8001:127.0.0.1:8001 server-identity (core: 8002) → http://localhost:800x (user supabase, password
 # {IDENTITY|CORE}_DASHBOARD_PASSWORD di secrets.env).
 set -euo pipefail
@@ -36,7 +39,9 @@ load_config() {
   SCHEME=${SCHEME:-https}
   [[ "${DOMAIN:-}" =~ ^[a-z0-9]([a-z0-9.-]*[a-z0-9])?$ ]] || { echo "DOMAIN tidak valid: '${DOMAIN:-}'"; exit 1; }
   [[ "$SCHEME" =~ ^https?$ ]] || { echo "SCHEME harus https atau http"; exit 1; }
-  if [ "$CMD" = up ] && [[ " $STACKS " == *" identity "* ]]; then
+  if [[ $CMD =~ ^(up|check)$ ]] && [[ " $STACKS " == *" identity "* ]]; then
+    # GoTrue gagal start (crash loop) bila port SMTP kosong → hentikan sebelum container dibuat.
+    [[ "${SMTP_PORT:-}" =~ ^[0-9]+$ ]] || { echo "SMTP_PORT (config.env) wajib angka, mis. 465"; exit 1; }
     [ -n "${SMTP_PASS:-}" ] || echo "PERINGATAN: SMTP_PASS kosong — email kode login (OTP) tidak akan terkirim"
     [ -n "${RESEND_API_KEY:-}" ] || echo "PERINGATAN: RESEND_API_KEY kosong — email notifikasi platform tidak akan terkirim"
   fi
@@ -80,7 +85,7 @@ load_secrets() {
     esac
     for k in $need; do [ -n "${!k:-}" ] || { echo "secrets.env kurang $k untuk peran $r"; exit 1; }; done
   done
-  if [ "$CMD" = up ] && [ "$ROLE" != all ] && grep -qvE "$(role_keys "$ROLE")" secrets.env; then
+  if [[ $CMD =~ ^(up|check)$ ]] && [ "$ROLE" != all ] && grep -qvE "$(role_keys "$ROLE")" secrets.env; then
     echo "PERINGATAN: secrets.env berisi kunci peran lain — di server $ROLE pakai secrets.$ROLE.env saja"
   fi
 }
@@ -369,6 +374,51 @@ case "$CMD" in
     [ -f .generated/caddy.yml ] && docker compose -f .generated/caddy.yml ps --format 'table {{.Name}}\t{{.Status}}'
     true
     ;;
+  check)
+    load_config
+    if [ -f secrets.env ] || [ "$ROLE" != all ]; then load_secrets; else echo "secrets.env belum ada — dibuat otomatis oleh up all"; fi
+    v=$(docker compose version --short 2>/dev/null) || { echo "docker compose (plugin v2) tidak ada"; exit 1; }
+    v=${v#v}
+    [ "$(printf '2.24.4\n%s\n' "$v" | sort -V | head -1)" = 2.24.4 ] || { echo "docker compose $v < 2.24.4 (tag !override)"; exit 1; }
+    echo "docker compose $v · IP server ini: $(hostname -I 2>/dev/null || true)"
+    bad=0
+    for h in $(served_hosts); do   # Let's Encrypt memvalidasi lewat host ini → record DNS harus mengarah ke server ini
+      ip=$(getent ahostsv4 "$h" | awk '{print $1}' | sort -u | tr '\n' ' ' || true)
+      echo "  $h → ${ip:-TIDAK ADA RECORD DNS}"
+      [ -n "$ip" ] || [ "$SCHEME" = http ] || bad=1
+    done
+    for h in "auth.$DOMAIN" "api.$DOMAIN"; do   # server lain (bridge, JWKS, fetch app): belum up = wajar saat deploy pertama
+      [[ " $(served_hosts) " == *" $h "* ]] && continue
+      t=$(peer_ip "$h") add=(); [ -n "$t" ] && add=(--add-host "$h:$t")
+      # Jalur yang sama dengan container (PEER_HOSTS → extra_hosts, kosong = DNS); JWKS GoTrue = stack Supabase itu yang menjawab.
+      r=$(docker run --rm "${add[@]}" node:22-alpine node -e 'fetch(process.argv[1], { signal: AbortSignal.timeout(8000) })
+        .then(async (r) => console.log(Array.isArray((await r.json()).keys) ? "ok" : `HTTP ${r.status}`))
+        .catch((e) => console.log(e.cause?.code ?? e.name))' "$SCHEME://$h/auth/v1/.well-known/jwks.json")
+      if [ "$r" = ok ]; then echo "  $h${t:+ ($t)} menjawab"
+      else echo "  PERINGATAN: $h${t:+ ($t)} tidak menjawab ($r) — server itu belum up, DNS/PEER_HOSTS salah, atau firewall"; fi
+    done
+    exit $bad
+    ;;
+  backup)
+    # Dump DB (pg_restore) + file Storage (volume lokal; kosong bila pakai S3) tiap stack yang jalan di server ini.
+    load_config
+    keep=${BACKUP_KEEP_DAYS:-14} ts=$(date +%Y%m%d%H%M%S) n=0
+    [[ "$keep" =~ ^[0-9]+$ ]] || { echo "BACKUP_KEEP_DAYS harus angka hari"; exit 1; }
+    for p in $STACKS; do
+      if ! docker inspect "$p-db" >/dev/null 2>&1; then [ "$ROLE" = all ] && continue; echo "stack $p belum jalan di server ini"; exit 1; fi
+      b=stack/$p/backups; mkdir -p "$b"
+      (umask 077 && docker exec "$p-db" pg_dump -h localhost -U supabase_admin -d postgres -Fc > "$b/db-$ts.dump.tmp")
+      mv "$b/db-$ts.dump.tmp" "$b/db-$ts.dump"
+      # Lewat container (root): file Storage milik user container, belum tentu terbaca user yang menjalankan deploy.sh.
+      (umask 077 && docker run --rm -v "$DEPLOY/stack/$p/volumes/storage":/s:ro node:22-alpine tar czf - -C /s . \
+        > "$b/storage-$ts.tgz.tmp")
+      mv "$b/storage-$ts.tgz.tmp" "$b/storage-$ts.tgz"
+      find "$b" \( -name 'db-*.dump' -o -name 'storage-*.tgz' -o -name '*.tmp' \) -mtime +"$keep" -delete
+      echo "$p: $b/db-$ts.dump ($(du -h "$b/db-$ts.dump" | cut -f1)) + $b/storage-$ts.tgz ($(du -h "$b/storage-$ts.tgz" | cut -f1))"
+      n=$((n + 1))
+    done
+    [ "$n" -gt 0 ] || { echo "tidak ada stack Supabase yang jalan di server ini (server app tidak menyimpan data)"; exit 1; }
+    ;;
   admin)
     # Bootstrap admin_super pertama (api.admin_set_role butuh admin_super yang sudah ada); aturan akun admin terpisah (AA-20)
     # tetap berlaku.
@@ -417,5 +467,5 @@ select null, 'role.grant', 'user:' || user_id, '{"role":"admin_super","via":"dep
 SQL
     echo "admin_super: $ADMIN_EMAIL ($uid) → login di $ADMIN dengan kode OTP email, lalu daftarkan authenticator (MFA wajib)"
     ;;
-  *) sed -n '2,25p' "$0"; exit 1 ;;
+  *) sed -n '2,/^set /{/^#/p}' "$DEPLOY/deploy.sh"; exit 1 ;;
 esac
