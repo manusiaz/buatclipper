@@ -175,14 +175,20 @@ export async function releaseLiveActivities() {
   stop();
   await Promise.allSettled([...inflight]);
   await remembering.catch(() => {});
-  const stored = await AsyncStorage.getItem(SAVED).then((v) => JSON.parse(v ?? '[]') as string[], () => [] as string[]);
+  const fail = () => {
+    released = false;
+    return new Error('live_activity_release_failed');
+  };
+  // Daftar tersimpan tak terbaca = tidak tahu token mana yang terdaftar (setelah restart memori kosong) → batal keluar.
+  const stored = await AsyncStorage.getItem(SAVED).then(
+    (v) => JSON.parse(v ?? '[]') as string[],
+    () => null,
+  );
+  if (!stored) throw fail();
   const list = [...new Set([...stored, ...known])];
   if (list.length) {
     const { error } = await identityApi.from('push_subscriptions').delete().in('endpoint', list);
-    if (error) {
-      released = false;
-      throw new Error('live_activity_release_failed');
-    }
+    if (error) throw fail();
   }
   await AsyncStorage.removeItem(SAVED).catch(() => {});
   known.clear();

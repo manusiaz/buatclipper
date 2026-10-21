@@ -103,6 +103,14 @@ describe('token Live Activity saat keluar', () => {
     await releaseLiveActivities();
     expect(deleted.at(-1)?.sort()).toEqual(['cc03', 'dd04']);
   });
+  it('daftar tersimpan tak terbaca saat keluar → batal keluar, daftar tetap ada (R56)', async () => {
+    store.set('clipper.apns.tokens', '["ee05"]');
+    failStorage = 1;
+    await expect(releaseLiveActivities()).rejects.toThrow('live_activity_release_failed');
+    expect(store.get('clipper.apns.tokens')).toBe('["ee05"]');
+    await releaseLiveActivities();
+    expect(deleted.at(-1)).toEqual(['ee05']);
+  });
   it('token yang datang saat/selesai keluar tidak didaftarkan ulang ke akun lama', async () => {
     await syncLiveActivities('user-a');
     const listener = onStartToken!;
