@@ -1167,6 +1167,22 @@ select throws_ok($$ select api.worker_create_submission('11111111-0000-0000-0000
 select throws_ok($$ select api.worker_create_submission('11111111-0000-0000-0000-00000000000a', '88888888-0000-0000-0000-0000000000b0',
                     '99999999-0000-0000-0000-00000000000a', 'x', 'https://tiktok.com/x', now() - interval '1 hour', '#mplid', 5) $$, 'P0001',
                  'duration_out_of_range', 'submit: durasi di luar batas');
+-- Regresi R63: syarat follower/umur akun berlaku untuk akun yang dipakai submit.
+set local session_replication_role = replica;
+update market.campaigns set min_followers = 1000000000 where id = '55555555-0000-0000-0000-0000000000b0';
+set local session_replication_role = origin;
+select throws_ok($$ select api.worker_create_submission('11111111-0000-0000-0000-00000000000a', '88888888-0000-0000-0000-0000000000b0',
+                    '99999999-0000-0000-0000-00000000000a', 'x', 'https://tiktok.com/x', now() - interval '1 hour', '#mplid', 30) $$, 'P0001',
+                 'not_eligible:min_followers', 'R63: akun submit di bawah min_followers ditolak');
+set local session_replication_role = replica;
+update market.campaigns set min_followers = 0, min_account_age_days = 30000 where id = '55555555-0000-0000-0000-0000000000b0';
+set local session_replication_role = origin;
+select throws_ok($$ select api.worker_create_submission('11111111-0000-0000-0000-00000000000a', '88888888-0000-0000-0000-0000000000b0',
+                    '99999999-0000-0000-0000-00000000000a', 'x', 'https://tiktok.com/x', now() - interval '1 hour', '#mplid', 30) $$, 'P0001',
+                 'not_eligible:min_account_age', 'R63: akun submit di bawah min_account_age ditolak');
+set local session_replication_role = replica;
+update market.campaigns set min_account_age_days = 0 where id = '55555555-0000-0000-0000-0000000000b0';
+set local session_replication_role = origin;
 insert into t_ids select 's10', api.worker_create_submission('11111111-0000-0000-0000-00000000000a', '88888888-0000-0000-0000-0000000000b0',
   '99999999-0000-0000-0000-00000000000a', 'vid-10', 'https://tiktok.com/@andi/video/10', now() - interval '1 hour', 'Mantap #MPLID', 30,
   1234567890123) ->> 'submission_id';

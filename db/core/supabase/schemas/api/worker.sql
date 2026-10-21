@@ -447,6 +447,13 @@ begin
   if not (a.platform = any (c.platforms)) then
     raise exception 'platform_not_allowed' using errcode = 'P0001';
   end if;
+  -- Syarat akun dicek per akun yang dipakai submit, bukan cukup satu akun lolos saat claim (claim_check).
+  if coalesce(a.followers, 0) < c.min_followers then
+    raise exception 'not_eligible:min_followers' using errcode = 'P0001';
+  end if;
+  if c.min_account_age_days > 0 and (a.platform_created_at is null or a.platform_created_at > now() - make_interval(days => c.min_account_age_days)) then
+    raise exception 'not_eligible:min_account_age' using errcode = 'P0001';
+  end if;
   if p_posted_at is null or p_posted_at < cl.created_at then
     raise exception 'posted_before_claim' using errcode = 'P0001';
   end if;
