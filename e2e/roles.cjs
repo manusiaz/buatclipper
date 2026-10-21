@@ -180,9 +180,17 @@ step('admin-login', ['admin'], async ({ admin }) => {
   check(/^[A-Z2-7]{16,}$/.test(secret), 'kunci TOTP terbaca: ' + secret);
   S.totpSecret = secret;
   await shot(admin, 'admin-mfa-enroll');
-  await admin.getByLabel('Kode authenticator').fill(totp(secret));
-  await admin.getByRole('button', { name: 'Verifikasi' }).click();
-  await admin.waitForURL(ADMIN + '/', { timeout: 30000 });
+  // Kode di awal jendela 30 dtk (hindari kode yang kedaluwarsa di tengah request), coba ulang sekali dengan kode jendela berikutnya.
+  for (let attempt = 0; ; attempt++) {
+    if (Date.now() % 30000 > 24000) await admin.waitForTimeout(30500 - (Date.now() % 30000));
+    await admin.getByLabel('Kode authenticator').fill(totp(secret));
+    await admin.getByRole('button', { name: 'Verifikasi' }).click();
+    const ok = await admin.waitForURL(ADMIN + '/', { timeout: 15000 }).then(() => true, () => false);
+    if (ok) break;
+    check(attempt < 1, 'TOTP ditolak dua kali');
+    finding('admin MFA: kode TOTP valid ditolak sekali ("Kode authenticator salah.") — dicoba ulang');
+    await admin.waitForTimeout(30500 - (Date.now() % 30000));
+  }
   await admin.getByRole('heading', { name: /Overview/i }).first().waitFor({ timeout: 30000 });
   const factor = ident(`select status from auth.mfa_factors where user_id = '${uid}'`);
   check(factor === 'verified', 'faktor TOTP verified: ' + factor);
