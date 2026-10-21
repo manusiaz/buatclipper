@@ -162,7 +162,8 @@ function stop() {
  * yang tak sempat ditautkan (app tertutup terus) jadi "basi" setelah stale-date dan tampil jujur di layout.
  */
 export async function syncLiveActivities(uid: string): Promise<() => void> {
-  released = false;
+  // Palang keluar tidak dibuka oleh sync (app aktif lagi di tengah keluar); hanya reopenLiveActivities / keluar gagal.
+  if (released) return () => {};
   stop();
   const mine = ++generation;
   startSaved = false;
@@ -176,6 +177,11 @@ export async function syncLiveActivities(uid: string): Promise<() => void> {
   await link(uid).catch(() => {});
   // Penghenti milik run ini saja: callback run lama yang selesai terlambat tidak mematikan run yang lebih baru.
   return () => void (mine === generation && stop());
+}
+
+/** Sesi login baru (bukan sesi yang sedang keluar): pendaftaran token dibuka lagi. */
+export function reopenLiveActivities() {
+  released = false;
 }
 
 /**

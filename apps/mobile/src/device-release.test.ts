@@ -15,13 +15,14 @@ const jwt = (sub: string) => `x.${Buffer.from(JSON.stringify({ sub })).toString(
 let session: { access_token: string } | null = null;
 const deleted: string[][] = [];
 let deleteError: { message: string } | null = null;
+let deleteGate: Promise<void> = Promise.resolve();
 const rpc = vi.fn(async (..._a: unknown[]) => ({ error: null as { message: string } | null }));
 let payout: { data: { id: string } | null; error: { message: string } | null } = { data: null, error: null };
 type Fake = { getId: () => string; getPushToken: () => Promise<string | null>; addPushTokenListener: () => void; end: ReturnType<typeof vi.fn> };
 let instances: Fake[] = [];
 vi.mock('./supabase', () => ({
   identity: { auth: { getSession: async () => ({ data: { session } }) } },
-  identityApi: { rpc: (...a: unknown[]) => rpc(...(a as [])), from: () => ({ delete: () => ({ in: async (_c: string, v: string[]) => (deleted.push(v), { error: deleteError }) }) }) },
+  identityApi: { rpc: (...a: unknown[]) => rpc(...(a as [])), from: () => ({ delete: () => ({ in: async (_c: string, v: string[]) => (await deleteGate, deleted.push(v), { error: deleteError }) }) }) },
   core: { from: () => ({ select: () => ({ eq: () => ({ eq: () => ({ order: () => ({ limit: () => ({ maybeSingle: async () => payout }) }) }) }) }) }) },
 }));
 let release: (() => void) | null = null;
@@ -40,12 +41,14 @@ vi.mock('@expo/ui/swift-ui/modifiers', () => ({}));
 let invalidateWidgetSnapshot: typeof import('./widget-load').invalidateWidgetSnapshot;
 let loadWidgetSnapshot: typeof import('./widget-load').loadWidgetSnapshot;
 let releaseLiveActivities: typeof import('./live-activity.ios').releaseLiveActivities;
+let reopenLiveActivities: typeof import('./live-activity.ios').reopenLiveActivities;
 let syncLiveActivities: typeof import('./live-activity.ios').syncLiveActivities;
 
 beforeEach(async () => {
   vi.resetModules();
   ({ invalidateWidgetSnapshot, loadWidgetSnapshot } = await import('./widget-load'));
-  ({ releaseLiveActivities, syncLiveActivities } = await import('./live-activity.ios'));
+  ({ releaseLiveActivities, reopenLiveActivities, syncLiveActivities } = await import('./live-activity.ios'));
+  deleteGate = Promise.resolve();
   store.clear();
   deleted.length = 0;
   deleteError = null;
@@ -130,12 +133,28 @@ describe('token Live Activity saat keluar', () => {
       // Akun lain login setelah keluar: token perangkat yang sama didaftarkan ulang tanpa event native baru.
       await releaseLiveActivities();
       rpc.mockClear();
+      reopenLiveActivities(); // login akun B (SIGNED_IN)
       await syncLiveActivities('user-b');
       await vi.waitFor(() => expect(rpc).toHaveBeenCalledWith('save_activity_token', { p_token: 'FF06', p_kind: 'apns_start' }));
       await releaseLiveActivities();
     } finally {
       vi.useRealTimers();
     }
+  });
+  it('app aktif lagi di tengah keluar tidak membuka pendaftaran ulang untuk akun lama (R58)', async () => {
+    await syncLiveActivities('user-a');
+    onStartToken!({ activityPushToStartToken: 'GG07' });
+    await vi.waitFor(() => expect(store.get('clipper.apns.tokens')).toBe('["gg07"]'));
+    let open!: () => void;
+    deleteGate = new Promise((ok) => (open = ok));
+    rpc.mockClear();
+    const releasing = releaseLiveActivities();
+    await syncLiveActivities('user-a'); // DeviceSync: app aktif lagi
+    open();
+    await releasing;
+    expect(deleted.at(-1)).toEqual(['gg07']);
+    expect(rpc).not.toHaveBeenCalled();
+    expect(onStartToken).toBeNull();
   });
   it('token yang datang saat/selesai keluar tidak didaftarkan ulang ke akun lama', async () => {
     await syncLiveActivities('user-a');

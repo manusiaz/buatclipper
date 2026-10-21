@@ -1,10 +1,10 @@
 // Sesi identity untuk seluruh app native. Gate sama dengan requireClipper web: tanpa sesi → login, admin → ditolak
 // (akun admin terpisah, AA-20), consent clipper belum ada → onboarding (diselesaikan di accounts.{domain}).
-import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import type { Session } from '@supabase/supabase-js';
 import { decodeClaims, isAdmin, type Claims } from './claims';
 import { clearCache } from './cache';
-import { releaseLiveActivities } from './live-activity';
+import { releaseLiveActivities, reopenLiveActivities } from './live-activity';
 import { releasePush } from './push';
 import { identity } from './supabase';
 import { refreshWidgets } from './widget';
@@ -25,13 +25,18 @@ const AuthContext = createContext<AuthState | null>(null);
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [ready, setReady] = useState(false);
   const [session, setSession] = useState<Session | null>(null);
+  const signingOut = useRef(false);
 
   useEffect(() => {
     identity.auth.getSession().then(({ data }) => {
       setSession(data.session);
       setReady(true);
     });
-    const { data } = identity.auth.onAuthStateChange((_e, s) => setSession(s));
+    // Login baru membuka lagi pendaftaran token Live Activity — bukan event dari sesi yang sedang keluar.
+    const { data } = identity.auth.onAuthStateChange((e, s) => {
+      if (e === 'SIGNED_IN' && !signingOut.current) reopenLiveActivities();
+      setSession(s);
+    });
     return () => data.subscription.unsubscribe();
   }, []);
 
@@ -43,18 +48,23 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     // Lepas semua yang terikat perangkat selagi masih login (RLS), supaya HP bersama tidak terus menampilkan akun lama:
     // token Live Activity iOS dulu (tak bisa dicabut dari app → gagal = batal keluar, sebelum push sempat dimatikan),
     // lalu push, muatan widget yang sedang jalan, cache; widget dirender ulang tanpa sesi.
+    signingOut.current = true;
     try {
-      await releaseLiveActivities();
-    } catch {
-      return false;
+      try {
+        await releaseLiveActivities();
+      } catch {
+        return false;
+      }
+      await releasePush();
+      invalidateWidgetSnapshot();
+      await clearCache();
+      await identity.auth.signOut({ scope: 'local' });
+      setSession(null);
+      void refreshWidgets();
+      return true;
+    } finally {
+      signingOut.current = false;
     }
-    await releasePush();
-    invalidateWidgetSnapshot();
-    await clearCache();
-    await identity.auth.signOut({ scope: 'local' });
-    setSession(null);
-    void refreshWidgets();
-    return true;
   }, []);
 
   const value = useMemo(() => {

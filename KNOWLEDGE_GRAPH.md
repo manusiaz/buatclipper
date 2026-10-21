@@ -3,7 +3,7 @@
 > Everything is one system. Every page is a node; every line is a real data or design dependency.
 > Dikelola oleh skill `alaconnect`. Edit inkremental — jangan generate ulang.
 
-Last verified: 319a01b + app native lengkap per DS mobile (IA 4 tab, layar native, widget Android/iOS, Live Activity, universal/App Link, notifikasi berangka, handoff sesi) — lint (check-arch + drift token), typecheck semua workspace, vitest 244, deno identity 132 + core 81, pgTAP identity 172 + core 997 setelah `db reset` dari migrasi (declarative sync: no changes), build clipper + accounts, expo export ios/android/web, fungsi widget hasil bundle dijalankan terpisah (widget-fns.test.ts), expo prebuild android+ios, e2e 10/10, e2e:mobile 12/12, Codex R53–R57 diperbaiki (2026-10-21)
+Last verified: 319a01b + app native lengkap per DS mobile (IA 4 tab, layar native, widget Android/iOS, Live Activity, universal/App Link, notifikasi berangka, handoff sesi) — lint (check-arch + drift token), typecheck semua workspace, vitest 245, deno identity 132 + core 81, pgTAP identity 172 + core 997 setelah `db reset` dari migrasi (declarative sync: no changes), build clipper + accounts, expo export ios/android/web, fungsi widget hasil bundle dijalankan terpisah (widget-fns.test.ts), expo prebuild android+ios, e2e 10/10, e2e:mobile 12/12, Codex R53–R58 diperbaiki (2026-10-21)
 
 **Status:** sistem sudah dibangun dan dites. 5 app Next.js 16 (`apps/web`, `apps/accounts`, `apps/clipper`, `apps/brand`, `apps/admin`) di atas `packages/{ui,campaign-builder,clipper-lib,auth,db-core,db-identity,i18n,config}`, plus app native Expo `apps/mobile` (Android + iOS, satu kode). 2 project Supabase (`db/identity`, `db/core`): schema deklaratif, `migrations/` (pg-delta), config.toml, seed.sql. 12 Edge Function: core `bridge`, `fulfill`, `notify`, `refresh-tokens`, `social`, `track-worker`; identity `admin-auth`, `bridge`, `delete-account`, `disburse`, `member-data`, `pii-export`. Tes: pgTAP 6 file (`db/core/supabase/tests` 4, `db/identity/supabase/tests` 2), unit test app/package (`pnpm test`, 38 file `*.test.ts(x)`), unit test Deno (29 file `*_test.ts` di `db/*/supabase/functions`), journey E2E lintas host `e2e/journey.cjs` (Playwright: web → accounts → app → undangan → brand), CI `.github/workflows/ci.yml` (job apps, functions, db per project). Diverifikasi di 7408318: `pnpm lint` ok, `pnpm typecheck` ok, `pnpm test` 197 tes lulus (campaign-builder 69, accounts 32, web 29, admin 24, brand 22, clipper 21), `pnpm build` 5 app ok, Deno fmt/lint/check ok + tes core 70 & identity 82, pgTAP core 727 & identity 107 (stub Postgres 16 dan `supabase test db`), `supabase db lint` (schema app) & `db advisors --type security` bersih, `pnpm e2e` 9/9 langkah 2× di build produksi. Node yang filenya ada punya kolom Path; bukti edge = `file:line` (dicek `check_graph.py`). Bukti yang masih rujukan PRD v0.3.1 = belum ada satu baris kode yang menyebut target, atau kodenya ada di folder route group `(account)`, `(auth)`, `(console)`: regex checker tidak menerima tanda kurung, jadi baris kodenya ditulis `kode baris N` (dicek manual). `(belum di kode)` = edge PRD yang tidak dibangun begitu. Edge `reads` page → table = dependency data logis; di kode jalannya lewat view/fungsi schema `api` (`policy:core.api-only`). Rujukan lintas DB (`table → table` antar project) tidak punya foreign key.
 
@@ -1763,9 +1763,9 @@ Arah: `A --tipe--> B` = A bergantung pada B. `?` = belum terverifikasi.
 | `mod:widget-snapshot` | reads | `table:finance.payouts` | apps/mobile/src/data.ts:660 |
 | `mod:widget-snapshot` | reads | `table:tracking.submissions` | apps/mobile/src/data.ts:661 |
 | `mod:live-activity` | calls | `api:rpc identity.save_activity_token` | apps/mobile/src/live-activity.ios.tsx:117 |
-| `mod:live-activity` | writes | `table:member.push_subscriptions` | apps/mobile/src/live-activity.ios.tsx:204 (keluar: token APNs perangkat dihapus) |
+| `mod:live-activity` | writes | `table:member.push_subscriptions` | apps/mobile/src/live-activity.ios.tsx:210 (keluar: token APNs perangkat dihapus) |
 | `mod:live-activity` | reads | `table:finance.payouts` | apps/mobile/src/live-activity.ios.tsx:136 (token activity ditautkan ke payout yang diproses) |
-| `layout:mobile` | calls | `mod:live-activity` | apps/mobile/src/auth.tsx:44 |
+| `layout:mobile` | calls | `mod:live-activity` | apps/mobile/src/auth.tsx:54 |
 | `layout:mobile` | calls | `api:fn identity/session-handoff` | apps/mobile/src/web.ts:13 |
 | `layout:mobile` | routes-to | `page:accounts/handoff` | apps/mobile/src/web.ts:15 |
 | `page:mobile/withdraw` | calls | `api:rpc core.request_payout` | apps/mobile/src/data.ts:558 |
@@ -1805,8 +1805,8 @@ Arah: `A --tipe--> B` = A bergantung pada B. `?` = belum terverifikasi.
 | `test:e2e.mobile` | tests | `page:mobile/notifications` | e2e/mobile.cjs:129 |
 | `test:e2e.mobile` | tests | `page:mobile/withdraw` | e2e/mobile.cjs:141 |
 | `test:e2e.mobile` | tests | `page:mobile/social` | e2e/mobile.cjs:158 |
-| `test:mobile.unit` | tests | `mod:live-activity` | apps/mobile/src/device-release.test.ts:48 (gagal DELETE → batal keluar, token tak didaftarkan ulang) |
-| `test:mobile.unit` | tests | `mod:widget-snapshot` | apps/mobile/src/device-release.test.ts:47 (muatan saat keluar dibuang, cadangan per user) |
+| `test:mobile.unit` | tests | `mod:live-activity` | apps/mobile/src/device-release.test.ts:43 (gagal DELETE → batal keluar, token tak didaftarkan ulang) |
+| `test:mobile.unit` | tests | `mod:widget-snapshot` | apps/mobile/src/device-release.test.ts:41 (muatan saat keluar dibuang, cadangan per user) |
 
 ## Diagram
 
@@ -2503,6 +2503,7 @@ Masalah sistem yang ditemukan saat menyusun PRD v0.2 dan saat dicek ulang (v0.2.
 | 2026-10-21 | `mod:live-activity` | Review Codex R55: satu kegagalan AsyncStorage membuat rantai serial daftar token tertolak selamanya → token yang didaftarkan sesudahnya tidak tercatat dan tidak dihapus saat keluar | diperbaiki: antrean pulih sebelum tiap operasi, token terdaftar juga dicatat di memori dan keluar menghapus gabungan memori + storage; tes "storage gagal sekali" (gagal di b71067f) |
 | 2026-10-21 | `mod:live-activity` | Review Codex R56: daftar token tersimpan yang gagal dibaca saat keluar dianggap kosong → setelah restart (memori kosong) keluar sukses tanpa DELETE, token push-to-start akun lama tetap di server | diperbaiki: gagal baca = batal keluar, daftar tidak dihapus; tes R56 di device-release.test.ts (gagal di 3160369) |
 | 2026-10-21 | `mod:live-activity` | Review Codex R57: pendaftaran token push-to-start yang gagal (offline) tak pernah dicoba lagi selama app aktif — dan lebih luas: native mengirim token itu sekali per proses app, jadi akun yang login setelah akun lain keluar tak pernah mendaftarkannya (asumsi R53 "login berikutnya memindah kepemilikan token" keliru) | diperbaiki: token perangkat disimpan di memori, didaftarkan tiap sync & poll 30 detik sampai sukses, tetap dipegang setelah keluar untuk akun berikutnya; tes R57 (gagal di 8afdfdb) |
+| 2026-10-21 | `mod:live-activity` | Review Codex R58: app aktif lagi di tengah keluar → DeviceSync memanggil sync yang membuka lagi pendaftaran, token akun lama didaftarkan ulang setelah DELETE | diperbaiki: palang keluar tak dibuka sync; dibuka hanya oleh keluar gagal atau login baru (`reopenLiveActivities` di SIGNED_IN, diabaikan selama keluar); tes R58 (gagal di 812d571) |
 
 ## Keputusan
 
