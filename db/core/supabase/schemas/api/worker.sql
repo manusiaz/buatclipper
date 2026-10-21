@@ -457,6 +457,8 @@ begin
   if p_duration_sec < c.min_duration_sec or p_duration_sec > c.max_duration_sec then
     raise exception 'duration_out_of_range' using errcode = 'P0001';
   end if;
+  -- Serial per video: dua submit bersamaan video yang sama (campaign berbeda) tidak sama-sama lolos cek pakai-ulang.
+  perform pg_advisory_xact_lock(hashtextextended('submission_post:' || a.platform || ':' || coalesce(p_post_id, ''), 0));
   if exists (select 1 from tracking.submissions t where t.campaign_id = c.id and t.platform = a.platform and t.post_id = p_post_id) then
     raise exception 'already_submitted' using errcode = 'P0001';
   end if;
