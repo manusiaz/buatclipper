@@ -1,11 +1,13 @@
-import type { ReactNode } from 'react';
+import { Suspense, type ReactNode } from 'react';
 import { getLocale, getTranslations } from 'next-intl/server';
 import {
   Badge,
   Button,
+  CampaignCardSkeleton,
   Card,
   Container,
   Icon,
+  Logo,
   PlatformChip,
   Section,
   StatCard,
@@ -19,10 +21,18 @@ import {
 import { globalFeeOrDefault } from '@/lib/catalog';
 import type { PublicSettings } from '@/lib/settings';
 import { brandHref, clipperHref } from '@/lib/session';
+import { HeroCampaign, topLiveRate } from './campaign-grid';
 import { brandCost } from './fees';
 
 const EXAMPLE_VIEWS = 10_000;
 const EXAMPLE_RATE = 2_000;
+// Nav bawah app clipper (§6.8) di mockup HP hero.
+const MOCK_NAV = [
+  ['campaigns', 'campaign'],
+  ['tasks', 'checklist'],
+  ['wallet', 'account_balance_wallet'],
+  ['social', 'link'],
+] as const satisfies ReadonlyArray<readonly [string, IconName]>;
 
 async function ctx() {
   const [t, locale] = await Promise.all([getTranslations('web'), getLocale() as Promise<UiLocale>]);
@@ -75,23 +85,84 @@ export async function Hero({ session, settings }: { session: boolean; settings: 
           </ul>
         </div>
 
-        <Card variant="blue" padding="lg" className="flex flex-col gap-4">
-          <p className="text-overline uppercase opacity-80">{t('hero.cuanLabel')}</p>
-          <p className="flex flex-col gap-1">
-            <span className="text-h2 tnum">{t('hero.cuanViews', { views: n(EXAMPLE_VIEWS) })}</span>
-            <span className="text-h1 tnum">{t('hero.cuanAmount', { amount: idr(earningFor(EXAMPLE_VIEWS, EXAMPLE_RATE)) })}</span>
-          </p>
-          <p className="text-body-s opacity-85">{t('hero.cuanNote', { rate: idr(EXAMPLE_RATE) })}</p>
-          <ul className="flex flex-wrap gap-2" aria-label={t('hero.platforms')}>
+        {/* DS 16 Hero Split + 18 Layered: layar app asli di mockup HP, kartu kaca melayang, blob dekor (hanya token). */}
+        <div className="relative mx-auto w-full max-w-[400px] lg:max-w-[460px] lg:pb-14">
+          <div aria-hidden className="pointer-events-none absolute -top-10 right-0 size-72 rounded-full bg-primary/25 blur-3xl" />
+          <div aria-hidden className="pointer-events-none absolute bottom-0 -left-10 size-64 rounded-full bg-primary-soft-hover blur-3xl" />
+          <figure aria-label={t('hero.mockLabel')} className="relative mx-auto w-[272px] rounded-[46px] bg-navy p-[9px] shadow-pop ring-1 ring-border-strong sm:w-[288px]">
+            <div className="relative flex h-[500px] flex-col overflow-hidden rounded-[38px] bg-page text-ink sm:h-[540px]">
+              <div aria-hidden className="flex h-9 shrink-0 items-center justify-between px-6 text-[11px] font-semibold tnum">
+                <span>9:41</span>
+                <span className="absolute top-2 left-1/2 h-6 w-24 -translate-x-1/2 rounded-full bg-navy" />
+                <span className="flex gap-0.5">
+                  {[0, 1, 2].map((i) => (
+                    <span key={i} className="h-2 w-1 rounded-full bg-current" style={{ opacity: 0.4 + i * 0.3 }} />
+                  ))}
+                </span>
+              </div>
+              <div aria-hidden className="flex items-center justify-between px-4 pb-2">
+                <Logo size={22} />
+                <Icon name="notifications" size={20} className="text-muted" />
+              </div>
+              <p aria-hidden className="px-4 pb-2 text-h6">{t('hero.mockTitle')}</p>
+              <div className="min-h-0 flex-1 px-3">
+                <Suspense fallback={<CampaignCardSkeleton />}>
+                  <HeroCampaign session={session} />
+                </Suspense>
+              </div>
+              <div aria-hidden className="pointer-events-none absolute inset-x-0 bottom-14 h-16 bg-gradient-to-t from-surface to-transparent" />
+              <ul aria-hidden className="absolute inset-x-0 bottom-0 flex h-14 items-center justify-around border-t border-border bg-surface/90 px-2 text-[10px] font-semibold text-muted backdrop-blur">
+                {MOCK_NAV.map(([key, icon], i) => (
+                  <li key={key} className={i === 0 ? 'flex flex-col items-center gap-0.5 text-ink' : 'flex flex-col items-center gap-0.5'}>
+                    <span className={i === 0 ? 'grid h-6 w-10 place-items-center rounded-full bg-primary-soft-hover text-primary-soft-fg' : 'grid h-6 w-10 place-items-center'}>
+                      <Icon name={icon} size={18} filled={i === 0} />
+                    </span>
+                    {t(`hero.mockNav.${key}`)}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          </figure>
+
+          {/* HP: dua kartu jadi grid di bawah mockup; lg: melayang di tepi mockup (wrapper display: contents). */}
+          <div className="mt-4 grid grid-cols-2 gap-3 lg:contents">
+            <div className="surface-glass rounded-card p-4 shadow-pop lg:absolute lg:top-16 lg:-right-16 lg:w-[180px]">
+              <p className="text-overline text-primary-soft-fg uppercase">{t('hero.cuanLabel')}</p>
+              <p className="mt-1 text-body-s text-text-2 tnum">{t('hero.cuanViews', { views: n(EXAMPLE_VIEWS) })}</p>
+              <p className="text-h5 text-ink tnum">{t('hero.cuanAmount', { amount: idr(earningFor(EXAMPLE_VIEWS, EXAMPLE_RATE)) })}</p>
+              <p className="mt-1 text-caption text-muted">{t('hero.cuanNote', { rate: idr(EXAMPLE_RATE) })}</p>
+            </div>
+            <Suspense fallback={null}>
+              <HeroTopRate />
+            </Suspense>
+          </div>
+
+          <ul className="surface-glass mt-4 flex w-fit gap-1.5 rounded-full p-1.5 shadow-pop max-lg:mx-auto lg:absolute lg:bottom-0 lg:left-1/2 lg:mt-0 lg:-translate-x-1/2" aria-label={t('hero.platforms')}>
             {settings.platforms.map((p) => (
               <li key={p}>
-                <PlatformChip platform={p} tone="glass" />
+                <PlatformChip platform={p} />
               </li>
             ))}
           </ul>
-        </Card>
+        </div>
       </Container>
     </section>
+  );
+}
+
+async function HeroTopRate() {
+  const [{ t, idr }, rate] = await Promise.all([ctx(), topLiveRate()]);
+  if (rate == null) return null;
+  return (
+    <div className="surface-glass flex flex-col gap-3 rounded-card p-4 shadow-pop lg:absolute lg:bottom-28 lg:-left-28 lg:w-[214px] lg:flex-row lg:items-center lg:p-3.5">
+      <span className="grid size-10 shrink-0 place-items-center rounded-[30%] bg-success-bg text-success">
+        <Icon name="trending_up" size={22} />
+      </span>
+      <div className="min-w-0">
+        <p className="text-caption text-muted">{t('hero.topRate')}</p>
+        <p className="text-h6 whitespace-nowrap text-ink tnum">{t('hero.topRateValue', { rate: idr(rate) })}</p>
+      </div>
+    </div>
   );
 }
 

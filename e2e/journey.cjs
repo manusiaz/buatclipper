@@ -94,6 +94,18 @@ async function otp(addr, since) {
     await page.goto(APP + '/tasks');
     await page.getByText('E2E Journey Campaign').first().waitFor();
     log('app: /tasks menampilkan claim');
+    // 5b. Share target PWA: link dari share sheet app sosmed → pilih claim → sheet Submit terbuka, link terisi
+    const shared = 'https://www.tiktok.com/@' + username + '/video/7392000000000000001';
+    const manifest = await page.evaluate(() => fetch('/manifest.webmanifest').then((r) => r.json()));
+    if (manifest.share_target?.action !== '/share') throw new Error('manifest tanpa share_target');
+    await page.goto(`${APP}/share?text=${encodeURIComponent('Clip baru ' + shared + ' cek!')}`);
+    await page.getByRole('link', { name: 'Kirim ke campaign ini' }).first().click();
+    await page.waitForURL(/\/campaigns\/e2e00000-0000-0000-0000-0000000000c0\?submit=1&url=/);
+    const field = page.locator('input[type=url]');
+    await field.waitFor({ timeout: 15000 });
+    if ((await field.inputValue()) !== shared) throw new Error('link share tidak terisi: ' + (await field.inputValue()));
+    log('app: share target → sheet Submit dengan link terisi');
+    await shot('04b-app-share-submit');
     // 6. Undangan tim brand: preview org + role → terima → brand
     const tok = 'e2eTok' + Date.now().toString(36) + 'xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx';
     sql(`insert into market.org_invites (org_id, role, token_hash, expires_at, created_by)

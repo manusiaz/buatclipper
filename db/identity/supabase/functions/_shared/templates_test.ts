@@ -115,3 +115,12 @@ Deno.test("templates: payload SQL campaign.new (platforms[]) dan earning.availab
   }];
   assertStringIncludes(render("earning.available", { amounts }, L).text, "Rp15.000,5 + 120 Diamonds sudah Tersedia");
 });
+
+Deno.test("templates: submission.approved push carries 2 actions (DS: Lihat saldo / Kirim clip lagi), others none", () => {
+  const r = render("submission.approved", { campaign_id: CAMP, campaign_title: "Kuasa Gelap 2" }, L);
+  assertEquals(r.push.actions, [
+    { action: "wallet", title: "Lihat saldo", url: "https://app.clipper.test/wallet" },
+    { action: "campaign", title: "Kirim clip lagi", url: `https://app.clipper.test/campaigns/${CAMP}` },
+  ]);
+  assertEquals(render("payout.paid", {}, L).push.actions, undefined);
+});

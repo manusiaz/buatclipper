@@ -29,6 +29,16 @@
     "account": "Account & KYC",
     "signOut": "Sign out"
   },
+  "share": {
+    "title": "Send clip",
+    "body": "Pick a campaign you claimed for this link.",
+    "pick": "Send to this campaign",
+    "emptyTitle": "You haven't claimed a campaign yet",
+    "emptyBody": "Claim a campaign, post the video, then share its link to Clipper again.",
+    "browse": "Browse campaigns",
+    "badTitle": "Couldn't read a video link",
+    "badBody": "Share a video link (https://…) from TikTok, Instagram, YouTube, Threads, Facebook, or X."
+  },
   "pwa": {
     "title": "Add Clipper to your home screen",
     "dismiss": "Close",

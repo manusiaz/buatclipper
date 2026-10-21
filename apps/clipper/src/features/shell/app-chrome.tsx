@@ -20,6 +20,7 @@ const SUB_PAGES: { match: RegExp; title: string; back?: string }[] = [
   { match: /^\/leaderboard$/, title: 'leaderboard.title', back: '/profile' },
   { match: /^\/referral$/, title: 'referral.title' },
   { match: /^\/settings$/, title: 'settings.title' },
+  { match: /^\/share$/, title: 'share.title', back: '/tasks' },
 ];
 
 export function AppChrome({ data, children }: { data: ChromeData | null; children: ReactNode }) {

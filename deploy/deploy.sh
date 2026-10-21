@@ -294,6 +294,8 @@ apps_env() {
     echo "NEXT_PUBLIC_WEB_URL=$WEB"; echo "NEXT_PUBLIC_ACCOUNTS_URL=$ACC"; echo "NEXT_PUBLIC_APP_URL=$APP"
     echo "NEXT_PUBLIC_BRAND_URL=$BRAND"; echo "NEXT_PUBLIC_ADMIN_URL=$ADMIN"
     echo "NEXT_PUBLIC_VAPID_PUBLIC_KEY=$VAPID_PUBLIC_KEY"; echo "NEXT_PUBLIC_TURNSTILE_SITE_KEY=${NEXT_PUBLIC_TURNSTILE_SITE_KEY:-}"
+    # App Android (TWA): dibaca saat request oleh app.{domain}/.well-known/assetlinks.json (bukan secret, tanpa rebuild).
+    echo "ANDROID_APP_PACKAGE=${ANDROID_APP_PACKAGE:-}"; echo "ANDROID_CERT_SHA256=${ANDROID_CERT_SHA256:-}"
   } > apps.env
 }
 apps() { docker compose -f apps.yml -f .generated/apps.hosts.yml --env-file apps.env -p clipper-apps "$@"; }

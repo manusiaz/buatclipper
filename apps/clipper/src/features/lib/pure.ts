@@ -118,6 +118,34 @@ export function httpsUrl(v: unknown): string | null {
   }
 }
 
+/** Share target PWA (manifest share_target): link https pertama dari url, text, lalu title — app sosmed sering menaruh
+ *  link video di text ("Tonton video ini https://vt.tiktok.com/…"). */
+export function sharedUrl(sp: { url?: string; text?: string; title?: string }): string | null {
+  for (const v of [sp.url, sp.text, sp.title]) {
+    const m = typeof v === 'string' ? /https:\/\/\S+/.exec(v) : null;
+    const u = m ? httpsUrl(m[0].replace(/[)\].,!?]+$/, '')) : null;
+    if (u) return u;
+  }
+  return null;
+}
+
+/** Digital Asset Links app Android TWA (Play Store): package + sidik jari SHA-256 sertifikat signing (Play App Signing
+ *  bisa lebih dari satu, pisah koma/spasi). Nilai tidak valid / kosong → null (route 404, belum ada app Android). */
+export function assetLinks(pkg: string | undefined, prints: string | undefined) {
+  const name = pkg?.trim() ?? '';
+  const fps = (prints ?? '')
+    .split(/[\s,]+/)
+    .map((f) => f.toUpperCase())
+    .filter((f) => /^([0-9A-F]{2}:){31}[0-9A-F]{2}$/.test(f));
+  if (!/^[a-zA-Z]\w*(\.[a-zA-Z]\w*)+$/.test(name) || !fps.length) return null;
+  return [
+    {
+      relation: ['delegate_permission/common.handle_all_urls'],
+      target: { namespace: 'android_app', package_name: name, sha256_cert_fingerprints: fps },
+    },
+  ];
+}
+
 /** public.community.links {discord, whatsapp, …} → link https yang terisi (F-C19). */
 export function communityLinks(value: unknown): { key: string; href: string }[] {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return [];

@@ -47,7 +47,12 @@
     "cuanViews": "{views} views",
     "cuanAmount": "= {amount}",
     "cuanNote": "At {rate} per 1,000 views. Every campaign has its own rate — check the card.",
-    "platforms": "Supported platforms"
+    "platforms": "Supported platforms",
+    "mockLabel": "Preview of the Clipper app with a live campaign",
+    "mockTitle": "Campaigns",
+    "mockNav": { "campaigns": "Campaigns", "tasks": "Tasks", "wallet": "Wallet", "social": "Social" },
+    "topRate": "Top rate in latest campaigns",
+    "topRateValue": "{rate} /1K views"
   },
   "campaigns": {
     "eyebrow": "Live campaigns",

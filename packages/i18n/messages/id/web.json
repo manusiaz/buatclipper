@@ -47,7 +47,12 @@
     "cuanViews": "{views} views",
     "cuanAmount": "= {amount}",
     "cuanNote": "Dengan rate {rate} per 1.000 views. Rate tiap campaign beda-beda, cek di kartunya.",
-    "platforms": "Platform yang didukung"
+    "platforms": "Platform yang didukung",
+    "mockLabel": "Contoh tampilan app Clipper dengan campaign live",
+    "mockTitle": "Campaign",
+    "mockNav": { "campaigns": "Campaign", "tasks": "Tugas", "wallet": "Wallet", "social": "Sosmed" },
+    "topRate": "Rate tertinggi campaign terbaru",
+    "topRateValue": "{rate} /1K views"
   },
   "campaigns": {
     "eyebrow": "Campaign live",

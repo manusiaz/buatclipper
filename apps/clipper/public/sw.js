@@ -1,4 +1,4 @@
-// Service worker app.{domain} (F-C14): web push (payload {title, body, url} dari identity bridge send_push) +
+// Service worker app.{domain} (F-C14): web push (payload {title, body, url, actions?} dari identity bridge send_push) +
 // halaman /offline saat navigasi gagal. Tidak meng-cache data user.
 const CACHE = 'clipper-offline-v1';
 const OFFLINE = '/offline';
@@ -56,20 +56,31 @@ self.addEventListener('push', (event) => {
     data = { body: event.data ? event.data.text() : '' };
   }
   const title = typeof data.title === 'string' && data.title ? data.title.slice(0, 120) : 'Clipper';
+  // Tombol aksi (Android; iOS mengabaikan), mis. approve → Lihat saldo / Kirim clip lagi.
+  const actions = (Array.isArray(data.actions) ? data.actions : [])
+    .filter((a) => a && typeof a.action === 'string' && typeof a.title === 'string')
+    .slice(0, 2);
   event.waitUntil(
-    self.registration.showNotification(title, {
-      body: typeof data.body === 'string' ? data.body.slice(0, 240) : '',
-      icon: '/icons/icon-192.png',
-      badge: '/icons/badge-96.png',
-      tag: typeof data.tag === 'string' ? data.tag : undefined,
-      data: { url: safeUrl(data.url) },
-    }),
+    Promise.all([
+      self.registration.showNotification(title, {
+        body: typeof data.body === 'string' ? data.body.slice(0, 240) : '',
+        icon: '/icons/icon-192.png',
+        badge: '/icons/badge-96.png',
+        tag: typeof data.tag === 'string' ? data.tag : undefined,
+        actions: actions.map((a) => ({ action: a.action.slice(0, 32), title: a.title.slice(0, 40) })),
+        data: { url: safeUrl(data.url), actions: Object.fromEntries(actions.map((a) => [a.action.slice(0, 32), safeUrl(a.url)])) },
+      }),
+      // Badge ikon app terpasang (Badging API); dibersihkan saat notifikasi dibuka.
+      self.navigator.setAppBadge ? self.navigator.setAppBadge().catch(() => {}) : null,
+    ]),
   );
 });
 
 self.addEventListener('notificationclick', (event) => {
   event.notification.close();
-  const target = safeUrl(event.notification.data && event.notification.data.url);
+  const d = event.notification.data || {};
+  const target = safeUrl((event.action && d.actions && d.actions[event.action]) || d.url);
+  if (self.navigator.clearAppBadge) self.navigator.clearAppBadge().catch(() => {});
   event.waitUntil(
     self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then((list) => {
       const same = new URL(target).origin === self.location.origin;

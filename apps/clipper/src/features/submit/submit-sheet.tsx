@@ -41,12 +41,14 @@ export function SubmitSheet({
   campaignId,
   claimId,
   accounts,
+  initialUrl,
 }: {
   open: boolean;
   onOpenChange: (o: boolean) => void;
   campaignId: string;
   claimId: string;
   accounts: SubmitAccount[];
+  initialUrl?: string;
 }) {
   const t = useTranslations('clipper.submit');
   const locale = useLocale() === 'en' ? 'en' : 'id';
@@ -55,8 +57,8 @@ export function SubmitSheet({
   const [accountId, setAccountId] = useState<string | null>(usable.length === 1 ? usable[0]!.id : null);
   const [videos, setVideos] = useState<VideoItem[] | null>(null);
   const [picked, setPicked] = useState<string | null>(null);
-  const [paste, setPaste] = useState(false);
-  const [url, setUrl] = useState('');
+  const [paste, setPaste] = useState(!!initialUrl);
+  const [url, setUrl] = useState(initialUrl ?? '');
   const [error, setError] = useState<Err>(null);
   const [loading, startLoad] = useTransition();
   const [sending, startSend] = useTransition();

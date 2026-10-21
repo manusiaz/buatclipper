@@ -9,6 +9,8 @@ import {
   estimateRelease,
   weekStartUtc,
   maxViews,
+  sharedUrl,
+  assetLinks,
   nextBatchDate,
   recipientFields,
   ruleRate,
@@ -113,5 +115,34 @@ describe('weekStartUtc (AC-5 leaderboard Minggu ini)', () => {
     expect(weekStartUtc(new Date('2026-10-20T03:00:00Z')).toISOString()).toBe('2026-10-19T00:00:00.000Z');
     expect(weekStartUtc(new Date('2026-10-25T23:59:00Z')).toISOString()).toBe('2026-10-19T00:00:00.000Z');
     expect(weekStartUtc(new Date('2026-10-19T00:00:00Z')).toISOString()).toBe('2026-10-19T00:00:00.000Z');
+  });
+});
+
+describe('sharedUrl (share target PWA)', () => {
+  it('ambil link https dari text kalau url kosong', () => {
+    expect(sharedUrl({ text: 'Tonton video ini https://vt.tiktok.com/ZSabc123/ keren!' })).toBe('https://vt.tiktok.com/ZSabc123/');
+  });
+  it('url didahulukan, tanda baca penutup dibuang', () => {
+    expect(sharedUrl({ url: 'https://youtu.be/abc).', text: 'https://x.com/a/status/1' })).toBe('https://youtu.be/abc');
+  });
+  it('http / tanpa link → null', () => {
+    expect(sharedUrl({ url: 'http://evil.test/a', text: 'halo', title: undefined })).toBeNull();
+    expect(sharedUrl({})).toBeNull();
+  });
+});
+
+describe('assetLinks (TWA Play Store)', () => {
+  it('package + sidik jari valid → satu statement handle_all_urls, huruf besar', () => {
+    expect(assetLinks('id.clipper.app', 'ab:ab:ab:ab:ab:ab:ab:ab:ab:ab:ab:ab:ab:ab:ab:ab:ab:ab:ab:ab:ab:ab:ab:ab:ab:ab:ab:ab:ab:ab:ab:ab, 01:01:01:01:01:01:01:01:01:01:01:01:01:01:01:01:01:01:01:01:01:01:01:01:01:01:01:01:01:01:01:01')).toEqual([
+      {
+        relation: ['delegate_permission/common.handle_all_urls'],
+        target: { namespace: 'android_app', package_name: 'id.clipper.app', sha256_cert_fingerprints: ['AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB', '01:01:01:01:01:01:01:01:01:01:01:01:01:01:01:01:01:01:01:01:01:01:01:01:01:01:01:01:01:01:01:01'] },
+      },
+    ]);
+  });
+  it('kosong / package atau sidik jari rusak → null', () => {
+    expect(assetLinks(undefined, undefined)).toBeNull();
+    expect(assetLinks('clipper', 'AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB')).toBeNull();
+    expect(assetLinks('id.clipper.app', 'AB:CD')).toBeNull();
   });
 });

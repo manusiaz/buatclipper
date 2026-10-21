@@ -29,6 +29,16 @@
     "account": "Akun & KYC",
     "signOut": "Keluar"
   },
+  "share": {
+    "title": "Kirim clip",
+    "body": "Pilih campaign yang sudah kamu ambil untuk link ini.",
+    "pick": "Kirim ke campaign ini",
+    "emptyTitle": "Belum ada campaign yang kamu ambil",
+    "emptyBody": "Ambil campaign dulu, posting videonya, lalu bagikan lagi link-nya ke Clipper.",
+    "browse": "Cari campaign",
+    "badTitle": "Link video tidak terbaca",
+    "badBody": "Bagikan link video (https://…) dari TikTok, Instagram, YouTube, Threads, Facebook, atau X."
+  },
   "pwa": {
     "title": "Pasang Clipper di layar utama",
     "dismiss": "Tutup",

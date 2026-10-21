@@ -18,9 +18,11 @@ export interface DetailCtaProps {
   claim: { id: string; expires_at: string } | null;
   accounts: SubmitAccount[];
   autoSubmit?: boolean;
+  /** Link dari share target (/share) → sheet Submit langsung mode tempel link. */
+  initialUrl?: string;
 }
 
-export function DetailCta({ campaignId, state, reasonText, reason, claim, accounts, autoSubmit }: DetailCtaProps) {
+export function DetailCta({ campaignId, state, reasonText, reason, claim, accounts, autoSubmit, initialUrl }: DetailCtaProps) {
   const t = useTranslations('clipper');
   const locale = useLocale() === 'en' ? 'en' : 'id';
   const [open, setOpen] = useState(state === 'claimed_not_submitted' && !!autoSubmit);
@@ -98,7 +100,7 @@ export function DetailCta({ campaignId, state, reasonText, reason, claim, accoun
         </div>
       </div>
       {claim ? (
-        <SubmitSheet open={open} onOpenChange={setOpen} campaignId={campaignId} claimId={claim.id} accounts={accounts} />
+        <SubmitSheet open={open} onOpenChange={setOpen} campaignId={campaignId} claimId={claim.id} accounts={accounts} initialUrl={initialUrl} />
       ) : null}
     </>
   );

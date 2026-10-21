@@ -100,6 +100,8 @@ Wajib tetap benar setiap perubahan (dicek otomatis saat graph ini dibuat; cek ul
 | `page:app/profile` | page | apps/clipper/src/app/profile/page.tsx | Statistik + Trust Score & riwayatnya (F-C12) |  |
 | `page:app/referral` | page | apps/clipper/src/app/referral/page.tsx | Kode & link referral, teman, bonus (F-C16) |  |
 | `page:app/settings` | page | apps/clipper/src/app/settings/page.tsx | Bahasa, tema, notifikasi email promosi, push (F-C11, F-C14, F-C18) |  |
+| `page:app/share` | page | apps/clipper/src/app/share/page.tsx | Share target PWA (manifest share_target): link dari share sheet app sosmed → pilih claim terbuka → detail ?submit=1&url= (sheet Submit terisi) |  |
+| `page:app/.well-known/assetlinks.json` | page | apps/clipper/src/app/.well-known/assetlinks.json/route.ts | Digital Asset Links app Android TWA (Play Store); env kosong = 404 |  |
 | `page:app/social` | page | apps/clipper/src/app/social/page.tsx | Connect akun sosmed (F-C02) |  |
 | `page:app/tasks` | page | apps/clipper/src/app/tasks/page.tsx | Tugas Saya + banding (F-C07) |  |
 | `page:app/wallet` | page | apps/clipper/src/app/wallet/page.tsx | Wallet per unit + kode voucher (F-C08) |  |
@@ -340,6 +342,8 @@ Wajib tetap benar setiap perubahan (dicek otomatis saat graph ini dibuat; cek ul
 | `env:NEXT_PUBLIC_TIKTOK_CLIENT_KEY` | env | db/core/supabase/config.toml | Nama asli TIKTOK_CLIENT_KEY: secret Edge Functions core (URL OAuth dibuat core/social), tidak dibaca app |  |
 | `env:NEXT_PUBLIC_TURNSTILE_SITE_KEY` | env | .env.example | Site key Turnstile (publik) untuk form login |  |
 | `env:NEXT_PUBLIC_VAPID_PUBLIC_KEY` | env | .env.example | Kunci publik Web Push untuk service worker clipper |  |
+| `env:ANDROID_APP_PACKAGE` | env | deploy/config.env.example | Package app Android TWA (runtime app clipper, bukan secret) |  |
+| `env:ANDROID_CERT_SHA256` | env | deploy/config.env.example | Sidik jari SHA-256 sertifikat signing app Android (Play App Signing) |  |
 | `env:PII_ENC_KEY` | env | db/identity/supabase/config.toml | Nama asli PII_ENC_KEYS (JSON versi → kunci AES-256-GCM) + PII_ENC_KEY_VERSION: enkripsi NIK/rekening/penerima — secret Edge Function identity, tidak di DB |  |
 | `env:PII_HMAC_KEY` | env | db/identity/supabase/config.toml | Kunci HMAC nik_hash & account_no_hash — secret Edge Function identity, tidak di DB |  |
 | `env:RESEND_API_KEY` | env | db/identity/supabase/config.toml | Kirim email — hanya identity |  |
@@ -586,6 +590,13 @@ Arah: `A --tipe--> B` = A bergantung pada B. `?` = belum terverifikasi.
 | `page:app/settings` | routes-to | `page:app/campaigns` | PRD v0.3.1 §6 C2.5 (belum di kode: halaman ini tanpa link ke /campaigns; lewat nav bawah layout:clipper) |
 | `page:app/settings` | wrapped-by | `layout:clipper` | apps/clipper/src/app/layout.tsx:31 |
 | `page:app/settings` | writes | `table:ops.notification_prefs` | apps/clipper/src/features/settings/actions.ts:29 |
+| `page:app/share` | wrapped-by | `layout:clipper` | apps/clipper/src/app/layout.tsx:31 |
+| `page:app/share` | reads | `table:market.claims` | apps/clipper/src/app/share/page.tsx:26 |
+| `page:app/share` | routes-to | `page:app/campaigns/[id]` | apps/clipper/src/app/share/page.tsx:56 (?submit=1&url= → SubmitSheet initialUrl) |
+| `layout:clipper` | routes-to | `page:app/share` | apps/clipper/src/app/manifest.ts:19 (share_target) |
+| `page:app/.well-known/assetlinks.json` | configured-by | `env:ANDROID_APP_PACKAGE` | apps/clipper/src/app/.well-known/assetlinks.json/route.ts:7 |
+| `page:app/.well-known/assetlinks.json` | configured-by | `env:ANDROID_CERT_SHA256` | apps/clipper/src/app/.well-known/assetlinks.json/route.ts:7 |
+| `doc:deploy/deploy.sh` | documents | `env:ANDROID_APP_PACKAGE` | deploy/deploy.sh:298 |
 | `page:app/social` | configured-by | `env:NEXT_PUBLIC_GOOGLE_CLIENT_ID` | PRD v0.3.1 §15.7 client ID publik (belum di kode: app tidak membaca client ID; URL OAuth dibuat core/social, lihat mod:social) |
 | `page:app/social` | configured-by | `env:NEXT_PUBLIC_META_APP_ID` | PRD v0.3.1 §15.7 client ID publik (belum di kode: app tidak membaca client ID; URL OAuth dibuat core/social, lihat mod:social) |
 | `page:app/social` | configured-by | `env:NEXT_PUBLIC_TIKTOK_CLIENT_KEY` | PRD v0.3.1 §15.7 client ID publik (belum di kode: app tidak membaca client ID; URL OAuth dibuat core/social, lihat mod:social) |
@@ -738,17 +749,17 @@ Arah: `A --tipe--> B` = A bergantung pada B. `?` = belum terverifikasi.
 | `layout:clipper` | routes-to | `ext:ai-clip` | apps/clipper/src/features/shell/account-menu.tsx:61 |
 | `layout:clipper` | routes-to | `ext:community` | apps/clipper/src/features/shell/account-menu.tsx:55 |
 | `layout:clipper` | routes-to | `page:accounts/` | apps/clipper/src/features/shell/account-menu.tsx:23 |
-| `layout:clipper` | routes-to | `page:app/campaigns` | apps/clipper/src/features/shell/app-chrome.tsx:32 |
+| `layout:clipper` | routes-to | `page:app/campaigns` | apps/clipper/src/features/shell/app-chrome.tsx:33 |
 | `layout:clipper` | routes-to | `page:app/leaderboard` | apps/clipper/src/features/shell/account-menu.tsx:45 |
 | `layout:clipper` | routes-to | `page:app/login` | packages/auth/src/proxy.ts:84 |
-| `layout:clipper` | routes-to | `page:app/notifications` | apps/clipper/src/features/shell/app-chrome.tsx:53 |
+| `layout:clipper` | routes-to | `page:app/notifications` | apps/clipper/src/features/shell/app-chrome.tsx:54 |
 | `layout:clipper` | routes-to | `page:app/offline` | apps/clipper/public/sw.js:36 (fallback service worker, didaftarkan layout.tsx baris 41) |
 | `layout:clipper` | routes-to | `page:app/profile` | apps/clipper/src/features/shell/account-menu.tsx:42 |
 | `layout:clipper` | routes-to | `page:app/referral` | apps/clipper/src/features/shell/account-menu.tsx:48 |
 | `layout:clipper` | routes-to | `page:app/settings` | apps/clipper/src/features/shell/account-menu.tsx:51 |
-| `layout:clipper` | routes-to | `page:app/social` | apps/clipper/src/features/shell/app-chrome.tsx:35 |
-| `layout:clipper` | routes-to | `page:app/tasks` | apps/clipper/src/features/shell/app-chrome.tsx:33 |
-| `layout:clipper` | routes-to | `page:app/wallet` | apps/clipper/src/features/shell/app-chrome.tsx:34 |
+| `layout:clipper` | routes-to | `page:app/social` | apps/clipper/src/features/shell/app-chrome.tsx:36 |
+| `layout:clipper` | routes-to | `page:app/tasks` | apps/clipper/src/features/shell/app-chrome.tsx:34 |
+| `layout:clipper` | routes-to | `page:app/wallet` | apps/clipper/src/features/shell/app-chrome.tsx:35 |
 | `layout:clipper` | routes-to | `page:www/` | PRD v0.3.1 §6.6 menu: Menu avatar: Keluar; kode: features/shell/account-menu.tsx baris 76 → signOut → hosts.web (packages/auth/src/actions.ts baris 70) |
 | `layout:clipper` | wrapped-by | `mod:i18n` | apps/clipper/src/i18n/request.ts:3 |
 | `layout:web` | calls | `mod:db-core` | apps/web/src/lib/core.ts:2 (client anon app web) |
@@ -884,7 +895,7 @@ Arah: `A --tipe--> B` = A bergantung pada B. `?` = belum terverifikasi.
 | `api:fn identity/bridge` | calls | `ext:web-push` | db/identity/supabase/functions/bridge/index.ts:29 |
 | `api:fn identity/bridge` | configured-by | `env:BRIDGE_SECRET_CORE_TO_IDENTITY` | db/identity/supabase/functions/bridge/index.ts:21 |
 | `api:fn identity/bridge` | configured-by | `env:RESEND_API_KEY` | db/identity/supabase/functions/bridge/index.ts:28 |
-| `api:fn identity/bridge` | configured-by | `env:VAPID_PRIVATE_KEY` | db/identity/supabase/functions/_shared/push.ts:37 |
+| `api:fn identity/bridge` | configured-by | `env:VAPID_PRIVATE_KEY` | db/identity/supabase/functions/_shared/push.ts:38 |
 | `api:fn identity/bridge` | guarded-by | `policy:bridge-hmac` | db/identity/supabase/functions/bridge/handler.ts:200 |
 | `api:fn identity/bridge` | reads | `table:auth.users` | db/identity/supabase/functions/bridge/handler.ts:69 |
 | `api:fn identity/bridge` | calls | `api:fn core/bridge` | db/identity/supabase/functions/_shared/disburse.ts:264 (aksi disburse: get_payout, lalu mark_instant) |
@@ -1450,13 +1461,13 @@ Arah: `A --tipe--> B` = A bergantung pada B. `?` = belum terverifikasi.
 | `test:core.full-product` | tests | `table:trust.score_events` | db/core/supabase/tests/core_full_product.test.sql:141 |
 | `test:e2e.cross-host` | configured-by | `doc:scripts/dev-stack.sh` | e2e/journey.cjs:1 |
 | `test:e2e.cross-host` | configured-by | `doc:deploy/deploy.sh` | e2e/journey.cjs:2 (E2E_* menimpa host & DB untuk stack self-hosted) |
-| `test:e2e.cross-host` | tests | `page:accounts/invite/[token]` | e2e/journey.cjs:102 |
+| `test:e2e.cross-host` | tests | `page:accounts/invite/[token]` | e2e/journey.cjs:114 |
 | `test:e2e.cross-host` | tests | `page:accounts/login` | e2e/journey.cjs:55 |
 | `test:e2e.cross-host` | tests | `page:accounts/onboarding` | e2e/journey.cjs:62 |
 | `test:e2e.cross-host` | tests | `page:app/campaigns` | e2e/journey.cjs:75 |
 | `test:e2e.cross-host` | tests | `page:app/campaigns/[id]` | e2e/journey.cjs:86 |
 | `test:e2e.cross-host` | tests | `page:app/tasks` | e2e/journey.cjs:94 |
-| `test:e2e.cross-host` | tests | `page:brand/` | e2e/journey.cjs:116 |
+| `test:e2e.cross-host` | tests | `page:brand/` | e2e/journey.cjs:128 |
 | `test:e2e.cross-host` | tests | `page:www/` | e2e/journey.cjs:44 |
 | `test:e2e.cross-host` | tests | `page:www/c/[slug]` | e2e/journey.cjs:49 |
 | `test:member-data.integrity` | tests | `api:fn identity/member-data` | db/identity/supabase/tests/identity_access.test.sql:69 (SQL di balik member-data; handler dites Deno member-data/handler_test.ts) |
@@ -2345,6 +2356,7 @@ Masalah sistem yang ditemukan saat menyusun PRD v0.2 dan saat dicek ulang (v0.2.
 | 2026-10-21 | `doc:deploy/deploy.sh` | Review Claudex R45: (1) `backup` (cron, mode all) berhenti total bila satu container DB ada tapi mati — docker inspect lolos, docker exec gagal, set -e → stack lain tidak di-backup (direproduksi: identity-db stop → core tanpa backup); (2) `check` meloloskan DNS yang mengarah ke server lama (hanya mengecek record ada) → sertifikat Let's Encrypt gagal saat up | diperbaiki: backup memeriksa .State.Running — container tidak ada dilewati di all, container mati = GAGAL + stack lain tetap di-backup + exit 1 (diuji 5 kasus); check mencocokkan IP DNS dengan IP interface server atau PUBLIC_IP (config.env, untuk NAT), https → gagal bila tidak cocok (diuji: server lama gagal, PUBLIC_IP cocok lolos, IP lokal lolos) |
 | 2026-10-21 | `doc:deploy/deploy.sh` | Review Claudex R46: check DNS meloloskan record campuran (server ini + sisa server lama) karena cukup satu IP cocok — ACME/pengunjung bisa memilih record lama (direproduksi: HEAD rc 0) | diperbaiki: semua A record harus IP interface/PUBLIC_IP server ini, IP asing disebut di pesan (diuji: campuran gagal, hanya lama gagal, hanya lokal lolos) |
 | 2026-10-21 | `doc:deploy/deploy.sh` | Review Claudex R47: PUBLIC_IP menggantikan (bukan menambah) IP interface → server NAT dengan split DNS ke IP privatnya gagal palsu (direproduksi: HEAD rc 1) | diperbaiki: himpunan IP server = PUBLIC_IP + hostname -I (diuji: split DNS lolos, record server lama tetap gagal, record publik = PUBLIC_IP lolos) |
+| 2026-10-21 | `page:www/` | Keluhan user ("websitenya gajelas", "apps mobile kan ada di desainnya"), dicek ke DS: (1) hero landing hanya teks + kartu biru, tanpa visual — Clipper Hero DS 16–18 meminta split/layered hero dengan media, kartu kaca melayang, mockup HP; (2) DS Android/iOS v2 hanya halaman 01 Brand Overview berisi momen native (share sheet kirim clip, notif approve dengan tombol, widget saldo, Live Activity) sedangkan PRD §3 menulis native app = non-goal (cukup PWA, F-C14); PWA belum punya share target, tombol aksi notifikasi, maupun badge; tidak ada jalur Play Store | hero: mockup HP berisi CampaignCard asli (campaign live teratas, stream di Suspense supaya LCP tetap teks), kartu kaca contoh cuan + rate tertinggi dari data live (tanpa angka sosial palsu seperti "25K+ kreator"), blob token, HP: kartu jadi grid di bawah mockup; PWA: share_target → /share → detail ?submit=1&url (sheet Submit terisi), push submission.approved membawa aksi Lihat saldo / Kirim clip lagi, sw.js aksi + setAppBadge; Android: assetlinks.json dari env + Bubblewrap (project TWA ter-generate: SEND intent, autoVerify, asset_statements). Diuji: e2e 10/10 (langkah share baru), tes sw.js di vm gagal di versi lama, templates_test, light/dark 390/1440 tanpa overflow. Tidak dibuat: widget home screen, Live Activity, Dynamic Island, Share Extension iOS (butuh app native Kotlin/SwiftUI; iOS butuh Mac + Xcode) |
 
 ## Keputusan
 

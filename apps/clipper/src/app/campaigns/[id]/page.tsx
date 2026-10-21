@@ -28,13 +28,13 @@ import { Brief } from '@/features/campaigns/brief';
 import { categoryNames } from '@/features/campaigns/cards';
 import { parseDetail } from '@/features/campaigns/detail';
 import { DetailCta } from '@/features/claim/detail-cta';
-import { arr, budgetUsedRatio, cardRates, isPlatform, isUuid, maxViews, num, type RateRule } from '@/features/lib/pure';
+import { arr, budgetUsedRatio, cardRates, httpsUrl, isPlatform, isUuid, maxViews, num, type RateRule } from '@/features/lib/pure';
 import { core, errorText, myClipTerms, publicUrl, uiLocale } from '@/features/lib/server';
 import { formatAmount } from '@/features/lib/units';
 
 export const metadata: Metadata = { title: 'Detail campaign' };
 
-type Props = { params: Promise<{ id: string }>; searchParams: Promise<{ submit?: string }> };
+type Props = { params: Promise<{ id: string }>; searchParams: Promise<{ submit?: string; url?: string }> };
 
 // F-C04–C06 / C1.6, C1.8: brief lengkap, rate & cap per platform, timeline absolut (WIB), claim, submit.
 export default async function CampaignDetailPage({ params, searchParams }: Props) {
@@ -427,6 +427,7 @@ export default async function CampaignDetailPage({ params, searchParams }: Props
           .filter((a) => isPlatform(a.platform))
           .map((a) => ({ id: a.id ?? '', platform: a.platform as Platform, handle: a.handle ?? '', status: a.status ?? '' }))}
         autoSubmit={sp.submit === '1'}
+        initialUrl={httpsUrl(sp.url) ?? undefined}
       />
     </article>
   );

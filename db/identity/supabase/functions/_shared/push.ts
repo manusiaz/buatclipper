@@ -15,6 +15,7 @@ export interface PushMessage {
   body: string;
   url: string;
   event: string;
+  actions?: { action: string; title: string; url: string }[];
 }
 
 export interface PushSender {

@@ -65,7 +65,14 @@ export interface Rendered {
   subject: string;
   text: string;
   html: string;
-  push: { title: string; body: string; url: string };
+  push: { title: string; body: string; url: string; actions?: PushAction[] };
+}
+
+/** Tombol di notifikasi push (Android; iOS mengabaikan) — sw.js membuka url-nya. */
+export interface PushAction {
+  action: string;
+  title: string;
+  url: string;
 }
 
 type Payload = Record<string, unknown>;
@@ -75,6 +82,7 @@ interface Def {
   lines: (p: Payload) => (string | null | false | undefined)[];
   cta: string;
   url: (p: Payload, l: Links) => string;
+  actions?: (p: Payload, l: Links) => PushAction[];
 }
 
 export function escapeHtml(s: string): string {
@@ -296,6 +304,11 @@ const DEFS: Record<NotificationEvent, Def> = {
     lines: (p) => [`Video kamu di campaign ${campaign(p)} disetujui. Views-nya sekarang dihitung untuk earning.`],
     cta: "Lihat tugas",
     url: (_p, l) => join(l.app, "tasks"),
+    // DS Android/iOS 01: notif approve → "Lihat saldo" / "Kirim clip lagi".
+    actions: (p, l) => [
+      { action: "wallet", title: "Lihat saldo", url: join(l.app, "wallet") },
+      { action: "campaign", title: "Kirim clip lagi", url: appCampaign(p, l) },
+    ],
   },
   "submission.rejected": {
     title: () => "Submisi kamu ditolak",
@@ -641,6 +654,11 @@ export function render(
     subject: clip(title, 150),
     text,
     html,
-    push: { title: clip(title, 80), body: clip((lines[0] ?? "").replace(/\s+/g, " "), 180), url },
+    push: {
+      title: clip(title, 80),
+      body: clip((lines[0] ?? "").replace(/\s+/g, " "), 180),
+      url,
+      ...(def.actions ? { actions: def.actions(p, links).slice(0, 2) } : {}),
+    },
   };
 }
