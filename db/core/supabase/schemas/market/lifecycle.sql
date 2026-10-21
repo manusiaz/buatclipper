@@ -101,6 +101,7 @@ begin
         coalesce((select jsonb_agg(finance.amount_ref(rp.reward_type_id, finance.balance(finance.account('campaign_pool', rp.id, rp.reward_type_id)))
                                    || jsonb_build_object('pool_id', rp.id) order by rp.id)
                   from finance.reward_pools rp where rp.campaign_id = r.id), '[]')));
+    perform finance.return_noncash_leftover(r.id);
   end loop;
 
   -- Kesehatan job tracking (F-A01): submisi macet (tracking.lagging_count, termasuk worker mati) → alert (maks satu per 6 jam).

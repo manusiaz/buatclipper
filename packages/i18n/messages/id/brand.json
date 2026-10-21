@@ -536,7 +536,7 @@
     "decimals": "Desimal",
     "decimalsHelp": "0–6 angka di belakang koma.",
     "stock": "Stok",
-    "stockHelp": "Kosongkan kalau tidak dibatasi.",
+    "stockHelp": "Sisa stok yang belum dipakai campaign: berkurang saat pool dibayar, kembali saat campaign selesai atau batal. Kosongkan kalau tidak dibatasi.",
     "unlimited": "Tidak dibatasi",
     "perUnit": "Rp per {unit}",
     "fulfillment": "Cara pengiriman",

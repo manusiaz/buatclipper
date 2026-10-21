@@ -673,12 +673,22 @@ select finance.post(gen_random_uuid(), jsonb_build_array(  -- setara request_ful
             'fulfillment', '99999999-0000-0000-0000-0000000000e1', 'available'),
   finance.e(finance.account('user_wallet', '11111111-0000-0000-0000-00000000000a', '77777777-0000-0000-0000-000000000002'), 5,
             'fulfillment', '99999999-0000-0000-0000-0000000000e1', 'withdrawn')));
+-- Regresi R73-1: penerima disuspend di antara bridge_fulfillment_export dan attach → berkas basi ditolak.
+update market.profiles set status = 'suspended', suspended_until = now() + interval '3 days' where id = '11111111-0000-0000-0000-00000000000a';
+select throws_ok($$ select api.bridge_attach_fulfillment_export('77777777-0000-0000-0000-000000000002', 'pii-exports/recipients/x.csv',
+                    array['99999999-0000-0000-0000-0000000000e1'::uuid]) $$, 'P0001', 'export_stale',
+                 'R73: penerima kena sanksi setelah dibaca → CSV tidak diserahkan');
+update market.profiles set status = 'active', suspended_until = null where id = '11111111-0000-0000-0000-00000000000a';
 select api.bridge_attach_fulfillment_export('77777777-0000-0000-0000-000000000002', 'pii-exports/recipients/x.csv',
                                             array['99999999-0000-0000-0000-0000000000e1'::uuid]);
 select is((select status::text || ':' || export_ref from finance.fulfillments where id = '99999999-0000-0000-0000-0000000000e1'),
           'processing:pii-exports/recipients/x.csv', 'CSV diserahkan → klaim processing + export_ref');
 select lives_ok($$ select api.bridge_attach_fulfillment_export('77777777-0000-0000-0000-000000000002', 'pii-exports/recipients/x.csv',
                      array['99999999-0000-0000-0000-0000000000e1'::uuid]) $$, 'serah-terima berkas yang sama diulang (respons hilang) = no-op');
+update market.profiles set status = 'suspended', suspended_until = now() + interval '3 days' where id = '11111111-0000-0000-0000-00000000000a';
+select lives_ok($$ select api.bridge_attach_fulfillment_export('77777777-0000-0000-0000-000000000002', 'pii-exports/recipients/x.csv',
+                     array['99999999-0000-0000-0000-0000000000e1'::uuid]) $$, 'R73: ulang berkas yang sudah diterima tetap no-op walau penerima kini disuspend');
+update market.profiles set status = 'active', suspended_until = null where id = '11111111-0000-0000-0000-00000000000a';
 set local role authenticated;
 select pg_temp.jwt('33333333-0000-0000-0000-0000000000a0', '{"app_roles":["admin_ops"],"aal":"aal2"}');
 reset role;
@@ -2343,6 +2353,32 @@ select throws_ok($$ select finance.settle_invoice((select i from finance.invoice
 select finance.void_stale_addons();
 select is((select status from finance.invoices where id = (select id from t_pay where k = 'inv_r62')), 'void',
           'R62: invoice top-up/pin basi di-void saat campaign tidak berjalan');
+
+-- R73: stok reward terbatas dipesan saat pool didanai, lintas campaign; sisa pool campaign settled kembali ke stok.
+insert into market.reward_types (id, owner_org_id, code, name, kind, unit_label, idr_value_per_unit, decimals, fulfillment, recipient_schema, stock)
+values ('77777777-0000-0000-0000-0000000000c7', '44444444-0000-0000-0000-000000000001', 'MERCH', 'Merch', 'physical', 'pcs', 100000, 0,
+        'manual_export', '[]', 5);
+select pg_temp.mk_campaign('55555555-0000-0000-0000-0000000000c7', 'r73-a');
+select pg_temp.mk_campaign('55555555-0000-0000-0000-0000000000c8', 'r73-b');
+insert into finance.reward_pools (id, campaign_id, reward_type_id, total, max_per_clip) values
+  ('66666666-0000-0000-0000-0000000000c7', '55555555-0000-0000-0000-0000000000c7', '77777777-0000-0000-0000-0000000000c7', 1, 1),
+  ('66666666-0000-0000-0000-0000000000c8', '55555555-0000-0000-0000-0000000000c8', '77777777-0000-0000-0000-0000000000c7', 1, 1);
+insert into t_pay select 'inv_r73a', (finance.issue_invoice('44444444-0000-0000-0000-000000000001', '55555555-0000-0000-0000-0000000000c7', 'topup',
+  0, 0, null, '[{"pool_id":"66666666-0000-0000-0000-0000000000c7","amount":3}]')).id;
+insert into t_pay select 'inv_r73b', (finance.issue_invoice('44444444-0000-0000-0000-000000000001', '55555555-0000-0000-0000-0000000000c8', 'topup',
+  0, 0, null, '[{"pool_id":"66666666-0000-0000-0000-0000000000c8","amount":3}]')).id;
+select finance.settle_invoice((select i from finance.invoices i where i.id = (select id from t_pay where k = 'inv_r73a')));
+select is((select stock from market.reward_types where id = '77777777-0000-0000-0000-0000000000c7'), 2::numeric,
+          'R73: pool 3 pcs didanai → stok tersisa 2');
+select throws_ok($$ select finance.settle_invoice((select i from finance.invoices i where i.id = (select id from t_pay where k = 'inv_r73b'))) $$,
+                 'P0001', 'reward_stock_insufficient', 'R73: pool campaign lain melebihi sisa stok → pelunasan ditolak (atomik lintas campaign)');
+select throws_ok($$ select finance.issue_invoice('44444444-0000-0000-0000-000000000001', '55555555-0000-0000-0000-0000000000c8', 'topup',
+                    0, 0, null, '[{"pool_id":"66666666-0000-0000-0000-0000000000c8","amount":3}]') $$,
+                 'P0001', 'reward_stock_insufficient', 'R73: invoice baru yang melebihi sisa stok ditolak sejak terbit');
+select finance.return_noncash_leftover('55555555-0000-0000-0000-0000000000c7');
+select is(array[(select stock from market.reward_types where id = '77777777-0000-0000-0000-0000000000c7'),
+                finance.balance(finance.account('campaign_pool', '66666666-0000-0000-0000-0000000000c7', '77777777-0000-0000-0000-0000000000c7'))],
+          array[5, 0]::numeric[], 'R73: sisa pool non-tunai campaign settled kembali ke brand dan ke stok');
 
 -- R62-2: clip pengganti sudah memenuhi max_clips_per_clipper → banding clip lama ditolak
 select pg_temp.mk_campaign('55555555-0000-0000-0000-00000000009b', 'r62-limit');

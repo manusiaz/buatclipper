@@ -201,6 +201,29 @@ end $$;
 --   campaign_pool(IDR) −saldo, platform_revenue −fee, tax_payable −pajak → org_credit +total (dibayar keluar saat pay_refund);
 --   stok non-tunai kembali ke brand: campaign_pool(rt) −saldo → bank_clearing(rt) +saldo.
 -- Keputusan owner 2026-10-19: jasa paket managed ikut dikembalikan bila batal sebelum live. Invoice issued di-void.
+-- Campaign settled: sisa pool non-tunai (voucher/Diamonds yang tidak terpakai) kembali ke brand dan ke stok reward type (R73).
+-- Jurnal: campaign_pool(rt) −saldo → bank_clearing(rt) +saldo (ref_type refund, ref_id 'leftover:<campaign>'). Rupiah tetap lewat
+-- api.request_refund (refund/rollover pilihan brand).
+create function finance.return_noncash_leftover(p_campaign uuid) returns void
+language plpgsql security definer set search_path = '' as $$
+declare
+  x record;
+  entries jsonb := '[]';
+begin
+  for x in select rp.reward_type_id as rt, a.id as account, finance.balance(a.id) as bal
+             from finance.reward_pools rp
+             join finance.ledger_accounts a on a.owner_type = 'campaign_pool' and a.owner_id = rp.id
+            where rp.campaign_id = p_campaign and rp.reward_type_id <> finance.idr() and finance.balance(a.id) > 0
+            order by rp.id for update of rp loop
+    entries := entries || jsonb_build_array(finance.e(x.account, -x.bal, 'refund', 'leftover:' || p_campaign),
+                                            finance.e(finance.account('bank_clearing', null, x.rt), x.bal, 'refund', 'leftover:' || p_campaign));
+    update market.reward_types set stock = stock + x.bal where id = x.rt and stock is not null;
+  end loop;
+  if entries <> '[]' then
+    perform finance.post(gen_random_uuid(), entries);
+  end if;
+end $$;
+
 create function finance.refund_cancelled_campaign(p_campaign uuid) returns uuid
 language plpgsql security definer set search_path = '' as $$
 declare
@@ -254,6 +277,7 @@ begin
     entries := entries || jsonb_build_array(finance.e(x.account, -x.bal, 'refund', rid::text));
     if x.rt <> idr then
       entries := entries || jsonb_build_array(finance.e(finance.account('bank_clearing', null, x.rt), x.bal, 'refund', rid::text));
+      update market.reward_types set stock = stock + x.bal where id = x.rt and stock is not null;
     end if;
   end loop;
   entries := entries || jsonb_build_array(
@@ -280,6 +304,6 @@ create trigger campaigns_cancel_refund after update of status on market.campaign
   execute function finance.on_campaign_cancelled();
 
 revoke execute on function api.request_refund(uuid, uuid, text, numeric, text), api.approve_refund(uuid), api.set_refund_dest(uuid, jsonb),
-  finance.pay_refund(uuid, text), finance.refund_cancelled_campaign(uuid), finance.on_campaign_cancelled() from public;
+  finance.pay_refund(uuid, text), finance.refund_cancelled_campaign(uuid), finance.return_noncash_leftover(uuid), finance.on_campaign_cancelled() from public;
 grant execute on function api.request_refund(uuid, uuid, text, numeric, text), api.approve_refund(uuid), api.set_refund_dest(uuid, jsonb)
   to authenticated;

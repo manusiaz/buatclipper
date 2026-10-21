@@ -536,7 +536,7 @@
     "decimals": "Decimals",
     "decimalsHelp": "0–6 digits after the decimal point.",
     "stock": "Stock",
-    "stockHelp": "Leave empty for unlimited.",
+    "stockHelp": "Stock not yet committed to a campaign: it goes down when a pool is paid and comes back when the campaign ends or is cancelled. Leave empty for unlimited.",
     "unlimited": "Unlimited",
     "perUnit": "Rp per {unit}",
     "fulfillment": "Fulfillment",

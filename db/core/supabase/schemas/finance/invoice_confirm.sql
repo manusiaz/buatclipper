@@ -59,6 +59,13 @@ begin
       if x.reward_type_id = idr then
         pool_idr := pool_idr + x.amount;
       else
+        -- Stok terbatas (reward_types.stock = sisa yang belum dipakai pool mana pun) dikunci & dipotong di sini, lintas campaign (R73).
+        if exists (select 1 from market.reward_types rt where rt.id = x.reward_type_id and rt.stock is not null) then
+          update market.reward_types rt set stock = rt.stock - x.amount where rt.id = x.reward_type_id and rt.stock >= x.amount;
+          if not found then
+            raise exception 'reward_stock_insufficient' using errcode = 'P0001';
+          end if;
+        end if;
         entries := entries || jsonb_build_array(finance.e(finance.account('bank_clearing', null, x.reward_type_id), -x.amount,
                                                           'invoice_payment', inv.id::text));
       end if;

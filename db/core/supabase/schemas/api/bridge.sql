@@ -294,10 +294,14 @@ begin
     raise exception 'invalid:file_ref' using errcode = 'P0001';
   end if;
   perform 1 from finance.fulfillments f where f.id = any (coalesce(p_exported, '{}')) order by f.id for update;
+  -- Profil penerima dikunci (FOR SHARE) supaya ban/suspend yang sedang berjalan selesai dulu sebelum cek withdraw_blocked.
+  perform 1 from market.profiles pr where pr.id in (select f.user_id from finance.fulfillments f where f.id = any (coalesce(p_exported, '{}')))
+   order by pr.id for share;
   if exists (select 1 from unnest(coalesce(p_exported, '{}')) e(id)
               where not exists (select 1 from finance.fulfillments f join market.reward_types rt on rt.id = f.reward_type_id
                                  where f.id = e.id and f.reward_type_id = p_reward_type and rt.fulfillment = 'manual_export'
-                                   and (f.status = 'requested' or f.export_ref = p_file_ref))) then
+                                   and (f.status = 'requested' or f.export_ref = p_file_ref)
+                                   and (f.export_ref = p_file_ref or not finance.withdraw_blocked(f.user_id)))) then  -- R73
     raise exception 'export_stale' using errcode = 'P0001', detail = 'klaim berubah sejak dibaca; ekspor ulang';
   end if;
   update finance.fulfillments set status = 'processing', export_ref = p_file_ref where id = any (p_exported) and status = 'requested';

@@ -104,6 +104,14 @@ begin
     else
       base := sub + case when p_kind = 'campaign' then finance.noncash_value_idr(p_campaign) else 0 end;
     end if;
+    if exists (select 1 from finance.reward_pools pl join market.reward_types rt on rt.id = pl.reward_type_id
+                 left join lateral (select sum((e ->> 'amount')::numeric) as amount from jsonb_array_elements(p_pool_topups) e
+                                     where (e ->> 'pool_id')::uuid = pl.id) t on true
+                where pl.campaign_id = p_campaign and rt.stock is not null
+                  and (p_kind = 'campaign' or t.amount is not null)
+                group by rt.id, rt.stock having sum(coalesce(t.amount, pl.total)) > rt.stock) then
+      perform market.fail('reward_stock_insufficient', 'stok reward tidak cukup untuk pool ini');
+    end if;
     mgmt := round(base * fr.mgmt_fee_pct / 100, 2);
     adm := round(base * fr.admin_fee_pct / 100, 2);
   elsif sub <> 0 then
