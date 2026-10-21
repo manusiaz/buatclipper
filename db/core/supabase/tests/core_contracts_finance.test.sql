@@ -2218,5 +2218,21 @@ select is((select count(*)::int from finance.ledger_accounts a where a.owner_typ
 set constraints all immediate;
 select pass('akhir: constraint trigger saldo seimbang lolos');
 
+
+-- R60: dana pool yang sudah ditarik (refund/rollover) tidak membiayai earning baru (mis. banding dimenangkan belakangan)
+select pg_temp.mk_campaign('55555555-0000-0000-0000-0000000000f6', 'r60-drained');
+select pg_temp.mk_pool('55555555-0000-0000-0000-0000000000f6', '66666666-0000-0000-0000-0000000000f6', 1000000, 100000);
+select finance.post(gen_random_uuid(), jsonb_build_array(
+  finance.e(finance.account('campaign_pool', '66666666-0000-0000-0000-0000000000f6', '77777777-0000-0000-0000-000000000001'), -995000, 'refund', 'fixture:r60'),
+  finance.e(finance.account('bank_clearing', null, '77777777-0000-0000-0000-000000000001'), 995000, 'refund', 'fixture:r60')));
+insert into t_ids select 'r_r60', pg_temp.mk_rule('55555555-0000-0000-0000-0000000000f6', '66666666-0000-0000-0000-0000000000f6', 'per_1k_views', '{"rate":2000}');
+insert into t_ids select 's_r60', pg_temp.mk_sub('55555555-0000-0000-0000-0000000000f6', '11111111-0000-0000-0000-00000000000f', 'r60');
+create temp table t_r60_before as select pg_temp.bal('11111111-0000-0000-0000-00000000000f', 'pending') as v;
+select pg_temp.snap((select v::uuid from t_ids where k = 's_r60'), 50000);
+select ok(finance.balance(finance.account('campaign_pool', '66666666-0000-0000-0000-0000000000f6', '77777777-0000-0000-0000-000000000001')) >= 0,
+          'R60: saldo ledger pool tidak pernah negatif setelah dana ditarik');
+select ok(pg_temp.bal('11111111-0000-0000-0000-00000000000f', 'pending') - (select v from t_r60_before) <= 5000,
+          'R60: earning baru dibatasi sisa dana nyata pool (Rp5.000), bukan total − allocated (Rp1.000.000)');
+
 select * from finish();
 rollback;

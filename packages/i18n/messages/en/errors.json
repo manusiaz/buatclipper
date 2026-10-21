@@ -44,6 +44,7 @@
   "slug_taken": "That campaign address is taken.",
   "pools_locked_after_payment": "Budget can't change after payment. Use a top-up.",
   "appeal_used": "The appeal for this submission was already used.",
+  "appeal_closed": "This campaign has ended, so appeals for this submission are closed.",
   "invite_used": "This invite was already used.",
   "invite_expired": "This invite has expired. Ask for a new link.",
   "not_agency": "This organization isn't an agency.",

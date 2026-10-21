@@ -23,6 +23,10 @@ begin
   if s.status <> 'rejected' then
     perform market.fail('invalid_state:' || s.status, 'banding hanya untuk submisi yang ditolak');
   end if;
+  -- Campaign selesai (dana sisa bisa di-refund/rollover) → banding ditutup; banding yang berjalan menahan settle.
+  if exists (select 1 from market.campaigns c where c.id = s.campaign_id and c.status in ('settling', 'settled', 'cancelled')) then
+    perform market.fail('appeal_closed', 'campaign sudah selesai, banding ditutup');
+  end if;
   begin
     insert into trust.review_decisions (target_type, target_id, actor_id, decision, message)
     values ('submission', s.id, uid, 'appeal', btrim(p_message));

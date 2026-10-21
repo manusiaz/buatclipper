@@ -210,7 +210,9 @@ begin
     amt := trunc(least(raw, p.max_per_clip * cap_pct / 100 - coalesce((select sum(x.amount + x.demand) from finance.clip_earnings x
                                                         where x.submission_id = s.id and x.pool_id = p.id), 0)), 10);
     continue when amt <= 0;
-    remaining := p.total - p.allocated;
+    -- Sisa pool = total − allocated, dibatasi saldo ledger pool (dana yang sudah di-refund/rollover tidak membiayai earning).
+    remaining := least(p.total - p.allocated,
+                       greatest(finance.balance(finance.account('campaign_pool', p.id, p.reward_type_id)), 0));
     in_settle := exists (select 1 from finance.pool_settlements ps where ps.pool_id = p.id);
     if not in_settle and remaining > 0 and remaining * 100 < p.total * pct then
       perform finance.start_settlement(p.id);
@@ -357,7 +359,7 @@ declare
   unit constant numeric := 0.0000000001;
 begin
   select * into p from finance.reward_pools fp where fp.id = p_pool for update;
-  rem := p.total - p.allocated;
+  rem := least(p.total - p.allocated, greatest(finance.balance(finance.account('campaign_pool', p.id, p.reward_type_id)), 0));
   select coalesce(sum(ce.demand), 0) into dsum from finance.clip_earnings ce where ce.pool_id = p.id and ce.demand > 0;
   if dsum > 0 then
     for x in with dm as (

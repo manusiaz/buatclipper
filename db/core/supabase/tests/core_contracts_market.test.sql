@@ -993,6 +993,19 @@ select throws_ok($$ select api.appeal_submission('aaaaaaaa-0000-0000-0000-000000
                  'banding wajib alasan');
 select throws_ok($$ select api.appeal_submission('aaaaaaaa-0000-0000-0000-000000000075', 'kenapa') $$, 'P0001', 'invalid_state:tracking',
                  'banding hanya dari rejected');
+-- R60: campaign sudah selesai (dana sisa bisa ditarik brand) → banding ditutup
+reset role;
+create temp table t_r60 as select id, status from market.campaigns
+  where id = (select campaign_id from tracking.submissions where id = 'aaaaaaaa-0000-0000-0000-000000000072');
+set local session_replication_role = replica;
+update market.campaigns set status = 'settled' where id = (select id from t_r60);
+select pg_temp.jwt('11111111-0000-0000-0000-00000000000e');
+select throws_ok($$ select api.appeal_submission('aaaaaaaa-0000-0000-0000-000000000072', 'Hashtag ada di komentar pertama') $$, 'P0001',
+                 'appeal_closed', 'banding ditutup setelah campaign settled');
+reset role;
+update market.campaigns c set status = t.status from t_r60 t where c.id = t.id;
+set local session_replication_role = origin;
+select pg_temp.jwt('11111111-0000-0000-0000-00000000000e');
 select lives_ok($$ select api.appeal_submission('aaaaaaaa-0000-0000-0000-000000000072', 'Hashtag ada di komentar pertama') $$,
                 'pemilik banding sekali');
 select pg_temp.jwt('11111111-0000-0000-0000-00000000000b');
