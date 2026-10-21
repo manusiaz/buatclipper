@@ -396,7 +396,7 @@ step('clipper-signup', ['clipper'], async ({ clipper }) => {
   await shot(clipper, 'app-campaigns');
   // SIMULASI C1.5: OAuth TikTok tidak bisa offline → akun sosmed terverifikasi ditulis seperti worker_upsert_social_account
   S.accountId = core(`insert into tracking.social_accounts (user_id, platform, external_id, handle, followers, platform_created_at)
-                      values ('${S.clipperId}', 'tiktok', 'tt-${S.clipperUser}', '@${S.clipperUser}', 5000, now() - interval '400 days')
+                      values ('${S.clipperId}', 'tiktok', 'tt-${S.clipperUser}', '${S.clipperUser}', 5000, now() - interval '400 days')
                       returning id`);
   log('clipper: onboarding → app/campaigns menampilkan campaign; akun TikTok (SQL)');
 });
@@ -622,9 +622,21 @@ step('clipper-withdraw', ['clipper'], async ({ clipper }) => {
   await clipper.goto(APP + '/wallet/withdraw');
   await clipper.getByText('Sebelum tarik').first().waitFor({ timeout: 30000 });
   await shot(clipper, 'app-withdraw-form');
-  await clipper.getByRole('button', { name: 'Semua' }).click().catch(() => {});
-  const amt = clipper.getByLabel(/^Jumlah/).first();
-  if (!(await amt.inputValue())) await amt.fill('200000');
+  if (await clipper.getByText('Menunggu verifikasi').count()) {
+    // Claim kyc di JWT ikut berubah baru saat token di-refresh (jwt_expiry 600 dtk, by design C1.12). Tanpa menunggu 10 menit:
+    // keluar lalu masuk lagi di app (C2.2) → token baru membawa kyc=approved.
+    finding('withdraw: KYC sudah approved tapi checklist masih "Menunggu verifikasi" sampai JWT di-refresh (≤10 menit, sesuai desain)');
+    await clipper.context().clearCookies();
+    await clipper.goto(`${APP}/login?next=${encodeURIComponent('/wallet/withdraw')}`);
+    await signIn(clipper, S.clipperEmail);
+    await clipper.waitForURL(APP + '/wallet/withdraw**', { timeout: 30000 });
+    await clipper.getByText('Sebelum tarik').first().waitFor({ timeout: 30000 });
+  }
+  await clipper.getByText('Disetujui').first().waitFor({ timeout: 15000 });
+  await clipper.getByRole('button', { name: 'Semua' }).click();
+  const amt = clipper.getByRole('textbox', { name: /^Jumlah/ });
+  check(digits(await amt.inputValue()) === 200000, 'tombol Semua mengisi 200.000: ' + (await amt.inputValue()));
+  await shot(clipper, 'app-withdraw-filled');
   await clipper.getByRole('button', { name: 'Ajukan penarikan' }).click();
   await clipper.getByText(/Penarikan diajukan/).first().waitFor({ timeout: 30000 });
   await shot(clipper, 'app-withdraw-done');
@@ -673,16 +685,17 @@ async function reloadUntil(page, url, locator, ms) {
 
 let pages = {};
 const errors = [];
+let stepNo = 0;
 async function shot(page, name) {
-  await page.screenshot({ path: `${OUT}/${String(++shotN).padStart(2, '0')}-${name}.png`, fullPage: true });
+  await page.screenshot({ path: `${OUT}/${String(stepNo).padStart(2, '0')}-${String(++shotN).padStart(2, '0')}-${name}.png`, fullPage: true });
 }
 
 (async () => {
   const from = process.env.ROLES_FROM;
   const startIdx = from ? STEPS.findIndex((s) => s.name === from) : 0;
   if (startIdx < 0) throw new Error('langkah tidak dikenal: ' + from);
+  if (startIdx === 0) for (const f of fs.readdirSync(OUT)) if (/\.png$|^session-/.test(f) && f !== 'cover.png') fs.rmSync(path.join(OUT, f));
   S = startIdx > 0 && fs.existsSync(STATE) ? JSON.parse(fs.readFileSync(STATE, 'utf8')) : freshState();
-  shotN = startIdx * 3;
   const browser = await chromium.launch(process.env.E2E_HOST_RULES ? { args: [`--host-resolver-rules=${process.env.E2E_HOST_RULES}`] } : {});
   const ctxs = {};
   const role = async (r) => {
@@ -701,6 +714,8 @@ async function shot(page, name) {
   for (const s of STEPS.slice(startIdx)) {
     const arg = {};
     for (const r of s.roles) arg[r] = await role(r);
+    stepNo = STEPS.indexOf(s) + 1;
+    shotN = 0;
     const t0 = Date.now();
     try {
       await s.fn(arg);
