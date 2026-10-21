@@ -381,7 +381,7 @@ case "$CMD" in
     v=${v#v}
     [ "$(printf '2.24.4\n%s\n' "$v" | sort -V | head -1)" = 2.24.4 ] || { echo "docker compose $v < 2.24.4 (tag !override)"; exit 1; }
     # PUBLIC_IP (config.env): IP publik server ini bila di belakang NAT (IP publik tidak terlihat di interface).
-    mine=${PUBLIC_IP:-$(hostname -I 2>/dev/null || true)}
+    mine="${PUBLIC_IP:-} $(hostname -I 2>/dev/null || true)"
     echo "docker compose $v · IP server ini: $mine"
     bad=0
     for h in $(served_hosts); do   # Let's Encrypt memvalidasi lewat host ini → record DNS harus mengarah ke server ini
