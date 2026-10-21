@@ -11,17 +11,26 @@ export function DeviceSync() {
   const uid = claims?.sub;
   useEffect(() => {
     if (!uid) return;
-    let stop: (() => void) | undefined;
+    // seq membatalkan sync yang selesai setelah app ke latar / sync lebih baru dimulai: hasilnya langsung dihentikan.
+    let seq = 0;
+    let current: (() => void) | undefined;
+    const halt = () => {
+      seq++;
+      current?.();
+      current = undefined;
+    };
     const run = () => {
+      halt();
+      const mine = seq;
       void refreshWidgets();
       void syncLiveActivities(uid)
-        .then((s) => (stop?.(), (stop = s)))
+        .then((stop) => (mine === seq ? (current = stop) : stop()))
         .catch(() => {});
     };
     run();
     // Aktif lagi → segarkan; ke latar → poll Live Activity berhenti (tak ada JS yang jalan di latar).
-    const sub = AppState.addEventListener('change', (s) => (s === 'active' ? run() : (stop?.(), (stop = undefined))));
-    return () => (sub.remove(), stop?.());
+    const sub = AppState.addEventListener('change', (s) => (s === 'active' ? run() : halt()));
+    return () => (sub.remove(), halt());
   }, [uid]);
   return null;
 }

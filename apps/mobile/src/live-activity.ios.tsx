@@ -85,31 +85,41 @@ async function remember(token: string) {
 let released = false;
 let startSub: { remove(): void } | null = null;
 let poll: ReturnType<typeof setInterval> | null = null;
+let generation = 0;
 const inflight = new Set<Promise<unknown>>();
 const linked = new Set<string>();
 
-function save(token: string, kind: 'apns_start' | 'apns_activity', ref?: string) {
-  if (released) return;
-  const run = (async () => {
+/** true = tersimpan di identity. Dilacak supaya keluar menunggu simpan yang sedang jalan. */
+function save(token: string, kind: 'apns_start' | 'apns_activity', ref?: string): Promise<boolean> {
+  if (released) return Promise.resolve(false);
+  const run: Promise<boolean> = (async () => {
     const { error } = await identityApi.rpc('save_activity_token', { p_token: token, p_kind: kind, ...(ref ? { p_ref: ref } : {}) });
-    if (!error) await remember(token.toLowerCase());
-  })().finally(() => inflight.delete(run));
+    if (error) return false;
+    await remember(token.toLowerCase());
+    return true;
+  })()
+    .catch(() => false)
+    .finally(() => inflight.delete(run));
   inflight.add(run);
+  return run;
 }
 
-/** Tautkan activity yang belum ditautkan ke payout yang sedang diproses (props activity tak terbaca dari JS); tak ada
- *  payout diproses → activity basi diakhiri. */
+/** Tautkan activity yang belum ditautkan ke payout yang sedang diproses (props activity tak terbaca dari JS). Baru
+ *  dianggap tertaut setelah token tersimpan — gagal (offline) dicoba lagi di poll berikutnya. Query gagal ≠ tak ada
+ *  payout: activity hanya diakhiri bila core menjawab tidak ada payout yang diproses. */
 async function link(uid: string) {
   const fresh = Payout.getInstances().filter((a) => !linked.has(a.getId()));
   if (!fresh.length || released) return;
-  const { data } = await core.from('payouts').select('id').eq('user_id', uid).eq('status', 'processing').order('created_at', { ascending: false }).limit(1).maybeSingle();
+  fresh.forEach((a) => linked.add(a.getId()));
+  const { data, error } = await core.from('payouts').select('id').eq('user_id', uid).eq('status', 'processing').order('created_at', { ascending: false }).limit(1).maybeSingle();
+  if (error) return fresh.forEach((a) => linked.delete(a.getId()));
   await Promise.all(
     fresh.map(async (a) => {
-      linked.add(a.getId());
+      const id = a.getId();
       if (!data?.id) return a.end('default');
-      const token = await a.getPushToken();
-      if (token) save(token, 'apns_activity', data.id);
-      else a.addPushTokenListener((e) => save(e.pushToken, 'apns_activity', data.id!));
+      const token = await a.getPushToken().catch(() => null);
+      if (token) return void ((await save(token, 'apns_activity', data.id)) || linked.delete(id));
+      a.addPushTokenListener((e) => void save(e.pushToken, 'apns_activity', data.id!).then((ok) => ok || linked.delete(id)));
     }),
   );
 }
@@ -129,10 +139,12 @@ function stop() {
 export async function syncLiveActivities(uid: string): Promise<() => void> {
   released = false;
   stop();
-  startSub = addPushToStartTokenListener((e) => save(e.activityPushToStartToken, 'apns_start'));
+  const mine = ++generation;
+  startSub = addPushToStartTokenListener((e) => void save(e.activityPushToStartToken, 'apns_start'));
   poll = setInterval(() => void link(uid).catch(() => {}), 30_000);
-  await link(uid);
-  return stop;
+  await link(uid).catch(() => {});
+  // Penghenti milik run ini saja: callback run lama yang selesai terlambat tidak mematikan run yang lebih baru.
+  return () => void (mine === generation && stop());
 }
 
 /**
@@ -142,6 +154,7 @@ export async function syncLiveActivities(uid: string): Promise<() => void> {
  */
 export async function releaseLiveActivities() {
   released = true;
+  generation++;
   stop();
   await Promise.allSettled([...inflight]);
   const list = JSON.parse((await AsyncStorage.getItem(SAVED)) ?? '[]') as string[];
