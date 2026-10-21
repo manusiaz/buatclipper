@@ -380,12 +380,17 @@ case "$CMD" in
     v=$(docker compose version --short 2>/dev/null) || { echo "docker compose (plugin v2) tidak ada"; exit 1; }
     v=${v#v}
     [ "$(printf '2.24.4\n%s\n' "$v" | sort -V | head -1)" = 2.24.4 ] || { echo "docker compose $v < 2.24.4 (tag !override)"; exit 1; }
-    echo "docker compose $v · IP server ini: $(hostname -I 2>/dev/null || true)"
+    # PUBLIC_IP (config.env): IP publik server ini bila di belakang NAT (IP publik tidak terlihat di interface).
+    mine=${PUBLIC_IP:-$(hostname -I 2>/dev/null || true)}
+    echo "docker compose $v · IP server ini: $mine"
     bad=0
     for h in $(served_hosts); do   # Let's Encrypt memvalidasi lewat host ini → record DNS harus mengarah ke server ini
       ip=$(getent ahostsv4 "$h" | awk '{print $1}' | sort -u | tr '\n' ' ' || true)
-      echo "  $h → ${ip:-TIDAK ADA RECORD DNS}"
-      [ -n "$ip" ] || [ "$SCHEME" = http ] || bad=1
+      if [ -z "$ip" ]; then echo "  $h → TIDAK ADA RECORD DNS"; ok=
+      elif [ -n "$(comm -12 <(tr ' ' '\n' <<< "$ip" | sort -u) <(tr ' ' '\n' <<< "$mine" | sort -u) | grep .)" ]; then
+        echo "  $h → $ip"; ok=1
+      else echo "  $h → $ip BUKAN server ini (di belakang NAT? isi PUBLIC_IP di config.env)"; ok=; fi
+      [ -n "$ok" ] || [ "$SCHEME" = http ] || bad=1
     done
     for h in "auth.$DOMAIN" "api.$DOMAIN"; do   # server lain (bridge, JWKS, fetch app): belum up = wajar saat deploy pertama
       [[ " $(served_hosts) " == *" $h "* ]] && continue
@@ -402,10 +407,15 @@ case "$CMD" in
   backup)
     # Dump DB (pg_restore) + file Storage (volume lokal; kosong bila pakai S3) tiap stack yang jalan di server ini.
     load_config
-    keep=${BACKUP_KEEP_DAYS:-14} ts=$(date +%Y%m%d%H%M%S) n=0
+    keep=${BACKUP_KEEP_DAYS:-14} ts=$(date +%Y%m%d%H%M%S) n=0 fail=0
     [[ "$keep" =~ ^[0-9]+$ ]] || { echo "BACKUP_KEEP_DAYS harus angka hari"; exit 1; }
     for p in $STACKS; do
-      if ! docker inspect "$p-db" >/dev/null 2>&1; then [ "$ROLE" = all ] && continue; echo "stack $p belum jalan di server ini"; exit 1; fi
+      # all: stack milik server lain (container tidak ada) dilewati; container ada tapi mati = gagal, stack lain tetap di-backup.
+      run=$(docker inspect -f '{{.State.Running}}' "$p-db" 2>/dev/null || true)
+      if [ "$run" != true ]; then
+        [ "$ROLE" = all ] && [ -z "$run" ] && continue
+        echo "GAGAL: $p-db tidak jalan — stack $p tidak di-backup"; fail=1; continue
+      fi
       b=stack/$p/backups; mkdir -p "$b"
       (umask 077 && docker exec "$p-db" pg_dump -h localhost -U supabase_admin -d postgres -Fc > "$b/db-$ts.dump.tmp")
       mv "$b/db-$ts.dump.tmp" "$b/db-$ts.dump"
@@ -417,7 +427,8 @@ case "$CMD" in
       echo "$p: $b/db-$ts.dump ($(du -h "$b/db-$ts.dump" | cut -f1)) + $b/storage-$ts.tgz ($(du -h "$b/storage-$ts.tgz" | cut -f1))"
       n=$((n + 1))
     done
-    [ "$n" -gt 0 ] || { echo "tidak ada stack Supabase yang jalan di server ini (server app tidak menyimpan data)"; exit 1; }
+    [ "$n" -gt 0 ] || [ "$fail" = 1 ] || { echo "tidak ada stack Supabase di server ini (server app tidak menyimpan data)"; exit 1; }
+    exit $fail
     ;;
   admin)
     # Bootstrap admin_super pertama (api.admin_set_role butuh admin_super yang sudah ada); aturan akun admin terpisah (AA-20)
