@@ -605,6 +605,11 @@ select throws_ok($$ select api.request_fulfillment('77777777-0000-0000-0000-0000
                  'P0001', 'payout_blocked', 'R71: flag profil open → klaim reward non-tunai baru ditolak');
 reset role;
 delete from trust.fraud_flags where target_id = '11111111-0000-0000-0000-00000000000a' and signal = 'FR-04';
+-- Regresi R72: flag sudah diputus ban (actioned) / suspend berjalan → klaim antre tetap tertahan.
+update market.profiles set status = 'suspended', suspended_until = now() + interval '3 days' where id = '11111111-0000-0000-0000-00000000000a';
+select is(array[(select count(*)::int from api.worker_fulfillments_due(10)), (select count(*)::int from api.bridge_fulfillment_export('77777777-0000-0000-0000-000000000002'))],
+          array[0, 0], 'R72: profil disuspend/diban → klaim reward yang antre tidak dikirim / tidak diekspor');
+update market.profiles set status = 'active', suspended_until = null where id = '11111111-0000-0000-0000-00000000000a';
 select is((select count(*)::int from api.worker_fulfillments_due(10)), 3, 'worker fulfill: 2 code_pool + 1 webhook jatuh tempo');
 select is((select count(*)::int from api.worker_fulfillments_due(10)), 0, 'lease 5 menit: tidak diambil dua kali');
 -- Regresi review R4: worker mati sebelum mencatat hasil → lease kedaluwarsa diambil ulang = hasil kiriman lama tidak pasti.

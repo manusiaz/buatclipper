@@ -20,10 +20,13 @@ begin
   return pr;
 end $$;
 
--- FR-04/FR-05: flag profil open/held memblok semua nilai keluar (payout tunai + reward non-tunai) sampai direview.
+-- Nilai keluar (payout tunai + reward non-tunai) diblok bila profil tidak aktif (banned/closed/suspend berjalan, sama dengan
+-- require_active_clipper) atau ada flag profil open/held (FR-04/FR-05) — juga untuk klaim yang sudah antre (R71/R72).
 create function finance.withdraw_blocked(p_user uuid) returns boolean
 language sql stable security definer set search_path = '' as $$
-  select exists (select 1 from trust.fraud_flags f where f.target_type = 'profile' and f.target_id = p_user and f.status in ('open', 'held'));
+  select not exists (select 1 from market.profiles pr where pr.id = p_user
+                      and (pr.status = 'active' or (pr.status = 'suspended' and pr.suspended_until <= now())))
+      or exists (select 1 from trust.fraud_flags f where f.target_type = 'profile' and f.target_id = p_user and f.status in ('open', 'held'));
 $$;
 
 create function api.request_payout(p_method uuid, p_amount numeric, p_channel text, p_idempotency text)

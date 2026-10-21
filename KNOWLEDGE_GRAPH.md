@@ -3,7 +3,7 @@
 > Everything is one system. Every page is a node; every line is a real data or design dependency.
 > Dikelola oleh skill `alaconnect`. Edit inkremental — jangan generate ulang.
 
-Last verified: 319a01b + app native lengkap per DS mobile (IA 4 tab, layar native, widget Android/iOS, Live Activity, universal/App Link, notifikasi berangka, handoff sesi) — lint (check-arch + drift token), typecheck semua workspace, vitest 245, deno identity 132 + core 81, pgTAP identity 172 + core 1014 setelah `db reset` dari migrasi (declarative sync: no changes), build clipper + accounts, expo export ios/android/web, fungsi widget hasil bundle dijalankan terpisah (widget-fns.test.ts), expo prebuild android+ios, e2e 10/10, e2e:roles 20/20 (daftar brand → org → builder → invoice → approve → claim/submit → review → banding → earning → KYC → tarik saldo → dashboard), e2e:mobile 12/12, Codex R53–R71 diperbaiki (2026-10-21)
+Last verified: 319a01b + app native lengkap per DS mobile (IA 4 tab, layar native, widget Android/iOS, Live Activity, universal/App Link, notifikasi berangka, handoff sesi) — lint (check-arch + drift token), typecheck semua workspace, vitest 245, deno identity 132 + core 81, pgTAP identity 172 + core 1015 setelah `db reset` dari migrasi (declarative sync: no changes), build clipper + accounts, expo export ios/android/web, fungsi widget hasil bundle dijalankan terpisah (widget-fns.test.ts), expo prebuild android+ios, e2e 10/10, e2e:roles 20/20 (daftar brand → org → builder → invoice → approve → claim/submit → review → banding → earning → KYC → tarik saldo → dashboard), e2e:mobile 12/12, Codex R53–R72 diperbaiki (2026-10-21)
 
 **Status:** sistem sudah dibangun dan dites. 5 app Next.js 16 (`apps/web`, `apps/accounts`, `apps/clipper`, `apps/brand`, `apps/admin`) di atas `packages/{ui,campaign-builder,clipper-lib,auth,db-core,db-identity,i18n,config}`, plus app native Expo `apps/mobile` (Android + iOS, satu kode). 2 project Supabase (`db/identity`, `db/core`): schema deklaratif, `migrations/` (pg-delta), config.toml, seed.sql. 12 Edge Function: core `bridge`, `fulfill`, `notify`, `refresh-tokens`, `social`, `track-worker`; identity `admin-auth`, `bridge`, `delete-account`, `disburse`, `member-data`, `pii-export`. Tes: pgTAP 6 file (`db/core/supabase/tests` 4, `db/identity/supabase/tests` 2), unit test app/package (`pnpm test`, 38 file `*.test.ts(x)`), unit test Deno (29 file `*_test.ts` di `db/*/supabase/functions`), journey E2E lintas host `e2e/journey.cjs` (Playwright: web → accounts → app → undangan → brand), CI `.github/workflows/ci.yml` (job apps, functions, db per project). Diverifikasi di 7408318: `pnpm lint` ok, `pnpm typecheck` ok, `pnpm test` 197 tes lulus (campaign-builder 69, accounts 32, web 29, admin 24, brand 22, clipper 21), `pnpm build` 5 app ok, Deno fmt/lint/check ok + tes core 70 & identity 82, pgTAP core 727 & identity 107 (stub Postgres 16 dan `supabase test db`), `supabase db lint` (schema app) & `db advisors --type security` bersih, `pnpm e2e` 9/9 langkah 2× di build produksi. Node yang filenya ada punya kolom Path; bukti edge = `file:line` (dicek `check_graph.py`). Bukti yang masih rujukan PRD v0.3.1 = belum ada satu baris kode yang menyebut target, atau kodenya ada di folder route group `(account)`, `(auth)`, `(console)`: regex checker tidak menerima tanda kurung, jadi baris kodenya ditulis `kode baris N` (dicek manual). `(belum di kode)` = edge PRD yang tidak dibangun begitu. Edge `reads` page → table = dependency data logis; di kode jalannya lewat view/fungsi schema `api` (`policy:core.api-only`). Rujukan lintas DB (`table → table` antar project) tidak punya foreign key.
 
@@ -1018,7 +1018,7 @@ Arah: `A --tipe--> B` = A bergantung pada B. `?` = belum terverifikasi.
 | `api:rpc core.accept_org_invite` | writes | `table:market.profiles` | db/core/supabase/schemas/api/org.sql:20 (market.ensure_member_profile) |
 | `api:rpc core.appeal_submission` | writes | `table:tracking.submissions` | db/core/supabase/schemas/api/review.sql:45 |
 | `api:rpc core.appeal_submission` | writes | `table:trust.review_decisions` | db/core/supabase/schemas/api/review.sql:40 |
-| `api:rpc core.approve_payout_batch` | writes | `table:finance.payout_batches` | db/core/supabase/schemas/finance/payout_flow.sql:212 |
+| `api:rpc core.approve_payout_batch` | writes | `table:finance.payout_batches` | db/core/supabase/schemas/finance/payout_flow.sql:215 |
 | `api:rpc core.buy_pin` | writes | `table:finance.invoices` | db/core/supabase/schemas/api/campaigns.sql:692 (finance.issue_invoice) |
 | `api:rpc core.my_clip_terms` | reads | `table:market.profiles` | db/core/supabase/schemas/api/read_models.sql:153 (trust_score dari market.profiles) |
 | `api:rpc core.claim_campaign` | reads | `table:market.campaigns` | db/core/supabase/schemas/api/campaigns.sql:136 |
@@ -1047,11 +1047,11 @@ Arah: `A --tipe--> B` = A bergantung pada B. `?` = belum terverifikasi.
 | `api:rpc core.update_org` | writes | `table:ops.audit_logs` | db/core/supabase/schemas/api/org.sql:499 |
 | `api:rpc core.create_org_invite` | guarded-by | `policy:core.org-role` | db/core/supabase/schemas/api/org.sql:165 |
 | `api:rpc core.create_org_invite` | writes | `table:market.org_invites` | db/core/supabase/schemas/api/org.sql:172 |
-| `api:rpc core.create_payout_batch` | guarded-by | `policy:core.admin-aal2` | db/core/supabase/schemas/finance/payout_flow.sql:175 |
-| `api:rpc core.create_payout_batch` | reads | `table:finance.payouts` | db/core/supabase/schemas/finance/payout_flow.sql:187 |
-| `api:rpc core.create_payout_batch` | writes | `table:finance.payout_batches` | db/core/supabase/schemas/finance/payout_flow.sql:185 |
-| `api:rpc core.create_payout_batch` | writes | `table:finance.payouts` | db/core/supabase/schemas/finance/payout_flow.sql:187 |
-| `api:rpc core.create_payout_batch` | writes | `table:ops.audit_logs` | db/core/supabase/schemas/finance/payout_flow.sql:199 |
+| `api:rpc core.create_payout_batch` | guarded-by | `policy:core.admin-aal2` | db/core/supabase/schemas/finance/payout_flow.sql:178 |
+| `api:rpc core.create_payout_batch` | reads | `table:finance.payouts` | db/core/supabase/schemas/finance/payout_flow.sql:190 |
+| `api:rpc core.create_payout_batch` | writes | `table:finance.payout_batches` | db/core/supabase/schemas/finance/payout_flow.sql:188 |
+| `api:rpc core.create_payout_batch` | writes | `table:finance.payouts` | db/core/supabase/schemas/finance/payout_flow.sql:190 |
+| `api:rpc core.create_payout_batch` | writes | `table:ops.audit_logs` | db/core/supabase/schemas/finance/payout_flow.sql:202 |
 | `api:rpc core.create_report_link` | guarded-by | `policy:core.org-role` | db/core/supabase/schemas/api/report_links.sql:13 |
 | `api:rpc core.create_report_link` | reads | `table:market.campaigns` | db/core/supabase/schemas/api/report_links.sql:12 |
 | `api:rpc core.create_report_link` | writes | `table:market.report_links` | db/core/supabase/schemas/api/report_links.sql:17 |
@@ -1080,18 +1080,18 @@ Arah: `A --tipe--> B` = A bergantung pada B. `?` = belum terverifikasi.
 | `api:rpc core.manage_user` | writes | `table:market.profiles` | db/core/supabase/schemas/trust/manage_user.sql:51 (suspend/ban/unban, trust_override baris 31) |
 | `api:rpc core.manage_user` | writes | `table:ops.audit_logs` | db/core/supabase/schemas/trust/manage_user.sql:81 |
 | `api:rpc core.manage_user` | writes | `table:trust.score_events` | db/core/supabase/schemas/trust/manage_user.sql:30 |
-| `api:rpc core.mark_batch_paid` | calls | `fn:enqueue_notification` | db/core/supabase/schemas/finance/payout_flow.sql:254 |
-| `api:rpc core.mark_batch_paid` | guarded-by | `policy:core.admin-aal2` | db/core/supabase/schemas/finance/payout_flow.sql:230 |
-| `api:rpc core.mark_batch_paid` | writes | `table:finance.ledger_entries` | db/core/supabase/schemas/finance/payout_flow.sql:258 (gagal → finance.return_payout → jurnal balik) |
-| `api:rpc core.mark_batch_paid` | writes | `table:finance.payout_batches` | db/core/supabase/schemas/finance/payout_flow.sql:264 |
-| `api:rpc core.mark_batch_paid` | writes | `table:finance.payouts` | db/core/supabase/schemas/finance/payout_flow.sql:253 |
-| `api:rpc core.mark_batch_paid` | writes | `table:ops.audit_logs` | db/core/supabase/schemas/finance/payout_flow.sql:266 |
+| `api:rpc core.mark_batch_paid` | calls | `fn:enqueue_notification` | db/core/supabase/schemas/finance/payout_flow.sql:257 |
+| `api:rpc core.mark_batch_paid` | guarded-by | `policy:core.admin-aal2` | db/core/supabase/schemas/finance/payout_flow.sql:233 |
+| `api:rpc core.mark_batch_paid` | writes | `table:finance.ledger_entries` | db/core/supabase/schemas/finance/payout_flow.sql:261 (gagal → finance.return_payout → jurnal balik) |
+| `api:rpc core.mark_batch_paid` | writes | `table:finance.payout_batches` | db/core/supabase/schemas/finance/payout_flow.sql:267 |
+| `api:rpc core.mark_batch_paid` | writes | `table:finance.payouts` | db/core/supabase/schemas/finance/payout_flow.sql:256 |
+| `api:rpc core.mark_batch_paid` | writes | `table:ops.audit_logs` | db/core/supabase/schemas/finance/payout_flow.sql:269 |
 | `api:rpc core.mark_fulfillment_delivered` | guarded-by | `policy:core.admin-aal2` | db/core/supabase/schemas/finance/fulfillment_admin.sql:9 |
 | `api:rpc core.mark_fulfillment_delivered` | reads | `table:market.reward_types` | db/core/supabase/schemas/finance/fulfillment_admin.sql:21 |
 | `api:rpc core.mark_fulfillment_delivered` | writes | `table:finance.fulfillments` | db/core/supabase/schemas/finance/fulfillment_admin.sql:12, db/core/supabase/schemas/api/worker.sql:641 (api.worker_fulfillment_result, baris 28) |
 | `api:rpc core.mark_fulfillment_delivered` | writes | `table:ops.audit_logs` | db/core/supabase/schemas/finance/fulfillment_admin.sql:40 |
-| `api:rpc core.cancel_payout` | writes | `table:finance.payouts` | db/core/supabase/schemas/finance/payout_flow.sql:376 |
-| `api:rpc core.cancel_fulfillment` | writes | `table:finance.fulfillments` | db/core/supabase/schemas/finance/payout_flow.sql:427 |
+| `api:rpc core.cancel_payout` | writes | `table:finance.payouts` | db/core/supabase/schemas/finance/payout_flow.sql:379 |
+| `api:rpc core.cancel_fulfillment` | writes | `table:finance.fulfillments` | db/core/supabase/schemas/finance/payout_flow.sql:430 |
 | `api:view core.fulfillment_exports` | reads | `table:finance.fulfillments` | db/core/supabase/schemas/api/views.sql:100 |
 | `api:view core.admin_ledger` | reads | `table:finance.ledger_entries` | db/core/supabase/schemas/api/views.sql:86 |
 | `api:rpc core.missing_brief_tags` | guarded-by | `policy:core.public-read` | db/core/supabase/schemas/api/brief.sql:4 (security invoker lewat api.campaigns) |
@@ -1123,15 +1123,15 @@ Arah: `A --tipe--> B` = A bergantung pada B. `?` = belum terverifikasi.
 | `api:rpc core.report_by_token` | reads | `table:market.report_links` | db/core/supabase/schemas/api/report_links.sql:89 |
 | `api:rpc core.report_by_token` | reads | `table:tracking.submissions` | db/core/supabase/schemas/api/report_links.sql:55 (market.campaign_report) |
 | `api:rpc core.request_fulfillment` | reads | `table:market.profiles` | db/core/supabase/schemas/finance/payout_flow.sql:16 (finance.require_active_clipper) |
-| `api:rpc core.request_fulfillment` | reads | `table:market.reward_types` | db/core/supabase/schemas/finance/payout_flow.sql:295 |
-| `api:rpc core.request_fulfillment` | writes | `table:finance.fulfillments` | db/core/supabase/schemas/finance/payout_flow.sql:334 |
-| `api:rpc core.request_fulfillment` | writes | `table:finance.ledger_entries` | db/core/supabase/schemas/finance/payout_flow.sql:336 (finance.post) |
-| `api:rpc core.request_payout` | reads | `table:finance.ledger_accounts` | db/core/supabase/schemas/finance/payout_flow.sql:82 |
-| `api:rpc core.request_payout` | reads | `table:finance.ledger_entries` | db/core/supabase/schemas/finance/payout_flow.sql:83 (finance.balance) |
+| `api:rpc core.request_fulfillment` | reads | `table:market.reward_types` | db/core/supabase/schemas/finance/payout_flow.sql:298 |
+| `api:rpc core.request_fulfillment` | writes | `table:finance.fulfillments` | db/core/supabase/schemas/finance/payout_flow.sql:337 |
+| `api:rpc core.request_fulfillment` | writes | `table:finance.ledger_entries` | db/core/supabase/schemas/finance/payout_flow.sql:339 (finance.post) |
+| `api:rpc core.request_payout` | reads | `table:finance.ledger_accounts` | db/core/supabase/schemas/finance/payout_flow.sql:85 |
+| `api:rpc core.request_payout` | reads | `table:finance.ledger_entries` | db/core/supabase/schemas/finance/payout_flow.sql:86 (finance.balance) |
 | `api:rpc core.request_payout` | reads | `table:market.profiles` | db/core/supabase/schemas/finance/payout_flow.sql:16 (finance.require_active_clipper) |
-| `api:rpc core.request_payout` | writes | `table:finance.ledger_entries` | db/core/supabase/schemas/finance/payout_flow.sql:89 (finance.post) |
-| `api:rpc core.request_payout` | writes | `table:finance.payouts` | db/core/supabase/schemas/finance/payout_flow.sql:87 |
-| `api:rpc core.request_payout` | calls | `api:fn core/bridge` | db/core/supabase/schemas/finance/payout_flow.sql:99 (instant → bridge disburse) |
+| `api:rpc core.request_payout` | writes | `table:finance.ledger_entries` | db/core/supabase/schemas/finance/payout_flow.sql:92 (finance.post) |
+| `api:rpc core.request_payout` | writes | `table:finance.payouts` | db/core/supabase/schemas/finance/payout_flow.sql:90 |
+| `api:rpc core.request_payout` | calls | `api:fn core/bridge` | db/core/supabase/schemas/finance/payout_flow.sql:102 (instant → bridge disburse) |
 | `api:rpc core.request_refund` | writes | `table:finance.ledger_entries` | db/core/supabase/schemas/finance/refund_flow.sql:85 (finance.post) |
 | `api:rpc core.request_refund` | writes | `table:finance.org_refunds` | db/core/supabase/schemas/finance/refund_flow.sql:67 |
 | `api:rpc core.resolve_fraud_flag` | calls | `fn:reverse_earning` | db/core/supabase/schemas/trust/fraud_resolve.sql:140 |
@@ -1792,11 +1792,11 @@ Arah: `A --tipe--> B` = A bergantung pada B. `?` = belum terverifikasi.
 | `api:rpc identity.save_activity_token` | writes | `table:member.push_subscriptions` | db/identity/supabase/schemas/member/push_subscriptions.sql:87 |
 | `job:push-receipts` | calls | `api:fn identity/bridge` | db/identity/supabase/schemas/member/cron.sql:3 |
 | `api:fn identity/bridge` | writes | `table:member.push_tickets` | db/identity/supabase/functions/_shared/push.ts:5 |
-| `fn:notify_payout_processing` | calls | `fn:enqueue_notification` | db/core/supabase/schemas/finance/payout_flow.sql:127 |
-| `fn:notify_payout_processing` | calls | `fn:payout_notice` | db/core/supabase/schemas/finance/payout_flow.sql:127 |
-| `api:rpc core.mark_batch_paid` | calls | `fn:payout_notice` | db/core/supabase/schemas/finance/payout_flow.sql:254 |
-| `fn:payout_notice` | reads | `table:finance.payouts` | db/core/supabase/schemas/finance/payout_flow.sql:107 |
-| `fn:notify_payout_processing` | reads | `table:ops.settings` | db/core/supabase/schemas/finance/payout_flow.sql:119 |
+| `fn:notify_payout_processing` | calls | `fn:enqueue_notification` | db/core/supabase/schemas/finance/payout_flow.sql:130 |
+| `fn:notify_payout_processing` | calls | `fn:payout_notice` | db/core/supabase/schemas/finance/payout_flow.sql:130 |
+| `api:rpc core.mark_batch_paid` | calls | `fn:payout_notice` | db/core/supabase/schemas/finance/payout_flow.sql:257 |
+| `fn:payout_notice` | reads | `table:finance.payouts` | db/core/supabase/schemas/finance/payout_flow.sql:110 |
+| `fn:notify_payout_processing` | reads | `table:ops.settings` | db/core/supabase/schemas/finance/payout_flow.sql:122 |
 | `fn:clip_estimate` | reads | `table:finance.ledger_entries` | db/core/supabase/schemas/finance/earnings.sql:487 |
 | `test:mobile.unit` | tests | `mod:mobile-widget-ios` | apps/mobile/src/widget-fns.test.ts:53 (string fungsi widget dari babel-preset-expo dijalankan di context terpisah) |
 | `test:mobile.unit` | tests | `mod:live-activity` | apps/mobile/src/widget-fns.test.ts:54 |
@@ -2518,6 +2518,7 @@ Masalah sistem yang ditemukan saat menyusun PRD v0.2 dan saat dicek ulang (v0.2.
 | 2026-10-21 | `job:lifecycle` | Review Codex R69: submisi di-approve/banding dibalik setelah akhir window + grace → lifecycle langsung mengunci tanpa snapshot (track-due 15 menit belum sempat jalan) → clip ter-approve tidak pernah dapat earning; next_poll_at null juga tidak pernah diantrekan ulang | diperbaiki: grace snapshot final dihitung dari max(akhir window, keputusan approve/auto_approve/overturn terakhir); next_poll_at null ikut diantrekan; pgTAP core 1012 (asersi gagal di kode lama) |
 | 2026-10-21 | `page:brand/[org]/campaigns/[id]` | Review Codex R70: naikkan rate menutup rule lama + membuat rule baru (ID baru); panel kontrol tetap memegang ID lama → input hilang, kenaikan kedua gagal sampai reload | diperbaiki: api.rate_rules mengekspos lineage_id, pilihan panel disimpan per lineage (lineage_id ?? id), daftar rule diurutkan effective_from; dibuktikan Playwright di brand dev (kode lama: input hilang setelah naik pertama; kode baru: dua kenaikan beruntun, rantai rate di DB 20488 → 30488) |
 | 2026-10-21 | `api:rpc core.request_fulfillment` | Review Codex R71: flag fraud profil (FR-04/FR-05 open/held) hanya memblok payout tunai → saldo voucher/kode tetap bisa diklaim, dikirim worker, dan diekspor ke brand selama penarikan ditahan | diperbaiki: helper finance.withdraw_blocked dipakai request_payout, request_fulfillment (payout_blocked), worker_fulfillments_due, bridge_fulfillment_export (klaim yang sudah antre tertahan sampai flag direview); pgTAP core 1014 (asersi gagal di kode lama) |
+| 2026-10-21 | `api:rpc core.worker_fulfillments_due` | Review Codex R72: flag diputus ban (actioned) → withdraw_blocked (R71) kembali false → reward non-tunai yang antre dikirim/diekspor ke user banned; suspend berjalan juga lolos | diperbaiki: withdraw_blocked juga memblok profil tidak aktif (banned/closed/suspend berjalan, syarat sama dengan require_active_clipper); pgTAP core 1015 (asersi gagal di kode lama) |
 | 2026-10-21 | `page:admin/login` | QA lintas peran (e2e/roles.cjs, 20/20 langkah): pendaftaran TOTP admin pertama kadang menolak kode benar — halaman login dirender ulang server setelah OTP sehingga dua MfaPanel enroll memanggil mfaEnroll, yang menghapus faktor belum terverifikasi milik panel lain (GoTrue: POST/DELETE/POST /factors) | diperbaiki: satu promise enroll per jenis sesi di packages/auth components (gagal → dibuang supaya bisa diulang); GoTrue log tinggal satu POST /factors |
 | 2026-10-21 | `page:app/wallet/withdraw` | QA lintas peran: setelah KYC disetujui, withdraw masih "Menunggu verifikasi" sampai token sesi diperbarui (klaim kyc dari JWT, umur 600 dtk) tanpa petunjuk; API mengembalikan 500 (bukan 404) untuk submisi/claim yang tidak ada; nama aset tampil dengan prefix UUID storage | terbuka (UX/kosmetik, tidak memengaruhi uang atau akses) |
 | 2026-10-21 | `page:app/campaigns/[id]` | QA lintas peran: ukuran aset < 1 MB tampil "0 MB" di detail campaign web dan native (formatCompact(bytes / 1e6)) | diperbaiki: formatBytes dipindah dari campaign-builder ke @clipper/ui/format (B/KB/MB/GB) dan dipakai builder, detail web, detail native; e2e:roles mengecek ukuran aset |
