@@ -7,7 +7,7 @@ import { Image, Linking, Pressable, View } from 'react-native';
 import { useLocale, useTranslations } from 'use-intl';
 import { budgetUsedRatio, cardRates, fixKey, httpsUrl, isPlatform, isUuid, maxViews } from '@clipper/clipper-lib/pure';
 import { detailText } from '@clipper/clipper-lib/detail-text';
-import { earningFor, formatCompact, formatDateTime, formatIDR, formatNumber, initials } from '@clipper/ui/format';
+import { earningFor, formatBytes, formatCompact, formatDateTime, formatIDR, formatNumber, initials } from '@clipper/ui/format';
 import type { Platform } from '@clipper/ui/platform-paths';
 import { useAuth } from '../auth';
 import { campaignDetail, categories, claimCampaign, useLoad } from '../data';
@@ -321,7 +321,7 @@ export function CampaignDetail({ id, submit, sharedUrl, embedded }: { id: string
                   <Txt variant="bodyS" weight="600" numberOfLines={1}>{name}</Txt>
                   <Txt variant="caption" tone="muted">
                     {t(`detail.assetKind.${a.kind}` as 'detail.assetKind.link')}
-                    {a.size_bytes ? ` · ${formatCompact(a.size_bytes / 1_000_000, locale)} MB` : ''}
+                    {a.size_bytes ? ` · ${formatBytes(a.size_bytes, locale)}` : ''}
                   </Txt>
                 </View>
                 {href ? (

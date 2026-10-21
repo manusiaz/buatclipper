@@ -5,6 +5,7 @@ export { cn } from './lib/cn';
 export {
   formatNumber,
   formatCompact,
+  formatBytes,
   formatIDR,
   formatRelative,
   formatDateTime,

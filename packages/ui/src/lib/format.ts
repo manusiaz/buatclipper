@@ -17,6 +17,15 @@ export function formatCompact(value: number, locale: UiLocale = 'id'): string {
   return new Intl.NumberFormat(intlLocale(locale), { notation: 'compact', maximumFractionDigits: 1 }).format(value);
 }
 
+/** 2048 → "2 KB", 5_400_000 → "5,1 MB" (biner, 1 desimal). */
+export function formatBytes(bytes: number, locale: UiLocale = 'id'): string {
+  const fmt = (n: number) => formatNumber(n, locale, { maximumFractionDigits: 1 });
+  if (bytes >= 1024 ** 3) return `${fmt(bytes / 1024 ** 3)} GB`;
+  if (bytes >= 1024 ** 2) return `${fmt(bytes / 1024 ** 2)} MB`;
+  if (bytes >= 1024) return `${fmt(bytes / 1024)} KB`;
+  return `${bytes} B`;
+}
+
 /** 1500000 → "Rp1.500.000"; -83620 → "−Rp83.620"; compact → "Rp1,5 jt". */
 export function formatIDR(
   value: number,

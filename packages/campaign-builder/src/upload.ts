@@ -68,13 +68,7 @@ export function acceptFor(kind: UploadKind): string {
   return [...UPLOAD_LIMITS[kind].mime, ...exts].join(',');
 }
 
-export function formatBytes(bytes: number, locale: 'id' | 'en' = 'id'): string {
-  const fmt = (n: number) => new Intl.NumberFormat(locale === 'en' ? 'en-US' : 'id-ID', { maximumFractionDigits: 1 }).format(n);
-  if (bytes >= 1024 * 1024 * 1024) return `${fmt(bytes / (1024 * 1024 * 1024))} GB`;
-  if (bytes >= 1024 * 1024) return `${fmt(bytes / (1024 * 1024))} MB`;
-  if (bytes >= 1024) return `${fmt(bytes / 1024)} KB`;
-  return `${bytes} B`;
-}
+export { formatBytes } from '@clipper/ui/format';
 
 function publishableKey(): string | undefined {
   try {
