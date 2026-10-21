@@ -77,13 +77,20 @@ const SAVED = 'clipper.apns.tokens';
 
 // Serial: dua simpan bersamaan (push-to-start + token activity) tidak boleh saling menimpa daftar — token yang hilang
 // dari daftar tidak ikut dihapus saat keluar.
+// Juga dicatat di memori: storage gagal tidak membuat token terdaftar lolos dari penghapusan saat keluar, dan antrean
+// pulih sebelum tiap operasi (satu kegagalan tidak menghentikan pencatatan berikutnya).
+const known = new Set<string>();
 let remembering: Promise<void> = Promise.resolve();
 function remember(token: string) {
-  remembering = remembering.then(async () => {
-    const list = JSON.parse((await AsyncStorage.getItem(SAVED)) ?? '[]') as string[];
-    if (!list.includes(token)) await AsyncStorage.setItem(SAVED, JSON.stringify([...list, token].slice(-20)));
-  });
-  return remembering;
+  known.add(token);
+  const next = remembering
+    .catch(() => {})
+    .then(async () => {
+      const list = JSON.parse((await AsyncStorage.getItem(SAVED)) ?? '[]') as string[];
+      if (!list.includes(token)) await AsyncStorage.setItem(SAVED, JSON.stringify([...list, token].slice(-20)));
+    });
+  remembering = next;
+  return next.catch(() => {});
 }
 
 // Keluar (releaseLiveActivities) menutup pendaftaran dulu: listener & poll dihentikan, simpan yang sedang jalan ditunggu,
@@ -167,7 +174,9 @@ export async function releaseLiveActivities() {
   generation++;
   stop();
   await Promise.allSettled([...inflight]);
-  const list = JSON.parse((await AsyncStorage.getItem(SAVED)) ?? '[]') as string[];
+  await remembering.catch(() => {});
+  const stored = await AsyncStorage.getItem(SAVED).then((v) => JSON.parse(v ?? '[]') as string[], () => [] as string[]);
+  const list = [...new Set([...stored, ...known])];
   if (list.length) {
     const { error } = await identityApi.from('push_subscriptions').delete().in('endpoint', list);
     if (error) {
@@ -175,7 +184,8 @@ export async function releaseLiveActivities() {
       throw new Error('live_activity_release_failed');
     }
   }
-  await AsyncStorage.removeItem(SAVED);
+  await AsyncStorage.removeItem(SAVED).catch(() => {});
+  known.clear();
   linked.clear();
   await Promise.all(Payout.getInstances().map((a) => a.end('immediate')));
 }

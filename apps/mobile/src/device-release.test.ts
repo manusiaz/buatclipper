@@ -2,8 +2,14 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const store = new Map<string, string>();
+let failStorage = 0;
+const flaky = <T,>(f: () => T) => async () => (failStorage > 0 ? (failStorage--, Promise.reject(new Error('disk'))) : f());
 vi.mock('@react-native-async-storage/async-storage', () => ({
-  default: { getItem: async (k: string) => store.get(k) ?? null, setItem: async (k: string, v: string) => void store.set(k, v), removeItem: async (k: string) => void store.delete(k) },
+  default: {
+    getItem: (k: string) => flaky(() => store.get(k) ?? null)(),
+    setItem: (k: string, v: string) => flaky(() => void store.set(k, v))(),
+    removeItem: async (k: string) => void store.delete(k),
+  },
 }));
 const jwt = (sub: string) => `x.${Buffer.from(JSON.stringify({ sub })).toString('base64url')}.y`;
 let session: { access_token: string } | null = null;
@@ -37,6 +43,7 @@ beforeEach(() => {
   store.clear();
   deleted.length = 0;
   deleteError = null;
+  failStorage = 0;
   rpc.mockReset();
   rpc.mockImplementation(async () => ({ error: null }));
   payout = { data: null, error: null };
@@ -85,6 +92,16 @@ describe('token Live Activity saat keluar', () => {
     onStartToken!({ activityPushToStartToken: 'BB02' });
     await releaseLiveActivities();
     expect(deleted.at(-1)?.sort()).toEqual(['aa01', 'bb02']);
+  });
+  it('storage gagal sekali: token tetap dihapus saat keluar, pencatatan berikutnya tetap jalan (R55)', async () => {
+    await syncLiveActivities('user-a');
+    failStorage = 1;
+    onStartToken!({ activityPushToStartToken: 'CC03' });
+    await vi.waitFor(() => expect(rpc).toHaveBeenCalledTimes(1));
+    onStartToken!({ activityPushToStartToken: 'DD04' });
+    await vi.waitFor(() => expect(store.get('clipper.apns.tokens')).toContain('dd04'));
+    await releaseLiveActivities();
+    expect(deleted.at(-1)?.sort()).toEqual(['cc03', 'dd04']);
   });
   it('token yang datang saat/selesai keluar tidak didaftarkan ulang ke akun lama', async () => {
     await syncLiveActivities('user-a');
