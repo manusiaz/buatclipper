@@ -31,6 +31,7 @@ Urut murah → mahal. `.github/workflows/ci.yml` menjalankan perintah yang sama:
 scripts/dev-stack.sh            # stack lokal: identity :54321 + core :55321, secret dev, Vault pg_cron, apps/*/.env.local (--reset = db reset)
 deploy/deploy.sh secrets        # self-hosted, mesin admin: secret lengkap + secrets.{identity,core,apps}.env per server
 deploy/deploy.sh up identity    # per server: identity | core | apps (atau all = satu server); idempoten, juga untuk update
+deploy/deploy.sh admin email    # server identity: admin_super pertama (login OTP + MFA di admin.{domain})
 pnpm install --frozen-lockfile
 pnpm lint && pnpm typecheck && pnpm test && pnpm build      # lint = scripts/check-arch.mjs
 (cd db/identity/supabase/functions && deno fmt --check && deno lint && deno task check && deno task test)
@@ -1490,7 +1491,7 @@ Arah: `A --tipe--> B` = A bergantung pada B. `?` = belum terverifikasi.
 | `doc:deploy/deploy.sh` | documents | `env:PII_HMAC_KEY` | deploy/keys.mjs:60 |
 | `doc:deploy/deploy.sh` | documents | `env:PII_ENC_KEY` | deploy/keys.mjs:61 (PII_ENC_KEYS) |
 | `doc:deploy/deploy.sh` | documents | `env:VAPID_PRIVATE_KEY` | deploy/keys.mjs:66 |
-| `doc:deploy/deploy.sh` | documents | `env:IDENTITY_ISSUER` | deploy/deploy.sh:188 |
+| `doc:deploy/deploy.sh` | documents | `env:IDENTITY_ISSUER` | deploy/deploy.sh:191 |
 | `doc:deploy/deploy.sh` | documents | `fn:custom_access_token_hook` | deploy/supabase/identity.yml:17 (GOTRUE_HOOK_CUSTOM_ACCESS_TOKEN_URI) |
 | `doc:scripts/dev-stack.sh` | documents | `env:BRIDGE_SECRET_IDENTITY_TO_CORE` | scripts/dev-stack.sh:18 |
 | `doc:scripts/dev-stack.sh` | documents | `env:IDENTITY_ISSUER` | scripts/dev-stack.sh:39 |
@@ -2335,6 +2336,7 @@ Masalah sistem yang ditemukan saat menyusun PRD v0.2 dan saat dicek ulang (v0.2.
 | 2026-10-20 | `doc:deploy/deploy.sh` | Review Claudex R38 + cek sendiri: (1) .dockerignore hanya mengecualikan .env di root → apps/*/.env.local ikut ke image; (2) setenv membuat file .env sementara 0644 → secret stack terbaca user lain selama deploy, config.env tidak dibatasi; (3) login Google identity tidak dikonfigurasi di GoTrue self-hosted; (4) .env stack disalin sekali → variabel baru compose resmi hilang saat SUPABASE_REF dinaikkan; (5) migration baru dijalankan tanpa backup | diperbaiki: **/.env*; umask 077 di setenv + chmod 600 config.env; GOTRUE_EXTERNAL_GOOGLE_* dari GOOGLE_LOGIN_CLIENT_ID/SECRET; kunci baru .env.example ditambahkan tiap deploy; pg_dump -Fc ke deploy/stack/<p>/backups sebelum migration pertama yang tertunda (diuji: backup 84 tabel, hanya stack yang punya migration baru) |
 | 2026-10-20 | `doc:deploy/deploy.sh` | Koreksi user: deploy sebelumnya menaruh identity & core (dua Postgres terpisah) di satu mesin → host yang kebobol membuka data PII dan data bisnis sekaligus | diubah: deploy per peran (identity / core / apps di server terpisah), secret dipecah per peran, Caddy & extra_hosts per server (PEER_HOSTS opsional untuk jaringan privat), APP_IMAGE dari CI (ditarik bila belum ada, tidak dibangun ulang — bug yang ditemukan simulasi). Diuji: simulasi 3 server (IP berbeda, salinan repo & secret terpisah) e2e 9/9, pgTAP identity 119 + core 972, bridge A→B, server core tidak memegang kunci identity; mode satu server e2e 9/9 |
 | 2026-10-20 | `doc:deploy/deploy.sh` | Review Claudex R40: PEER_HOSTS yang memetakan sebagian host (mis. server app hanya auth.) membuat peer_ip mengembalikan status 1 → set -e menghentikan deploy sebelum app & Caddy jalan | diperbaiki: peer_ip return 0 bila tidak ada pemetaan (host jatuh ke DNS publik); direproduksi dengan fungsi asli (rc 1 → 0) |
+| 2026-10-20 | `doc:deploy/deploy.sh` | Cek pertanyaan user ("database & endpoint sudah?"): DB baru tidak punya admin_super → admin.{domain} tidak bisa dimasuki siapa pun (api.admin_set_role butuh admin_super); callback Xendit memakai token acak deploy padahal Xendit menandatangani dengan Callback Verification Token miliknya → semua callback payout ditolak | ditambah: `deploy.sh admin <email>` (Admin API GoTrue di container auth, role admin_super + audit sekali, akun ber-ToS clipper/brand ditolak; diuji: token login ES256 berisi app_roles admin_super, ulang idempoten, clipper ditolak); XENDIT_CALLBACK_TOKEN menimpa DISBURSE_CALLBACK_TOKEN |
 
 ## Keputusan
 

@@ -1,7 +1,7 @@
 # Override bersama untuk compose self-hosted resmi Supabase (docker/docker-compose.yml, versi dipin di deploy.sh), dipakai
 # kedua stack (STACK=identity|core). Disalin deploy.sh ke deploy/stack/$STACK/ lalu dirangkai lewat COMPOSE_FILE.
 # - Nama container per stack (resmi: supabase-*), supaya dua stack bisa jalan di satu host.
-# - Port hanya di 127.0.0.1: publik lewat Caddy (deploy/Caddyfile, path API saja). Studio = SSH tunnel ke GW_PORT.
+# - Port hanya di 127.0.0.1: publik lewat Caddy (deploy/caddy/*.caddy, path API saja). Studio = SSH tunnel ke GW_PORT.
 # - Realtime & Supavisor tidak dipakai platform (tidak ada .channel()/pooler) → dimatikan lewat profile.
 # - Network eksternal "clipper" hanya untuk gateway (alias identity-gw / core-gw, dipakai Caddy server ini). Service lain
 #   TIDAK ikut: nama service kedua stack sama (auth, functions, api-gw) → DNS docker jadi ambigu. Panggilan lintas stack

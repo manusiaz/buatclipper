@@ -9,6 +9,8 @@
 #   Server B (core):       salin secrets.core.env     → deploy/secrets.env, isi deploy/config.env, deploy/deploy.sh up core
 #   Server C (app):        salin secrets.apps.env     → deploy/secrets.env, isi deploy/config.env, deploy/deploy.sh up apps
 #   Satu server:           deploy/deploy.sh up all   (secret dibuat otomatis bila belum ada)
+#   Admin pertama:         deploy/deploy.sh admin email@domain   (di server identity / satu server) → login di admin.{DOMAIN}
+#                          dengan kode OTP email, lalu daftarkan authenticator (MFA wajib)
 #   deploy/deploy.sh down [peran] · deploy/deploy.sh status
 #
 # DNS A: auth.{DOMAIN} → server identity, api.{DOMAIN} → server core, {DOMAIN} + accounts./app./brand./admin. → server app.
@@ -23,6 +25,7 @@ DEPLOY=$PWD ROOT=$(cd .. && pwd)
 SUPABASE_REF=${SUPABASE_REF:-d897e1462ad33ee9c7daba8cfee8f14e303c0cf5}
 
 CMD=${1:-} ROLE=${2:-all}
+[ "$CMD" = admin ] && { ADMIN_EMAIL=${2:-}; ROLE=identity; }
 case "$ROLE" in all | identity | core | apps) ;; *) echo "peran tidak dikenal: $ROLE (all|identity|core|apps)"; exit 1 ;; esac
 case "$ROLE" in all) STACKS="identity core" SITES="apps identity core" ;; apps) STACKS="" SITES=apps ;; *) STACKS=$ROLE SITES=$ROLE ;; esac
 
@@ -77,7 +80,7 @@ load_secrets() {
     esac
     for k in $need; do [ -n "${!k:-}" ] || { echo "secrets.env kurang $k untuk peran $r"; exit 1; }; done
   done
-  if [ "$ROLE" != all ] && grep -qvE "$(role_keys "$ROLE")" secrets.env; then
+  if [ "$CMD" = up ] && [ "$ROLE" != all ] && grep -qvE "$(role_keys "$ROLE")" secrets.env; then
     echo "PERINGATAN: secrets.env berisi kunci peran lain — di server $ROLE pakai secrets.$ROLE.env saja"
   fi
 }
@@ -173,9 +176,9 @@ prepare_stack() { # identity|core
     # Login Google (packages/auth signInWithOAuth): client OAuth Google di identity, terpisah dari koneksi YouTube core.
     setenv "$e" GOOGLE_LOGIN_ENABLED "$([ -n "${GOOGLE_LOGIN_CLIENT_ID:-}" ] && echo true || echo false)"
     setenv "$e" GOOGLE_LOGIN_CLIENT_ID "${GOOGLE_LOGIN_CLIENT_ID:-}"; setenv "$e" GOOGLE_LOGIN_SECRET "${GOOGLE_LOGIN_SECRET:-}"
-    for k in PII_HMAC_KEY PII_ENC_KEYS PII_ENC_KEY_VERSION VAPID_PUBLIC_KEY VAPID_PRIVATE_KEY DISBURSE_CALLBACK_TOKEN; do
-      setenv "$e" "$k" "${!k}"
-    done
+    for k in PII_HMAC_KEY PII_ENC_KEYS PII_ENC_KEY_VERSION VAPID_PUBLIC_KEY VAPID_PRIVATE_KEY; do setenv "$e" "$k" "${!k}"; done
+    # Xendit menandatangani callback dengan "Callback Verification Token" miliknya (header x-callback-token) → pakai itu.
+    setenv "$e" DISBURSE_CALLBACK_TOKEN "${XENDIT_CALLBACK_TOKEN:-$DISBURSE_CALLBACK_TOKEN}"
     for k in RESEND_API_KEY EMAIL_FROM XENDIT_SECRET_KEY; do setenv "$e" "$k" "${!k:-}"; done
     setenv "$e" DISBURSE_PROVIDER "${DISBURSE_PROVIDER:-mock}"
     setenv "$e" VAPID_SUBJECT "mailto:${SMTP_ADMIN_EMAIL:-admin@$DOMAIN}"
@@ -363,5 +366,40 @@ case "$CMD" in
     [ -f .generated/caddy.yml ] && docker compose -f .generated/caddy.yml ps --format 'table {{.Name}}\t{{.Status}}'
     true
     ;;
-  *) sed -n '2,22p' "$0"; exit 1 ;;
+  admin)
+    # Bootstrap admin_super pertama (api.admin_set_role butuh admin_super yang sudah ada). Akun dibuat lewat Admin API
+    # GoTrue di dalam container auth (tanpa curl di host); aturan akun admin terpisah (AA-20) tetap berlaku.
+    load_config
+    [[ "$ADMIN_EMAIL" =~ ^[^@[:space:]\'\"]+@[^@[:space:]\'\"]+\.[a-z]{2,}$ ]] || { echo "pakai: deploy.sh admin email@domain"; exit 1; }
+    while IFS='=' read -r k v; do [ -n "$k" ] && export "$k=$v"; done < secrets.env
+    docker inspect identity-auth >/dev/null 2>&1 || { echo "stack identity belum jalan di server ini (deploy.sh up identity)"; exit 1; }
+    uid=$(psql_db identity -tA -v email="$ADMIN_EMAIL" <<'SQL'
+select id from auth.users where lower(email) = lower(:'email');
+SQL
+)
+    if [ -z "$uid" ]; then
+      docker exec identity-auth wget -q -O /dev/null --header "Authorization: Bearer $IDENTITY_SERVICE_ROLE_KEY" \
+        --header 'Content-Type: application/json' --post-data "{\"email\":\"$ADMIN_EMAIL\",\"email_confirm\":true}" \
+        http://localhost:9999/admin/users || { echo "Admin API GoTrue menolak membuat $ADMIN_EMAIL (lihat docker logs identity-auth)"; exit 1; }
+      uid=$(psql_db identity -tA -v email="$ADMIN_EMAIL" <<'SQL'
+select id from auth.users where lower(email) = lower(:'email');
+SQL
+)
+    fi
+    [ -n "$uid" ] || { echo "gagal membuat akun $ADMIN_EMAIL"; exit 1; }
+    blocked=$(psql_db identity -tA -v uid="$uid" <<'SQL'
+select not exists (select 1 from member.platform_roles where user_id = :'uid')
+   and exists (select 1 from member.consents where user_id = :'uid' and kind in ('tos_clipper', 'tos_brand'));
+SQL
+)
+    [ "$blocked" = t ] && { echo "akun $ADMIN_EMAIL sudah terdaftar sebagai clipper/brand — admin wajib akun terpisah, pakai email lain"; exit 1; }
+    psql_db identity -v uid="$uid" <<'SQL'
+with granted as (insert into member.platform_roles (user_id, role) values (:'uid', 'admin_super')
+                 on conflict do nothing returning user_id)
+insert into member.audit_logs (actor_id, action, target, after)
+select null, 'role.grant', 'user:' || user_id, '{"role":"admin_super","via":"deploy.sh admin"}' from granted;
+SQL
+    echo "admin_super: $ADMIN_EMAIL ($uid) → login di $ADMIN dengan kode OTP email, lalu daftarkan authenticator (MFA wajib)"
+    ;;
+  *) sed -n '2,25p' "$0"; exit 1 ;;
 esac
