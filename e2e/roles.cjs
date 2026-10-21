@@ -433,6 +433,9 @@ step('clipper-claim-submit', ['clipper'], async ({ clipper }) => {
   // C1.6 claim lewat UI
   const claim1 = await claimOnce(clipper, 1);
   await shot(clipper, 'app-claimed');
+  // Aset brief (brief.pdf ~50 byte) tampil dengan ukuran yang masuk akal (bukan "0 MB")
+  const assetLine = await clipper.getByText(/^Dokumen/).first().textContent();
+  check(!/\b0 MB/.test(assetLine) && /KB|MB/.test(assetLine), 'ukuran aset: ' + assetLine);
   // C1.8 submit lewat UI: daftar video & tempel URL → API platform tidak terjangkau offline; catat pesan yang tampil
   await clipper.getByRole('button', { name: 'Submit video' }).first().click();
   const sheet = clipper.getByRole('dialog');
