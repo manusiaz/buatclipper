@@ -484,8 +484,8 @@ begin
   end if;
 
   begin
-    insert into tracking.submissions (claim_id, user_id, campaign_id, social_account_id, platform, post_id, url, posted_at, cover_hash)
-    values (cl.id, p_user, c.id, a.id, a.platform, p_post_id, p_url, p_posted_at, p_cover_hash) returning id into sid;
+    insert into tracking.submissions (claim_id, user_id, campaign_id, social_account_id, platform, post_id, url, posted_at, duration_sec, cover_hash)
+    values (cl.id, p_user, c.id, a.id, a.platform, p_post_id, p_url, p_posted_at, p_duration_sec, p_cover_hash) returning id into sid;
   exception when unique_violation then
     raise exception 'already_submitted' using errcode = 'P0001';
   end;

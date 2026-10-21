@@ -12,6 +12,7 @@ create table tracking.submissions (
   post_id text not null,
   url text not null check (url ~ '^https://'),
   posted_at timestamptz not null,
+  duration_sec integer,  -- dari API platform saat submit; null = tidak diketahui (campaign berbatas durasi → wajib review manual)
   status tracking.submission_status not null default 'validating',
   counted_views bigint not null default 0 check (counted_views >= 0),
   last_snapshot_at timestamptz,

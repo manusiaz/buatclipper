@@ -1253,6 +1253,25 @@ update tracking.submissions set status = 'in_review' where id = (select v::uuid 
 select trust.auto_approve_overdue();
 select is((select status::text from tracking.submissions where id = (select v::uuid from t_ids where k = 's_music_brand')), 'in_review',
           'regresi R34-2: submisi musik TikTok review brand tidak di-auto-approve setelah 72 jam');
+-- Regresi R66: campaign review brand berbatas durasi — durasi tidak diketahui tetap menunggu manusia; durasi diketahui ikut auto-approve.
+insert into market.campaigns (id, org_id, slug, title, type, platforms, start_at, submit_deadline, created_by, review_mode, min_duration_sec, max_duration_sec)
+values ('55555555-0000-0000-0000-0000000000bb', '44444444-0000-0000-0000-000000000001', 'r66-duration', 'Durasi brand', 'clipping', '{tiktok}',
+        now() - interval '5 days', now() + interval '10 days', '22222222-0000-0000-0000-0000000000a1', 'brand', 30, 90);
+update market.campaigns set status = 'in_review' where id = '55555555-0000-0000-0000-0000000000bb';
+update market.campaigns set status = 'scheduled' where id = '55555555-0000-0000-0000-0000000000bb';
+update market.campaigns set status = 'live' where id = '55555555-0000-0000-0000-0000000000bb';
+insert into market.claims (id, campaign_id, user_id, expires_at, created_at) values
+  ('88888888-0000-0000-0000-0000000000bb', '55555555-0000-0000-0000-0000000000bb', '11111111-0000-0000-0000-00000000000a', now() + interval '46 hours', now() - interval '90 hours'),
+  ('88888888-0000-0000-0000-0000000000bc', '55555555-0000-0000-0000-0000000000bb', '11111111-0000-0000-0000-00000000000d', now() + interval '46 hours', now() - interval '90 hours');
+insert into tracking.submissions (claim_id, user_id, campaign_id, social_account_id, platform, post_id, url, posted_at, duration_sec, created_at) values
+  ('88888888-0000-0000-0000-0000000000bb', '11111111-0000-0000-0000-00000000000a', '55555555-0000-0000-0000-0000000000bb',
+   '99999999-0000-0000-0000-00000000000a', 'tiktok', 'v-r66a', 'https://tiktok.com/v/r66a', now() - interval '85 hours', null, now() - interval '80 hours'),
+  ('88888888-0000-0000-0000-0000000000bc', '11111111-0000-0000-0000-00000000000d', '55555555-0000-0000-0000-0000000000bb',
+   '99999999-0000-0000-0000-00000000000d', 'tiktok', 'v-r66b', 'https://tiktok.com/v/r66b', now() - interval '85 hours', 45, now() - interval '80 hours');
+update tracking.submissions set status = 'in_review' where post_id in ('v-r66a', 'v-r66b');
+select trust.auto_approve_overdue();
+select is((select array_agg(post_id || ':' || status::text order by post_id) from tracking.submissions where post_id in ('v-r66a', 'v-r66b')),
+          array['v-r66a:in_review', 'v-r66b:tracking'], 'R66: durasi tidak diketahui tidak di-auto-approve; durasi diketahui tetap di-auto-approve');
 select is((select array[f.details -> 'duplicates' ->> 0, f.details -> 'related_user_ids' ->> 0] from trust.fraud_flags f
              join tracking.submissions s on s.id = f.target_id where f.signal = 'FR-07' and s.post_id = 'vid-11'),
           array[(select v from t_ids where k = 's10'), '11111111-0000-0000-0000-00000000000a'],
