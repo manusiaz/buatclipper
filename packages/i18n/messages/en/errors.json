@@ -45,6 +45,8 @@
   "pools_locked_after_payment": "Budget can't change after payment. Use a top-up.",
   "appeal_used": "The appeal for this submission was already used.",
   "appeal_closed": "This campaign has ended, so appeals for this submission are closed.",
+  "invoice_campaign_closed": "This campaign is no longer running, so the top-up/pin invoice can no longer be paid.",
+  "appeal_replaced": "You already submitted a replacement clip, so this clip can no longer be appealed.",
   "invite_used": "This invite was already used.",
   "invite_expired": "This invite has expired. Ask for a new link.",
   "not_agency": "This organization isn't an agency.",

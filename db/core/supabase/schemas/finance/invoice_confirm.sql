@@ -18,6 +18,15 @@ declare
   x record;
   days int;
 begin
+  -- Top-up / pin tak bermakna lagi bila campaign tidak bisa berjalan lagi (deadline lewat, habis, selesai, batal, ditolak) →
+  -- tolak; invoice basi di-void lifecycle (finance.void_stale_addons).
+  if inv.kind in ('topup', 'pinned') then
+    perform 1 from market.campaigns c where c.id = inv.campaign_id
+       and c.status in ('tracking', 'exhausted', 'settling', 'settled', 'cancelled', 'rejected') for share;
+    if found then
+      raise exception 'invoice_campaign_closed' using errcode = 'P0001';
+    end if;
+  end if;
   entries := jsonb_build_array(finance.e(finance.account('tax_payable', null, idr), inv.tax, 'invoice_payment', inv.id::text));
   if inv.total > inv.credit_applied then
     entries := entries || jsonb_build_array(finance.e(finance.account('bank_clearing', null, idr), -(inv.total - inv.credit_applied),
@@ -299,6 +308,16 @@ begin
   values ((select auth.uid()), 'invoice.faktur', 'invoice:' || inv.id, jsonb_build_object('faktur_no', inv.faktur_no, 'path', inv.faktur_path),
           jsonb_build_object('faktur_no', no, 'path', p_path));
 end $$;
+
+-- Invoice top-up / pin yang belum dibayar saat campaign tak bisa berjalan lagi → void (dipanggil market.run_lifecycle).
+create function finance.void_stale_addons() returns void
+language sql security definer set search_path = '' as $$
+  update finance.invoices i set status = 'void'
+   where i.status = 'issued' and i.kind in ('topup', 'pinned')
+     and exists (select 1 from market.campaigns c where c.id = i.campaign_id
+                  and c.status in ('tracking', 'exhausted', 'settling', 'settled', 'cancelled', 'rejected'));
+$$;
+revoke execute on function finance.void_stale_addons() from public;
 
 revoke execute on function api.confirm_invoice_payment(uuid, numeric, timestamptz, text, text), finance.settle_invoice(finance.invoices),
   finance.org_credit_available(uuid), finance.rollover_available(uuid), api.org_credit(uuid), api.pay_invoice_with_credit(uuid, numeric),

@@ -61,6 +61,7 @@ begin
     perform market.announce_campaign(r.id);
   end loop;
   update market.campaigns set status = 'tracking' where status in ('live', 'paused') and submit_deadline <= now();
+  perform finance.void_stale_addons();
 
   perform finance.finalize_settlements();
 

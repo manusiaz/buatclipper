@@ -2234,5 +2234,36 @@ select ok(finance.balance(finance.account('campaign_pool', '66666666-0000-0000-0
 select ok(pg_temp.bal('11111111-0000-0000-0000-00000000000f', 'pending') - (select v from t_r60_before) <= 5000,
           'R60: earning baru dibatasi sisa dana nyata pool (Rp5.000), bukan total − allocated (Rp1.000.000)');
 
+-- R62-1: invoice top-up yang dibayar setelah campaign selesai ditolak, lalu di-void lifecycle
+select pg_temp.mk_campaign('55555555-0000-0000-0000-00000000009a', 'r62-topup');
+select pg_temp.mk_pool('55555555-0000-0000-0000-00000000009a', '66666666-0000-0000-0000-00000000009a', 500000, 100000);
+insert into t_pay select 'inv_r62', (finance.issue_invoice('44444444-0000-0000-0000-000000000001', '55555555-0000-0000-0000-00000000009a', 'topup',
+  100000, 0, null, '[{"pool_id":"66666666-0000-0000-0000-00000000009a","amount":100000}]')).id;
+set local session_replication_role = replica;
+update market.campaigns set status = 'settled' where id = '55555555-0000-0000-0000-00000000009a';
+set local session_replication_role = origin;
+select throws_ok($$ select finance.settle_invoice((select i from finance.invoices i where i.id = (select id from t_pay where k = 'inv_r62'))) $$,
+                 'P0001', 'invoice_campaign_closed', 'R62: top-up campaign yang sudah selesai tidak bisa dilunasi');
+select finance.void_stale_addons();
+select is((select status from finance.invoices where id = (select id from t_pay where k = 'inv_r62')), 'void',
+          'R62: invoice top-up/pin basi di-void saat campaign tidak berjalan');
+
+-- R62-2: clip pengganti sudah memenuhi max_clips_per_clipper → banding clip lama ditolak
+select pg_temp.mk_campaign('55555555-0000-0000-0000-00000000009b', 'r62-limit');
+update market.campaigns set max_clips_per_clipper = 1 where id = '55555555-0000-0000-0000-00000000009b';
+insert into t_ids select 's_r62a', pg_temp.mk_sub('55555555-0000-0000-0000-00000000009b', '11111111-0000-0000-0000-00000000000c', 'r62a');
+set local session_replication_role = replica;
+update tracking.submissions set status = 'rejected' where id = (select v::uuid from t_ids where k = 's_r62a');
+set local session_replication_role = origin;
+insert into t_ids select 's_r62b', pg_temp.mk_sub('55555555-0000-0000-0000-00000000009b', '11111111-0000-0000-0000-00000000000c', 'r62b');
+set local session_replication_role = replica;
+update market.profiles set status = 'active', suspended_until = null where id = '11111111-0000-0000-0000-00000000000c';
+set local session_replication_role = origin;
+select pg_temp.jwt('11111111-0000-0000-0000-00000000000c');
+set local role authenticated;
+select throws_ok($$ select api.appeal_submission((select v::uuid from t_ids where k = 's_r62a'), 'Hashtag ada') $$, 'P0001', 'appeal_replaced',
+                 'R62: banding ditolak bila clip pengganti sudah memenuhi batas clip per clipper');
+reset role;
+
 select * from finish();
 rollback;

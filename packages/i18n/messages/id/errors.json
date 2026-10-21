@@ -31,6 +31,8 @@
   "pools_locked_after_payment": "Budget tidak bisa diubah setelah dibayar. Pakai top-up.",
   "appeal_used": "Banding untuk submisi ini sudah dipakai.",
   "appeal_closed": "Campaign sudah selesai, banding untuk submisi ini sudah ditutup.",
+  "invoice_campaign_closed": "Campaign ini sudah tidak berjalan, tagihan top-up/pin tidak bisa dibayar lagi.",
+  "appeal_replaced": "Kamu sudah mengirim clip pengganti, jadi banding clip ini tidak tersedia.",
   "invite_used": "Undangan sudah dipakai.",
   "invite_expired": "Undangan sudah kedaluwarsa. Minta link baru.",
   "not_agency": "Organisasi ini bukan agency.",
