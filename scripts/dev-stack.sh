@@ -103,10 +103,12 @@ for a in web accounts clipper brand admin; do
     [ "$a" = clipper ] && echo "NEXT_PUBLIC_VAPID_PUBLIC_KEY=$VAPID_PUBLIC_KEY"
   } > "apps/$a/.env.local"
 done
-# App native (Expo): uji lewat build web (`pnpm --filter @clipper/mobile web`); HP fisik butuh IP LAN, bukan 127.0.0.1.
+# App native (Expo): uji lewat build web (`pnpm --filter @clipper/mobile web`). Emulator / HP: MOBILE_HOST = alamat laptop
+# dari perangkat itu (emulator Android 10.0.2.2, HP fisik IP LAN laptop), mis. MOBILE_HOST=192.168.1.10 scripts/dev-stack.sh.
+MH="${MOBILE_HOST:-127.0.0.1}"
 {
-  echo "EXPO_PUBLIC_IDENTITY_URL=http://127.0.0.1:54321"; echo "EXPO_PUBLIC_IDENTITY_PUBLISHABLE_KEY=$ID_PUB"
-  echo "EXPO_PUBLIC_CORE_URL=http://127.0.0.1:55321"; echo "EXPO_PUBLIC_CORE_PUBLISHABLE_KEY=$CORE_PUB"
+  echo "EXPO_PUBLIC_IDENTITY_URL=http://$MH:54321"; echo "EXPO_PUBLIC_IDENTITY_PUBLISHABLE_KEY=$ID_PUB"
+  echo "EXPO_PUBLIC_CORE_URL=http://$MH:55321"; echo "EXPO_PUBLIC_CORE_PUBLISHABLE_KEY=$CORE_PUB"
   echo "EXPO_PUBLIC_APP_URL=$APP"; echo "EXPO_PUBLIC_ACCOUNTS_URL=$ACC"; echo "EXPO_PUBLIC_BRAND_URL=$BRAND"; echo "EXPO_PUBLIC_WEB_URL=$WEB"
 } > apps/mobile/.env.local
 echo "stack lokal siap: identity http://127.0.0.1:54321 (email: http://127.0.0.1:54324), core http://127.0.0.1:55321"

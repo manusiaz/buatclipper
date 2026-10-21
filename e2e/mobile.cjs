@@ -103,7 +103,10 @@ const server = http.createServer((req, res) => {
     // 4. Tab Clip (nav bar M3) menampilkan claim
     await page.goto(NATIVE + '/');
     await page.getByTestId('tab-clips').click({ timeout: 15000 });
-    await page.getByText('E2E Journey Campaign').first().waitFor({ timeout: 15000 });
+    // Teks khas tab Clip (bukan judul campaign yang juga ada di tab Campaign yang sedang memudar).
+    await page.getByText('Belum submit').filter({ visible: true }).first().waitFor({ timeout: 15000 });
+    await page.getByRole('button', { name: 'Submit video' }).filter({ visible: true }).first().waitFor({ timeout: 5000 });
+    await page.waitForTimeout(400); // selesai fade antar-tab sebelum screenshot
     log('native: tab Clip menampilkan claim');
     await shot('05-clips');
     // 5. Share sheet → link TikTok dicocokkan ke campaign TikTok (1 tap) → Submit dengan link terisi
@@ -137,6 +140,7 @@ const server = http.createServer((req, res) => {
     await page.goto(NATIVE + '/');
     await page.getByTestId('tab-wallet').click({ timeout: 15000 });
     await page.getByText('Rp250.000').first().waitFor({ timeout: 15000 });
+    await page.waitForTimeout(400);
     await shot('08-wallet');
     await page.getByTestId('open-withdraw').click();
     // Akun baru belum KYC & belum punya rekening → checklist (sama dengan /wallet/withdraw web), form + tombol tahan
@@ -174,8 +178,8 @@ const server = http.createServer((req, res) => {
     console.error('✗', e.message, '@', page.url());
     process.exitCode = 1;
   } finally {
-    // Submit memanggil list_videos ke API TikTok; akun seed tanpa token OAuth → 500 (sandbox juga tanpa internet).
-    const relevant = errors.filter((e) => !/favicon|Download the React DevTools/.test(e) && !/\/submit\?.*status of 500/.test(e));
+    // Submit memanggil list_videos ke API TikTok; akun seed tanpa token OAuth → 500/503 (sandbox juga tanpa internet).
+    const relevant = errors.filter((e) => !/favicon|Download the React DevTools/.test(e) && !/\/submit\?.*status of 50[03]/.test(e));
     if (relevant.length) console.log('Console/page errors:\n' + relevant.join('\n'));
     await browser.close();
     server.close();

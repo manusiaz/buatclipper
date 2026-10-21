@@ -108,7 +108,8 @@
       "liveFailed": "Transfer gagal, saldo kembali",
       "liveEta": "±{when}"
     },
-    "signOutFailed": "Gagal keluar: perangkat ini belum bisa dilepas dari akunmu. Periksa koneksi lalu coba lagi."
+    "signOutFailed": "Gagal keluar: perangkat ini belum bisa dilepas dari akunmu. Periksa koneksi lalu coba lagi.",
+    "openWallet": "Buka Dompet"
   },
   "share": {
     "title": "Kirim clip",

@@ -1801,10 +1801,10 @@ Arah: `A --tipe--> B` = A bergantung pada B. `?` = belum terverifikasi.
 | `test:mobile.unit` | tests | `mod:mobile-widget-ios` | apps/mobile/src/widget-fns.test.ts:53 (string fungsi widget dari babel-preset-expo dijalankan di context terpisah) |
 | `test:mobile.unit` | tests | `mod:live-activity` | apps/mobile/src/widget-fns.test.ts:54 |
 | `test:mobile.unit` | tests | `mod:widget-snapshot` | apps/mobile/src/widget-snapshot.test.ts:8 |
-| `test:e2e.mobile` | tests | `page:mobile/share` | e2e/mobile.cjs:113 |
-| `test:e2e.mobile` | tests | `page:mobile/notifications` | e2e/mobile.cjs:129 |
-| `test:e2e.mobile` | tests | `page:mobile/withdraw` | e2e/mobile.cjs:141 |
-| `test:e2e.mobile` | tests | `page:mobile/social` | e2e/mobile.cjs:158 |
+| `test:e2e.mobile` | tests | `page:mobile/share` | e2e/mobile.cjs:116 |
+| `test:e2e.mobile` | tests | `page:mobile/notifications` | e2e/mobile.cjs:132 |
+| `test:e2e.mobile` | tests | `page:mobile/withdraw` | e2e/mobile.cjs:145 |
+| `test:e2e.mobile` | tests | `page:mobile/social` | e2e/mobile.cjs:162 |
 | `test:mobile.unit` | tests | `mod:live-activity` | apps/mobile/src/device-release.test.ts:43 (gagal DELETE → batal keluar, token tak didaftarkan ulang) |
 | `test:mobile.unit` | tests | `mod:widget-snapshot` | apps/mobile/src/device-release.test.ts:41 (muatan saat keluar dibuang, cadangan per user) |
 
@@ -2504,6 +2504,8 @@ Masalah sistem yang ditemukan saat menyusun PRD v0.2 dan saat dicek ulang (v0.2.
 | 2026-10-21 | `mod:live-activity` | Review Codex R56: daftar token tersimpan yang gagal dibaca saat keluar dianggap kosong → setelah restart (memori kosong) keluar sukses tanpa DELETE, token push-to-start akun lama tetap di server | diperbaiki: gagal baca = batal keluar, daftar tidak dihapus; tes R56 di device-release.test.ts (gagal di 3160369) |
 | 2026-10-21 | `mod:live-activity` | Review Codex R57: pendaftaran token push-to-start yang gagal (offline) tak pernah dicoba lagi selama app aktif — dan lebih luas: native mengirim token itu sekali per proses app, jadi akun yang login setelah akun lain keluar tak pernah mendaftarkannya (asumsi R53 "login berikutnya memindah kepemilikan token" keliru) | diperbaiki: token perangkat disimpan di memori, didaftarkan tiap sync & poll 30 detik sampai sukses, tetap dipegang setelah keluar untuk akun berikutnya; tes R57 (gagal di 8afdfdb) |
 | 2026-10-21 | `mod:live-activity` | Review Codex R58: app aktif lagi di tengah keluar → DeviceSync memanggil sync yang membuka lagi pendaftaran, token akun lama didaftarkan ulang setelah DELETE | diperbaiki: palang keluar tak dibuka sync; dibuka hanya oleh keluar gagal atau login baru (`reopenLiveActivities` di SIGNED_IN, diabaikan selama keluar); tes R58 (gagal di 812d571) |
+| 2026-10-21 | `test:e2e.mobile` | Uji ulang sebagai pengguna (screenshot ditinjau): langkah "tab Clip menampilkan claim" bisa lulus dari judul campaign di tab Campaign yang sedang memudar (tab Clip masih "Memuat…"); tombol "Buka wallet" di tab bernama Dompet; 503 list_videos (TikTok tanpa internet) tidak tersaring | diperbaiki: asersi pakai teks khas tab Clip + filter visible + tunggu fade sebelum screenshot; label `clipper.mobile.openWallet` "Buka Dompet"; filter galat lingkungan 500/503 khusus /submit |
+| 2026-10-21 | `doc:scripts/dev-stack.sh` | URL Supabase app native ditulis 127.0.0.1 → dari emulator / HP itu alamat perangkatnya sendiri, app tak bisa login ke stack laptop | diperbaiki: `MOBILE_HOST=<ip laptop> scripts/dev-stack.sh` (emulator Android 10.0.2.2); dicek identity & core menjawab lewat IP non-loopback. Halaman web (accounts.clipper.localhost) tetap tak terjangkau dari HP |
 
 ## Keputusan
 

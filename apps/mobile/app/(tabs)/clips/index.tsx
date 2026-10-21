@@ -186,7 +186,7 @@ export default function Clips() {
       })}
 
       {d && !empty ? (
-        <Button variant="secondary" icon="account_balance_wallet" onPress={() => router.push('/wallet')}>{t('tasks.toWallet')}</Button>
+        <Button variant="secondary" icon="account_balance_wallet" onPress={() => router.navigate('/wallet')}>{tm('openWallet')}</Button>
       ) : null}
     </Screen>
   );
