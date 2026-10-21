@@ -386,10 +386,11 @@ case "$CMD" in
     bad=0
     for h in $(served_hosts); do   # Let's Encrypt memvalidasi lewat host ini → record DNS harus mengarah ke server ini
       ip=$(getent ahostsv4 "$h" | awk '{print $1}' | sort -u | tr '\n' ' ' || true)
+      # Semua record harus milik server ini: ACME/pengunjung bisa memilih record mana pun (sisa server lama = gagal).
+      other=$(comm -23 <(tr ' ' '\n' <<< "$ip" | grep . | sort -u) <(tr ' ' '\n' <<< "$mine" | grep . | sort -u) | tr '\n' ' ')
       if [ -z "$ip" ]; then echo "  $h → TIDAK ADA RECORD DNS"; ok=
-      elif [ -n "$(comm -12 <(tr ' ' '\n' <<< "$ip" | sort -u) <(tr ' ' '\n' <<< "$mine" | sort -u) | grep .)" ]; then
-        echo "  $h → $ip"; ok=1
-      else echo "  $h → $ip BUKAN server ini (di belakang NAT? isi PUBLIC_IP di config.env)"; ok=; fi
+      elif [ -z "$other" ]; then echo "  $h → $ip"; ok=1
+      else echo "  $h → $ip: ${other}BUKAN server ini (di belakang NAT? isi PUBLIC_IP di config.env)"; ok=; fi
       [ -n "$ok" ] || [ "$SCHEME" = http ] || bad=1
     done
     for h in "auth.$DOMAIN" "api.$DOMAIN"; do   # server lain (bridge, JWKS, fetch app): belum up = wajar saat deploy pertama
