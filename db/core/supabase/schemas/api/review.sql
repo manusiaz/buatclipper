@@ -29,6 +29,8 @@ begin
   end if;
   -- Clip pengganti sudah memenuhi max_clips_per_clipper → banding clip lama tidak boleh menambah clip berbayar
   -- (banding yang berjalan sendiri ikut terhitung di claim_check, jadi pengganti tak bisa dikirim selama banding).
+  -- Kuota clip per (campaign, clipper) diserialkan dengan worker_create_submission.
+  perform pg_advisory_xact_lock(hashtextextended('clip_quota:' || s.campaign_id || ':' || uid, 0));
   if (select count(*) from tracking.submissions t where t.campaign_id = s.campaign_id and t.user_id = uid and t.id <> s.id
         and t.status not in ('rejected', 'rejected_final'))
      >= (select c.max_clips_per_clipper from market.campaigns c where c.id = s.campaign_id) then

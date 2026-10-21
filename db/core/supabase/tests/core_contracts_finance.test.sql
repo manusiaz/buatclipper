@@ -1195,6 +1195,19 @@ select ok(exists (select 1 from trust.score_events e where e.reason = 'submissio
           and exists (select 1 from ops.notifications n where n.event = 'submission.approved'
                         and n.payload ->> 'submission_id' = (select v from t_ids where k = 's10')),
           'regresi G-3/G-17: review auto menaikkan Trust Score dan mengabari clipper (submission.approved)');
+-- Regresi R64: claim kedua yang sudah terbuka tidak melewati max_clips_per_clipper saat submit.
+set local session_replication_role = replica;
+update market.campaigns set max_clips_per_clipper = 1 where id = '55555555-0000-0000-0000-0000000000b0';
+insert into market.claims (id, campaign_id, user_id, expires_at, created_at) values
+  ('88888888-0000-0000-0000-000000000064', '55555555-0000-0000-0000-0000000000b0', '11111111-0000-0000-0000-00000000000a', now() + interval '46 hours', now() - interval '2 hours');
+set local session_replication_role = origin;
+select throws_ok($$ select api.worker_create_submission('11111111-0000-0000-0000-00000000000a', '88888888-0000-0000-0000-000000000064',
+                    '99999999-0000-0000-0000-00000000000a', 'vid-r64', 'https://tiktok.com/@andi/video/64', now() - interval '1 hour', '#mplid', 30) $$, 'P0001',
+                 'not_eligible:max_clips', 'R64: submit claim kedua saat kuota clip penuh ditolak');
+set local session_replication_role = replica;
+delete from market.claims where id = '88888888-0000-0000-0000-000000000064';
+update market.campaigns set max_clips_per_clipper = 10 where id = '55555555-0000-0000-0000-0000000000b0';
+set local session_replication_role = origin;
 select throws_ok($$ select api.worker_create_submission('11111111-0000-0000-0000-00000000000d', '88888888-0000-0000-0000-0000000000b1',
                     '99999999-0000-0000-0000-00000000000d', 'vid-10', 'https://tiktok.com/x', now() - interval '1 hour', '#mplid', 30) $$, 'P0001',
                  'already_submitted', 'submit: video sama di campaign sama');

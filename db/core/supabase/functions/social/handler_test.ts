@@ -152,6 +152,9 @@ Deno.test("social: submit memetakan error SQL ke kode (missing_tags dirinci per 
     ["claim_not_open", "claim_not_open", undefined],
     ["account_inactive", "account_inactive", undefined],
     ["invalid:url", "invalid", "url"],
+    ["not_eligible:min_followers", "not_eligible:min_followers", undefined],
+    ["not_eligible:min_account_age", "not_eligible:min_account_age", undefined],
+    ["not_eligible:max_clips", "not_eligible:max_clips", undefined],
   ];
   for (const [msg, code, detail] of cases) {
     const { handler } = deps({ worker_create_submission: rpcErr(msg) });
@@ -166,7 +169,7 @@ Deno.test("social: submit memetakan error SQL ke kode (missing_tags dirinci per 
   const res = await handler(post({ action: "submit", claim_id: CLAIM, account_id: ACCOUNT, post_id: "7080" }));
   assert.equal(res.status, 500);
   assert.equal((await res.json()).error, "internal");
-  assert.equal(SUBMIT_ERRORS.length, 13);
+  assert.equal(SUBMIT_ERRORS.length, 14);
 });
 
 Deno.test("social: submit video akun lain → not_owner; akun bukan milik user → account_not_yours; token mati → 409 + status expired", async () => {

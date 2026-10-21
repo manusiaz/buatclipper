@@ -67,6 +67,7 @@ export const SUBMIT_ERRORS = [
   "profile_inactive",
   "account_inactive",
   "invalid", // invalid:url
+  "not_eligible", // not_eligible:min_followers | min_account_age | max_clips (kode utuh, kunci i18n bertingkat)
 ] as const;
 
 /** Kode verifikasi channel YouTube: deterministik per (user, channel); bukti = kendali atas deskripsi channel. */
@@ -102,6 +103,7 @@ export function mapRpcError(e: unknown, known: readonly string[]): HttpError {
     const detail = m[1] === "missing_tags" && m[2]
       ? m[2].replace(/^[{[]|[}\]]$/g, "").split(",").map((s) => s.trim().replace(/^"|"$/g, "")).filter(Boolean)
       : m[2] || undefined;
+    if (m[1] === "not_eligible") return new HttpError(422, e.message.trim(), m[1]);
     return new HttpError(422, m[1], m[1], detail);
   }
   if (known.includes("account_limit") && (e.code === "23514" || /account_limit|maksimal/.test(e.message))) {
