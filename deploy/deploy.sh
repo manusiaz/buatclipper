@@ -176,6 +176,9 @@ prepare_stack() { # identity|core
     # Login Google (packages/auth signInWithOAuth): client OAuth Google di identity, terpisah dari koneksi YouTube core.
     setenv "$e" GOOGLE_LOGIN_ENABLED "$([ -n "${GOOGLE_LOGIN_CLIENT_ID:-}" ] && echo true || echo false)"
     setenv "$e" GOOGLE_LOGIN_CLIENT_ID "${GOOGLE_LOGIN_CLIENT_ID:-}"; setenv "$e" GOOGLE_LOGIN_SECRET "${GOOGLE_LOGIN_SECRET:-}"
+    # CAPTCHA Turnstile diverifikasi Auth identity (widget saja tidak menahan panggilan langsung ke /auth/v1/otp).
+    setenv "$e" CAPTCHA_ENABLED "$([ -n "${TURNSTILE_SECRET_KEY:-}" ] && echo true || echo false)"
+    setenv "$e" TURNSTILE_SECRET_KEY "${TURNSTILE_SECRET_KEY:-}"
     for k in PII_HMAC_KEY PII_ENC_KEYS PII_ENC_KEY_VERSION VAPID_PUBLIC_KEY VAPID_PRIVATE_KEY; do setenv "$e" "$k" "${!k}"; done
     # Xendit menandatangani callback dengan "Callback Verification Token" miliknya (header x-callback-token) → pakai itu.
     setenv "$e" DISBURSE_CALLBACK_TOKEN "${XENDIT_CALLBACK_TOKEN:-$DISBURSE_CALLBACK_TOKEN}"
@@ -367,20 +370,33 @@ case "$CMD" in
     true
     ;;
   admin)
-    # Bootstrap admin_super pertama (api.admin_set_role butuh admin_super yang sudah ada). Akun dibuat lewat Admin API
-    # GoTrue di dalam container auth (tanpa curl di host); aturan akun admin terpisah (AA-20) tetap berlaku.
+    # Bootstrap admin_super pertama (api.admin_set_role butuh admin_super yang sudah ada); aturan akun admin terpisah (AA-20)
+    # tetap berlaku.
     load_config
     [[ "$ADMIN_EMAIL" =~ ^[^@[:space:]\'\"]+@[^@[:space:]\'\"]+\.[a-z]{2,}$ ]] || { echo "pakai: deploy.sh admin email@domain"; exit 1; }
-    while IFS='=' read -r k v; do [ -n "$k" ] && export "$k=$v"; done < secrets.env
     docker inspect identity-auth >/dev/null 2>&1 || { echo "stack identity belum jalan di server ini (deploy.sh up identity)"; exit 1; }
     uid=$(psql_db identity -tA -v email="$ADMIN_EMAIL" <<'SQL'
 select id from auth.users where lower(email) = lower(:'email');
 SQL
 )
     if [ -z "$uid" ]; then
-      docker exec identity-auth wget -q -O /dev/null --header "Authorization: Bearer $IDENTITY_SERVICE_ROLE_KEY" \
-        --header 'Content-Type: application/json' --post-data "{\"email\":\"$ADMIN_EMAIL\",\"email_confirm\":true}" \
-        http://localhost:9999/admin/users || { echo "Admin API GoTrue menolak membuat $ADMIN_EMAIL (lihat docker logs identity-auth)"; exit 1; }
+      # Admin API GoTrue dipanggil dari Postgres (pg_net) dengan service key yang sudah ada di Vault (identity_secret_key):
+      # kunci tidak pernah muncul di argumen proses host/container; CLI GoTrue butuh password di argumen → tidak dipakai.
+      rid=$(psql_db identity -tA -v email="$ADMIN_EMAIL" <<'SQL'
+select net.http_post(
+  url := (select decrypted_secret from vault.decrypted_secrets where name = 'identity_url') || '/auth/v1/admin/users',
+  headers := jsonb_build_object('Authorization', 'Bearer ' || k.v, 'apikey', k.v, 'Content-Type', 'application/json'),
+  body := jsonb_build_object('email', :'email', 'email_confirm', true))
+from (select decrypted_secret as v from vault.decrypted_secrets where name = 'identity_secret_key') k;
+SQL
+)
+      [[ "$rid" =~ ^[0-9]+$ ]] || { echo "pg_net tidak mengembalikan id request"; exit 1; }
+      for _ in $(seq 1 30); do
+        code=$(psql_db identity -tA -c "select status_code from net._http_response where id = $rid")
+        [ -n "$code" ] && break
+        sleep 1
+      done
+      [[ "${code:-}" =~ ^2 ]] || { echo "Admin API GoTrue menolak membuat $ADMIN_EMAIL (status ${code:-timeout}; docker logs identity-auth)"; exit 1; }
       uid=$(psql_db identity -tA -v email="$ADMIN_EMAIL" <<'SQL'
 select id from auth.users where lower(email) = lower(:'email');
 SQL
