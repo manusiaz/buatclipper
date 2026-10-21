@@ -296,7 +296,12 @@ export default async function CampaignDetailPage({ params, searchParams }: Props
                     <span className="block truncate text-body-s font-semibold text-ink">{name}</span>
                     <span className="text-caption text-muted">
                       {t(`detail.assetKind.${a.kind}`)}
-                      {a.size_bytes ? ` · ${formatCompact(a.size_bytes / 1_000_000, locale)} MB` : ''}
+                      {/* < 1 MB dalam KB (dibulatkan ke atas) supaya berkas kecil tidak tampil "0 MB" */}
+                      {a.size_bytes
+                        ? a.size_bytes < 1_000_000
+                          ? ` · ${formatNumber(Math.ceil(a.size_bytes / 1000), locale)} KB`
+                          : ` · ${formatNumber(a.size_bytes / 1_000_000, locale, { maximumFractionDigits: 1 })} MB`
+                        : ''}
                     </span>
                   </span>
                   {href ? (
