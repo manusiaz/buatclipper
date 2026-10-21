@@ -339,7 +339,7 @@ declare
   sec uuid;
   k text;
   allowed constant text[] := array['id', 'owner_org_id', 'code', 'name', 'kind', 'unit_label', 'idr_value_per_unit', 'decimals',
-                                   'fulfillment', 'recipient_schema', 'stock', 'webhook_url', 'webhook_secret',
+                                   'fulfillment', 'recipient_schema', 'stock', 'stock_expected', 'webhook_url', 'webhook_secret',
                                    'fulfillment_margin_pct'];
 begin
   if jsonb_typeof(p) is distinct from 'object' then
@@ -399,6 +399,10 @@ begin
             coalesce(p -> 'recipient_schema', '[]'), market.jnum(p -> 'stock'), nullif(btrim(p ->> 'webhook_url'), ''), sec,
             coalesce(market.jnum(p -> 'fulfillment_margin_pct'), 0));
   else
+    -- Stok dipotong/dikembalikan sistem (invoice lunas, campaign selesai): form lama tidak boleh menimpanya (R74).
+    if p ? 'stock' and (not p ? 'stock_expected' or cur.stock is distinct from market.jnum(p -> 'stock_expected')) then
+      perform market.fail('stock_stale', 'stok berubah sejak form dibuka');
+    end if;
     update market.reward_types set
       code = case when p ? 'code' then upper(btrim(p ->> 'code')) else code end,
       name = case when p ? 'name' then btrim(p ->> 'name') else name end,

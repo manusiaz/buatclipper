@@ -98,7 +98,10 @@ export function RewardTypeDialog({ orgId, row, trigger }: { orgId: string; row?:
     setTouched(true);
     if (invalid) return;
     start(async () => {
-      const res = await saveRewardType(orgId, { ...d, idr_value_per_unit: idr, decimals, stock });
+      // Stok = sisa yang belum dipakai pool (dipotong saat invoice lunas): hanya dikirim bila diubah, dengan nilai yang tadi dilihat.
+      const stockChange = !row || stock !== row.stock ? { stock, stock_expected: row ? row.stock : undefined } : {};
+      const { stock: _draft, ...rest } = d;
+      const res = await saveRewardType(orgId, { ...rest, idr_value_per_unit: idr, decimals, ...stockChange });
       if (!res.ok) return setError(errText(res.error));
       toast.success(t('saved'));
       if (res.secret) setSecret(res.secret);

@@ -15,7 +15,10 @@ export interface RewardTypeInput {
   decimals: number;
   fulfillment: 'manual_export' | 'code_pool' | 'webhook';
   recipient_schema: { key: string; label: string; pii: boolean; required: boolean }[];
-  stock: number | null;
+  /** Tidak dikirim = stok tidak diubah. */
+  stock?: number | null;
+  /** Edit: stok yang dilihat saat form dibuka; berbeda dengan DB → stock_stale. */
+  stock_expected?: number | null;
   webhook_url?: string;
   /** Webhook: buat secret HMAC baru (wajib saat pertama memilih webhook). */
   rotate_secret?: boolean;
@@ -35,7 +38,8 @@ export async function saveRewardType(orgId: string, input: RewardTypeInput): Pro
     decimals: input.decimals,
     fulfillment: input.fulfillment,
     recipient_schema: input.recipient_schema,
-    stock: input.stock,
+    ...(input.stock !== undefined ? { stock: input.stock } : {}),
+    ...(input.stock_expected !== undefined ? { stock_expected: input.stock_expected } : {}),
   };
   if (input.fulfillment === 'webhook' && input.webhook_url?.trim()) p.webhook_url = input.webhook_url.trim();
   if (input.fulfillment !== 'webhook' && input.id) p.webhook_url = '';

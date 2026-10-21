@@ -427,6 +427,24 @@ select is(api.upload_reward_codes((select id from t_ids where k = 'rt_voucher'),
 select is(api.upload_reward_codes((select id from t_ids where k = 'rt_voucher'), array['A3', 'A4']), 1, 'kode yang sudah ada diabaikan');
 select throws_ok($$ select api.upload_reward_codes('77777777-0000-0000-0000-000000000002', array['X']) $$, 'P0001', 'invalid:fulfillment',
                  'kode hanya untuk reward type code_pool');
+-- Regresi R74: stok hanya diubah dengan nilai yang dilihat form; form basi tidak menimpa stok yang dipotong/dikembalikan sistem.
+insert into t_ids (k, id) select 'rt_merch', api.save_reward_type('{"owner_org_id":"44444444-0000-0000-0000-000000000001",
+  "code":"MRC74","name":"Merch","kind":"physical","unit_label":"pcs","idr_value_per_unit":100000,"fulfillment":"manual_export","stock":100}');
+reset role;
+update market.reward_types set stock = 20 where id = (select id from t_ids where k = 'rt_merch');  -- setara invoice lunas memotong 80
+set local role authenticated;
+select pg_temp.jwt('22222222-0000-0000-0000-0000000000b1');
+select throws_ok(format($$ select api.save_reward_type('{"id":"%s","name":"Merch baru","stock":100,"stock_expected":100}') $$,
+                        (select id from t_ids where k = 'rt_merch')), 'P0001', 'stock_stale', 'R74: form basi (stok 100) tidak menimpa stok 20');
+select lives_ok(format($$ select api.save_reward_type('{"id":"%s","name":"Merch baru"}') $$, (select id from t_ids where k = 'rt_merch')),
+                'R74: ubah nama tanpa menyentuh stok');
+select lives_ok(format($$ select api.save_reward_type('{"id":"%s","stock":25,"stock_expected":20}') $$, (select id from t_ids where k = 'rt_merch')),
+                'R74: ubah stok dengan nilai terbaru');
+reset role;
+select is((select name || ':' || stock from market.reward_types where id = (select id from t_ids where k = 'rt_merch')), 'Merch baru:25.0000000000',
+          'R74: nama berubah, stok hanya berubah lewat expected yang cocok');
+set local role authenticated;
+select pg_temp.jwt('22222222-0000-0000-0000-0000000000b1');
 reset role;
 select is((select code from market.reward_types where id = (select id from t_ids where k = 'rt_voucher')), 'VCR50', 'kode reward type huruf besar');
 select is((select s.decrypted_secret from market.reward_types r join vault.decrypted_secrets s on s.id = r.webhook_secret_ref

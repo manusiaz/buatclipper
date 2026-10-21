@@ -47,6 +47,7 @@
   "appeal_closed": "This campaign has ended, so appeals for this submission are closed.",
   "invoice_campaign_closed": "This campaign is no longer running, so the top-up/pin invoice can no longer be paid.",
   "reward_stock_insufficient": "Not enough reward stock for this pool. Add stock under Reward types or lower the pool amount.",
+  "stock_stale": "The stock changed after you opened this form (a campaign was paid or finished). Close and reopen it to see the latest stock.",
   "appeal_replaced": "You already submitted a replacement clip, so this clip can no longer be appealed.",
   "invite_used": "This invite was already used.",
   "invite_expired": "This invite has expired. Ask for a new link.",
