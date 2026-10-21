@@ -584,7 +584,9 @@ step('clipper-kyc', ['clipper', 'admin'], async ({ clipper, admin }) => {
   // C1.12 KYC lewat accounts (Edge Function identity member-data) → A2.1 admin menyetujui
   await clipper.goto(`${ACC}/kyc?next=${encodeURIComponent(APP + '/wallet/withdraw')}`);
   await clipper.getByLabel(/Nama sesuai KTP/).fill('QA Clipper Satu');
-  await clipper.getByLabel(/^NIK/).fill('3171011505900001');
+  // NIK unik (FR-04: NIK sama di akun lain ditolak): wilayah 317101 + lahir 15-05-90 + 4 digit acak
+  S.nik = '317101150590' + String(1000 + Math.floor(Math.random() * 9000));
+  await clipper.getByLabel(/^NIK/).fill(S.nik);
   await clipper.locator('input[type=file]').first().setInputFiles(PNG);
   await clipper.getByRole('checkbox').first().check();
   await shot(clipper, 'accounts-kyc-form');
@@ -612,17 +614,22 @@ step('clipper-payout-method', ['clipper'], async ({ clipper }) => {
   const bank = clipper.getByRole('combobox', { name: /^Bank/ });
   await bank.click();
   await clipper.getByRole('option').first().click();
-  await clipper.getByLabel(/Nomor rekening/).fill('1234567890');
+  S.accountNo = String(Date.now()).slice(-10); // unik (FR-04: bank + nomor sama di akun lain ditolak)
+  await clipper.getByLabel(/Nomor rekening/).fill(S.accountNo);
   await clipper.getByLabel(/Nama pemilik/).fill('QA Clipper Satu');
   await shot(clipper, 'accounts-payout-form');
   await clipper.getByRole('button', { name: 'Simpan rekening' }).click();
   // C1.13 → next: kembali ke withdraw dengan rekening terpilih
   await clipper.waitForURL(new RegExp('^' + APP + '/wallet/withdraw\\?method_id='), { timeout: 30000 });
-  await clipper.getByText(/7890/).first().waitFor({ timeout: 30000 });
-  const n = ident(`select count(*) from member.payout_methods where user_id = '${S.clipperId}'`);
-  check(n === '1', 'payout method tersimpan: ' + n);
+  await clipper.getByText(/\d rekening tersimpan/).first().waitFor({ timeout: 30000 });
+  const pm = ident(`select count(*) || '|' || bool_and(account_no_enc is not null) || '|' || bool_and(account_name = 'QA Clipper Satu')
+                    from member.payout_methods where user_id = '${S.clipperId}' and account_last4 = '${S.accountNo.slice(-4)}'`);
+  check(pm === '1|true|true', 'payout method terenkripsi + last4 + nama: ' + pm);
+  await clipper.goto(ACC + '/payout-methods');
+  await clipper.getByText(new RegExp('•+ ?' + S.accountNo.slice(-4) + '|\\*+' + S.accountNo.slice(-4))).first().waitFor({ timeout: 30000 })
+    .catch(() => finding('accounts/payout-methods: nomor tersamar ****' + S.accountNo.slice(-4) + ' tidak terlihat'));
   await shot(clipper, 'accounts-payout-saved');
-  log('accounts: rekening tersimpan (****7890)');
+  log('accounts: rekening tersimpan, tampil tersamar ****' + S.accountNo.slice(-4));
 });
 
 step('clipper-withdraw', ['clipper'], async ({ clipper }) => {
