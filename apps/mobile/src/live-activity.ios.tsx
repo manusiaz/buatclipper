@@ -101,6 +101,14 @@ let poll: ReturnType<typeof setInterval> | null = null;
 let generation = 0;
 const inflight = new Set<Promise<unknown>>();
 const linked = new Set<string>();
+// Token push-to-start = milik perangkat (bukan data akun) dan hanya dikirim native sekali per proses app: disimpan di
+// memori lalu didaftarkan tiap sync/poll sampai sukses — termasuk untuk akun yang login setelah akun lain keluar.
+let startToken: string | null = null;
+let startSaved = false;
+async function registerStart() {
+  if (!startToken || startSaved || released) return;
+  startSaved = await save(startToken, 'apns_start');
+}
 
 /** true = tersimpan di identity. Dilacak supaya keluar menunggu simpan yang sedang jalan. */
 function save(token: string, kind: 'apns_start' | 'apns_activity', ref?: string): Promise<boolean> {
@@ -157,8 +165,14 @@ export async function syncLiveActivities(uid: string): Promise<() => void> {
   released = false;
   stop();
   const mine = ++generation;
-  startSub = addPushToStartTokenListener((e) => void save(e.activityPushToStartToken, 'apns_start'));
-  poll = setInterval(() => void link(uid).catch(() => {}), 30_000);
+  startSaved = false;
+  startSub = addPushToStartTokenListener((e) => {
+    startToken = e.activityPushToStartToken;
+    startSaved = false;
+    void registerStart();
+  });
+  poll = setInterval(() => void (registerStart(), link(uid).catch(() => {})), 30_000);
+  void registerStart();
   await link(uid).catch(() => {});
   // Penghenti milik run ini saja: callback run lama yang selesai terlambat tidak mematikan run yang lebih baru.
   return () => void (mine === generation && stop());
@@ -192,6 +206,7 @@ export async function releaseLiveActivities() {
   }
   await AsyncStorage.removeItem(SAVED).catch(() => {});
   known.clear();
+  startSaved = false;
   linked.clear();
   await Promise.all(Payout.getInstances().map((a) => a.end('immediate')));
 }

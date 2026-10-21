@@ -36,10 +36,16 @@ vi.mock('expo-widgets', () => ({
 vi.mock('@expo/ui/swift-ui', () => ({}));
 vi.mock('@expo/ui/swift-ui/modifiers', () => ({}));
 
-const { invalidateWidgetSnapshot, loadWidgetSnapshot } = await import('./widget-load');
-const { releaseLiveActivities, syncLiveActivities } = await import('./live-activity.ios');
+// Modul dimuat ulang tiap tes: token perangkat & daftar tertaut sengaja bertahan lintas sesi di dalam satu proses app.
+let invalidateWidgetSnapshot: typeof import('./widget-load').invalidateWidgetSnapshot;
+let loadWidgetSnapshot: typeof import('./widget-load').loadWidgetSnapshot;
+let releaseLiveActivities: typeof import('./live-activity.ios').releaseLiveActivities;
+let syncLiveActivities: typeof import('./live-activity.ios').syncLiveActivities;
 
-beforeEach(() => {
+beforeEach(async () => {
+  vi.resetModules();
+  ({ invalidateWidgetSnapshot, loadWidgetSnapshot } = await import('./widget-load'));
+  ({ releaseLiveActivities, syncLiveActivities } = await import('./live-activity.ios'));
   store.clear();
   deleted.length = 0;
   deleteError = null;
@@ -110,6 +116,26 @@ describe('token Live Activity saat keluar', () => {
     expect(store.get('clipper.apns.tokens')).toBe('["ee05"]');
     await releaseLiveActivities();
     expect(deleted.at(-1)).toEqual(['ee05']);
+  });
+  it('pendaftaran push-to-start gagal dicoba lagi oleh poll tanpa event token baru (R57)', async () => {
+    vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval'] });
+    try {
+      rpc.mockImplementationOnce(async () => ({ error: { message: 'offline' } }));
+      await syncLiveActivities('user-a');
+      onStartToken!({ activityPushToStartToken: 'FF06' });
+      await vi.waitFor(() => expect(rpc).toHaveBeenCalledTimes(1));
+      await vi.advanceTimersByTimeAsync(30_000);
+      await vi.waitFor(() => expect(store.get('clipper.apns.tokens')).toBe('["ff06"]'));
+      expect(rpc).toHaveBeenCalledTimes(2);
+      // Akun lain login setelah keluar: token perangkat yang sama didaftarkan ulang tanpa event native baru.
+      await releaseLiveActivities();
+      rpc.mockClear();
+      await syncLiveActivities('user-b');
+      await vi.waitFor(() => expect(rpc).toHaveBeenCalledWith('save_activity_token', { p_token: 'FF06', p_kind: 'apns_start' }));
+      await releaseLiveActivities();
+    } finally {
+      vi.useRealTimers();
+    }
   });
   it('token yang datang saat/selesai keluar tidak didaftarkan ulang ke akun lama', async () => {
     await syncLiveActivities('user-a');
