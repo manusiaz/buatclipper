@@ -52,8 +52,17 @@ export async function enablePush(): Promise<PushState> {
 
 export async function disablePush(): Promise<PushState> {
   const t = await token();
-  if (t) await identityApi.from('push_subscriptions').delete().eq('endpoint', t);
-  return 'off';
+  if (!t) return 'off';
+  const { error } = await identityApi.from('push_subscriptions').delete().eq('endpoint', t);
+  return error ? 'on' : 'off';
+}
+
+/** Saat keluar: hapus langganan selagi masih login, lalu cabut registrasi push perangkat (padanan unsubscribe web) —
+ * walau DELETE gagal (offline), token lama ditolak FCM/APNs sehingga bridge menghapus barisnya di kiriman berikutnya. */
+export async function releasePush(): Promise<void> {
+  if (!Device.isDevice || !projectId()) return;
+  await disablePush().catch(() => 'on');
+  await Notifications.unregisterForNotificationsAsync().catch(() => {});
 }
 
 /** Tujuan tap notifikasi: tombol aksi (data.actions[id]) atau url utama. */

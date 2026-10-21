@@ -3,7 +3,7 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
 import type { Session } from '@supabase/supabase-js';
 import { decodeClaims, isAdmin, type Claims } from './claims';
-import { disablePush } from './push';
+import { releasePush } from './push';
 import { identity } from './supabase';
 
 interface AuthState {
@@ -36,7 +36,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
   const signOut = useCallback(async () => {
     // Lepas push perangkat ini selagi masih login (RLS): HP bersama tidak terus menerima notifikasi akun lama.
-    await disablePush().catch(() => {});
+    await releasePush();
     await identity.auth.signOut({ scope: 'local' });
     setSession(null);
   }, []);
