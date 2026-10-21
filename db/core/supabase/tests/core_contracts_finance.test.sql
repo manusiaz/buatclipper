@@ -1192,6 +1192,12 @@ select throws_ok($$ select api.worker_create_submission('11111111-0000-0000-0000
 select throws_ok($$ select api.worker_create_submission('11111111-0000-0000-0000-00000000000a', '88888888-0000-0000-0000-0000000000b0',
                     '99999999-0000-0000-0000-00000000000a', 'x', 'https://tiktok.com/x', now() - interval '1 hour', '#mplid', 5) $$, 'P0001',
                  'duration_out_of_range', 'submit: durasi di luar batas');
+-- Regresi R75: suspend yang sudah lewat masanya tidak memblok submit (claim_check juga menerimanya).
+update market.profiles set status = 'suspended', suspended_until = now() - interval '1 hour' where id = '11111111-0000-0000-0000-00000000000a';
+select throws_ok($$ select api.worker_create_submission('11111111-0000-0000-0000-00000000000a', '88888888-0000-0000-0000-0000000000b0',
+                    '99999999-0000-0000-0000-00000000000a', 'x', 'https://tiktok.com/x', now() - interval '1 hour', '#mplid', 5) $$, 'P0001',
+                 'duration_out_of_range', 'R75: suspend kedaluwarsa lolos cek profil submit');
+update market.profiles set status = 'active', suspended_until = null where id = '11111111-0000-0000-0000-00000000000a';
 -- Regresi R67: bergabung ke org pemilik campaign setelah claim → submit ditolak own_org.
 insert into market.org_members (org_id, user_id, role) values ('44444444-0000-0000-0000-000000000001', '11111111-0000-0000-0000-00000000000a', 'brand_manager');
 select throws_ok($$ select api.worker_create_submission('11111111-0000-0000-0000-00000000000a', '88888888-0000-0000-0000-0000000000b0',
@@ -1560,8 +1566,12 @@ update tracking.submissions set next_poll_at = now() - interval '3 hours' where 
 insert into t_ids select 's15d', pg_temp.mk_sub('55555555-0000-0000-0000-0000000000b5', '11111111-0000-0000-0000-00000000000d', 'v15d', now() - interval '40 days');
 update tracking.submissions set next_poll_at = null where id = (select v::uuid from t_ids where k = 's15d');
 insert into trust.review_decisions (target_type, target_id, decision) values ('submission', (select v::uuid from t_ids where k = 's15d'), 'approve');
+insert into market.profiles (id, username, display_name) values ('11111111-0000-0000-0000-0000000000c5', 'susp_r75', 'Suspend R75');
+update market.profiles set status = 'suspended', suspended_until = now() - interval '1 minute' where id = '11111111-0000-0000-0000-0000000000c5';
 update finance.payouts set created_at = now() - interval '20 minutes' where id = (select id from t_pay where k = 'i3');
 select market.run_lifecycle();
+select is((select status::text || ':' || coalesce(suspended_until::text, 'null') from market.profiles where id = '11111111-0000-0000-0000-0000000000c5'),
+          'active:null', 'R75: lifecycle mengaktifkan lagi profil yang masa suspend-nya sudah lewat');
 select is((select count(*)::int from net.http_request_queue q where convert_from(q.body, 'UTF8')::jsonb ->> 'action' = 'disburse'
            and convert_from(q.body, 'UTF8')::jsonb ->> 'payout_id' = (select id::text from t_pay where k = 'i3')), 2, 'instant macet > 15 menit → disburse dikirim ulang');
 select is((select status::text from market.campaigns where id = '55555555-0000-0000-0000-0000000000b3'), 'live', 'scheduled → live saat start_at');

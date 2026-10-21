@@ -372,7 +372,9 @@ declare
   a tracking.social_accounts;
   aid uuid;
 begin
-  if not exists (select 1 from market.profiles pr where pr.id = p_user and pr.status = 'active') then
+  -- Aktif efektif (sama dengan claim_check / require_active_clipper): suspend yang sudah lewat tidak menunggu job lifecycle.
+  if not exists (select 1 from market.profiles pr where pr.id = p_user
+                  and (pr.status = 'active' or (pr.status = 'suspended' and pr.suspended_until <= now()))) then
     raise exception 'profile_inactive' using errcode = 'P0001';
   end if;
   select * into a from tracking.social_accounts x where x.platform = pf and x.external_id = p_external_id for update;
@@ -420,7 +422,9 @@ declare
   st tracking.submission_status;
   dup record;
 begin
-  if not exists (select 1 from market.profiles pr where pr.id = p_user and pr.status = 'active') then
+  -- Aktif efektif (sama dengan claim_check / require_active_clipper): suspend yang sudah lewat tidak menunggu job lifecycle.
+  if not exists (select 1 from market.profiles pr where pr.id = p_user
+                  and (pr.status = 'active' or (pr.status = 'suspended' and pr.suspended_until <= now()))) then
     raise exception 'profile_inactive' using errcode = 'P0001';
   end if;
   select * into cl from market.claims k where k.id = p_claim for update;

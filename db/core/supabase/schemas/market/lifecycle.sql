@@ -55,6 +55,9 @@ declare
   fin bigint;
   n int;
 begin
+  -- Suspend berdurasi yang sudah lewat → active lagi (sanksi tetap tercatat dengan until); entry point yang mensyaratkan
+  -- status 'active' (submit, sosmed, org, notifikasi) tidak terkunci selamanya menunggu unsuspend manual (R75).
+  update market.profiles set status = 'active', suspended_until = null where status = 'suspended' and suspended_until <= now();
   for r in update market.campaigns set status = 'live' where status = 'scheduled' and start_at <= now() returning id, org_id loop
     perform market.notify_org(r.org_id, array['brand_owner', 'brand_manager']::market.org_role[], 'campaign.live',
                               market.campaign_ref(r.id));
