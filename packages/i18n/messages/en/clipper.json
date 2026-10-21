@@ -107,7 +107,8 @@
       "livePaid": "Arrived",
       "liveFailed": "Transfer failed, balance returned",
       "liveEta": "~{when}"
-    }
+    },
+    "signOutFailed": "Couldn't sign out: this device couldn't be released from your account. Check your connection and try again."
   },
   "share": {
     "title": "Send clip",

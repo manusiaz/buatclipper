@@ -188,11 +188,12 @@ export function payoutProps(p: Payload, status: PayoutProps["status"], startedAt
   return { payoutId, amount: amountOf(p), bank, last4, etaAt: isoOf(p.eta_at), startedAt, status };
 }
 
-/** stale-date: perkiraan selesai + 1 jam (minimal 15 menit, maksimal 8 jam dari sekarang); tanpa eta = 8 jam. */
+/** stale-date: perkiraan selesai + 15 menit (minimal 15 menit, maksimal 8 jam dari sekarang); tanpa eta = 8 jam. Lewat
+ *  itu tanpa event end (token activity belum terdaftar karena app tertutup), layout app menampilkan "cek status". */
 function staleDate(etaAt: string | null, nowS: number): number {
   const max = nowS + 8 * 3600;
   if (!etaAt) return max;
-  return Math.min(max, Math.max(nowS + 15 * 60, Math.floor(Date.parse(etaAt) / 1000) + 3600));
+  return Math.min(max, Math.max(nowS + 15 * 60, Math.floor(Date.parse(etaAt) / 1000) + 15 * 60));
 }
 
 export function startPayload(p: Payload, alert: { title: string; body: string }, nowS: number) {

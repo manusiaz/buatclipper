@@ -107,7 +107,8 @@
       "livePaid": "Sudah masuk",
       "liveFailed": "Transfer gagal, saldo kembali",
       "liveEta": "±{when}"
-    }
+    },
+    "signOutFailed": "Gagal keluar: perangkat ini belum bisa dilepas dari akunmu. Periksa koneksi lalu coba lagi."
   },
   "share": {
     "title": "Kirim clip",

@@ -67,6 +67,9 @@ describe("fungsi 'widget' mandiri (dijalankan extension iOS)", () => {
     expect(Object.keys(live).sort()).toEqual(['banner', 'compactLeading', 'compactTrailing', 'expandedBottom', 'expandedLeading', 'expandedTrailing', 'minimal']);
     expect(texts(live.banner)).toEqual(['Clipper · Lagi ditransfer', 'Rp482.000', 'BCA •• 4821']);
     expect(texts(live.compactTrailing)).toEqual(['Rp482rb']);
+    // Lewat stale-date tanpa event end: tidak lagi mengaku "lagi ditransfer".
+    const stale = run(la.Payout!, { amount: 482000, bank: 'bca', last4: '4821', status: 'processing', etaAt: new Date(now - 60_000).toISOString() }, { isStale: true }) as Record<string, unknown>;
+    expect(texts(stale.banner)).toEqual(['Clipper · Cek status di Clipper', 'Rp482.000', 'BCA •• 4821 · buka app untuk status terbaru']);
     const paid = run(la.Payout!, { amount: 1250000, bank: 'gopay', status: 'paid' }, {}) as Record<string, unknown>;
     expect(texts(paid.banner)).toEqual(['Clipper · Sudah masuk', 'Rp1.250.000', 'GOPAY']);
   });

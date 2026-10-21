@@ -19,7 +19,8 @@ export function DeviceSync() {
         .catch(() => {});
     };
     run();
-    const sub = AppState.addEventListener('change', (s) => s === 'active' && run());
+    // Aktif lagi → segarkan; ke latar → poll Live Activity berhenti (tak ada JS yang jalan di latar).
+    const sub = AppState.addEventListener('change', (s) => (s === 'active' ? run() : (stop?.(), (stop = undefined))));
     return () => (sub.remove(), stop?.());
   }, [uid]);
   return null;

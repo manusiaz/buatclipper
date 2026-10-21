@@ -190,7 +190,7 @@ Deno.test("startPayload: push-to-start LiveActivityAttributes, props JSON for th
           status: "processing",
         }),
       },
-      "stale-date": now + 120 + 3600, // eta + 1 jam
+      "stale-date": now + 120 + 900, // eta + 15 menit
       alert: { title: "Penarikan Rp147.500 sedang diproses", body: "Lagi ditransfer ke BCA •• 4821." },
     },
   });

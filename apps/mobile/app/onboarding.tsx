@@ -7,11 +7,13 @@ import { decodeClaims } from '@/claims';
 import { identity } from '@/supabase';
 import { Alert, Button, Card, Txt } from '@/ui/core';
 import { Screen } from '@/ui/screen';
+import { useToast } from '@/ui/toast';
 import { openWeb } from '@/web';
 
 export default function Onboarding() {
   const t = useTranslations('clipper.mobile');
   const { refresh, signOut } = useAuth();
+  const toast = useToast();
   const [pending, setPending] = useState(false);
   const [notYet, setNotYet] = useState(false);
   const check = async () => {
@@ -29,7 +31,7 @@ export default function Onboarding() {
         <Button full variant="secondary" loading={pending} onPress={check}>{t('onboardingDone')}</Button>
       </Card>
       {notYet ? <Alert tone="warn">{t('onboardingPending')}</Alert> : null}
-      <Button variant="link" onPress={signOut}>{t('signOut')}</Button>
+      <Button variant="link" onPress={async () => (await signOut()) || toast({ tone: 'danger', title: t('signOutFailed') })}>{t('signOut')}</Button>
     </Screen>
   );
 }

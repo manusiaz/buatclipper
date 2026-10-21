@@ -8,6 +8,7 @@ import { releaseLiveActivities } from './live-activity';
 import { releasePush } from './push';
 import { identity } from './supabase';
 import { refreshWidgets } from './widget';
+import { invalidateWidgetSnapshot } from './widget-load';
 
 interface AuthState {
   ready: boolean;
@@ -15,7 +16,8 @@ interface AuthState {
   claims: Claims | null;
   /** Ambil token baru (claim consent/kyc berubah setelah onboarding/KYC di web). */
   refresh: () => Promise<void>;
-  signOut: () => Promise<void>;
+  /** false = token Live Activity iOS gagal dilepas (offline) → tetap login, tampilkan galat dan coba lagi. */
+  signOut: () => Promise<boolean>;
 }
 
 const AuthContext = createContext<AuthState | null>(null);
@@ -38,14 +40,21 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     if (data.session) setSession(data.session);
   }, []);
   const signOut = useCallback(async () => {
-    // Lepas push perangkat ini selagi masih login (RLS): HP bersama tidak terus menerima notifikasi akun lama.
-    // Begitu juga token Live Activity iOS (pencairan tak muncul di layar kunci akun lain) dan isi widget.
+    // Lepas semua yang terikat perangkat selagi masih login (RLS), supaya HP bersama tidak terus menampilkan akun lama:
+    // token Live Activity iOS dulu (tak bisa dicabut dari app → gagal = batal keluar, sebelum push sempat dimatikan),
+    // lalu push, muatan widget yang sedang jalan, cache; widget dirender ulang tanpa sesi.
+    try {
+      await releaseLiveActivities();
+    } catch {
+      return false;
+    }
     await releasePush();
-    await releaseLiveActivities().catch(() => {});
+    invalidateWidgetSnapshot();
     await clearCache();
     await identity.auth.signOut({ scope: 'local' });
     setSession(null);
     void refreshWidgets();
+    return true;
   }, []);
 
   const value = useMemo(() => {

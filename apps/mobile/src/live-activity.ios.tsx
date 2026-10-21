@@ -5,12 +5,12 @@
 import { HStack, Image, ProgressView, Spacer, Text, VStack } from '@expo/ui/swift-ui';
 import { activityBackgroundTint, font, foregroundStyle, lineLimit, monospacedDigit } from '@expo/ui/swift-ui/modifiers';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { addPushToStartTokenListener, createLiveActivity } from 'expo-widgets';
+import { addPushToStartTokenListener, createLiveActivity, type LiveActivityEnvironment } from 'expo-widgets';
 import { core, identityApi } from './supabase';
 
 export type PayoutActivity = { payoutId?: string; amount?: number; bank?: string | null; last4?: string | null; etaAt?: string | null; startedAt?: string | null; status?: string };
 
-const Payout = createLiveActivity<PayoutActivity>('Payout', (p: PayoutActivity) => {
+const Payout = createLiveActivity<PayoutActivity>('Payout', (p: PayoutActivity, env: LiveActivityEnvironment) => {
   'widget';
   // Tanpa regex ber-backslash: plugin 'widget' menjadikan fungsi ini template string, backslash ikut hilang.
   const n = Math.round(Number(p.amount) || 0);
@@ -22,16 +22,18 @@ const Payout = createLiveActivity<PayoutActivity>('Payout', (p: PayoutActivity) 
   const bank = p.bank ? String(p.bank).split('_').join(' ').toUpperCase() + (p.last4 ? ' •• ' + p.last4 : '') : '';
   const done = p.status === 'paid';
   const failed = p.status === 'failed';
-  const title = done ? 'Sudah masuk' : failed ? 'Transfer gagal' : 'Lagi ditransfer';
+  // Lewat stale-date tanpa kabar akhir (activity tak tertaut karena app tertutup): jangan terus bilang "lagi ditransfer".
+  const stale = !done && !failed && !!env.isStale;
+  const title = done ? 'Sudah masuk' : failed ? 'Transfer gagal' : stale ? 'Cek status di Clipper' : 'Lagi ditransfer';
   const start = p.startedAt ? new Date(p.startedAt) : new Date();
   const eta = p.etaAt ? new Date(p.etaAt) : null;
-  const running = !done && !failed && eta && eta.getTime() > Date.now();
-  const icon = done ? 'checkmark.circle.fill' : failed ? 'exclamationmark.circle.fill' : 'paperplane.fill';
-  const tint = done ? '#22c55e' : failed ? '#ef4444' : '#5f8bff';
+  const running = !done && !failed && !stale && eta && eta.getTime() > Date.now();
+  const icon = done ? 'checkmark.circle.fill' : failed ? 'exclamationmark.circle.fill' : stale ? 'clock.fill' : 'paperplane.fill';
+  const tint = done ? '#22c55e' : failed ? '#ef4444' : stale ? '#c7cede' : '#5f8bff';
   const progress = running ? (
     <ProgressView timerInterval={{ lower: start, upper: eta! }} countsDown={false} modifiers={[foregroundStyle(tint)]} />
   ) : null;
-  const sub = [bank, failed ? 'saldo kembali ke wallet' : null].filter(Boolean).join(' · ');
+  const sub = [bank, failed ? 'saldo kembali ke wallet' : stale ? 'buka app untuk status terbaru' : null].filter(Boolean).join(' · ');
   return {
     banner: (
       <VStack alignment="leading" spacing={6} modifiers={[activityBackgroundTint('#0a1226')]}>
@@ -78,36 +80,79 @@ async function remember(token: string) {
   if (!list.includes(token)) await AsyncStorage.setItem(SAVED, JSON.stringify([...list, token].slice(-20)));
 }
 
-async function save(token: string, kind: 'apns_start' | 'apns_activity', ref?: string) {
-  const { error } = await identityApi.rpc('save_activity_token', { p_token: token, p_kind: kind, ...(ref ? { p_ref: ref } : {}) });
-  if (!error) await remember(token.toLowerCase());
+// Keluar (releaseLiveActivities) menutup pendaftaran dulu: listener & poll dihentikan, simpan yang sedang jalan ditunggu,
+// baru DELETE — token tidak bisa didaftarkan ulang ke akun lama di tengah proses keluar.
+let released = false;
+let startSub: { remove(): void } | null = null;
+let poll: ReturnType<typeof setInterval> | null = null;
+const inflight = new Set<Promise<unknown>>();
+const linked = new Set<string>();
+
+function save(token: string, kind: 'apns_start' | 'apns_activity', ref?: string) {
+  if (released) return;
+  const run = (async () => {
+    const { error } = await identityApi.rpc('save_activity_token', { p_token: token, p_kind: kind, ...(ref ? { p_ref: ref } : {}) });
+    if (!error) await remember(token.toLowerCase());
+  })().finally(() => inflight.delete(run));
+  inflight.add(run);
+}
+
+/** Tautkan activity yang belum ditautkan ke payout yang sedang diproses (props activity tak terbaca dari JS); tak ada
+ *  payout diproses → activity basi diakhiri. */
+async function link(uid: string) {
+  const fresh = Payout.getInstances().filter((a) => !linked.has(a.getId()));
+  if (!fresh.length || released) return;
+  const { data } = await core.from('payouts').select('id').eq('user_id', uid).eq('status', 'processing').order('created_at', { ascending: false }).limit(1).maybeSingle();
+  await Promise.all(
+    fresh.map(async (a) => {
+      linked.add(a.getId());
+      if (!data?.id) return a.end('default');
+      const token = await a.getPushToken();
+      if (token) save(token, 'apns_activity', data.id);
+      else a.addPushTokenListener((e) => save(e.pushToken, 'apns_activity', data.id!));
+    }),
+  );
+}
+
+function stop() {
+  startSub?.remove();
+  startSub = null;
+  if (poll) clearInterval(poll);
+  poll = null;
 }
 
 /**
- * Saat login / app aktif: daftar token push-to-start, lalu tautkan tiap activity yang sedang tampil ke payout yang
- * sedang diproses (props activity tak bisa dibaca dari JS). Tak ada payout diproses → activity basi diakhiri.
+ * Saat login / app aktif: daftar token push-to-start, tautkan activity yang tampil, lalu cek tiap 30 detik selama app
+ * aktif — activity yang dimulai push setelah ini juga dapat token update (supaya server bisa mengakhirinya). Activity
+ * yang tak sempat ditautkan (app tertutup terus) jadi "basi" setelah stale-date dan tampil jujur di layout.
  */
 export async function syncLiveActivities(uid: string): Promise<() => void> {
-  const sub = addPushToStartTokenListener((e) => void save(e.activityPushToStartToken, 'apns_start'));
-  const instances = Payout.getInstances();
-  if (instances.length) {
-    const { data } = await core.from('payouts').select('id').eq('user_id', uid).eq('status', 'processing').order('created_at', { ascending: false }).limit(1).maybeSingle();
-    await Promise.all(
-      instances.map(async (a) => {
-        if (!data?.id) return a.end('default');
-        const token = await a.getPushToken();
-        if (token) await save(token, 'apns_activity', data.id);
-        else a.addPushTokenListener((e) => void save(e.pushToken, 'apns_activity', data.id!));
-      }),
-    );
-  }
-  return () => sub.remove();
+  released = false;
+  stop();
+  startSub = addPushToStartTokenListener((e) => save(e.activityPushToStartToken, 'apns_start'));
+  poll = setInterval(() => void link(uid).catch(() => {}), 30_000);
+  await link(uid);
+  return stop;
 }
 
-/** Keluar: hapus token APNs perangkat ini (selagi masih login) supaya pencairan akun lain tak muncul di layar kunci. */
+/**
+ * Keluar: hapus token APNs perangkat ini selagi masih login. Berbeda dengan push Expo (token dicabut lewat unregister),
+ * token push-to-start tidak bisa dicabut dari app — jadi gagal hapus (offline) = lempar error dan keluar dibatalkan,
+ * supaya pencairan akun ini tidak muncul di layar kunci setelah orang lain memakai HP ini.
+ */
 export async function releaseLiveActivities() {
+  released = true;
+  stop();
+  await Promise.allSettled([...inflight]);
   const list = JSON.parse((await AsyncStorage.getItem(SAVED)) ?? '[]') as string[];
-  if (list.length) await identityApi.from('push_subscriptions').delete().in('endpoint', list);
+  if (list.length) {
+    const { error } = await identityApi.from('push_subscriptions').delete().in('endpoint', list);
+    if (error) {
+      released = false;
+      throw new Error('live_activity_release_failed');
+    }
+  }
   await AsyncStorage.removeItem(SAVED);
+  linked.clear();
   await Promise.all(Payout.getInstances().map((a) => a.end('immediate')));
 }

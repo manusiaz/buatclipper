@@ -3,7 +3,7 @@
 > Everything is one system. Every page is a node; every line is a real data or design dependency.
 > Dikelola oleh skill `alaconnect`. Edit inkremental — jangan generate ulang.
 
-Last verified: 319a01b + app native lengkap per DS mobile (IA 4 tab, layar native, widget Android/iOS, Live Activity, universal/App Link, notifikasi berangka, handoff sesi) — lint (check-arch + drift token), typecheck semua workspace, vitest 233, deno identity 132 + core 81, pgTAP identity 172 + core 997 setelah `db reset` dari migrasi (declarative sync: no changes), build clipper + accounts, expo export ios/android/web, fungsi widget hasil bundle dijalankan terpisah (widget-fns.test.ts), expo prebuild android+ios, e2e 10/10, e2e:mobile 12/12 (2026-10-21)
+Last verified: 319a01b + app native lengkap per DS mobile (IA 4 tab, layar native, widget Android/iOS, Live Activity, universal/App Link, notifikasi berangka, handoff sesi) — lint (check-arch + drift token), typecheck semua workspace, vitest 237, deno identity 132 + core 81, pgTAP identity 172 + core 997 setelah `db reset` dari migrasi (declarative sync: no changes), build clipper + accounts, expo export ios/android/web, fungsi widget hasil bundle dijalankan terpisah (widget-fns.test.ts), expo prebuild android+ios, e2e 10/10, e2e:mobile 12/12, Codex R53 diperbaiki (2026-10-21)
 
 **Status:** sistem sudah dibangun dan dites. 5 app Next.js 16 (`apps/web`, `apps/accounts`, `apps/clipper`, `apps/brand`, `apps/admin`) di atas `packages/{ui,campaign-builder,clipper-lib,auth,db-core,db-identity,i18n,config}`, plus app native Expo `apps/mobile` (Android + iOS, satu kode). 2 project Supabase (`db/identity`, `db/core`): schema deklaratif, `migrations/` (pg-delta), config.toml, seed.sql. 12 Edge Function: core `bridge`, `fulfill`, `notify`, `refresh-tokens`, `social`, `track-worker`; identity `admin-auth`, `bridge`, `delete-account`, `disburse`, `member-data`, `pii-export`. Tes: pgTAP 6 file (`db/core/supabase/tests` 4, `db/identity/supabase/tests` 2), unit test app/package (`pnpm test`, 38 file `*.test.ts(x)`), unit test Deno (29 file `*_test.ts` di `db/*/supabase/functions`), journey E2E lintas host `e2e/journey.cjs` (Playwright: web → accounts → app → undangan → brand), CI `.github/workflows/ci.yml` (job apps, functions, db per project). Diverifikasi di 7408318: `pnpm lint` ok, `pnpm typecheck` ok, `pnpm test` 197 tes lulus (campaign-builder 69, accounts 32, web 29, admin 24, brand 22, clipper 21), `pnpm build` 5 app ok, Deno fmt/lint/check ok + tes core 70 & identity 82, pgTAP core 727 & identity 107 (stub Postgres 16 dan `supabase test db`), `supabase db lint` (schema app) & `db advisors --type security` bersih, `pnpm e2e` 9/9 langkah 2× di build produksi. Node yang filenya ada punya kolom Path; bukti edge = `file:line` (dicek `check_graph.py`). Bukti yang masih rujukan PRD v0.3.1 = belum ada satu baris kode yang menyebut target, atau kodenya ada di folder route group `(account)`, `(auth)`, `(console)`: regex checker tidak menerima tanda kurung, jadi baris kodenya ditulis `kode baris N` (dicek manual). `(belum di kode)` = edge PRD yang tidak dibangun begitu. Edge `reads` page → table = dependency data logis; di kode jalannya lewat view/fungsi schema `api` (`policy:core.api-only`). Rujukan lintas DB (`table → table` antar project) tidak punya foreign key.
 
@@ -819,7 +819,7 @@ Arah: `A --tipe--> B` = A bergantung pada B. `?` = belum terverifikasi.
 | `layout:mobile` | calls | `api:rpc identity.save_expo_push_token` | apps/mobile/src/push.ts:49 |
 | `layout:mobile` | calls | `ext:expo-push` | apps/mobile/src/push.ts:26 (token perangkat dari Expo) |
 | `layout:mobile` | configured-by | `config:eas` | apps/mobile/app.config.ts:110 (extra.eas.projectId) |
-| `layout:mobile` | routes-to | `page:accounts/onboarding` | apps/mobile/app/onboarding.tsx:28 |
+| `layout:mobile` | routes-to | `page:accounts/onboarding` | apps/mobile/app/onboarding.tsx:30 |
 | `layout:mobile` | routes-to | `page:accounts/kyc` | apps/mobile/src/fix.ts:10 (fix kyc dari kartu/detail campaign, sesi dibawa lewat handoff) |
 | `mod:mobile-widget` | reads | `table:finance.ledger_accounts` | kode: loadWidgetSnapshot → widgetData → view api.wallet_balances (apps/mobile src/widget-load.ts baris 21, src/data.ts baris 658) |
 | `mod:native-tokens` | reads | `mod:ui` | packages/ui/scripts/gen-native-tokens.mjs:67 |
@@ -1762,9 +1762,9 @@ Arah: `A --tipe--> B` = A bergantung pada B. `?` = belum terverifikasi.
 | `mod:widget-snapshot` | calls | `api:rpc core.list_campaigns` | apps/mobile/src/data.ts:140 (widgetData → campaignPage: campaign baru + rate tertinggi) |
 | `mod:widget-snapshot` | reads | `table:finance.payouts` | apps/mobile/src/data.ts:660 |
 | `mod:widget-snapshot` | reads | `table:tracking.submissions` | apps/mobile/src/data.ts:661 |
-| `mod:live-activity` | calls | `api:rpc identity.save_activity_token` | apps/mobile/src/live-activity.ios.tsx:82 |
-| `mod:live-activity` | writes | `table:member.push_subscriptions` | apps/mobile/src/live-activity.ios.tsx:110 (keluar: token APNs perangkat dihapus) |
-| `mod:live-activity` | reads | `table:finance.payouts` | apps/mobile/src/live-activity.ios.tsx:94 (token activity ditautkan ke payout yang diproses) |
+| `mod:live-activity` | calls | `api:rpc identity.save_activity_token` | apps/mobile/src/live-activity.ios.tsx:94 |
+| `mod:live-activity` | writes | `table:member.push_subscriptions` | apps/mobile/src/live-activity.ios.tsx:149 (keluar: token APNs perangkat dihapus) |
+| `mod:live-activity` | reads | `table:finance.payouts` | apps/mobile/src/live-activity.ios.tsx:105 (token activity ditautkan ke payout yang diproses) |
 | `layout:mobile` | calls | `mod:live-activity` | apps/mobile/src/auth.tsx:44 |
 | `layout:mobile` | calls | `api:fn identity/session-handoff` | apps/mobile/src/web.ts:13 |
 | `layout:mobile` | routes-to | `page:accounts/handoff` | apps/mobile/src/web.ts:15 |
@@ -1788,7 +1788,7 @@ Arah: `A --tipe--> B` = A bergantung pada B. `?` = belum terverifikasi.
 | `api:fn identity/bridge` | calls | `mod:apns` | db/identity/supabase/functions/bridge/handler.ts:5 |
 | `mod:apns` | calls | `ext:apns` | db/identity/supabase/functions/_shared/apns.ts:4 |
 | `mod:apns` | configured-by | `env:APNS_PRIVATE_KEY` | db/identity/supabase/functions/_shared/apns.ts:3 |
-| `mod:apns` | reads | `table:member.push_subscriptions` | db/identity/supabase/functions/_shared/apns.ts:252 (token apns_start / apns_activity) |
+| `mod:apns` | reads | `table:member.push_subscriptions` | db/identity/supabase/functions/_shared/apns.ts:253 (token apns_start / apns_activity) |
 | `api:rpc identity.save_activity_token` | writes | `table:member.push_subscriptions` | db/identity/supabase/schemas/member/push_subscriptions.sql:87 |
 | `job:push-receipts` | calls | `api:fn identity/bridge` | db/identity/supabase/schemas/member/cron.sql:3 |
 | `api:fn identity/bridge` | writes | `table:member.push_tickets` | db/identity/supabase/functions/_shared/push.ts:5 |
@@ -1805,6 +1805,8 @@ Arah: `A --tipe--> B` = A bergantung pada B. `?` = belum terverifikasi.
 | `test:e2e.mobile` | tests | `page:mobile/notifications` | e2e/mobile.cjs:129 |
 | `test:e2e.mobile` | tests | `page:mobile/withdraw` | e2e/mobile.cjs:141 |
 | `test:e2e.mobile` | tests | `page:mobile/social` | e2e/mobile.cjs:158 |
+| `test:mobile.unit` | tests | `mod:live-activity` | apps/mobile/src/device-release.test.ts:31 (gagal DELETE → batal keluar, token tak didaftarkan ulang) |
+| `test:mobile.unit` | tests | `mod:widget-snapshot` | apps/mobile/src/device-release.test.ts:30 (muatan saat keluar dibuang, cadangan per user) |
 
 ## Diagram
 
@@ -2494,6 +2496,7 @@ Masalah sistem yang ditemukan saat menyusun PRD v0.2 dan saat dicek ulang (v0.2.
 | 2026-10-21 | `mod:apns` | APNs belum pernah diuji ke server Apple (tanpa .p8 di sandbox); HTTP/2 dari Edge runtime & token provider per isolate (risiko TooManyProviderTokenUpdates) belum terverifikasi; push-to-start butuh iOS 17.2+ | belum terverifikasi |
 | 2026-10-21 | `mod:live-activity` | DS iOS: Live Activity "cuma buat pencairan dan submission yang lagi direview" — yang review belum dibuat (butuh push end dari bridge untuk submission.approved/rejected + token per submisi) | terbuka |
 | 2026-10-21 | `doc:scripts/dev-stack.sh` | `supabase db reset` menghapus secret Vault (core_url dkk.) → pgTAP core finance gagal (`url` null di net.http_request_queue) sampai dev-stack.sh dijalankan lagi | catatan lingkungan: setelah reset jalankan `scripts/dev-stack.sh` |
+| 2026-10-21 | `mod:live-activity` | Review Codex R53: (1) keluar mengabaikan DELETE token APNs yang gagal (offline) — token push-to-start tak bisa dicabut dari app, jadi pencairan akun lama tetap bisa mulai Live Activity (nominal + 4 digit rekening) di HP bersama; listener token bisa mendaftarkan ulang di tengah keluar; (2) activity yang dimulai push setelah sinkronisasi tak pernah dapat token update → server tak bisa mengakhirinya, layar kunci terus "Lagi ditransfer"; (3) muatan widget yang sedang jalan saat keluar menulis & merender saldo akun lama, cadangan offline tak dibatasi per user | diperbaiki: (1) token APNs dilepas lebih dulu, gagal = keluar dibatalkan + toast (`signOut` → false), listener/poll dihentikan dan simpan yang sedang jalan ditunggu sebelum DELETE; (2) poll 30 detik selama app aktif menautkan activity baru, stale-date server = eta + 15 menit dan layout menampilkan "Cek status di Clipper" saat basi; (3) generasi muatan + cek ulang sesi sebelum simpan/render, cadangan `{uid, snap}`; tes `apps/mobile/src/device-release.test.ts` + kasus basi di widget-fns.test.ts (5 asersi gagal di c5bf6de) |
 
 ## Keputusan
 

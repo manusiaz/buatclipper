@@ -8,10 +8,12 @@ import { useTranslations } from 'use-intl';
 import { initials } from '@clipper/ui/format';
 import { useAuth } from '@/auth';
 import { accountHub, useLoad } from '@/data';
+import { haptic } from '@/haptics';
 import { useTheme } from '@/theme';
 import { Badge, Button, Card, Icon, Txt } from '@/ui/core';
 import { ListRow, ListSection } from '@/ui/list';
 import { Screen } from '@/ui/screen';
+import { useToast } from '@/ui/toast';
 import { openWeb } from '@/web';
 
 export default function Account() {
@@ -20,6 +22,7 @@ export default function Account() {
   const router = useRouter();
   const { c } = useTheme();
   const { claims, signOut } = useAuth();
+  const toast = useToast();
   const uid = claims!.sub;
   const hub = useLoad(() => accountHub(uid), [uid], `account:${uid}`);
   useFocusEffect(useCallback(() => void hub.reload(), [hub.reload]));
@@ -68,7 +71,7 @@ export default function Account() {
         </ListSection>
       ) : null}
 
-      <Button full variant="secondary" icon="logout" onPress={signOut} testID="sign-out">{t('menu.signOut')}</Button>
+      <Button full variant="secondary" icon="logout" onPress={async () => (await signOut()) || (haptic.error(), toast({ tone: 'danger', title: tm('signOutFailed') }))} testID="sign-out">{t('menu.signOut')}</Button>
     </Screen>
   );
 }
