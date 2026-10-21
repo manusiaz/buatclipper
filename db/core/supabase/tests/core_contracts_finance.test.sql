@@ -19,6 +19,8 @@ insert into ops.settings (key, value) values
   ('finance.settlement_wait_hours', '6'),
   ('finance.referral_bonus_pct', '5'),
   ('finance.referral_bonus_days', '90'),
+  ('finance.payout_eta_instant_minutes', '3'),
+  ('finance.payout_eta_batch_minutes', '45'),
   ('public.finance.refund_transfer_fee_idr', '2500'),
   ('tracking.final_grace_hours', '72'),
   ('tracking.poll_schedule', '[{"until_hours":72,"every_hours":4},{"until_hours":336,"every_hours":24},{"until_hours":null,"every_hours":72}]'),
@@ -316,7 +318,8 @@ select is(pg_temp.bal('11111111-0000-0000-0000-00000000000a', 'pending'), 199000
 select is((select payload - 'submission_id' from ops.notifications where event = 'earning.available'
            and user_id = '11111111-0000-0000-0000-00000000000a'),
           '{"campaign_id":"55555555-0000-0000-0000-0000000000a7","campaign_title":"Campaign k7-release","org_id":"44444444-0000-0000-0000-000000000001",
-            "amounts":[{"amount":2502,"reward_type":"IDR","unit_label":"Rp"}]}'::jsonb, 'notifikasi earning tersedia: judul campaign + nominal + satuan');
+            "platform":"tiktok","views":1001,"amounts":[{"amount":2502,"reward_type":"IDR","unit_label":"Rp"}]}'::jsonb,
+          'notifikasi earning tersedia: judul campaign + nominal + satuan + views yang dibayar');
 select finance.release_earnings();
 select is((select count(*)::int from finance.ledger_entries where ref_type = 'release' and state = 'available'), 1, 'release diulang = no-op');
 
@@ -391,6 +394,15 @@ select is((select status::text from finance.payouts where id = (select id from t
 select is(pg_temp.bal('11111111-0000-0000-0000-00000000000a', 'available'), 802502::numeric, 'instant gagal: dana + biaya kembali ke Tersedia');
 select is(pg_temp.acct('platform_revenue', null) - (-1000000), 0::numeric, 'instant gagal: biaya dikembalikan');
 select ok(exists (select 1 from ops.alerts where kind = 'payout.failed' and payload ->> 'error' = 'rekening tidak valid'), 'alert payout gagal');
+-- DS "notif selalu ada angka": payload payout membawa payout_id (Live Activity iOS), rekening (payout_method_id), biaya, channel.
+select is((select payload from ops.notifications where event = 'payout.failed' and payload ->> 'payout_id' = (select id::text from t_pay where k = 'i1')),
+          jsonb_build_object('amount', 100000, 'reward_type', 'IDR', 'unit_label', 'Rp', 'payout_id', (select id from t_pay where k = 'i1'),
+                             'payout_method_id', 'aaaaaaaa-0000-0000-0000-0000000000b1', 'fee', 5000, 'channel', 'instant',
+                             'reason', 'rekening tidak valid'),
+          'payload payout.failed: nominal yang kembali + payout_id + payout_method_id + biaya + channel + alasan');
+select is((select count(*)::int from ops.notifications where event = 'payout.processing'
+            and payload ->> 'payout_id' = (select id::text from t_pay where k = 'i1')), 0,
+          'instant langsung gagal dari requested → tanpa payout.processing (hanya payout.failed)');
 select is((select count(*)::int from net.http_request_queue q where convert_from(q.body, 'UTF8')::jsonb ->> 'action' = 'notify_admins'
             and convert_from(q.body, 'UTF8')::jsonb ->> 'kind' = 'payout.failed'), 1,
           'regresi G-12: alert payout gagal → email admin lewat bridge (F-X01 admin)');
@@ -421,9 +433,23 @@ insert into t_pay select 'i2', (api.request_payout('aaaaaaaa-0000-0000-0000-0000
 insert into t_pay select 'i3', (api.request_payout('aaaaaaaa-0000-0000-0000-0000000000b1', 100000, 'instant', 'idem-inst-3')).id;
 reset role;
 select api.bridge_mark_instant((select id from t_pay where k = 'i2'), 'processing', null, null);
+select api.bridge_mark_instant((select id from t_pay where k = 'i2'), 'processing', null, null);  -- callback ganda = no-op
+select is((select jsonb_agg(payload order by id) from ops.notifications where event = 'payout.processing'),
+          jsonb_build_array(jsonb_build_object('amount', 95000, 'reward_type', 'IDR', 'unit_label', 'Rp',
+                                               'payout_id', (select id from t_pay where k = 'i2'),
+                                               'payout_method_id', 'aaaaaaaa-0000-0000-0000-0000000000b1', 'fee', 5000,
+                                               'channel', 'instant', 'eta_at', now() + interval '3 minutes')),
+          'payout.processing (instant) sekali: nominal bersih (amount − fee) + biaya + eta_at = now() + finance.payout_eta_instant_minutes');
+select is((select array[(message ->> 'email')::boolean, (message ->> 'push')::boolean, (message ->> 'promo')::boolean] from pgmq.q_email
+            where message ->> 'event' = 'payout.processing'), array[true, true, false],
+          'payout.processing transaksional: email + push, bukan promosi (tidak ikut email_promotions)');
 select api.bridge_mark_instant((select id from t_pay where k = 'i2'), 'paid', 'PRV-1', null);
 select is((select status::text || ':' || provider_ref from finance.payouts where id = (select id from t_pay where k = 'i2')), 'paid:PRV-1',
           'instant sukses: paid + provider_ref');
+select is((select payload from ops.notifications where event = 'payout.paid' and payload ->> 'payout_id' = (select id::text from t_pay where k = 'i2')),
+          jsonb_build_object('amount', 95000, 'reward_type', 'IDR', 'unit_label', 'Rp', 'payout_id', (select id from t_pay where k = 'i2'),
+                             'payout_method_id', 'aaaaaaaa-0000-0000-0000-0000000000b1', 'fee', 5000, 'channel', 'instant', 'paid_at', now()),
+          'payload payout.paid (instant): nominal bersih + payout_id + payout_method_id + biaya + paid_at');
 select throws_ok($$ select api.bridge_mark_instant((select id from t_pay where k = 'i3'), 'paid', 'PRV-1', null) $$, '23505',
                  'duplicate_provider_ref', 'provider_ref sama untuk payout lain ditolak (satu payout = satu transfer)');
 
@@ -461,6 +487,15 @@ select api.bridge_attach_export((select id from t_pay where k = 'batch'), 'pii-e
                                 array[(select id from t_pay where k = 'b1'), (select id from t_pay where k = 'b2')]);
 select is((select status::text from finance.payouts where id = (select id from t_pay where k = 'b3')), 'on_hold', 'gagal cek export → on_hold');
 select is((select count from finance.payout_batches where id = (select id from t_pay where k = 'batch')), 2, 'batch: 2 payout masuk CSV');
+select api.bridge_attach_export((select id from t_pay where k = 'batch'), 'pii-exports/batch-1.csv', '[]'::jsonb, '{}');  -- berkas sama = no-op
+select is((select array_agg((payload ->> 'payout_id') || ':' || (payload ->> 'amount') order by payload ->> 'amount')
+             from ops.notifications where event = 'payout.processing' and payload ->> 'channel' = 'batch'),
+          array[(select id from t_pay where k = 'b2') || ':150000', (select id from t_pay where k = 'b1') || ':200000'],
+          'payout.processing (batch): sekali per payout di CSV (b3 ditahan tidak), nominal bersih');
+select ok((select bool_and((payload ->> 'eta_at')::timestamptz = now() + interval '45 minutes' and payload ->> 'fee' = '0'
+                           and payload ->> 'payout_method_id' = 'aaaaaaaa-0000-0000-0000-0000000000b1' and payload ->> 'reward_type' = 'IDR')
+             from ops.notifications where event = 'payout.processing' and payload ->> 'channel' = 'batch'),
+          'payout.processing (batch): eta_at = now() + finance.payout_eta_batch_minutes, biaya 0, rekening');
 set local role authenticated;
 select pg_temp.jwt('33333333-0000-0000-0000-0000000000f1', '{"app_roles":["admin_finance"],"aal":"aal2"}');
 select throws_ok($$ select api.mark_batch_paid((select id from t_pay where k = 'batch'),
@@ -490,6 +525,14 @@ select is((select proof_ref from finance.payouts where id = (select id from t_pa
 select ok((select payload ->> 'unit_label' = 'Rp' and payload ->> 'reward_type' = 'IDR' and payload ? 'payout_id' and payload ->> 'amount' = '150000'
            from ops.notifications where event = 'payout.failed' and payload ->> 'payout_id' = (select id::text from t_pay where k = 'b2')),
           'payload payout.failed: payout_id + nominal + satuan');
+select ok((select payload ->> 'payout_method_id' = 'aaaaaaaa-0000-0000-0000-0000000000b1' and payload ->> 'channel' = 'batch'
+                  and payload ->> 'fee' = '0' and payload ->> 'reason' = 'rekening ditutup'
+           from ops.notifications where event = 'payout.failed' and payload ->> 'payout_id' = (select id::text from t_pay where k = 'b2')),
+          'payload payout.failed (batch): + payout_method_id, biaya, channel');
+select ok((select payload ->> 'amount' = '200000' and payload ->> 'payout_method_id' = 'aaaaaaaa-0000-0000-0000-0000000000b1'
+                  and payload ->> 'fee' = '0' and payload ->> 'channel' = 'batch' and (payload ->> 'paid_at')::timestamptz = now()
+           from ops.notifications where event = 'payout.paid' and payload ->> 'payout_id' = (select id::text from t_pay where k = 'b1')),
+          'payload payout.paid (batch): payout_id + nominal + rekening + paid_at');
 -- Penyedia mengirim REVERSED setelah paid (S-05 paid → failed): dana kembali, idempoten
 select api.bridge_mark_instant((select id from t_pay where k = 'i2'), 'failed', 'PRV-1', 'REVERSED');
 select api.bridge_mark_instant((select id from t_pay where k = 'i2'), 'failed', 'PRV-1', 'REVERSED');
@@ -512,6 +555,8 @@ select is(pg_temp.bal('11111111-0000-0000-0000-00000000000a', 'available'), 7025
 select is(pg_temp.bal('11111111-0000-0000-0000-00000000000a', 'withdrawn'), 295000::numeric, 'payout dibatalkan: Ditarik berkurang');
 select ok((select payload ->> 'amount' = '100000' and payload ->> 'unit_label' = 'Rp' and payload ->> 'payout_id' = (select id::text from t_pay where k = 'b3')
            from ops.notifications where event = 'payout.cancelled'), 'notifikasi payout.cancelled dengan nominal');
+select ok((select payload ->> 'payout_method_id' = 'aaaaaaaa-0000-0000-0000-0000000000b1' and payload ->> 'fee' = '0' and payload ->> 'channel' = 'batch'
+           from ops.notifications where event = 'payout.cancelled'), 'payload payout.cancelled: + payout_method_id, biaya, channel');
 
 -- ========== D. Fulfillment non-tunai (S-06) ==========
 -- Vault asli mengenkripsi lewat fungsi milik supabase_admin: secret dibuat lewat API resmi, bukan INSERT langsung.
@@ -932,6 +977,10 @@ reset role;
 select ok(exists (select 1 from ops.notifications where event = 'earning.held' and user_id = '11111111-0000-0000-0000-00000000000b'
                   and payload ->> 'submission_id' = (select v from t_ids where k = 's9b') and payload ->> 'signal' = 'FR-01'),
           'regresi AA-22: tahan earning submisi → clipper dikabari');
+select is((select payload -> 'amounts' || jsonb_build_object('views', payload -> 'views', 'platform', payload -> 'platform')
+             from ops.notifications where event = 'earning.held' and payload ->> 'submission_id' = (select v from t_ids where k = 's9b')),
+          '[{"amount":5000,"reward_type":"IDR","unit_label":"Rp"},{"views":5000,"platform":"tiktok"}]'::jsonb,
+          'DS angka: earning.held submisi membawa nominal yang ditahan + views');
 insert into t_pay select 'fl5', trust.raise_flag('payout', (select id from t_pay where k = 'i3'), 'FR-07', 50, '{}');
 set local role authenticated;
 select pg_temp.jwt('33333333-0000-0000-0000-0000000000e1', '{"app_roles":["admin_moderator"],"aal":"aal2"}');
@@ -940,6 +989,11 @@ reset role;
 select ok(exists (select 1 from ops.notifications where event = 'earning.held' and payload ->> 'target_type' = 'payout'
                   and user_id = (select user_id from finance.payouts where id = (select id from t_pay where k = 'i3'))
                   and not payload ? 'submission_id'), 'regresi AA-22: tahan payout → clipper dikabari (tanpa submisi)');
+select is((select payload -> 'amounts' || jsonb_build_object('payout_id', payload -> 'payout_id') from ops.notifications
+            where event = 'earning.held' and payload ->> 'target_type' = 'payout'),
+          jsonb_build_array(jsonb_build_object('amount', 100000, 'reward_type', 'IDR', 'unit_label', 'Rp'),
+                            jsonb_build_object('payout_id', (select id from t_pay where k = 'i3'))),
+          'DS angka: earning.held payout membawa nominal payout + payout_id');
 select is((select status::text from finance.payouts where id = (select id from t_pay where k = 'i3')), 'requested',
           'regresi R4: instant yang sedang dikirim ke penyedia tidak ikut ditahan (tidak bisa dibatalkan + refund)');
 set local role authenticated;
@@ -1274,7 +1328,12 @@ select ok(exists (select 1 from ops.notifications where event = 'submission.forf
                   and payload ->> 'reason' = 'fraud:FR-02'), 'regresi AA-22: earning submisi locked dibatalkan → clipper dikabari');
 
 -- ========== K. Post hilang, status token, akun sosmed ==========
+insert into t_ids select 'lost_s1', jsonb_build_object('amount', trunc(sum(ce.amount)), 'views', max(s.counted_views))::text
+  from finance.clip_earnings ce join tracking.submissions s on s.id = ce.submission_id
+ where ce.submission_id = (select v::uuid from t_ids where k = 's1') and ce.released_at is null;
 select api.worker_post_gone((select v::uuid from t_ids where k = 's1'), 'deleted');
+insert into t_ids select 'paused_a', count(*)::text from tracking.submissions
+ where social_account_id = '99999999-0000-0000-0000-00000000000a' and status in ('tracking', 'flagged');
 select is((select status::text from tracking.submissions where id = (select v::uuid from t_ids where k = 's1')), 'forfeited', 'post dihapus → forfeited');
 select is((select sum(amount) from finance.clip_earnings where submission_id = (select v::uuid from t_ids where k = 's1')), 0::numeric,
           'post dihapus → earning pending hangus');
@@ -1286,6 +1345,15 @@ select is((select e.delta from trust.score_events e join trust.fraud_flags f on 
 select api.worker_account_status('99999999-0000-0000-0000-00000000000a', 'expired');
 select api.worker_account_status('99999999-0000-0000-0000-00000000000a', 'expired');
 select is((select count(*)::int from ops.notifications where event = 'social.token_expired'), 1, 'token kedaluwarsa: notifikasi sekali');
+select ok((select (v::jsonb ->> 'amount')::numeric > 0 from t_ids where k = 'lost_s1'), 'fixture: s1 punya earning pending sebelum post hilang');
+select is((select jsonb_build_object('amount', (payload -> 'amounts' -> 0 ->> 'amount')::numeric, 'views', (payload ->> 'views')::bigint)
+             || jsonb_build_object('n', jsonb_array_length(payload -> 'amounts'), 'platform', payload ->> 'platform')
+             from ops.notifications where event = 'submission.forfeited' and payload ->> 'submission_id' = (select v from t_ids where k = 's1')),
+          (select v::jsonb from t_ids where k = 'lost_s1') || '{"n":1,"platform":"tiktok"}',
+          'DS angka: submission.forfeited membawa nominal yang hangus (dibaca sebelum reversal) + views');
+select ok((select (v)::int > 0 from t_ids where k = 'paused_a'), 'fixture: akun andi punya submisi yang dilacak');
+select is((select payload ->> 'paused_count' from ops.notifications where event = 'social.token_expired'),
+          (select v from t_ids where k = 'paused_a'), 'DS angka: social.token_expired membawa jumlah video yang tracking-nya berhenti');
 select is((select count(*)::int from tracking.submissions where social_account_id = '99999999-0000-0000-0000-00000000000a'
            and status in ('tracking', 'flagged') and next_poll_at is not null), 0, 'token kedaluwarsa: tracking di-pause');
 select api.worker_account_status('99999999-0000-0000-0000-00000000000a', 'verified');
@@ -1421,7 +1489,7 @@ select is((select array_agg(p.username order by p.username) from ops.notificatio
           'campaign.new ke clipper eligible (aktif, akun verified di platform campaign; bukan suspended/banned/closed/anggota org)');
 select is((select payload from ops.notifications where event = 'campaign.new' and user_id = '11111111-0000-0000-0000-00000000000a'),
           '{"campaign_id":"55555555-0000-0000-0000-0000000000b3","campaign_title":"Terjadwal","campaign_slug":"k13-sched",
-            "org_name":"Studio Satu","platforms":["tiktok"]}'::jsonb, 'payload campaign.new');
+            "org_name":"Studio Satu","platforms":["tiktok"],"rate_per_1k":null}'::jsonb, 'payload campaign.new (campaign tanpa rule views: rate null)');
 select is((select count(*)::int from pgmq.q_email where message ->> 'event' = 'campaign.new' and (message ->> 'email')::boolean), 1,
           'email promosi campaign.new dilewati untuk yang unsubscribe');
 -- G-9 (F-B08): brand mengumumkan ulang → hanya clipper yang baru eligible yang dikabari (tidak dobel)
@@ -2063,6 +2131,78 @@ select ok(exists (select 1 from net.http_request_queue q where convert_from(q.bo
 select ok(exists (select 1 from ops.alerts where kind = 'payout.instant_stuck' and resolved_at is null), 'instant menggantung → alert finance');
 select is(api.bridge_get_payout('abababab-0000-0000-0000-000000000001') ->> 'provider_ref', 'disb-hanging',
           'identity menerima provider_ref untuk membaca status, bukan mengirim ulang');
+
+-- ========== DS notif angka: submission.approved (views, rate/1K, ±earning, cair), rate campaign, ETA default ==========
+-- "Notif selalu ada angka — views, rupiah, tanggal cair." Campaign K-ds: per_1k Rp2.000 + flat Rp5.000 (pool cap Rp150.000/klip);
+-- rule instagram & rule yang sudah ditutup tidak dihitung. TikTok: cap 80% + hold 10 hari (public.finance.platform_rules).
+create function pg_temp.mk_review_sub(p_campaign uuid, p_user uuid, p_post text, p_views bigint, p_posted timestamptz) returns uuid
+language plpgsql as $$
+declare cid uuid; sid uuid;
+begin
+  insert into market.claims (campaign_id, user_id, expires_at, created_at) values (p_campaign, p_user, now() + interval '48 hours', p_posted - interval '1 hour')
+  returning id into cid;
+  insert into tracking.submissions (claim_id, user_id, campaign_id, social_account_id, platform, post_id, url, posted_at, last_views)
+  values (cid, p_user, p_campaign, (select a.id from tracking.social_accounts a where a.user_id = p_user and a.platform = 'tiktok'),
+          'tiktok', p_post, 'https://tiktok.com/v/' || p_post, p_posted, p_views) returning id into sid;
+  update market.claims set status = 'submitted' where id = cid;
+  update tracking.submissions set status = 'in_review' where id = sid;
+  return sid;
+end $$;
+insert into market.campaigns (id, org_id, slug, title, type, platforms, start_at, submit_deadline, created_by, min_views, review_mode,
+                              view_window_days)
+values ('55555555-0000-0000-0000-0000000000d5', '44444444-0000-0000-0000-000000000001', 'k-ds-notif', 'Campaign k-ds-notif', 'clipping',
+        '{tiktok,instagram}', now() - interval '20 days', now() + interval '10 days', '22222222-0000-0000-0000-0000000000a1', 1000, 'brand', 30);
+update market.campaigns set status = 'in_review' where id = '55555555-0000-0000-0000-0000000000d5';
+update market.campaigns set status = 'scheduled' where id = '55555555-0000-0000-0000-0000000000d5';
+update market.campaigns set status = 'live' where id = '55555555-0000-0000-0000-0000000000d5';
+select pg_temp.mk_pool('55555555-0000-0000-0000-0000000000d5', '66666666-0000-0000-0000-0000000000d5', 10000000, 150000);
+select pg_temp.mk_rule('55555555-0000-0000-0000-0000000000d5', '66666666-0000-0000-0000-0000000000d5', 'per_1k_views', '{"rate":2000}');
+select pg_temp.mk_rule('55555555-0000-0000-0000-0000000000d5', '66666666-0000-0000-0000-0000000000d5', 'flat_per_post', '{"amount":5000}');
+select pg_temp.mk_rule('55555555-0000-0000-0000-0000000000d5', '66666666-0000-0000-0000-0000000000d5', 'per_1k_views', '{"rate":9999}',
+                       p_platform => 'instagram');
+select pg_temp.mk_rule('55555555-0000-0000-0000-0000000000d5', '66666666-0000-0000-0000-0000000000d5', 'per_1k_views', '{"rate":7777}',
+                       p_to => now() - interval '1 day');
+insert into ops.settings (key, value) values ('public.finance.platform_rules', '{"tiktok":{"cap_pct":80,"hold_days":10}}');
+insert into t_ids select 'ds_a', pg_temp.mk_review_sub('55555555-0000-0000-0000-0000000000d5', '11111111-0000-0000-0000-00000000000a', 'ds-a', 48210,
+                                                     now() - interval '2 days');
+insert into t_ids select 'ds_b', pg_temp.mk_review_sub('55555555-0000-0000-0000-0000000000d5', '11111111-0000-0000-0000-00000000000c', 'ds-b', 200000,
+                                                     now() - interval '3 days');
+insert into t_ids select 'ds_c', pg_temp.mk_review_sub('55555555-0000-0000-0000-0000000000d5', '11111111-0000-0000-0000-00000000000d', 'ds-c', 500,
+                                                     now() - interval '1 day');
+insert into t_ids select 'ds_d', pg_temp.mk_review_sub('55555555-0000-0000-0000-0000000000d5', '11111111-0000-0000-0000-00000000000f', 'ds-d', 7300,
+                                                     now() - interval '1 day');
+select trust.apply_submission_decision((select v::uuid from t_ids where k = k2), case when k2 = 'ds_d' then 'reject' else 'approve' end, null,
+                                       case when k2 = 'ds_d' then 'missing_hashtag' end, null, 'tes notif angka')
+  from unnest(array['ds_a', 'ds_b', 'ds_c', 'ds_d']) k2;
+create temp table t_ds as
+  select k.k, n.event, n.payload from t_ids k join ops.notifications n on n.payload ->> 'submission_id' = k.v
+   where k.k like 'ds\_%' and n.event like 'submission.%';
+select is((select payload - 'submission_id' - 'campaign_id' - 'release_at' from t_ds where k = 'ds_a'),
+          '{"campaign_title":"Campaign k-ds-notif","url":"https://tiktok.com/v/ds-a","reason":null,"message":null,"final":false,
+            "platform":"tiktok","views":48210,"rate_per_1k":2000,
+            "est_amounts":[{"amount":101420,"reward_type":"IDR","unit_label":"Rp"}]}'::jsonb,
+          'submission.approved: views snapshot, rate/1K TikTok (rule instagram & yang ditutup tidak dihitung), ±earning = views × rate + flat');
+select is((select (payload ->> 'release_at')::timestamptz from t_ds where k = 'ds_a'), now() - interval '2 days' + interval '30 days' + interval '10 days',
+          'submission.approved: perkiraan cair = posted_at + view window 30 hari + hold 10 hari (clip_terms TikTok), = estimateRelease web');
+select is((select payload -> 'est_amounts' from t_ds where k = 'ds_b'), '[{"amount":120000,"reward_type":"IDR","unit_label":"Rp"}]'::jsonb,
+          'submission.approved: ±earning dibatasi cap per klip seperti accrual (Rp150.000 × cap 80% TikTok)');
+select is((select array[payload ->> 'views', payload -> 'est_amounts' ->> 0, payload ->> 'rate_per_1k'] from t_ds where k = 'ds_c'),
+          array['500', '{"amount": 5000, "unit_label": "Rp", "reward_type": "IDR"}', '2000'],
+          'submission.approved: di bawah min_views hanya flat per posting yang diperkirakan, rate tetap dikirim');
+select is((select array[event, payload ->> 'views', payload ->> 'platform', (payload ? 'est_amounts')::text] from t_ds where k = 'ds_d'),
+          array['submission.rejected', '7300', 'tiktok', 'false'], 'submission.rejected: + views & platform, tanpa estimasi earning');
+update tracking.submissions set status = 'tracking' where id = (select v::uuid from t_ids where k = 'ds_a');
+update tracking.submissions set status = 'locked', locked_at = now() - interval '1 day' where id = (select v::uuid from t_ids where k = 'ds_a');
+select is((finance.clip_estimate((select v::uuid from t_ids where k = 'ds_a')) ->> 'release_at')::timestamptz, now() - interval '1 day' + interval '10 days',
+          'perkiraan cair submisi locked = locked_at + hold');
+delete from ops.settings where key = 'public.finance.platform_rules';
+select is(array[market.rate_per_1k('55555555-0000-0000-0000-0000000000d5'), market.rate_per_1k('55555555-0000-0000-0000-0000000000d5', 'tiktok'),
+                market.rate_per_1k('55555555-0000-0000-0000-0000000000b3')],
+          array[11999, 2000, null]::numeric[],
+          'rate_per_1k: campaign.new/invited = platform tertinggi (instagram 2.000 + 9.999), per platform, tanpa rule views → null');
+delete from ops.settings where key like 'finance.payout\_eta\_%';
+select is(array[finance.payout_eta('instant'), finance.payout_eta('batch')], array[now() + interval '2 minutes', now() + interval '30 minutes'],
+          'payout.processing tanpa setting: eta default instant 2 menit, batch 30 menit');
 
 -- ========== Invarian akhir ==========
 select is((select count(*)::int from (select 1 from finance.ledger_entries e group by e.txn_id, e.reward_type_id having sum(e.amount) <> 0) x),

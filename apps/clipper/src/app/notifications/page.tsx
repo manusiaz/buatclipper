@@ -2,31 +2,14 @@ import type { Metadata } from 'next';
 import Link from 'next/link';
 import { getTranslations } from 'next-intl/server';
 import { requireClipper } from '@clipper/auth/server';
-import { Button, EmptyState, Icon, RelativeTime, cn, type IconName } from '@clipper/ui';
+import { notificationIcon } from '@clipper/clipper-lib/notifications';
+import { Button, EmptyState, Icon, RelativeTime, cn } from '@clipper/ui';
 import { markAllRead, openNotification } from '@/features/notifications/actions';
 import { notificationViews } from '@/features/notifications/view';
 import { core, uiLocale } from '@/features/lib/server';
 
 export const metadata: Metadata = { title: 'Notifikasi' };
 
-const ICON: Record<string, IconName> = {
-  campaign: 'campaign',
-  claim: 'timer',
-  submission: 'checklist',
-  social: 'link',
-  earning: 'payments',
-  payout: 'account_balance_wallet',
-  fulfillment: 'redeem',
-  kyc: 'id_card',
-  broadcast: 'notifications',
-  account: 'shield',
-  invoice: 'receipt_long',
-  budget: 'monitoring',
-  org: 'storefront',
-  agency: 'groups',
-  refund: 'undo',
-  managed: 'edit',
-};
 
 // F-C11: notifikasi in-app (E-23) 100 terbaru; buka = tandai dibaca + deep link per event.
 export default async function NotificationsPage() {
@@ -76,11 +59,12 @@ export default async function NotificationsPage() {
                 )}
               >
                 <span className={cn('grid size-10 shrink-0 place-items-center rounded-full', n.read ? 'bg-subtle text-muted' : 'bg-primary-soft text-primary-soft-fg')}>
-                  <Icon name={ICON[n.event.split('.')[0] ?? ''] ?? 'notifications'} size={20} />
+                  <Icon name={notificationIcon(n.event)} size={20} />
                 </span>
                 <span className="flex min-w-0 flex-1 flex-col gap-0.5">
                   <span className={cn('text-body-s text-ink [overflow-wrap:anywhere]', !n.read && 'font-bold')}>{n.title}</span>
                   {n.body ? <span className="line-clamp-3 text-caption whitespace-pre-line text-text-2 [overflow-wrap:anywhere]">{n.body}</span> : null}
+                  {n.facts ? <span className="text-caption font-semibold text-ink [overflow-wrap:anywhere]">{n.facts}</span> : null}
                   {n.reason ? <span className="line-clamp-2 text-caption text-muted [overflow-wrap:anywhere]">{n.reason}</span> : null}
                   <span className="text-caption text-muted">
                     <RelativeTime value={n.createdAt} locale={locale} />

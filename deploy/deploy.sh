@@ -187,7 +187,13 @@ prepare_stack() { # identity|core
     for k in PII_HMAC_KEY PII_ENC_KEYS PII_ENC_KEY_VERSION VAPID_PUBLIC_KEY VAPID_PRIVATE_KEY; do setenv "$e" "$k" "${!k}"; done
     # Xendit menandatangani callback dengan "Callback Verification Token" miliknya (header x-callback-token) → pakai itu.
     setenv "$e" DISBURSE_CALLBACK_TOKEN "${XENDIT_CALLBACK_TOKEN:-$DISBURSE_CALLBACK_TOKEN}"
-    for k in RESEND_API_KEY EMAIL_FROM XENDIT_SECRET_KEY EXPO_ACCESS_TOKEN; do setenv "$e" "$k" "${!k:-}"; done
+    for k in RESEND_API_KEY EMAIL_FROM XENDIT_SECRET_KEY EXPO_ACCESS_TOKEN APNS_KEY_ID APNS_TEAM_ID APNS_BUNDLE_ID APNS_ENV; do
+      setenv "$e" "$k" "${!k:-}"
+    done
+    # Kunci .p8 multi-baris → satu baris "\n" literal (.env compose satu baris per kunci); _shared/apns.ts membaliknya.
+    # Lewat ekspansi parameter + setenv (ENVIRON awk), nilai tidak pernah jadi argumen proses.
+    local apns_key=${APNS_PRIVATE_KEY:-}; apns_key=${apns_key//$'\r'/}
+    setenv "$e" APNS_PRIVATE_KEY "${apns_key//$'\n'/\\n}"
     setenv "$e" DISBURSE_PROVIDER "${DISBURSE_PROVIDER:-mock}"
     setenv "$e" VAPID_SUBJECT "mailto:${SMTP_ADMIN_EMAIL:-admin@$DOMAIN}"
     setenv "$e" APP_URL "$APP"; setenv "$e" BRAND_URL "$BRAND"; setenv "$e" ACCOUNTS_URL "$ACC"; setenv "$e" ADMIN_URL "$ADMIN"
@@ -294,8 +300,10 @@ apps_env() {
     echo "NEXT_PUBLIC_WEB_URL=$WEB"; echo "NEXT_PUBLIC_ACCOUNTS_URL=$ACC"; echo "NEXT_PUBLIC_APP_URL=$APP"
     echo "NEXT_PUBLIC_BRAND_URL=$BRAND"; echo "NEXT_PUBLIC_ADMIN_URL=$ADMIN"
     echo "NEXT_PUBLIC_VAPID_PUBLIC_KEY=$VAPID_PUBLIC_KEY"; echo "NEXT_PUBLIC_TURNSTILE_SITE_KEY=${NEXT_PUBLIC_TURNSTILE_SITE_KEY:-}"
-    # App Android (TWA): dibaca saat request oleh app.{domain}/.well-known/assetlinks.json (bukan secret, tanpa rebuild).
+    # App Android (TWA / native) & iOS native: dibaca saat request oleh app.{domain}/.well-known/assetlinks.json dan
+    # apple-app-site-association (bukan secret, tanpa rebuild). Team/bundle iOS default = nilai APNs.
     echo "ANDROID_APP_PACKAGE=${ANDROID_APP_PACKAGE:-}"; echo "ANDROID_CERT_SHA256=${ANDROID_CERT_SHA256:-}"
+    echo "APPLE_TEAM_ID=${APPLE_TEAM_ID:-${APNS_TEAM_ID:-}}"; echo "IOS_BUNDLE_ID=${IOS_BUNDLE_ID:-${APNS_BUNDLE_ID:-}}"
   } > apps.env
 }
 apps() { docker compose -f apps.yml -f .generated/apps.hosts.yml --env-file apps.env -p clipper-apps "$@"; }

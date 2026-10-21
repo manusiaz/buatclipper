@@ -1,10 +1,13 @@
-// Ikon PWA dari LogoMark (tile gradien biru + pesawat kertas −32°), tanpa dependensi: rasterisasi poligon + PNG via zlib.
-// Jalankan: node apps/clipper/scripts/gen-icons.mjs → apps/clipper/public/icons/*.png
+// Ikon PWA + app native dari LogoMark (tile gradien biru + pesawat kertas −32°), tanpa dependensi: rasterisasi poligon +
+// PNG via zlib. Jalankan: node apps/clipper/scripts/gen-icons.mjs → apps/clipper/public/icons/*.png dan
+// apps/mobile/assets/icons/*.png (DS Android 05: 2 layer + monochrome themed; DS iOS 05: terang / gelap / tinted).
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { deflateSync } from 'node:zlib';
 
 const out = new URL('../public/icons/', import.meta.url);
+const native = new URL('../../mobile/assets/icons/', import.meta.url);
 mkdirSync(out, { recursive: true });
+mkdirSync(native, { recursive: true });
 
 // Glyph "send" (Material Symbols, viewBox 0 -960 960 960) — versi terisi, kurva diratakan.
 const PLANE = [
@@ -74,8 +77,9 @@ function gradient(t) {
   return a[1].map((v, i) => Math.round(v + (b[1][i] - v) * k));
 }
 
-/** opts: glyph = sisi glyph relatif tile, radius = sudut relatif (0 = full-bleed), bg = false → hanya glyph putih. */
-function render(size, { glyph, radius, bg = true }) {
+/** opts: glyph = sisi glyph relatif tile (0 = tanpa pesawat), radius = sudut relatif (0 = full-bleed), bg = false →
+ *  hanya glyph warna fg di atas transparan. */
+function render(size, { glyph, radius, bg = true, fg = [255, 255, 255] }) {
   const S = 4;
   const deg = (-32 * Math.PI) / 180;
   const g = glyph * size;
@@ -109,7 +113,7 @@ function render(size, { glyph, radius, bg = true }) {
       const m = mark / (S * S);
       const i = (y * size + x) * 4;
       if (!bg) {
-        buf.set([255, 255, 255, Math.round(m * 255)], i);
+        buf.set([...fg, Math.round(m * 255)], i);
         continue;
       }
       const t = Math.min(1, Math.max(0, ((x / size - 0.5) * dir[0] + (y / size - 0.5) * dir[1]) / 1.0 + 0.5));
@@ -130,5 +134,16 @@ const files = {
   // badge notifikasi Android: siluet putih di atas transparan
   'badge-96.png': render(96, { glyph: 0.8, radius: 0, bg: false }),
 };
+// Native: master 1024. Android adaptive = latar gradien + pesawat putih di zona aman 66/108 dp (juga dipakai sebagai
+// layer monochrome themed icon Android 13+). iOS 18: terang full-bleed (sistem memotong sudut), gelap = pesawat biru
+// #5F8BFF di atas transparan, tinted = siluet terang grayscale yang diwarnai sistem.
+const nativeFiles = {
+  'ios-light.png': render(1024, { glyph: 0.55, radius: 0 }),
+  'ios-dark.png': render(1024, { glyph: 0.55, radius: 0, bg: false, fg: [0x5f, 0x8b, 0xff] }),
+  'ios-tinted.png': render(1024, { glyph: 0.55, radius: 0, bg: false }),
+  'android-background.png': render(1024, { glyph: 0, radius: 0 }),
+  'android-foreground.png': render(1024, { glyph: 0.42, radius: 0, bg: false }),
+};
 for (const [name, data] of Object.entries(files)) writeFileSync(new URL(name, out), data);
-console.log(`icons: ${Object.keys(files).join(', ')}`);
+for (const [name, data] of Object.entries(nativeFiles)) writeFileSync(new URL(name, native), data);
+console.log(`icons: ${[...Object.keys(files), ...Object.keys(nativeFiles)].join(', ')}`);

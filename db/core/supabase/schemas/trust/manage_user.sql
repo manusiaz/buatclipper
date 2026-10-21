@@ -111,7 +111,8 @@ begin
   update tracking.social_accounts set status = 'revoked', token_ref = null where id = a.id;
   update tracking.submissions set next_poll_at = null where social_account_id = a.id and status in ('tracking', 'flagged');
   perform ops.enqueue_notification(a.user_id, 'social.token_expired',
-                                   jsonb_build_object('account_id', a.id, 'platform', a.platform, 'handle', a.handle));
+                                   jsonb_build_object('account_id', a.id, 'platform', a.platform, 'handle', a.handle,
+                                                      'paused_count', tracking.paused_count(a.id)));
   insert into ops.audit_logs (actor_id, action, target, before, after)
   values ((select auth.uid()), 'social.reset', 'social_account:' || a.id, jsonb_build_object('status', a.status, 'user_id', a.user_id),
           jsonb_build_object('status', 'revoked', 'note', left(btrim(p_note), 500)));

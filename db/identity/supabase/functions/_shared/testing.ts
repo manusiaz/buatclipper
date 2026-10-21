@@ -123,6 +123,11 @@ export class FakeAuthAdmin implements AuthAdmin {
     this.factors.set(userId, (this.factors.get(userId) ?? []).filter((f) => f !== factorId));
     return Promise.resolve();
   }
+  magicLinks: string[] = [];
+  magicLink(email: string) {
+    this.magicLinks.push(email);
+    return Promise.resolve(`hash-${this.magicLinks.length}`);
+  }
 }
 
 export function claims(sub: string, opts: { aal?: string; roles?: string[] } = {}) {

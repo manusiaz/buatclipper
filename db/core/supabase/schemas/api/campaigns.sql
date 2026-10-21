@@ -658,7 +658,8 @@ begin
       perform ops.enqueue_notification(pr.id, 'campaign.invited',
                                        jsonb_build_object('campaign_id', c.id, 'campaign_title', c.title, 'campaign_slug', c.slug,
                                                           'org_id', c.org_id,
-                                                          'org_name', (select o.name from market.organizations o where o.id = c.org_id)));
+                                                          'org_name', (select o.name from market.organizations o where o.id = c.org_id),
+                                                          'rate_per_1k', market.rate_per_1k(c.id)));
     end if;
   end loop;
   return n;

@@ -3,7 +3,7 @@ import { getTranslations } from 'next-intl/server';
 import { getAuth } from '@clipper/auth/server';
 import type { CampaignCtaState, IconName, Platform } from '@clipper/ui';
 import type { CoreFn } from '@clipper/db-core';
-import { budgetUsedRatio, cardRates, isPlatform, maxViews, type RateRule } from '@clipper/clipper-lib/pure';
+import { budgetUsedRatio, cardRates, categoryIcon, isPlatform, maxViews, type RateRule } from '@clipper/clipper-lib/pure';
 import { core, errorText, publicUrl, rewardTypes, uiLocale } from '../lib/server';
 import { fixFor } from './fix';
 import { toRpcFilters, type CampaignFilters } from '@clipper/clipper-lib/filters';
@@ -32,15 +32,6 @@ export interface CampaignCardData {
   ctaAction?: { label: string; href: string };
   claimExpiresAt?: string;
 }
-
-const CATEGORY_ICON: Record<string, IconName> = {
-  movies: 'movie',
-  games: 'sports_esports',
-  music: 'music_note',
-  brand: 'storefront',
-  ugc: 'smart_display',
-  podcast: 'mic',
-};
 
 type Row = CoreFn<'list_campaigns'>['Returns'][number];
 type RpcFilters = CoreFn<'list_campaigns'>['Args']['p_filters'];
@@ -96,7 +87,7 @@ export async function toCards(rows: Row[]): Promise<CampaignCardData[]> {
         brand: r.brand_name ? { name: r.brand_name, verified: !!r.brand_verified } : undefined,
         coverSrc: publicUrl('campaign-covers', r.cover_path),
         category: r.category_id ? categories.get(r.category_id) ?? undefined : undefined,
-        categoryIcon: CATEGORY_ICON[r.category_id ?? ''] ?? 'movie',
+        categoryIcon: categoryIcon(r.category_id),
         platforms,
         rates: cardRates(Array.isArray(r.rates) ? (r.rates as unknown as RateRule[]) : [], platforms, idr) as {
           platform: Platform;

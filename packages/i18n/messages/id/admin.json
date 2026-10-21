@@ -944,6 +944,8 @@
       "public_finance_hold_days": "Hold earning (hari)",
       "public_finance_min_withdraw_idr": "Minimum withdraw (Rp)",
       "public_finance_instant_min_trust": "Trust Score minimal tarik instan",
+      "finance_payout_eta_instant_minutes": "Estimasi transfer instan (menit)",
+      "finance_payout_eta_batch_minutes": "Estimasi transfer batch (menit)",
       "finance_referral_bonus_pct": "Bonus referral (%)",
       "finance_referral_bonus_days": "Lama bonus referral (hari)",
       "finance_settlement_threshold_pct": "Ambang settlement (%)",

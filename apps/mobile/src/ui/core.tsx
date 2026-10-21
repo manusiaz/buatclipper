@@ -1,6 +1,6 @@
 // Komponen dasar native = padanan @clipper/ui (DS): ikon & tanda platform memakai path yang sama, warna/ukuran dari token.
 import type { ReactNode } from 'react';
-import { ActivityIndicator, Pressable, Text, TextInput, View, type StyleProp, type TextInputProps, type TextStyle, type ViewStyle } from 'react-native';
+import { ActivityIndicator, Platform as RNPlatform, Pressable, Text, TextInput, View, type StyleProp, type TextInputProps, type TextStyle, type ViewStyle } from 'react-native';
 import Svg, { Path } from 'react-native-svg';
 import { ICON_VIEWBOX, iconAliases, iconPaths, type IconName } from '@clipper/ui/icons';
 import { PLATFORM_PATHS, platformLabels, type Platform } from '@clipper/ui/platform-paths';
@@ -8,12 +8,12 @@ import { cardShadow, fontFor, useTheme, type TextVariant } from '../theme';
 
 export type { IconName, Platform };
 
-export function Icon({ name, size = 20, filled = false, color }: { name: IconName; size?: number; filled?: boolean; color?: string }) {
+export function Icon({ name, size = 20, filled = false, color, accessibilityLabel }: { name: IconName; size?: number; filled?: boolean; color?: string; accessibilityLabel?: string }) {
   const { c } = useTheme();
   const key = (name in iconAliases ? iconAliases[name as keyof typeof iconAliases] : name) as keyof typeof iconPaths;
   const paths: readonly string[] = iconPaths[key];
   return (
-    <Svg width={size} height={size} viewBox={ICON_VIEWBOX} accessible={false}>
+    <Svg width={size} height={size} viewBox={ICON_VIEWBOX} accessible={!!accessibilityLabel} accessibilityLabel={accessibilityLabel} accessibilityRole={accessibilityLabel ? 'image' : undefined}>
       <Path d={(filled ? paths[1] : undefined) ?? paths[0]!} fill={color ?? c.ink} />
     </Svg>
   );
@@ -29,7 +29,7 @@ export function PlatformIcon({ platform, size = 16, color }: { platform: Platfor
   );
 }
 
-type Tone = 'ink' | 'text2' | 'muted' | 'faint' | 'primary' | 'success' | 'danger' | 'warnFg' | 'primaryFg' | 'successFg' | 'dangerFg';
+type Tone = 'ink' | 'text2' | 'muted' | 'faint' | 'primary' | 'link' | 'success' | 'danger' | 'warnFg' | 'primaryFg' | 'successFg' | 'dangerFg';
 
 export function Txt({
   variant = 'body',
@@ -47,6 +47,8 @@ export function Txt({
   numberOfLines?: number;
   children: ReactNode;
   accessibilityRole?: 'header' | 'text' | 'link';
+  accessibilityLiveRegion?: 'polite' | 'assertive' | 'none';
+  selectable?: boolean;
 }) {
   const { c, text } = useTheme();
   const t = text[variant] as { fontSize: number; lineHeight?: number; letterSpacing?: number; fontWeight?: string };
@@ -93,7 +95,8 @@ export function Button({
   const off = disabled || loading;
   const bg = { primary: c.primary, secondary: c.surface, ink: c.inverse, ghost: 'transparent', link: 'transparent', danger: c.danger }[variant];
   const fg = { primary: c.primaryFg, secondary: c.ink, ink: c.inverseFg, ghost: c.ink, link: c.link, danger: c.primaryFg }[variant];
-  const h = { sm: 36, md: 44, lg: 52 }[size];
+  // Target sentuh DS: Android 48 dp, iOS 44 pt (tombol sm diperluas lewat hitSlop).
+  const h = { sm: 36, md: RNPlatform.OS === 'android' ? 48 : 44, lg: 52 }[size];
   return (
     <Pressable
       testID={testID}
@@ -102,6 +105,8 @@ export function Button({
       accessibilityState={{ disabled: !!off, busy: !!loading }}
       disabled={off}
       onPress={onPress}
+      hitSlop={size === 'sm' || variant === 'link' ? { top: 6, bottom: 6, left: 4, right: 4 } : undefined}
+      android_ripple={variant === 'link' ? undefined : { color: variant === 'primary' || variant === 'ink' || variant === 'danger' ? 'rgba(255,255,255,0.24)' : c.border }}
       style={({ pressed }) => [
         {
           minHeight: variant === 'link' ? undefined : h,
@@ -115,7 +120,8 @@ export function Button({
           justifyContent: 'center',
           gap: 8,
           alignSelf: full ? 'stretch' : 'flex-start',
-          opacity: pressed ? 0.85 : 1,
+          overflow: RNPlatform.OS === 'android' ? 'hidden' : undefined,
+          opacity: pressed && RNPlatform.OS !== 'android' ? 0.85 : 1,
         },
         variant === 'primary' && !off ? { shadowColor: c.primary, shadowOpacity: 0.35, shadowRadius: 12, shadowOffset: { width: 0, height: 8 }, elevation: 2 } : null,
       ]}
@@ -161,21 +167,22 @@ export function Badge({ children, tone = 'neutral', icon }: { children: ReactNod
   );
 }
 
-export function PlatformChip({ platform }: { platform: Platform }) {
+export function PlatformChip({ platform, glass }: { platform: Platform; glass?: boolean }) {
   const { c } = useTheme();
+  const fg = glass ? '#ffffff' : c.text2;
   return (
-    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: c.subtle, borderRadius: 999, paddingHorizontal: 8, height: 24 }}>
-      <PlatformIcon platform={platform} size={13} color={c.text2} />
-      <Text style={{ fontFamily: fontFor('700'), fontSize: 12, color: c.text2 }}>{platformLabels[platform]}</Text>
+    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: glass ? 'rgba(10,18,38,0.45)' : c.subtle, borderRadius: 999, paddingHorizontal: 8, height: 24 }}>
+      <PlatformIcon platform={platform} size={13} color={fg} />
+      <Text style={{ fontFamily: fontFor('700'), fontSize: 12, color: fg }}>{platformLabels[platform]}</Text>
     </View>
   );
 }
 
-export function ProgressBar({ value, tone = 'primary' }: { value: number; tone?: 'primary' | 'warn' | 'danger' }) {
+export function ProgressBar({ value, tone = 'primary', accessibilityLabel }: { value: number; tone?: 'primary' | 'warn' | 'danger'; accessibilityLabel?: string }) {
   const { c } = useTheme();
   const v = Math.min(1, Math.max(0, value));
   return (
-    <View style={{ height: 6, borderRadius: 999, backgroundColor: c.subtle, overflow: 'hidden' }} accessibilityRole="progressbar" accessibilityValue={{ min: 0, max: 100, now: Math.round(v * 100) }}>
+    <View style={{ height: 6, borderRadius: 999, backgroundColor: c.subtle, overflow: 'hidden' }} accessibilityRole="progressbar" accessibilityLabel={accessibilityLabel} accessibilityValue={{ min: 0, max: 100, now: Math.round(v * 100) }}>
       <View style={{ width: `${v * 100}%`, height: '100%', backgroundColor: c[tone], borderRadius: 999 }} />
     </View>
   );

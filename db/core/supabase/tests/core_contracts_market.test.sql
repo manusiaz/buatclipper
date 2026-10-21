@@ -741,7 +741,8 @@ select is((select count(*)::int from ops.notifications where event = 'campaign.i
           'notifikasi campaign.invited sekali');
 select is((select payload from ops.notifications where event = 'campaign.invited' and user_id = '11111111-0000-0000-0000-00000000000a'),
           '{"campaign_id":"55555555-0000-0000-0000-000000000008","campaign_title":"Khusus Undangan","campaign_slug":"undangan",
-            "org_id":"44444444-0000-0000-0000-000000000001","org_name":"Studio Satu"}'::jsonb, 'payload campaign.invited');
+            "org_id":"44444444-0000-0000-0000-000000000001","org_name":"Studio Satu","rate_per_1k":2000}'::jsonb,
+          'payload campaign.invited (+ rate tertinggi per 1K views)');
 select is((select array[subtotal, service_fee, tax, total] from finance.invoices where id = (select id from t_ids where k = 'inv_pin')),
           array[0, 1000000, 110000, 1110000]::numeric[], 'pin 10 hari = 2 minggu × Rp500.000 + PPN');
 select ok((select kind = 'pinned' and pin_until between now() + interval '10 days' - interval '1 minute' and now() + interval '10 days'
@@ -1020,8 +1021,8 @@ select is((select array_agg(event || ':' || coalesce(payload ->> 'final', '') or
 select is((select payload - 'submission_id' from ops.notifications where user_id = '11111111-0000-0000-0000-00000000000e'
              and event = 'submission.rejected' and payload ->> 'final' = 'false'),
           '{"campaign_id":"55555555-0000-0000-0000-000000000007","campaign_title":"Review Brand","url":"https://tiktok.com/v/72",
-            "reason":"missing_hashtag","message":"Hashtag #mplid tidak ada","final":false}'::jsonb,
-          'payload submission.rejected: campaign_title, url, reason, message');
+            "reason":"missing_hashtag","message":"Hashtag #mplid tidak ada","final":false,"platform":"tiktok","views":0}'::jsonb,
+          'payload submission.rejected: campaign_title, url, reason, message, platform, views');
 select is((select array_agg(reason || ':' || delta order by id) from trust.score_events where user_id = '11111111-0000-0000-0000-00000000000e'),
           array['submission_rejected:-2', 'submission_approved:1', 'appeal_failed:-3'], 'Trust Score: delta dari trust.score_deltas');
 select is((select count(*)::int from ops.audit_logs where action like 'review.submission.%'), 2, 'keputusan admin tercatat audit log');

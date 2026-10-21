@@ -250,3 +250,172 @@ Deno.test("bridge notify_admins: satu email gagal → admin lain tetap dikirimi,
   const res = await json(await s.handler(await signed("notify_admins", { kind: "reconcile.ledger", alert_id: 9 })));
   assertEquals([res.status, res.body.error.code, calls], [503, "email_failed", 2]);
 });
+
+// ---- Live Activity iOS (APNs) + receipt Expo -------------------------------------------------------------------------
+
+const PAYOUT = "7d1f0b9e-1c2a-4b3c-8d4e-5f6a7b8c9d01";
+const METHOD = "00000000-0000-0000-0000-0000000000f1";
+const START_TOKEN = "ab".repeat(32);
+const ACTIVITY_TOKEN = "cd".repeat(80);
+
+function liveSetup(
+  method: Record<string, unknown> = { id: METHOD, user_id: USER, bank_code: "BCA", account_last4: "4821" },
+) {
+  const apnsSent: { token: string; payload: { aps: Record<string, unknown> } }[] = [];
+  const expoSent: string[] = [];
+  const s = setup({
+    apns: () => ({
+      send: (
+        token,
+        payload,
+      ) => (apnsSent.push({ token, payload: payload as { aps: Record<string, unknown> } }),
+        Promise.resolve({ ok: true, status: 200, dead: false })),
+    }),
+    push: () =>
+      Promise.resolve({
+        send: () => Promise.resolve(),
+        sendExpo: (m) => (expoSent.push(...m.map((x) =>
+          x.body
+        )),
+          Promise.resolve(m.map(() => ({ status: "ok" as const })))),
+      }),
+    nowS: () => Math.floor(Date.now() / 1000),
+  });
+  s.rpc
+    .on("svc_push_subscriptions", () => [
+      {
+        kind: "expo",
+        endpoint: "ExponentPushToken[aaaaaaaaaaaaaaaa]",
+        p256dh: null,
+        auth_secret: null,
+        activity_ref: null,
+      },
+      { kind: "apns_start", endpoint: START_TOKEN, p256dh: null, auth_secret: null, activity_ref: null },
+      { kind: "apns_activity", endpoint: ACTIVITY_TOKEN, p256dh: null, auth_secret: null, activity_ref: PAYOUT },
+    ])
+    .on("svc_payout_methods", () => [{ ...method, account_no_enc: "\\x0a02", account_name: "Andi", kind: "bank" }])
+    .on("svc_touch_push", () => null)
+    .on("svc_delete_push", () => null);
+  return { ...s, apnsSent, expoSent };
+}
+
+Deno.test("bridge send_push payout.processing: Live Activity start to apns_start with bank + last4 from identity; Expo push unchanged", async () => {
+  const s = liveSetup();
+  const res = await json(
+    await s.handler(
+      await signed("send_push", {
+        user_id: USER,
+        event: "payout.processing",
+        payload: {
+          payout_id: PAYOUT,
+          payout_method_id: METHOD,
+          amount: 147500,
+          reward_type: "IDR",
+          fee: 2500,
+          channel: "instant",
+          eta_at: new Date(Date.now() + 120_000).toISOString(),
+          bank_code: "EVIL", // nilai dari core dibuang, diganti rekening identity
+        },
+      }),
+    ),
+  );
+  assertEquals(res.status, 200);
+  assertEquals(res.body.data, { sent: 1, removed: 0, failed: 0, live_activity: { sent: 1, removed: 0, failed: 0 } });
+  assertEquals(s.rpc.named("svc_payout_methods")[0].args, { p_ids: [METHOD] });
+  assertEquals(s.apnsSent.map((x) => x.token), [START_TOKEN]);
+  const aps = s.apnsSent[0].payload.aps;
+  assertEquals([aps.event, aps["attributes-type"]], ["start", "LiveActivityAttributes"]);
+  const props = JSON.parse((aps["content-state"] as { props: string }).props);
+  assertEquals([props.amount, props.bank, props.last4, props.status], [147500, "BCA", "4821", "processing"]);
+  assert(String((aps.alert as { body: string }).body).includes("BCA •• 4821"));
+  assert(s.expoSent[0].includes("BCA •• 4821"));
+  assert(!JSON.stringify(s.apnsSent).includes("0a02") && !JSON.stringify(s.apnsSent).includes("EVIL"));
+});
+
+Deno.test("bridge send_push: payout method of another user is never shown", async () => {
+  const s = liveSetup({
+    id: METHOD,
+    user_id: "00000000-0000-0000-0000-0000000000b1",
+    bank_code: "BCA",
+    account_last4: "4821",
+  });
+  await s.handler(
+    await signed("send_push", {
+      user_id: USER,
+      event: "payout.processing",
+      payload: { payout_id: PAYOUT, payout_method_id: METHOD, amount: 1000 },
+    }),
+  );
+  const props = JSON.parse((s.apnsSent[0].payload.aps["content-state"] as { props: string }).props);
+  assertEquals([props.bank, props.last4], [null, null]);
+  assert(!s.expoSent[0].includes("4821"));
+});
+
+Deno.test("bridge send_push payout.paid: Live Activity end to that payout's activity token, then token row deleted", async () => {
+  const s = liveSetup();
+  const res = await json(
+    await s.handler(
+      await signed("send_push", {
+        user_id: USER,
+        event: "payout.paid",
+        payload: { payout_id: PAYOUT, amount: "147500" },
+      }),
+    ),
+  );
+  assertEquals(res.body.data.live_activity, { sent: 1, removed: 0, failed: 0 });
+  assertEquals(s.apnsSent.map((x) => [x.token, x.payload.aps.event]), [[ACTIVITY_TOKEN, "end"]]);
+  assertEquals(s.rpc.named("svc_delete_push").map((c) => c.args.p_endpoint), [ACTIVITY_TOKEN]);
+});
+
+Deno.test("bridge send_push: APNs off (APNS_* empty) or failing never breaks the normal push", async () => {
+  for (
+    const apns of [() => null, () => {
+      throw new Error("bad key");
+    }]
+  ) {
+    const s = setup({
+      apns,
+      push: () =>
+        Promise.resolve({
+          send: () => Promise.resolve(),
+          sendExpo: (m) => Promise.resolve(m.map(() => ({ status: "ok" as const }))),
+        }),
+    });
+    s.rpc.on("svc_push_subscriptions", () => [
+      { kind: "expo", endpoint: "ExponentPushToken[aaaaaaaaaaaaaaaa]", p256dh: null, auth_secret: null },
+      { kind: "apns_start", endpoint: START_TOKEN, p256dh: null, auth_secret: null },
+    ]).on("svc_touch_push", () => null);
+    const res = await json(
+      await s.handler(
+        await signed("send_push", { user_id: USER, event: "payout.processing", payload: { payout_id: PAYOUT } }),
+      ),
+    );
+    assertEquals([res.status, res.body.data], [200, { sent: 1, removed: 0, failed: 0 }]);
+  }
+});
+
+Deno.test("push_receipts (cron apikey): receipts of due tickets resolved, DeviceNotRegistered token removed; HMAC cannot call it", async () => {
+  const asked: string[][] = [];
+  const s = setup({
+    receipts: (ids) => (asked.push(ids),
+      Promise.resolve({
+        "t-ok": { status: "ok" as const },
+        "t-gone": { status: "error" as const, details: { error: "DeviceNotRegistered" } },
+      })),
+  });
+  s.rpc
+    .on("svc_due_push_tickets", () => [
+      { ticket: "t-ok", endpoint: "ExponentPushToken[okokokokokokokok]" },
+      { ticket: "t-gone", endpoint: "ExponentPushToken[gonegonegonegone]" },
+    ])
+    .on("svc_resolve_push_tickets", () => ({ resolved: 2, removed: 1, expired: 0 }));
+  const res = await json(await s.handler(post({ action: "push_receipts" }, { apikey: "sb_secret_test" })));
+  assertEquals(res.body.data, { checked: 2, resolved: 2, removed: 1, expired: 0 });
+  assertEquals(asked, [["t-ok", "t-gone"]]);
+  assertEquals(s.rpc.named("svc_resolve_push_tickets")[0].args, {
+    p_tickets: ["t-ok", "t-gone"],
+    p_dead_endpoints: ["ExponentPushToken[gonegonegonegone]"],
+  });
+  assertEquals((await json(await s.handler(await signed("push_receipts", {})))).body.error.code, "unknown_action");
+  assertEquals((await json(await s.handler(post({ action: "push_receipts" })))).status, 401);
+});

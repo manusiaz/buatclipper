@@ -944,6 +944,8 @@
       "public_finance_hold_days": "Earnings hold (days)",
       "public_finance_min_withdraw_idr": "Minimum withdrawal (Rp)",
       "public_finance_instant_min_trust": "Minimum Trust Score for instant",
+      "finance_payout_eta_instant_minutes": "Instant transfer estimate (minutes)",
+      "finance_payout_eta_batch_minutes": "Batch transfer estimate (minutes)",
       "finance_referral_bonus_pct": "Referral bonus (%)",
       "finance_referral_bonus_days": "Referral bonus duration (days)",
       "finance_settlement_threshold_pct": "Settlement threshold (%)",

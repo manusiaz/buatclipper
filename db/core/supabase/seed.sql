@@ -49,6 +49,9 @@ insert into ops.settings (key, value) values
   ('finance.referral_bonus_pct', '5'),
   ('finance.referral_bonus_days', '90'),
   ('finance.settlement_wait_hours', '6'),
+  -- payout.processing: perkiraan transfer selesai (eta_at = now() + menit) per channel
+  ('finance.payout_eta_instant_minutes', '2'),
+  ('finance.payout_eta_batch_minutes', '30'),
   ('public.finance.refund_transfer_fee_idr', '2500'),
   ('tracking.final_grace_hours', '72'),
   ('trust.fraud.lock_drop_pct', '20'),

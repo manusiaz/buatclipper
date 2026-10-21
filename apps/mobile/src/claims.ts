@@ -4,7 +4,7 @@ export interface Claims {
   email?: string;
   app_roles?: string[];
   kyc?: 'none' | 'pending' | 'approved' | 'rejected';
-  consent_ok?: { clipper?: boolean; brand?: boolean };
+  consent_ok?: { clipper?: boolean; brand?: boolean; share_with_brand?: boolean };
   exp?: number;
 }
 

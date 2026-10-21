@@ -280,6 +280,8 @@ insert into market.claims (id, campaign_id, user_id, expires_at, created_at) val
 select market.run_claim_expiry();
 select is((select count(*)::int from ops.notifications where event = 'claim.expiring'), 1, 'pengingat claim mau habis terkirim');
 select ok((select payload ? 'campaign_title' from ops.notifications where event = 'claim.expiring'), 'pengingat claim membawa judul campaign (email)');
+select is((select payload ->> 'hours_left' from ops.notifications where event = 'claim.expiring'), '2',
+          'DS angka: pengingat claim membawa sisa jam (habis 2 jam lagi)');
 update market.claims set expires_at = now() - interval '1 minute', created_at = now() - interval '49 hours'
  where id = '88888888-0000-0000-0000-000000000003';
 select market.run_claim_expiry();

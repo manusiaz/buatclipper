@@ -16,6 +16,11 @@ import {
   ruleRate,
   safeEqual,
   taskGroup,
+  parsePages,
+  trustEffects,
+  matchShare,
+  urlPlatform,
+  appSiteAssociation,
 } from './pure';
 
 describe('rates', () => {
@@ -144,5 +149,69 @@ describe('assetLinks (TWA Play Store)', () => {
     expect(assetLinks(undefined, undefined)).toBeNull();
     expect(assetLinks('clipper', 'AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB')).toBeNull();
     expect(assetLinks('id.clipper.app', 'AB:CD')).toBeNull();
+  });
+});
+
+describe('parsePages', () => {
+  it('base64url JSON dari callback → id/nama terpotong, entri rusak dibuang', () => {
+    const raw = btoa(JSON.stringify([{ id: 'p1', name: 'Halaman Satu' }, { name: 'tanpa id' }, { id: 'x'.repeat(80) }])).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+    expect(parsePages(raw)).toEqual([{ id: 'p1', name: 'Halaman Satu' }, { id: 'x'.repeat(64), name: '' }]);
+    expect(parsePages('%%%')).toEqual([]);
+    expect(parsePages(undefined)).toEqual([]);
+  });
+});
+
+describe('trustEffects', () => {
+  it('instant dari ambang config; cap & hold hanya bila ada tier yang mengubahnya', () => {
+    expect(trustEffects(80, { instantMin: 70, holdDays: 7, tiers: [] }).map((e) => [e.key, e.ok])).toEqual([['instant', true], ['premium', null]]);
+    const tiers = [{ min_score: 0, cap_pct: 100, hold_days: 7 }, { min_score: 90, cap_pct: 150, hold_days: 3 }];
+    expect(trustEffects(92, { instantMin: 70, holdDays: 7, tiers })).toEqual([
+      { key: 'instant', ok: true, vars: { n: 70 } },
+      { key: 'premium', ok: null, vars: {} },
+      { key: 'cap', ok: true, vars: { n: 90, pct: 150 } },
+      { key: 'hold', ok: true, vars: { n: 90, days: 3 } },
+    ]);
+    expect(trustEffects(50, { instantMin: null, holdDays: null, tiers }).filter((e) => e.ok === false).map((e) => e.key)).toEqual(['instant', 'cap', 'hold']);
+  });
+});
+
+describe('urlPlatform & matchShare (share sheet → campaign)', () => {
+  it('host video sosmed (termasuk link pendek) → platform; host lain → null', () => {
+    expect(urlPlatform('https://vt.tiktok.com/ZS123/')).toBe('tiktok');
+    expect(urlPlatform('https://www.tiktok.com/@raka.clips/video/7392')).toBe('tiktok');
+    expect(urlPlatform('https://youtu.be/abc')).toBe('youtube');
+    expect(urlPlatform('https://m.youtube.com/shorts/abc')).toBe('youtube');
+    expect(urlPlatform('https://www.threads.net/@a/post/1')).toBe('threads');
+    expect(urlPlatform('https://fb.watch/x')).toBe('facebook');
+    expect(urlPlatform('https://twitter.com/a/status/1')).toBe('x');
+    expect(urlPlatform('https://eviltiktok.com/x')).toBeNull();
+    expect(urlPlatform('https://tiktok.com.evil.io/x')).toBeNull();
+    expect(urlPlatform('nope')).toBeNull();
+  });
+  it('claim yang menerima platform link didahulukan, paling cepat habis dulu', () => {
+    const a = { id: 'a', platforms: ['instagram'], expiresAt: '2026-10-21T05:00:00Z' };
+    const b = { id: 'b', platforms: ['tiktok', 'instagram'], expiresAt: '2026-10-22T05:00:00Z' };
+    const c = { id: 'c', platforms: ['tiktok'], expiresAt: '2026-10-21T09:00:00Z' };
+    const r = matchShare('https://vt.tiktok.com/ZS1', [a, b, c]);
+    expect(r.platform).toBe('tiktok');
+    expect(r.best?.id).toBe('c');
+    expect(r.matched.map((x) => x.id)).toEqual(['c', 'b']);
+    expect(r.others.map((x) => x.id)).toEqual(['a']);
+    expect(matchShare('https://example.com/v', [a, b]).best).toBeNull();
+  });
+});
+
+describe('appSiteAssociation (universal link iOS)', () => {
+  it('team + bundle valid → path native dibuka di app, API/OAuth/login dikecualikan lebih dulu', () => {
+    const a = appSiteAssociation('ABCDE12345', 'id.clipper.app')!;
+    const d = a.applinks.details[0]!;
+    expect(d.appIDs).toEqual(['ABCDE12345.id.clipper.app']);
+    expect(d.components.slice(0, 2)).toEqual([{ '/': '/api/*', exclude: true }, { '/': '/app-return*', exclude: true }]);
+    expect(d.components).toContainEqual({ '/': '/campaigns/*' });
+  });
+  it('kosong / tidak valid → null (404)', () => {
+    expect(appSiteAssociation(undefined, 'id.clipper.app')).toBeNull();
+    expect(appSiteAssociation('abc', 'id.clipper.app')).toBeNull();
+    expect(appSiteAssociation('ABCDE12345', 'bad id')).toBeNull();
   });
 });

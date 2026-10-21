@@ -158,6 +158,8 @@ export interface AuthAdmin {
   invite(email: string, redirectTo: string, data: Record<string, unknown>): Promise<AuthUser>;
   listFactors(userId: string): Promise<{ id: string }[]>;
   deleteFactor(userId: string, factorId: string): Promise<void>;
+  /** token_hash magic link (tidak mengirim email) untuk verifyOtp di server accounts (session-handoff). */
+  magicLink(email: string): Promise<string>;
 }
 
 function authStatus(err: unknown): { status?: number; code?: string } {
@@ -215,6 +217,12 @@ export function supabaseAuthAdmin(client: Client): AuthAdmin {
         throw new HttpError(502, "auth_error", "gagal menghapus faktor MFA");
       }
     },
+    async magicLink(email) {
+      const { data, error } = await admin.generateLink({ type: "magiclink", email });
+      const hash = data?.properties?.hashed_token;
+      if (error || !hash) throw new HttpError(502, "auth_error", "gagal membuat sesi");
+      return hash;
+    },
   };
 }
 
@@ -244,5 +252,6 @@ export function lazyAuthAdmin(): AuthAdmin {
     invite: (...x) => a().invite(...x),
     listFactors: (...x) => a().listFactors(...x),
     deleteFactor: (...x) => a().deleteFactor(...x),
+    magicLink: (...x) => a().magicLink(...x),
   };
 }

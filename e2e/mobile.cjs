@@ -1,8 +1,9 @@
 // Jalankan: pnpm e2e:mobile (butuh scripts/dev-stack.sh, e2e/seed.sql, accounts di :3001, dan build web app native
 // `pnpm --filter @clipper/mobile export:web`). Build web app native disajikan di host app (:3002) supaya origin-nya lolos
 // CORS Edge Function; kode layarnya sama dengan build Android/iOS (beda hanya modul .web stub: push, widget, share intent).
-// Journey: login OTP native → gate onboarding → onboarding di accounts → tab Campaign → claim → Tugas → share → Wallet
-// → tema gelap → keluar.
+// Journey: login OTP native → gate onboarding → onboarding di accounts → tab Campaign → claim (snackbar) → tab Clip →
+// share (campaign terdeteksi dari link) & tempel link → notifikasi + angka → Dompet → Tarik saldo → hub Akun (Sosmed,
+// Leaderboard, Referral, Pengaturan: tema gelap) → keluar dari tab Akun.
 const { chromium } = require('playwright');
 const { execFileSync } = require('child_process');
 const fs = require('fs');
@@ -87,44 +88,85 @@ const server = http.createServer((req, res) => {
     await page.getByText('E2E Journey Campaign').first().waitFor({ timeout: 20000 });
     log('native: onboarding selesai → tab Campaign menampilkan campaign seed');
     await shot('03-campaigns');
-    // 3. Detail → claim (RPC claim_campaign dengan JWT identity) → tercatat di core
+    // 3. Detail → claim (RPC claim_campaign dengan JWT identity) → tercatat di core + snackbar
     const uid = sql(`select id from market.profiles where username = '${username}'`);
     sql(`insert into tracking.social_accounts (user_id, platform, external_id, handle, followers, platform_created_at)
          values ('${uid}', 'tiktok', 'tt-${username}', '@${username}', 5000, now() - interval '400 days')`);
     await page.getByRole('link', { name: 'E2E Journey Campaign' }).first().click();
     await page.getByTestId('claim').click({ timeout: 15000 });
     await page.getByTestId('open-submit').waitFor({ timeout: 15000 });
+    await page.getByText('Campaign berhasil diambil').waitFor({ timeout: 5000 });
     const claims = sql(`select count(*) from market.claims where user_id = '${uid}' and campaign_id = '${CAMPAIGN}'`);
     if (claims !== '1') throw new Error('claim tidak tercatat: ' + claims);
-    log('native: claim tercatat di core, CTA berubah jadi Submit');
+    log('native: claim tercatat di core, snackbar tampil, CTA berubah jadi Submit');
     await shot('04-claimed');
-    // 4. Tab Tugas menampilkan claim
-    await page.goto(NATIVE + '/tasks');
+    // 4. Tab Clip (nav bar M3) menampilkan claim
+    await page.goto(NATIVE + '/');
+    await page.getByTestId('tab-clips').click({ timeout: 15000 });
     await page.getByText('E2E Journey Campaign').first().waitFor({ timeout: 15000 });
-    log('native: Tugas menampilkan claim');
-    await shot('05-tasks');
-    // 5. Share sheet (Android SEND / iOS share extension → /share?url=) → pilih claim → Submit dengan link terisi
+    log('native: tab Clip menampilkan claim');
+    await shot('05-clips');
+    // 5. Share sheet → link TikTok dicocokkan ke campaign TikTok (1 tap) → Submit dengan link terisi
     const shared = 'https://www.tiktok.com/@' + username + '/video/7392000000000000001';
     await page.goto(`${NATIVE}/share?url=${encodeURIComponent(shared)}`);
-    await page.getByRole('button', { name: 'Kirim ke campaign ini' }).first().click();
+    await page.getByText('Link TikTok').waitFor({ timeout: 15000 });
+    await page.getByTestId('share-best').click({ timeout: 15000 });
     const field = page.getByLabel('URL video');
     await field.waitFor({ timeout: 15000 });
     if ((await field.inputValue()) !== shared) throw new Error('link share tidak terisi: ' + (await field.inputValue()));
-    log('native: share → Submit dengan link terisi');
+    log('native: share → campaign terdeteksi dari link → Submit dengan link terisi');
     await shot('06-share-submit');
-    // 6. Wallet: saldo Rp dari core, tarik saldo diarahkan ke web
-    await page.goto(NATIVE + '/wallet');
-    await page.getByText('Saldo tersedia').first().waitFor({ timeout: 15000 });
-    log('native: Wallet tampil');
-    await shot('07-wallet');
-    // 7. Akun: tema gelap dari token DS (.dark)
-    await page.goto(NATIVE + '/account');
-    await page.getByText('Gelap', { exact: true }).click();
+    // 5b. "Kirim clip" tanpa share sheet: tempel link → campaign yang cocok muncul
+    await page.goto(`${NATIVE}/share`);
+    await page.getByTestId('share-url').fill(shared);
+    await page.getByTestId('share-best').waitFor({ timeout: 15000 });
+    log('native: tempel link → campaign cocok');
+    // 6. Notifikasi in-app membawa angka (views · estimasi · tanggal cair) dari builder bersama web
+    sql(`insert into ops.notifications (user_id, event, payload) values ('${uid}', 'submission.approved',
+         jsonb_build_object('campaign_id', '${CAMPAIGN}', 'campaign_title', 'E2E Journey Campaign', 'views', 48210,
+           'est_amounts', jsonb_build_array(jsonb_build_object('amount', 96400, 'reward_type', 'IDR', 'unit_label', 'Rp')),
+           'release_at', (now() + interval '6 days')::text))`);
+    await page.goto(NATIVE + '/notifications');
+    await page.getByText('48.210 views dihitung', { exact: false }).waitFor({ timeout: 15000 });
+    log('native: notifikasi approve menampilkan views + estimasi + tanggal cair');
+    await shot('07-notifications');
+    // 7. Dompet: saldo Rp dari core (jurnal seimbang, sama dengan fixture pgTAP) → Tarik saldo native (checklist + tahan)
+    sql(`select finance.post(gen_random_uuid(), jsonb_build_array(
+           finance.e(finance.account('platform_revenue', null, finance.idr()), -250000, 'adjustment', 'm2e:${uid}'),
+           finance.e(finance.account('user_wallet', '${uid}', finance.idr()), 250000, 'adjustment', 'm2e:${uid}', 'available')))`);
+    await page.goto(NATIVE + '/');
+    await page.getByTestId('tab-wallet').click({ timeout: 15000 });
+    await page.getByText('Rp250.000').first().waitFor({ timeout: 15000 });
+    await shot('08-wallet');
+    await page.getByTestId('open-withdraw').click();
+    // Akun baru belum KYC & belum punya rekening → checklist (sama dengan /wallet/withdraw web), form + tombol tahan
+    // baru muncul setelah keduanya beres di accounts.{domain}.
+    await page.getByText('Sebelum tarik').waitFor({ timeout: 15000 });
+    await page.getByText('Rp250.000 siap ditarik').waitFor({ timeout: 5000 });
+    if (await page.getByTestId('hold-withdraw').count()) throw new Error('tombol tarik tampil tanpa KYC/rekening');
+    log('native: Dompet Rp250.000 → Tarik saldo native: checklist KYC/rekening, tombol tahan tertahan');
+    await shot('09-withdraw');
+    // 8. Akun: hub → Sosmed, Leaderboard, Referral, Pengaturan (tema gelap token DS) — semua layar native
+    await page.goto(NATIVE + '/');
+    await page.getByTestId('tab-account').click({ timeout: 15000 });
+    await page.getByTestId('row-referral').click({ timeout: 15000 });
+    await page.getByTestId('share-referral').waitFor({ timeout: 15000 });
+    await page.goBack();
+    await page.getByTestId('row-leaderboard').click({ timeout: 15000 });
+    await page.getByText('Minggu ini').filter({ visible: true }).first().waitFor({ timeout: 15000 });
+    await page.goBack();
+    await page.getByTestId('row-social').click({ timeout: 15000 });
+    await page.getByTestId('connect-tiktok').first().waitFor({ timeout: 15000 }).catch(() => page.getByText('@' + username).first().waitFor({ timeout: 5000 }));
+    await page.goBack();
+    await page.getByTestId('row-settings').click({ timeout: 15000 });
+    await page.getByText('Gelap', { exact: true }).click({ timeout: 15000 });
     await page.waitForTimeout(500);
-    await shot('08-account-dark');
-    log('native: tema gelap');
-    // 8. Keluar: push perangkat dilepas lalu sesi lokal dihapus → kembali ke login
-    await page.getByRole('button', { name: 'Keluar' }).last().click();
+    await shot('10-settings-dark');
+    log('native: hub Akun → Referral, Leaderboard, Sosmed, Pengaturan (tema gelap)');
+    // 9. Keluar dari tab Akun: push & token perangkat dilepas, cache dihapus → layar login
+    await page.goto(NATIVE + '/');
+    await page.getByTestId('tab-account').click({ timeout: 15000 });
+    await page.getByTestId('sign-out').click({ timeout: 15000 });
     await page.getByRole('heading', { name: 'Masuk ke Clipper' }).waitFor({ timeout: 15000 });
     log('native: keluar → layar login');
   } catch (e) {

@@ -203,6 +203,61 @@ select throws_ok($$ select api.svc_push_subscriptions('00000000-0000-0000-0000-0
                  'daftar langganan (berisi kunci) tidak bisa dipanggil browser');
 reset role;
 
+-- Live Activity iOS (APNs): token push-to-start perangkat & token update per payout; pindah akun seperti token Expo.
+set local role anon;
+select throws_ok($$ select api.save_activity_token(repeat('a1', 32), 'apns_start') $$, '42501', null,
+                 'anon tidak bisa menyimpan token Live Activity');
+reset role;
+set local role authenticated;
+set local request.jwt.claims = '{"role":"authenticated","aal":"aal1"}';
+select throws_ok($$ select api.save_activity_token(repeat('a1', 32), 'apns_start') $$, '42501', null,
+                 'save_activity_token butuh login (auth.uid())');
+set local request.jwt.claims = '{"sub":"00000000-0000-0000-0000-00000000000b","role":"authenticated","aal":"aal1"}';
+select lives_ok($$ select api.save_activity_token(repeat('A1', 32), 'apns_start') $$, 'B menyimpan token push-to-start (hex diseragamkan huruf kecil)');
+select lives_ok($$ select api.save_activity_token(repeat('b2', 80), 'apns_activity', '7d1f0b9e-1c2a-4b3c-8d4e-5f6a7b8c9d01') $$,
+                'B menyimpan token update Live Activity payout');
+select is((select count(*)::int from api.push_subscriptions where endpoint in (repeat('a1', 32), repeat('b2', 80))), 2,
+          'B melihat token Live Activity-nya');
+select throws_ok($$ select api.save_activity_token(repeat('c3', 32), 'apns_activity') $$, '23514', null,
+                 'token apns_activity tanpa id payout ditolak');
+select throws_ok($$ select api.save_activity_token(repeat('c3', 32), 'apns_start', 'payout-1') $$, '23514', null,
+                 'token push-to-start tidak membawa activity_ref');
+select throws_ok($$ select api.save_activity_token(repeat('zz', 32), 'apns_start') $$, '23514', null, 'token APNs bukan hex ditolak');
+select throws_ok($$ select api.save_activity_token(repeat('c3', 15), 'apns_start') $$, '23514', null, 'token APNs < 32 hex ditolak');
+select throws_ok($$ select api.save_activity_token(repeat('c3', 257), 'apns_start') $$, '23514', null, 'token APNs > 512 hex ditolak');
+select throws_ok($$ select api.save_activity_token(repeat('c3', 32), 'apns_activity', 'payout 1; drop') $$, '23514', null,
+                 'activity_ref di luar format ditolak');
+select throws_ok($$ select api.save_activity_token('ExponentPushToken[xxxxxxxxxxxxxxxxxxxxxx]', 'expo') $$, '22023', null,
+                 'save_activity_token hanya untuk jenis apns_*');
+set local request.jwt.claims = '{"sub":"00000000-0000-0000-0000-00000000000c","role":"authenticated","aal":"aal1"}';
+select lives_ok($$ select api.save_activity_token(repeat('a1', 32), 'apns_start') $$, 'HP yang sama login sebagai C');
+select is((select count(*)::int from api.push_subscriptions where endpoint = repeat('a1', 32)), 1, 'token push-to-start pindah ke C');
+set local request.jwt.claims = '{"sub":"00000000-0000-0000-0000-00000000000b","role":"authenticated","aal":"aal1"}';
+select is((select count(*)::int from api.push_subscriptions where endpoint = repeat('a1', 32)), 0, 'B tidak lagi memegang token itu');
+reset role;
+set local role service_role;
+select is((select kind || '|' || coalesce(activity_ref, '-') from api.svc_push_subscriptions('00000000-0000-0000-0000-00000000000c')
+           where kind like 'apns%'), 'apns_start|-', 'svc_push_subscriptions menyebut jenis apns_start');
+reset role;
+
+-- Ticket Expo & kode handoff sesi: hanya service role lewat svc_*, browser tidak punya hak tabel sama sekali.
+select is((select count(*)::int from unnest(array['member.push_tickets', 'member.session_handoffs']) t (name),
+                                     unnest(array['anon', 'authenticated']) r (role),
+                                     unnest(array['select', 'insert', 'update', 'delete']) p (priv)
+           where has_table_privilege(r.role, t.name, p.priv)), 0,
+          'anon/authenticated tanpa hak SELECT/INSERT/UPDATE/DELETE di push_tickets & session_handoffs');
+select ok((select bool_and(c.relrowsecurity) from pg_class c
+           where c.oid in ('member.push_tickets'::regclass, 'member.session_handoffs'::regclass)), 'RLS aktif di tabel baru');
+select is((select count(*)::int from pg_policies where schemaname = 'member' and tablename in ('push_tickets', 'session_handoffs')), 0,
+          'tanpa policy browser di push_tickets & session_handoffs');
+set local role authenticated;
+set local request.jwt.claims = '{"sub":"00000000-0000-0000-0000-00000000000b","role":"authenticated","aal":"aal2"}';
+select throws_ok($$ select * from member.session_handoffs $$, '42501', null, 'browser tidak bisa membaca kode handoff');
+select throws_ok($$ select api.svc_create_handoff('00000000-0000-0000-0000-00000000000b', sha256('x'::bytea), 'https://app.contoh.id/') $$,
+                 '42501', null, 'browser tidak bisa membuat kode handoff langsung');
+select throws_ok($$ select * from api.svc_redeem_handoff(sha256('x'::bytea)) $$, '42501', null, 'browser tidak bisa menukar kode handoff langsung');
+reset role;
+
 -- Regresi 2026-10-19: enum internal di parameter RPC → 42501 lewat REST walau pgTAP (literal) lulus.
 select is((select array_agg(p.proname::text order by p.proname) from pg_proc p join pg_namespace n on n.oid = p.pronamespace
             where n.nspname = 'api' and exists (select 1 from unnest(p.proargtypes) t join pg_type ty on ty.oid = t

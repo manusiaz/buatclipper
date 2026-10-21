@@ -275,6 +275,7 @@ language plpgsql security definer set search_path = '' as $$
 declare
   s tracking.submissions;
   fid uuid;
+  lost jsonb;
 begin
   select * into s from tracking.submissions t where t.id = p_submission for update;
   if not found then
@@ -283,6 +284,7 @@ begin
   if s.status not in ('tracking', 'flagged') then
     return;
   end if;
+  lost := finance.pending_amounts(s.id);  -- nominal hangus untuk notifikasi, dibaca sebelum reverse_earning
   fid := trust.raise_flag('submission', s.id, 'FR-06', 100, jsonb_build_object('post_gone', true, 'reason', p_reason), 'actioned');
   -- §12 Trust Score turun dari fraud flag; FR-06 langsung ditindak tanpa antrean, jadi penaltinya di sini (setara reverse).
   insert into trust.score_events (user_id, delta, reason, ref_id)
@@ -290,7 +292,9 @@ begin
   update tracking.submissions set status = 'forfeited', next_poll_at = null where id = s.id;
   perform finance.reverse_earning(s.id, 'post_gone');
   perform ops.enqueue_notification(s.user_id, 'submission.forfeited', market.campaign_ref(s.campaign_id)
-                                   || jsonb_build_object('submission_id', s.id, 'reason', coalesce(p_reason, 'post_gone')));
+                                   || jsonb_build_object('submission_id', s.id, 'reason', coalesce(p_reason, 'post_gone'),
+                                                         'platform', s.platform, 'views', greatest(s.counted_views, coalesce(s.last_views, 0)),
+                                                         'amounts', lost));
 end $$;
 
 -- Status token akun sosmed: expired/revoked → tracking submisinya di-pause (next_poll_at NULL) + notifikasi sekali;
@@ -321,7 +325,8 @@ begin
     update tracking.social_accounts set status = new_status where id = a.id and status <> new_status;
     if a.status = 'verified' then
       perform ops.enqueue_notification(a.user_id, 'social.token_expired',
-                                       jsonb_build_object('account_id', a.id, 'platform', a.platform, 'handle', a.handle));
+                                       jsonb_build_object('account_id', a.id, 'platform', a.platform, 'handle', a.handle,
+                                                          'paused_count', tracking.paused_count(a.id)));
     end if;
     update tracking.submissions set next_poll_at = null where social_account_id = a.id and status in ('tracking', 'flagged');
   end if;

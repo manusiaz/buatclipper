@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { createTranslator } from 'next-intl';
 import id from '@clipper/i18n/messages/id/notifications';
 import en from '@clipper/i18n/messages/en/notifications';
-import { amountRefs, budgetLevel, EVENTS, notificationHref } from './notifications';
+import { amountRefs, bankLabel, budgetLevel, EVENTS, notificationFacts, notificationHref } from './notifications';
 
 const links = { brand: 'https://brand.x', accounts: 'https://accounts.x' };
 const C = '11111111-2222-4333-8444-555555555555';
@@ -46,5 +46,34 @@ describe('notificationHref', () => {
     expect(amountRefs({ amounts: [{ amount: 1 }, null] })).toEqual([{ amount: 1 }]);
     expect(amountRefs({ amount: 5, reward_type: 'IDR' })).toHaveLength(1);
     expect(amountRefs({})).toEqual([]);
+  });
+});
+
+describe('notificationFacts (angka konkret, sama dengan baris push/email)', () => {
+  const tr = (loc: 'id' | 'en') =>
+    createTranslator({ locale: loc, messages: { n: loc === 'id' ? id : en } as Record<string, unknown>, namespace: 'n', onError: (e) => { throw e; } }) as unknown as (k: string, v?: Record<string, string>) => string;
+  const now = Date.parse('2026-10-21T03:00:00Z');
+  it('submission.approved: views · estimasi · tanggal cair · rate', () => {
+    const p = { views: 48210, est_amounts: [{ amount: 96400, reward_type: 'IDR', unit_label: 'Rp' }], release_at: '2026-10-27T03:00:00Z', rate_per_1k: 2000 };
+    const f = notificationFacts('submission.approved', p, 'id', tr('id'), now)!;
+    expect(f).toContain('48.210 views dihitung');
+    expect(f).toContain('±Rp');
+    expect(f).toContain('96.400');
+    expect(f).toContain('cair ±27 Okt');
+    expect(f).toContain('/1K views');
+    expect(notificationFacts('submission.approved', p, 'en', tr('en'), now)).toContain('48,210 views counted');
+  });
+  it('payout.processing: rekening tersamar, biaya, ETA relatif; ETA lewat dilewati', () => {
+    const p = { amount: 150000, fee: 2500, bank_code: 'bca', account_last4: '4821', eta_at: '2026-10-21T03:02:00Z' };
+    expect(notificationFacts('payout.processing', p, 'id', tr('id'), now)).toBe('ke BCA •• 4821 · biaya Rp2.500 · estimasi masuk 2 menit lagi');
+    expect(notificationFacts('payout.processing', { ...p, eta_at: '2026-10-21T02:00:00Z' }, 'id', tr('id'), now)).not.toContain('estimasi');
+    expect(bankLabel({ bank_code: 'gopay' })).toBe('GOPAY');
+    expect(bankLabel({ bank_code: 'x y', account_last4: '12' })).toBe('');
+  });
+  it('payload tanpa angka / event lain → null; nilai sampah diabaikan', () => {
+    expect(notificationFacts('submission.approved', { views: 0, est_amounts: [{ amount: 0 }] }, 'id', tr('id'), now)).toBeNull();
+    expect(notificationFacts('kyc.approved', { views: 5 }, 'id', tr('id'), now)).toBeNull();
+    expect(notificationFacts('claim.expiring', { hours_left: '6' }, 'id', tr('id'), now)).toBe('sisa 6 jam');
+    expect(notificationFacts('social.token_expired', { paused_count: 'x' }, 'id', tr('id'), now)).toBeNull();
   });
 });

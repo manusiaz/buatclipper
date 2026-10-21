@@ -421,7 +421,7 @@ declare
   fee_pct numeric;
   fee numeric;
 begin
-  for s in select t.id, t.user_id, t.campaign_id from tracking.submissions t
+  for s in select t.id, t.user_id, t.campaign_id, t.platform, t.counted_views from tracking.submissions t
             where t.status = 'locked'
               and t.locked_at <= now() - make_interval(days => coalesce(
                     (select ct.hold_days from finance.clip_terms((select pr.trust_score from market.profiles pr where pr.id = t.user_id),
@@ -471,13 +471,92 @@ begin
     perform finance.post(gen_random_uuid(), entries);
     if released <> '{}' then
       perform ops.enqueue_notification(s.user_id, 'earning.available', market.campaign_ref(s.campaign_id) || jsonb_build_object(
-        'submission_id', s.id,
+        'submission_id', s.id, 'platform', s.platform, 'views', s.counted_views,
         'amounts', (select jsonb_agg(finance.amount_ref(x.key::uuid, x.value::numeric)) from jsonb_each_text(released) x)));
     end if;
   end loop;
 end $$;
 
+-- Angka untuk notifikasi clipper (DS: notif selalu ada angka). Views submisi sejauh ini = max(counted_views, last_views).
+-- Perkiraan, bukan jurnal: earning dihitung ulang dari 0 → views dengan rule aktif sekarang (min_views, flat sekali,
+-- milestone yang terlewati), dibatasi cap per klip (max_per_clip × cap_pct clip_terms) dan sisa pool seperti accrual, tidak
+-- pernah di bawah yang sudah dijurnal; potongan clipper saat release belum dihitung. release_at = rumus estimateRelease
+-- packages/clipper-lib: (locked_at | posted_at + view window, default 30) + hold clip_terms (default 7) hari.
+create function finance.clip_estimate(p_submission uuid) returns jsonb
+language plpgsql stable security definer set search_path = '' as $$
+declare
+  s tracking.submissions;
+  c market.campaigns;
+  cap numeric;
+  hold int;
+  v bigint;
+begin
+  select * into s from tracking.submissions t where t.id = p_submission;
+  if not found then
+    return '{}'::jsonb;
+  end if;
+  select * into c from market.campaigns k where k.id = s.campaign_id;
+  select ct.cap_pct, ct.hold_days into cap, hold
+    from finance.clip_terms((select pr.trust_score from market.profiles pr where pr.id = s.user_id), s.platform::text) ct;
+  v := greatest(s.counted_views, coalesce(s.last_views, 0));
+  return jsonb_build_object(
+    'platform', s.platform,
+    'views', v,
+    'rate_per_1k', market.rate_per_1k(c.id, s.platform::text),
+    'est_amounts', coalesce((
+      select jsonb_agg(finance.amount_ref(x.reward_type_id, x.amount) order by x.code)
+        from (select rp.reward_type_id, rt.code, trunc(sum(e.amount), rt.decimals) as amount
+                from finance.reward_pools rp
+                join market.reward_types rt on rt.id = rp.reward_type_id
+                cross join lateral (
+                  select greatest(paid.amount, least(coalesce(sum(case
+                           when r.kind = 'flat_per_post' then (r.params ->> 'amount')::numeric
+                           when v < c.min_views then 0
+                           when r.kind = 'milestone_bonus' then
+                             case when v >= (r.params ->> 'threshold')::numeric then (r.params ->> 'amount')::numeric else 0 end
+                           else finance.rule_amount(r.kind, r.params, 0, v) end), 0),
+                         rp.max_per_clip * coalesce(cap, 100) / 100,
+                         paid.amount + greatest(rp.total - rp.allocated, 0))) as amount
+                    from (select coalesce(sum(ce.amount + ce.demand), 0) as amount from finance.clip_earnings ce
+                           where ce.submission_id = s.id and ce.pool_id = rp.id) paid
+                    left join market.rate_rules r on r.pool_id = rp.id
+                          and r.effective_from <= now() and (r.effective_to is null or r.effective_to > now())
+                          and (r.platform is null or r.platform = s.platform)
+                   group by paid.amount) e
+               where rp.campaign_id = c.id
+               group by rp.reward_type_id, rt.code, rt.decimals) x
+       where x.amount > 0), '[]'),
+    'release_at', coalesce(s.locked_at, s.posted_at + make_interval(days => coalesce(nullif(c.view_window_days, 0), 30)))
+                  + make_interval(days => coalesce(hold, 7)));
+end $$;
+
+-- Earning submisi yang belum dirilis per reward type ([finance.amount_ref], dibulatkan ke bawah seperti release) —
+-- nominal yang ditahan (earning.held) atau hangus (submission.forfeited, dibaca sebelum finance.reverse_earning).
+create function finance.pending_amounts(p_submission uuid) returns jsonb
+language sql stable security definer set search_path = '' as $$
+  select coalesce(jsonb_agg(finance.amount_ref(x.reward_type_id, x.amount) order by x.code), '[]')
+    from (select rp.reward_type_id, rt.code, trunc(sum(ce.amount), rt.decimals) as amount
+            from finance.clip_earnings ce join finance.reward_pools rp on rp.id = ce.pool_id
+            join market.reward_types rt on rt.id = rp.reward_type_id
+           where ce.submission_id = p_submission and ce.released_at is null
+           group by rp.reward_type_id, rt.code, rt.decimals) x
+   where x.amount > 0;
+$$;
+
+-- Saldo wallet clipper satu bucket per reward type ([finance.amount_ref]) tanpa membuat akun ledger (earning.held profil).
+create function finance.wallet_amounts(p_user uuid, p_state finance.earning_state) returns jsonb
+language sql stable security definer set search_path = '' as $$
+  select coalesce(jsonb_agg(finance.amount_ref(x.reward_type_id, x.amount) order by x.code), '[]')
+    from (select a.reward_type_id, rt.code, trunc(sum(e.amount), rt.decimals) as amount
+            from finance.ledger_accounts a join finance.ledger_entries e on e.account_id = a.id
+            join market.reward_types rt on rt.id = a.reward_type_id
+           where a.owner_type = 'user_wallet' and a.owner_id = p_user and e.state = p_state
+           group by a.reward_type_id, rt.code, rt.decimals) x
+   where x.amount > 0;
+$$;
+
 revoke execute on function finance.clip_terms(int, text), finance.jnum(jsonb, text), finance.rule_amount(text, jsonb, bigint, bigint), finance.start_settlement(uuid),
   finance.check_exhausted(uuid), finance.accrue_earnings(uuid, bigint), finance.correct_down(uuid, bigint, bigint),
-  finance.reverse_earning(uuid, text), finance.settle_pool(uuid), finance.finalize_settlements(), finance.release_earnings()
+  finance.reverse_earning(uuid, text), finance.settle_pool(uuid), finance.finalize_settlements(), finance.release_earnings(),
+  finance.clip_estimate(uuid), finance.pending_amounts(uuid), finance.wallet_amounts(uuid, finance.earning_state)
   from public;

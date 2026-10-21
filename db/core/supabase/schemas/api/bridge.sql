@@ -33,6 +33,7 @@ language plpgsql security definer set search_path = '' as $$
 declare
   b finance.payout_batches;
   x record;
+  po finance.payouts;
 begin
   select * into b from finance.payout_batches pb where pb.id = p_batch for update;
   if not found then
@@ -70,7 +71,10 @@ begin
                                                                                 'reason', x.reason));
     end if;
   end loop;
-  update finance.payouts set status = 'processing' where batch_id = b.id and status = 'requested';
+  -- payout.processing per payout yang masuk CSV (eta = finance.payout_eta_batch_minutes); kirim ulang berkas sama = no-op di atas.
+  for po in update finance.payouts set status = 'processing' where batch_id = b.id and status = 'requested' returning * loop
+    perform finance.notify_payout_processing(po);
+  end loop;
   update finance.payout_batches pb set status = 'exported', file_ref = p_file_ref,
          count = (select count(*) from finance.payouts p where p.batch_id = b.id and p.status = 'processing'),
          total = coalesce((select sum(p.amount - p.fee) from finance.payouts p where p.batch_id = b.id and p.status = 'processing'), 0)
@@ -235,10 +239,13 @@ begin
   exception when unique_violation then
     raise exception 'duplicate_provider_ref' using errcode = '23505';
   end;
-  if p_status = 'paid' then
+  if p_status = 'processing' then
+    -- penyedia menerima transfer (eta = finance.payout_eta_instant_minutes); langsung paid/failed → hanya notifikasi akhirnya
+    perform finance.notify_payout_processing(p);
+  elsif p_status = 'paid' then
     update finance.payouts set status = 'paid', paid_at = now() where id = p.id;
-    perform ops.enqueue_notification(p.user_id, 'payout.paid', finance.amount_ref(finance.idr(), p.amount - p.fee)
-                                     || jsonb_build_object('payout_id', p.id, 'channel', p.channel));
+    perform ops.enqueue_notification(p.user_id, 'payout.paid', finance.payout_notice(p, p.amount - p.fee)
+                                     || jsonb_build_object('paid_at', now()));
   elsif p_status = 'failed' then
     perform finance.return_payout(p.id, p_error);
   end if;

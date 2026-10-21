@@ -2,7 +2,7 @@ import type { NextRequest } from 'next/server';
 import { clipperProxy } from '@clipper/auth/proxy';
 
 export function proxy(request: NextRequest) {
-  return clipperProxy(request, 'accounts', ['/login', '/auth', '/invite']);
+  return clipperProxy(request, 'accounts', ['/login', '/auth', '/invite', '/handoff']);
 }
 
 export const config = {

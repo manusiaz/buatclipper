@@ -16,7 +16,7 @@ import {
   type Platform,
 } from '@clipper/ui';
 import { Flash } from '@/features/lib/flash';
-import { enabledPlatforms, isPlatform, num } from '@clipper/clipper-lib/pure';
+import { enabledPlatforms, isPlatform, num, parsePages } from '@clipper/clipper-lib/pure';
 import { core, errorText, readSettings, uiLocale } from '@/features/lib/server';
 import { IgGuide } from '@/features/social/ig-guide';
 import { internalNext } from '@/features/social/oauth';
@@ -28,18 +28,6 @@ export const metadata: Metadata = { title: 'Akun sosmed' };
 type Props = { searchParams: Promise<Record<string, string | undefined>> };
 
 const TONE: Record<string, BadgeTone> = { verified: 'success', token_expired: 'warn', revoked: 'danger' };
-
-function parsePages(raw: string | undefined): { id: string; name: string }[] {
-  if (!raw) return [];
-  try {
-    const v = JSON.parse(Buffer.from(raw, 'base64url').toString('utf8'));
-    return Array.isArray(v)
-      ? v.filter((p) => p && typeof p.id === 'string').map((p) => ({ id: String(p.id).slice(0, 64), name: String(p.name ?? '').slice(0, 80) }))
-      : [];
-  } catch {
-    return [];
-  }
-}
 
 // F-C02 / C1.5: kartu per platform aktif, maks N akun per platform, Hubungkan / Reconnect lewat OAuth resmi.
 export default async function SocialPage({ searchParams }: Props) {

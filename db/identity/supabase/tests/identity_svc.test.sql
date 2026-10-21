@@ -24,8 +24,8 @@ insert into member.legal_versions (kind, version, published_at, url) values
   ('privacy', '2026-10-01', now() - interval '1 day', 'https://contoh.id/legal/privacy');
 
 -- Hak akses: semua svc_* hanya untuk service_role, security definer, search_path kosong.
-select is((select count(*)::int from pg_proc p where p.pronamespace = 'api'::regnamespace and p.proname like 'svc\_%'), 15,
-          '15 fungsi svc_* ada');
+select is((select count(*)::int from pg_proc p where p.pronamespace = 'api'::regnamespace and p.proname like 'svc\_%'), 20,
+          '20 fungsi svc_* ada');
 select is((select count(*)::int from pg_proc p where p.pronamespace = 'api'::regnamespace and p.proname like 'svc\_%'
             and has_function_privilege('authenticated', p.oid, 'execute')), 0, 'authenticated tidak bisa EXECUTE svc_*');
 select is((select count(*)::int from pg_proc p where p.pronamespace = 'api'::regnamespace and p.proname like 'svc\_%'
@@ -142,16 +142,86 @@ select isnt((select last_used_at from member.push_subscriptions where endpoint =
 select is((select count(*)::int from member.push_subscriptions where endpoint = 'https://push.contoh.id/b-2'), 0,
           'svc_delete_push menghapus endpoint mati');
 
--- Expo push: ticket kiriman terakhir disimpan (receipt-nya dicek sebelum kiriman berikutnya); touch tanpa ticket tidak menghapusnya.
+-- Expo push receipt (job:push-receipts): ticket per kiriman di member.push_tickets, bukan kolom di langganan.
+select hasnt_column('member', 'push_subscriptions', 'expo_ticket', 'ticket Expo tidak lagi disimpan di push_subscriptions');
+select hasnt_function('api', 'svc_touch_push', array['text', 'text'], 'svc_touch_push tanpa parameter ticket');
 set local role authenticated;
 set local request.jwt.claims = '{"sub":"00000000-0000-0000-0000-0000000000b1","role":"authenticated","aal":"aal1"}';
 select api.save_expo_push_token('ExponentPushToken[svcsvcsvcsvcsvcs]');
+select api.save_expo_push_token('ExponentPushToken[deaddeaddeaddead]');
 reset role;
 set local role service_role;
-select api.svc_touch_push('ExponentPushToken[svcsvcsvcsvcsvcs]', 'ticket-1');
-select api.svc_touch_push('ExponentPushToken[svcsvcsvcsvcsvcs]');
-select is((select expo_ticket from api.svc_push_subscriptions('00000000-0000-0000-0000-0000000000b1') where kind = 'expo'),
-          'ticket-1', 'svc_touch_push menyimpan ticket Expo; svc_push_subscriptions mengembalikannya');
+select api.svc_add_push_tickets(array['ExponentPushToken[svcsvcsvcsvcsvcs]', 'ExponentPushToken[deaddeaddeaddead]',
+                                      'ExponentPushToken[hilanghilanghila]'],
+                                array['ticket-ok', 'ticket-dead', 'ticket-hilang']);
+select api.svc_add_push_tickets(array['ExponentPushToken[svcsvcsvcsvcsvcs]'], array['ticket-ok']);
+select throws_ok($$ select api.svc_add_push_tickets(array['ExponentPushToken[svcsvcsvcsvcsvcs]'], array['a', 'b']) $$, '22023', null,
+                 'svc_add_push_tickets: endpoint & ticket harus berpasangan');
+reset role;
+select is((select array_agg(ticket || '|' || endpoint order by ticket) from member.push_tickets),
+          array['ticket-dead|ExponentPushToken[deaddeaddeaddead]', 'ticket-ok|ExponentPushToken[svcsvcsvcsvcsvcs]'],
+          'svc_add_push_tickets: ticket per token, token yang sudah dihapus dilewati, ticket ganda diabaikan');
+set local role service_role;
+select is((select count(*)::int from api.svc_due_push_tickets()), 0, 'svc_due_push_tickets: ticket < 15 menit belum dicek');
+reset role;
+update member.push_tickets set created_at = now() - interval '20 minutes';
+insert into member.push_tickets (ticket, endpoint, created_at)
+values ('ticket-basi', 'ExponentPushToken[svcsvcsvcsvcsvcs]', now() - interval '25 hours');
+set local role service_role;
+select is((select array_agg(ticket order by ticket) from api.svc_due_push_tickets()), array['ticket-basi', 'ticket-dead', 'ticket-ok'],
+          'svc_due_push_tickets: ticket ≥ 15 menit');
+select is((select count(*)::int from api.svc_due_push_tickets(1)), 1, 'svc_due_push_tickets: p_limit dipatuhi');
+select is(api.svc_resolve_push_tickets(array['ticket-ok'], array['ExponentPushToken[deaddeaddeaddead]']),
+          '{"resolved": 1, "removed": 1, "expired": 1}'::jsonb,
+          'svc_resolve_push_tickets: ticket terbaca, token mati, ticket > 24 jam');
+reset role;
+select is((select count(*)::int from member.push_tickets), 0, 'semua ticket selesai (ticket token mati ikut cascade)');
+select is((select array_agg(endpoint order by endpoint) from member.push_subscriptions
+           where user_id = '00000000-0000-0000-0000-0000000000b1' and kind = 'expo'),
+          array['ExponentPushToken[svcsvcsvcsvcsvcs]'], 'token DeviceNotRegistered dihapus, token sehat tetap');
+
+-- Live Activity iOS: svc_push_subscriptions membawa jenis apns_* + activity_ref supaya bridge bisa memilih token.
+set local role authenticated;
+set local request.jwt.claims = '{"sub":"00000000-0000-0000-0000-0000000000b1","role":"authenticated","aal":"aal1"}';
+select api.save_activity_token(repeat('ab', 32), 'apns_activity', 'payout-1');
+reset role;
+set local role service_role;
+select is((select kind || '|' || activity_ref from api.svc_push_subscriptions('00000000-0000-0000-0000-0000000000b1')
+           where kind like 'apns%'), 'apns_activity|payout-1', 'svc_push_subscriptions: jenis apns_activity + activity_ref');
+reset role;
+
+-- Handoff sesi app native → web (session-handoff): kode sekali pakai 60 detik, maks 10 aktif per user.
+set local role service_role;
+select is(api.svc_create_handoff('00000000-0000-0000-0000-0000000000c1', sha256('kode-1'::bytea), 'https://app.contoh.id/wallet'),
+          now() + interval '60 seconds', 'svc_create_handoff: berlaku 60 detik');
+select is((select row(user_id, next)::text from api.svc_redeem_handoff(sha256('kode-1'::bytea))),
+          row('00000000-0000-0000-0000-0000000000c1'::uuid, 'https://app.contoh.id/wallet')::text,
+          'svc_redeem_handoff: user + next');
+select is((select count(*)::int from api.svc_redeem_handoff(sha256('kode-1'::bytea))), 0, 'svc_redeem_handoff: sekali pakai');
+select is((select count(*)::int from api.svc_redeem_handoff(sha256('kode-tak-dikenal'::bytea))), 0, 'kode tak dikenal → kosong');
+select api.svc_create_handoff('00000000-0000-0000-0000-0000000000c1', sha256('kode-2'::bytea), 'https://accounts.contoh.id/kyc');
+reset role;
+update member.session_handoffs set expires_at = now() - interval '1 second' where code_hash = sha256('kode-2'::bytea);
+set local role service_role;
+select is((select count(*)::int from api.svc_redeem_handoff(sha256('kode-2'::bytea))), 0, 'svc_redeem_handoff: kode kedaluwarsa ditolak');
+reset role;
+select isnt((select used_at from member.session_handoffs where code_hash = sha256('kode-1'::bytea)), null,
+            'kode terpakai ditandai used_at');
+select is((select used_at from member.session_handoffs where code_hash = sha256('kode-2'::bytea)), null,
+          'kode kedaluwarsa tidak ditandai terpakai');
+insert into member.session_handoffs (code_hash, user_id, next, expires_at)
+values (sha256('kode-basi'::bytea), '00000000-0000-0000-0000-0000000000d1', 'https://app.contoh.id/', now() - interval '2 days');
+set local role service_role;
+select lives_ok($$ select api.svc_create_handoff('00000000-0000-0000-0000-0000000000d1', sha256(('d-' || i)::bytea), 'https://app.contoh.id/')
+                   from generate_series(1, 10) i $$, '10 kode aktif per user boleh');
+select throws_ok($$ select api.svc_create_handoff('00000000-0000-0000-0000-0000000000d1', sha256('d-11'::bytea), 'https://app.contoh.id/') $$,
+                 '54000', null, 'kode ke-11 yang belum kedaluwarsa ditolak (rate limit)');
+reset role;
+select is((select count(*)::int from member.session_handoffs where code_hash = sha256('kode-basi'::bytea)), 0,
+          'baris kedaluwarsa > 1 hari dibuang saat kode baru dibuat');
+set local role service_role;
+select lives_ok($$ select api.svc_create_handoff('00000000-0000-0000-0000-0000000000e1', sha256('e-1'::bytea), 'https://app.contoh.id/') $$,
+                'rate limit per user: user lain tetap bisa');
 reset role;
 
 -- Unduh data saya: hanya baris milik sendiri, ciphertext ikut sebagai hex bytea.

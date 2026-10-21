@@ -94,6 +94,22 @@ language sql immutable set search_path = '' as $$
                      when 'tiered_cpm' then (p_params -> 'tiers' -> 0 ->> 'rate')::numeric end;
 $$;
 
+-- Rate Rupiah per 1.000 views dari rule aktif (notifikasi clipper: DS "notif selalu ada angka"). Per platform = jumlah
+-- rule platform itu + rule semua platform (accrual menjumlahkan keduanya); tanpa p_platform = platform campaign dengan
+-- rate tertinggi ("rate sampai …"). NULL = tidak ada rule Rupiah per views.
+create function market.rate_per_1k(p_campaign uuid, p_platform text default null) returns numeric
+language sql stable set search_path = '' as $$
+  select trim_scale(max(x.rate)) from (
+    select sum(market.rule_rate(r.kind, r.params)) as rate
+      from unnest((select c.platforms from market.campaigns c where c.id = p_campaign)) pf(p)
+      join market.rate_rules r on r.campaign_id = p_campaign and (r.platform is null or r.platform = pf.p)
+      join market.reward_types rt on rt.id = r.reward_type_id and rt.code = 'IDR' and rt.owner_org_id is null
+     where (p_platform is null or pf.p::text = p_platform)
+       and r.effective_from <= now() and (r.effective_to is null or r.effective_to > now())
+     group by pf.p) x
+   where x.rate > 0;
+$$;
+
 -- Angka JSON (number atau string angka) → numeric; selain itu NULL.
 create function market.jnum(p jsonb) returns numeric
 language sql immutable set search_path = '' as $$
@@ -315,5 +331,5 @@ end $$;
 
 revoke execute on function market.fail(text, text, text), market.session_uid(), market.is_direct_member(uuid, uuid, market.org_role[]),
   market.notify_org(uuid, market.org_role[], text, jsonb), market.campaign_visible(market.campaigns), market.rule_rate(text, jsonb),
-  market.jnum(jsonb), market.campaign_budget(uuid), market.claim_check(uuid), market.norm_list(jsonb, text, text),
+  market.rate_per_1k(uuid, text), market.jnum(jsonb), market.campaign_budget(uuid), market.claim_check(uuid), market.norm_list(jsonb, text, text),
   market.check_rule_params(text, jsonb) from public;

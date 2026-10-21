@@ -35,7 +35,8 @@ begin
             where status = 'open' and reminded_at is null and expires_at <= now() + interval '6 hours' and expires_at > now()
             returning id, user_id, campaign_id, expires_at loop
     perform ops.enqueue_notification(c.user_id, 'claim.expiring', market.campaign_ref(c.campaign_id)
-                                     || jsonb_build_object('claim_id', c.id, 'expires_at', c.expires_at));
+                                     || jsonb_build_object('claim_id', c.id, 'expires_at', c.expires_at,
+                                                           'hours_left', ceil(extract(epoch from c.expires_at - now()) / 3600)::int));
   end loop;
   update market.claims set status = 'expired' where status = 'open' and expires_at <= now();
 end $$;

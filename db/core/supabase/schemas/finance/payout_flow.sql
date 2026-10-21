@@ -95,6 +95,33 @@ begin
   return res;
 end $$;
 
+-- Payload notifikasi payout (DS: notif selalu ada angka; payout_id = kunci Live Activity iOS di bridge identity):
+-- finance.amount_ref(IDR, p_amount) + payout_id, payout_method_id (bridge identity menambah bank_code/account_last4),
+-- fee, channel. p_amount: processing/paid = yang ditransfer (amount − fee), failed/cancelled = yang kembali ke Tersedia.
+create function finance.payout_notice(po finance.payouts, p_amount numeric) returns jsonb
+language plpgsql stable security definer set search_path = '' as $$
+begin
+  return finance.amount_ref(finance.idr(), p_amount)
+         || jsonb_build_object('payout_id', po.id, 'payout_method_id', po.method_id, 'fee', trim_scale(po.fee),
+                               'channel', po.channel);
+end $$;
+
+-- Perkiraan transfer selesai untuk payout.processing: now() + finance.payout_eta_<channel>_minutes (instant 2, batch 30).
+create function finance.payout_eta(p_channel text) returns timestamptz
+language plpgsql stable security definer set search_path = '' as $$
+begin
+  return now() + (ops.cfg('finance.payout_eta_' || p_channel || '_minutes',
+                          case p_channel when 'instant' then '2' else '30' end::jsonb))::numeric * interval '1 minute';
+end $$;
+
+-- payout.processing: transfer dimulai (batch diekspor ke CSV bank / penyedia instant menerima disburse).
+create function finance.notify_payout_processing(po finance.payouts) returns void
+language plpgsql security definer set search_path = '' as $$
+begin
+  perform ops.enqueue_notification(po.user_id, 'payout.processing', finance.payout_notice(po, po.amount - po.fee)
+                                   || jsonb_build_object('eta_at', finance.payout_eta(po.channel)));
+end $$;
+
 -- Jurnal kebalikan request_payout: withdrawn −(amount − fee), platform_revenue −fee, available +amount. ref_id = id payout,
 -- jadi unique ledger menjamin satu payout hanya dikembalikan sekali (returned atau cancelled, dua-duanya final).
 create function finance.unwind_payout_journal(po finance.payouts) returns void
@@ -115,7 +142,6 @@ create function finance.return_payout(p_payout uuid, p_error text default null) 
 language plpgsql security definer set search_path = '' as $$
 declare
   po finance.payouts;
-  idr uuid := finance.idr();
 begin
   select * into po from finance.payouts p where p.id = p_payout for update;
   if po.status = 'returned' then
@@ -126,8 +152,8 @@ begin
   end if;
   update finance.payouts set status = 'returned' where id = po.id;  -- trigger S-05 menolak kalau bukan dari failed
   perform finance.unwind_payout_journal(po);
-  perform ops.enqueue_notification(po.user_id, 'payout.failed', finance.amount_ref(idr, po.amount)
-                                   || jsonb_build_object('payout_id', po.id, 'channel', po.channel, 'reason', left(p_error, 200)));
+  perform ops.enqueue_notification(po.user_id, 'payout.failed', finance.payout_notice(po, po.amount)
+                                   || jsonb_build_object('reason', left(p_error, 200)));
   perform ops.raise_alert('payout.failed', 'warning', jsonb_build_object('payout_id', po.id, 'channel', po.channel,
                                                                            'amount', po.amount, 'error', left(p_error, 500)));
 end $$;
@@ -219,8 +245,8 @@ begin
         raise exception 'invalid:bank_ref' using errcode = 'P0001';
       end if;
       update finance.payouts set status = 'paid', paid_at = now(), bank_ref = btrim(x.bank_ref) where id = po.id;
-      perform ops.enqueue_notification(po.user_id, 'payout.paid', finance.amount_ref(finance.idr(), po.amount - po.fee)
-                                       || jsonb_build_object('payout_id', po.id, 'channel', po.channel));
+      perform ops.enqueue_notification(po.user_id, 'payout.paid', finance.payout_notice(po, po.amount - po.fee)
+                                       || jsonb_build_object('paid_at', now()));
     elsif x.status = 'failed' then
       update finance.payouts set bank_ref = x.bank_ref where id = po.id;
       perform finance.return_payout(po.id, coalesce(nullif(btrim(x.reason), ''), 'transfer gagal (batch)'));
@@ -340,8 +366,8 @@ begin
   end if;
   update finance.payouts set status = 'cancelled', hold_reason = p_reason where id = po.id;
   perform finance.unwind_payout_journal(po);
-  perform ops.enqueue_notification(po.user_id, 'payout.cancelled', finance.amount_ref(finance.idr(), po.amount)
-                                   || jsonb_build_object('payout_id', po.id, 'channel', po.channel, 'reason', p_reason));
+  perform ops.enqueue_notification(po.user_id, 'payout.cancelled', finance.payout_notice(po, po.amount)
+                                   || jsonb_build_object('reason', p_reason));
   insert into ops.audit_logs (actor_id, action, target, before, after)
   values ((select auth.uid()), 'payout.cancel', 'payout:' || po.id, jsonb_build_object('status', po.status),
           jsonb_build_object('status', 'cancelled', 'reason', p_reason));
@@ -433,6 +459,7 @@ begin
 end $$;
 
 revoke execute on function finance.require_active_clipper(), finance.return_payout(uuid, text), finance.retry_instant_payouts(),
+  finance.payout_notice(finance.payouts, numeric), finance.payout_eta(text), finance.notify_payout_processing(finance.payouts),
   finance.unwind_payout_journal(finance.payouts), api.cancel_payout(uuid, text), api.cancel_fulfillment(uuid, text, boolean),
   api.request_payout(uuid, numeric, text, text), api.create_payout_batch(timestamptz), api.approve_payout_batch(uuid),
   api.mark_batch_paid(uuid, jsonb), api.request_fulfillment(uuid, numeric, jsonb, uuid, text) from public;

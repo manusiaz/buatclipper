@@ -1,18 +1,19 @@
 // Push (F-C14, alur 4) to every E-36 subscription of a user: web push for the PWA (VAPID private key = identity Edge
 // Function secret VAPID_PUBLIC_KEY, VAPID_PRIVATE_KEY, VAPID_SUBJECT) and Expo push for the native app (Expo relays to
-// FCM/APNs; EXPO_ACCESS_TOKEN optional, only when "enhanced push security" is on). Endpoints answering 404/410 and
-// Expo tokens reported DeviceNotRegistered (in the ticket, or in the receipt of the previous ticket, checked before the
-// next send) are gone for good and are deleted; other failures wait for the next one.
+// FCM/APNs; EXPO_ACCESS_TOKEN optional, only when "enhanced push security" is on). Token Live Activity (apns_*) dikirim
+// apns.ts, bukan di sini. Endpoints answering 404/410 and Expo tokens reported DeviceNotRegistered in the ticket are gone
+// for good and are deleted; accepted Expo tickets go to E-36 push_tickets and their receipts are read later by
+// job:push-receipts (resolveExpoReceipts) — DeviceNotRegistered there deletes the token too. Other failures wait.
 import type { Rpc } from "./db.ts";
-import { env } from "./http.ts";
+import { env, log } from "./http.ts";
 
 export interface PushSubscriptionRow {
-  kind?: "webpush" | "expo";
+  kind?: "webpush" | "expo" | "apns_start" | "apns_activity";
   endpoint: string;
   p256dh: string | null;
   auth_secret: string | null;
-  /** Expo: ticket id of the last accepted send; its receipt tells whether the device was still registered. */
-  expo_ticket?: string | null;
+  /** apns_activity: id payout Live Activity-nya. */
+  activity_ref?: string | null;
 }
 
 /** Expo push ticket (https://docs.expo.dev/push-notifications/sending-notifications/#push-tickets). */
@@ -38,9 +39,10 @@ export interface PushSender {
   send(sub: PushSubscriptionRow, payload: string): Promise<void>;
   /** One ticket per message, same order; rejects on HTTP/network failure (whole batch retried next time). */
   sendExpo?(messages: ExpoMessage[]): Promise<ExpoTicket[]>;
-  /** Receipts by ticket id (missing = not ready or expired); rejects on HTTP/network failure. */
-  expoReceipts?(ids: string[]): Promise<Record<string, ExpoReceipt>>;
 }
+
+/** Receipts by ticket id (missing = not ready or expired); rejects on HTTP/network failure. */
+export type ExpoReceiptFetcher = (ids: string[]) => Promise<Record<string, ExpoReceipt>>;
 
 export interface ExpoMessage {
   to: string;
@@ -133,7 +135,6 @@ export async function webPushSender(): Promise<PushSender> {
       );
     },
     sendExpo: (messages) => expoSend(messages),
-    expoReceipts: (ids) => expoReceipts(ids),
   };
 }
 
@@ -151,22 +152,7 @@ export async function sendPushToUser(
     [];
   const payload = JSON.stringify(msg);
   const result: PushResult = { sent: 0, removed: 0, failed: 0 };
-  let expo = subs.filter((s) => s.kind === "expo");
-  const checked = expo.filter((s) => s.expo_ticket);
-  if (checked.length && deps.sender.expoReceipts) {
-    const receipts = await deps.sender.expoReceipts(checked.map((s) => s.expo_ticket!)).catch(() => ({}));
-    const gone = new Set(
-      checked.filter((s) => {
-        const r = (receipts as Record<string, ExpoReceipt>)[s.expo_ticket!];
-        return r?.status === "error" && r.details?.error === "DeviceNotRegistered";
-      }).map((s) => s.endpoint),
-    );
-    for (const endpoint of gone) {
-      await deps.rpc.invoke("svc_delete_push", { p_endpoint: endpoint });
-      result.removed++;
-    }
-    expo = expo.filter((s) => !gone.has(s.endpoint));
-  }
+  const expo = subs.filter((s) => s.kind === "expo");
   if (expo.length) {
     let tickets: ExpoTicket[] = [];
     try {
@@ -174,11 +160,13 @@ export async function sendPushToUser(
     } catch {
       tickets = [];
     }
+    const accepted: { endpoint: string; ticket: string }[] = [];
     await Promise.all(expo.map(async (sub, i) => {
       const t = tickets[i];
       if (t?.status === "ok") {
         result.sent++;
-        await deps.rpc.invoke("svc_touch_push", { p_endpoint: sub.endpoint, p_ticket: t.id ?? null }).catch(() => {});
+        if (t.id) accepted.push({ endpoint: sub.endpoint, ticket: t.id });
+        await deps.rpc.invoke("svc_touch_push", { p_endpoint: sub.endpoint }).catch(() => {});
       } else if (t?.status === "error" && t.details?.error === "DeviceNotRegistered") {
         await deps.rpc.invoke("svc_delete_push", { p_endpoint: sub.endpoint });
         result.removed++;
@@ -186,9 +174,16 @@ export async function sendPushToUser(
         result.failed++;
       }
     }));
+    // Receipt dibaca job:push-receipts ≥ 15 menit lagi; gagal mencatat = token mati baru ketahuan di kiriman berikutnya.
+    if (accepted.length) {
+      await deps.rpc.invoke("svc_add_push_tickets", {
+        p_endpoints: accepted.map((a) => a.endpoint),
+        p_tickets: accepted.map((a) => a.ticket),
+      }).catch(() => {});
+    }
   }
   await Promise.all(
-    subs.filter((s) => s.kind !== "expo").map(async (sub) => {
+    subs.filter((s) => (s.kind ?? "webpush") === "webpush").map(async (sub) => {
       let status: number | undefined;
       try {
         await deps.sender.send(sub, payload);
@@ -207,4 +202,55 @@ export async function sendPushToUser(
     }),
   );
   return result;
+}
+
+export interface ReceiptResult {
+  checked: number;
+  resolved: number;
+  removed: number;
+  expired: number;
+}
+
+interface DueTicket {
+  ticket: string;
+  endpoint: string;
+}
+
+/**
+ * job:push-receipts: receipt ticket Expo ≥ 15 menit → token DeviceNotRegistered dihapus, ticket yang sudah ada receipt-nya
+ * dibuang. Receipt belum siap = ticket tetap (svc_resolve_push_tickets membuang yang > 24 jam). Paling banyak `rounds`
+ * batch per jalan; sisanya jalan berikutnya.
+ */
+export async function resolveExpoReceipts(
+  deps: { rpc: Rpc; receipts: ExpoReceiptFetcher },
+  opts: { batch?: number; rounds?: number } = {},
+): Promise<ReceiptResult> {
+  const batch = opts.batch ?? 1000;
+  const out: ReceiptResult = { checked: 0, resolved: 0, removed: 0, expired: 0 };
+  const errors: Record<string, number> = {};
+  for (let round = 0; round < (opts.rounds ?? 10); round++) {
+    const due = (await deps.rpc.invoke<DueTicket[] | null>("svc_due_push_tickets", { p_limit: batch })) ?? [];
+    if (!due.length) break;
+    const receipts = await deps.receipts(due.map((t) => t.ticket));
+    const done = due.filter((t) => receipts[t.ticket]);
+    const dead = new Set<string>();
+    for (const t of done) {
+      const r = receipts[t.ticket];
+      if (r.status !== "error") continue;
+      const code = r.details?.error ?? "unknown";
+      errors[code] = (errors[code] ?? 0) + 1;
+      if (code === "DeviceNotRegistered") dead.add(t.endpoint);
+    }
+    const res = (await deps.rpc.invoke<Partial<ReceiptResult> | null>("svc_resolve_push_tickets", {
+      p_tickets: done.map((t) => t.ticket),
+      p_dead_endpoints: [...dead],
+    })) ?? {};
+    out.checked += due.length;
+    out.resolved += res.resolved ?? 0;
+    out.removed += res.removed ?? 0;
+    out.expired += res.expired ?? 0;
+    if (due.length < batch || !done.length) break; // receipt sisanya belum siap
+  }
+  log("info", { fn: "bridge", action: "push_receipts", ...out, errors }); // hanya jumlah per kode error, tanpa token
+  return out;
 }

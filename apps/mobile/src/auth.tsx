@@ -3,8 +3,11 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
 import type { Session } from '@supabase/supabase-js';
 import { decodeClaims, isAdmin, type Claims } from './claims';
+import { clearCache } from './cache';
+import { releaseLiveActivities } from './live-activity';
 import { releasePush } from './push';
 import { identity } from './supabase';
+import { refreshWidgets } from './widget';
 
 interface AuthState {
   ready: boolean;
@@ -36,9 +39,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
   const signOut = useCallback(async () => {
     // Lepas push perangkat ini selagi masih login (RLS): HP bersama tidak terus menerima notifikasi akun lama.
+    // Begitu juga token Live Activity iOS (pencairan tak muncul di layar kunci akun lain) dan isi widget.
     await releasePush();
+    await releaseLiveActivities().catch(() => {});
+    await clearCache();
     await identity.auth.signOut({ scope: 'local' });
     setSession(null);
+    void refreshWidgets();
   }, []);
 
   const value = useMemo(() => {

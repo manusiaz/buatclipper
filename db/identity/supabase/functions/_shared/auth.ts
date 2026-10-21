@@ -3,6 +3,7 @@
 //   admin     → user JWT + aal2 + platform role (admin_super always passes); optionally re-checked against E-27
 //               because the app_roles claim can lag up to one JWT lifetime (10 min) after a revoke.
 //   cron      → header apikey equal to the project's secret key (pg_cron → pg_net, member.invoke_function).
+//   publik    → header apikey = publishable/anon key project (server Next tanpa sesi user, mis. session-handoff redeem).
 import { createRemoteJWKSet, jwtVerify, type JWTVerifyGetKey } from "jose";
 import { timingSafeEqual } from "./crypto.ts";
 import { env, envJsonValues, envOpt, HttpError, isUuid } from "./http.ts";
@@ -100,6 +101,21 @@ export function isCronRequest(req: Request): boolean {
   if (!key) return false;
   const candidates = [envOpt("SUPABASE_SERVICE_ROLE_KEY"), ...envJsonValues("SUPABASE_SECRET_KEYS")]
     .filter((v): v is string => !!v);
+  let match = false;
+  for (const c of candidates) match = timingSafeEqual(key, c) || match;
+  return match;
+}
+
+/** Server Next tanpa sesi user: header apikey = SUPABASE_ANON_KEY, salah satu SUPABASE_PUBLISHABLE_KEYS, atau
+ * SUPABASE_INTERNAL_PUBLISHABLE_KEY (stack lokal CLI). Kunci ini publik: penjaga ringan, bukan rahasia. */
+export function isPublishableRequest(req: Request): boolean {
+  const key = req.headers.get("apikey");
+  if (!key) return false;
+  const candidates = [
+    envOpt("SUPABASE_ANON_KEY"),
+    ...envJsonValues("SUPABASE_PUBLISHABLE_KEYS"),
+    envOpt("SUPABASE_INTERNAL_PUBLISHABLE_KEY"),
+  ].filter((v): v is string => !!v);
   let match = false;
   for (const c of candidates) match = timingSafeEqual(key, c) || match;
   return match;

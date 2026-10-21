@@ -43,6 +43,9 @@ export function verifyState(saved: OAuthState | null, platform: string, returned
 }
 
 /** next hanya path internal app (setelah connect kembali ke campaign). */
+/** Tujuan kembali ke app native sesudah OAuth (lihat app/app-return/route.ts). */
+export const APP_RETURN = '/app-return';
+
 export function internalNext(next: string | null | undefined): string | undefined {
   if (!next) return undefined;
   const n = safeNext(next, '');

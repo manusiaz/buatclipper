@@ -4,6 +4,9 @@
 // inject markup or point a link at another host.
 // Payload keys read (all optional; core sends ids and may enrich): campaign_id, campaign_title, org_id, org_name,
 // platform, handle, amount, reason, expires_at, until, count, invoice_number, due_at, reward_name, title, body.
+// DS Android v2: notif clipper selalu membawa angka (views, rupiah, tanggal cair) kalau payload punya: views, rate_per_1k,
+// est_amounts[], release_at, hours_left, paused_count, amounts[], fee, paid_at, eta_at, bank_code + account_last4
+// (rekening tersamar, diisi bridge identity). Field yang tidak ada (baris antrean lama) → kalimat tanpa angka itu.
 
 export const EVENTS = [
   "campaign.new",
@@ -16,6 +19,7 @@ export const EVENTS = [
   "social.token_expired",
   "earning.available",
   "earning.held",
+  "payout.processing",
   "payout.paid",
   "payout.failed",
   "fulfillment.delivered",
@@ -77,9 +81,10 @@ export interface PushAction {
 
 type Payload = Record<string, unknown>;
 
+/** now = waktu render (ms) untuk angka relatif ("±2 menit"); tes mengisinya tetap. */
 interface Def {
-  title: (p: Payload) => string;
-  lines: (p: Payload) => (string | null | false | undefined)[];
+  title: (p: Payload, now: number) => string;
+  lines: (p: Payload, now: number) => (string | null | false | undefined)[];
   cta: string;
   url: (p: Payload, l: Links) => string;
   actions?: (p: Payload, l: Links) => PushAction[];
@@ -178,9 +183,10 @@ function rupiah(p: Payload, key = "amount"): string {
 }
 
 /** finance.amount_ref ({amount, reward_type, unit_label}) atau daftarnya di amounts (earning.available, multi-reward). */
-function money(p: Payload): string {
-  const list = Array.isArray(p.amounts) ? (p.amounts as Payload[]) : [p];
+function money(p: Payload, key = "amounts"): string {
+  const list = Array.isArray(p[key]) ? (p[key] as unknown[]) : key === "amounts" ? [p] : [];
   return list
+    .filter((a): a is Payload => typeof a === "object" && a !== null)
     .map((a) => {
       const code = txt(a, "reward_type", 30);
       if (!code || code === "IDR") return rupiah(a);
@@ -201,10 +207,74 @@ const wib = new Intl.DateTimeFormat("id-ID", {
 });
 
 function when(p: Payload, key: string): string {
+  const d = date(p, key);
+  return d ? `${wib.format(d)} WIB` : "";
+}
+
+function date(p: Payload, key: string): Date | null {
   const v = p[key];
-  if (typeof v !== "string") return "";
+  if (typeof v !== "string") return null;
   const d = new Date(v);
-  return Number.isNaN(d.getTime()) ? "" : `${wib.format(d)} WIB`;
+  return Number.isNaN(d.getTime()) ? null : d;
+}
+
+const wibDay = new Intl.DateTimeFormat("id-ID", { timeZone: "Asia/Jakarta", day: "numeric", month: "short" });
+
+/** Tanggal pendek WIB ("27 Okt") — perkiraan cair. */
+function day(p: Payload, key: string): string {
+  const d = date(p, key);
+  return d ? wibDay.format(d) : "";
+}
+
+/** Bilangan bulat > 0 (views, jam, jumlah video) format id-ID; 0/kosong/bukan angka → "". */
+function qty(p: Payload, key: string): string {
+  const v = p[key];
+  const n = typeof v === "number" ? v : typeof v === "string" && /^\d{1,15}$/.test(v.trim()) ? Number(v) : NaN;
+  return Number.isSafeInteger(n) && n > 0 ? idr.format(n) : "";
+}
+
+/** Rate Rupiah per 1.000 views ("Rp2.000/1K views"). */
+function rate(p: Payload): string {
+  const r = rupiah(p, "rate_per_1k");
+  return r ? `${r}/1K views` : "";
+}
+
+/** Rekening tujuan tersamar ("BCA •• 4821"): hanya kalau payload membawa bank_code (+ account_last4) dari bridge identity. */
+function bank(p: Payload): string {
+  const code = typeof p.bank_code === "string" && /^[A-Za-z0-9_]{2,20}$/.test(p.bank_code)
+    ? p.bank_code.replace(/_/g, " ").toUpperCase()
+    : "";
+  const last4 = typeof p.account_last4 === "string" && /^\d{4}$/.test(p.account_last4) ? p.account_last4 : "";
+  return code && last4 ? `${code} •• ${last4}` : code;
+}
+
+/** Sisa waktu sampai eta_at saat render: "±2 menit", "±3 jam", lewat → "sebentar lagi". */
+function eta(p: Payload, now: number): string {
+  const d = date(p, "eta_at");
+  if (!d) return "";
+  const min = Math.round((d.getTime() - now) / 60_000);
+  if (min < 1) return "sebentar lagi";
+  return min < 90 ? `±${min} menit` : `±${Math.round(min / 60)} jam`;
+}
+
+/** Biaya tarik (instant) > 0; batch tanpa biaya → "". */
+function fee(p: Payload): string {
+  return Number(p.fee) > 0 ? rupiah(p, "fee") : "";
+}
+
+/** Nominal reward non-tunai + namanya ("120 Diamonds", "Voucher (1 voucher)"). */
+function reward(p: Payload): string {
+  const m = money(p);
+  const name = txt(p, "reward_name");
+  if (!m) return name;
+  return name && !m.toLowerCase().includes(name.toLowerCase()) ? `${name} (${m})` : m;
+}
+
+/** Video[ TikTok] kamu di campaign X[ (48.210 views)] — submisi dengan angka yang diketahui. */
+function video(p: Payload): string {
+  const pf = platform(p);
+  const v = qty(p, "views");
+  return `Video${pf ? ` ${pf}` : ""} kamu di campaign ${campaign(p)}${v ? ` (${v} views)` : ""}`;
 }
 
 function reason(p: Payload): string | null {
@@ -273,7 +343,7 @@ const DEFS: Record<NotificationEvent, Def> = {
     lines: (p) => [
       `Ada campaign baru${platform(p) ? ` untuk ${platform(p)}` : ""}${
         txt(p, "campaign_title") ? `: ${txt(p, "campaign_title")}` : ""
-      }.`,
+      }${rate(p) ? ` · rate sampai ${rate(p)}` : ""}.`,
       "Ambil sebelum slot atau budget-nya habis.",
     ],
     cta: "Lihat campaign",
@@ -284,14 +354,15 @@ const DEFS: Record<NotificationEvent, Def> = {
     lines: (
       p,
     ) => [
-      `Brand mengundangmu ke campaign privat ${campaign(p)}.`,
+      `Brand mengundangmu ke campaign privat ${campaign(p)}${rate(p) ? ` · rate sampai ${rate(p)}` : ""}.`,
       "Buka campaign untuk membaca brief dan mengambil slot.",
     ],
     cta: "Lihat undangan",
     url: appCampaign,
   },
   "claim.expiring": {
-    title: () => "Claim kamu hampir kedaluwarsa",
+    title: (p) =>
+      qty(p, "hours_left") ? `Claim kamu habis ±${qty(p, "hours_left")} jam lagi` : "Claim kamu hampir kedaluwarsa",
     lines: (p) => [
       `Claim campaign ${campaign(p)} berakhir ${when(p, "expires_at") || "dalam beberapa jam"}.`,
       "Posting video sesuai brief lalu submit sebelum waktunya habis, atau slot kamu dilepas.",
@@ -300,8 +371,24 @@ const DEFS: Record<NotificationEvent, Def> = {
     url: appCampaign,
   },
   "submission.approved": {
-    title: () => "Submisi kamu disetujui",
-    lines: (p) => [`Video kamu di campaign ${campaign(p)} disetujui. Views-nya sekarang dihitung untuk earning.`],
+    title: (p) => txt(p, "campaign_title") ? `Submisi kamu di ${campaign(p)} disetujui` : "Submisi kamu disetujui",
+    // Baris angka dulu (= body push): "48.210 views dihitung · ±Rp96.400 sejauh ini · cair ±27 Okt".
+    lines: (p) => {
+      const est = money(p, "est_amounts");
+      const nums = [
+        qty(p, "views") && `${qty(p, "views")} views dihitung`,
+        est ? `±${est} sejauh ini` : rate(p),
+        day(p, "release_at") && `cair ±${day(p, "release_at")}`,
+      ].filter(Boolean);
+      return [
+        nums.join(" · "),
+        `${video({ ...p, views: null })} disetujui. Views-nya sekarang dihitung untuk earning${
+          rate(p) ? ` dengan rate ${rate(p)}` : ""
+        }.`,
+        (est || day(p, "release_at")) &&
+        "Angka ± adalah perkiraan: jumlah akhir mengikuti views final, cap per klip, dan sisa budget campaign.",
+      ];
+    },
     cta: "Lihat tugas",
     url: (_p, l) => join(l.app, "tasks"),
     // DS Android/iOS 01: notif approve → "Lihat saldo" / "Kirim clip lagi".
@@ -313,7 +400,7 @@ const DEFS: Record<NotificationEvent, Def> = {
   "submission.rejected": {
     title: () => "Submisi kamu ditolak",
     lines: (p) => [
-      `Video kamu di campaign ${campaign(p)} ditolak.`,
+      `${video(p)} ditolak.`,
       reason(p),
       "Kamu bisa mengajukan banding satu kali dari halaman Tugas.",
     ],
@@ -321,13 +408,11 @@ const DEFS: Record<NotificationEvent, Def> = {
     url: (_p, l) => join(l.app, "tasks"),
   },
   "submission.forfeited": {
-    title: () => "Earning submisi hangus",
+    title: (p) => money(p) ? `Earning ${money(p)} hangus` : "Earning submisi hangus",
     lines: (p) => [
       txt(p, "reason").startsWith("fraud:")
-        ? `Earning video kamu di campaign ${campaign(p)} dibatalkan setelah pemeriksaan kecurangan.`
-        : `Video kamu di campaign ${
-          campaign(p)
-        } tidak bisa diakses lagi (dihapus atau diprivate), jadi earning-nya hangus.`,
+        ? `Earning ${video(p).replace(/^Video/, "video")} dibatalkan setelah pemeriksaan kecurangan.`
+        : `${video(p)} tidak bisa diakses lagi (dihapus atau diprivate), jadi earning-nya hangus.`,
       reason(p),
     ],
     cta: "Lihat tugas",
@@ -349,56 +434,93 @@ const DEFS: Record<NotificationEvent, Def> = {
     lines: (p) => [
       `Izin akun ${platform(p) || "sosmed"}${
         txt(p, "handle", 60) ? ` @${txt(p, "handle", 60)}` : ""
-      } kedaluwarsa atau dicabut, jadi tracking views berhenti sementara.`,
+      } kedaluwarsa atau dicabut, jadi tracking views${
+        qty(p, "paused_count") ? ` ${qty(p, "paused_count")} video` : ""
+      } berhenti sementara.`,
       "Hubungkan ulang supaya views tetap dihitung.",
     ],
     cta: "Hubungkan ulang",
     url: (_p, l) => join(l.app, "social"),
   },
   "earning.available": {
-    title: () => "Earning siap ditarik",
-    lines: (p) => [`${money(p) || "Earning kamu"} sudah Tersedia di wallet dan bisa ditarik.`],
+    title: (p) => money(p) ? `${money(p)} siap ditarik` : "Earning siap ditarik",
+    lines: (p) => [
+      `${money(p) || "Earning kamu"}${qty(p, "views") ? ` dari ${qty(p, "views")} views` : ""}${
+        txt(p, "campaign_title") ? ` di campaign ${campaign(p)}` : ""
+      } sudah Tersedia di wallet dan bisa ditarik.`,
+    ],
     cta: "Buka wallet",
     url: (_p, l) => join(l.app, "wallet"),
   },
   "earning.held": {
-    title: () => "Earning kamu ditahan sementara",
+    title: (p) => money(p) ? `${money(p)} ditahan sementara` : "Earning kamu ditahan sementara",
     lines: (p) => [
       txt(p, "submission_id")
-        ? `Earning video kamu di campaign ${campaign(p)} ditahan selama tim moderasi memeriksanya.`
-        : "Penarikan saldo kamu ditahan selama tim moderasi memeriksa akun.",
+        ? `Earning ${money(p) ? `${money(p)} dari ` : ""}video kamu di campaign ${
+          campaign(p)
+        } ditahan selama tim moderasi memeriksanya.`
+        : `Penarikan saldo${money(p) ? ` ${money(p)}` : ""} kamu ditahan selama tim moderasi memeriksa akun.`,
       "Earning tetap tercatat. Kalau pemeriksaan selesai tanpa masalah, semuanya berjalan lagi seperti biasa.",
     ],
     cta: "Lihat detail",
     url: (p, l) => join(l.app, txt(p, "submission_id") ? "tasks" : "wallet"),
   },
+  // Transfer dimulai (batch diekspor / penyedia instant menerima). eta_at absolut (Live Activity iOS); teks relatif saat render.
+  "payout.processing": {
+    title: (p) => `Penarikan ${rupiah(p) || "kamu"} sedang diproses`,
+    lines: (p, now) => [
+      `Lagi ditransfer ${rupiah(p) || "dana kamu"}${bank(p) ? ` ke ${bank(p)}` : ""}${
+        eta(p, now) ? ` · ${eta(p, now)}` : ""
+      }.`,
+      when(p, "eta_at") && `Perkiraan selesai ${when(p, "eta_at")}.`,
+      fee(p) && `Biaya tarik instan ${fee(p)} sudah dipotong.`,
+      "Kami kabari lagi begitu dana terkirim. Waktu masuk tergantung bank atau e-wallet tujuan.",
+    ],
+    cta: "Buka wallet",
+    url: (_p, l) => join(l.app, "wallet"),
+  },
   "payout.paid": {
     title: (p) => `Payout ${rupiah(p) || "kamu"} berhasil`,
-    lines: () => ["Dana sudah ditransfer ke rekening kamu. Waktu masuk tergantung bank atau e-wallet tujuan."],
+    lines: (p) => [
+      `${rupiah(p) || "Dana"} sudah ditransfer ke ${bank(p) || "rekening kamu"}${
+        when(p, "paid_at") ? ` pada ${when(p, "paid_at")}` : ""
+      }. Waktu masuk tergantung bank atau e-wallet tujuan.`,
+      fee(p) && `Biaya tarik instan ${fee(p)} sudah dipotong.`,
+    ],
     cta: "Buka wallet",
     url: (_p, l) => join(l.app, "wallet"),
   },
   "payout.failed": {
     title: (p) => `Payout ${rupiah(p) || "kamu"} gagal`,
-    lines: (p) => [reason(p), "Saldo sudah kembali ke wallet. Periksa rekening kamu lalu ajukan penarikan lagi."],
+    lines: (p) => [
+      reason(p),
+      `Saldo${rupiah(p) ? ` ${rupiah(p)}` : ""} sudah kembali ke wallet. Periksa rekening ${
+        bank(p) || "kamu"
+      } lalu ajukan penarikan lagi.`,
+    ],
     cta: "Buka wallet",
     url: (_p, l) => join(l.app, "wallet"),
   },
   "fulfillment.delivered": {
     title: () => "Reward kamu sudah dikirim",
-    lines: (p) => [`${txt(p, "reward_name") || "Reward non-tunai kamu"} sudah dikirim. Detailnya ada di tab Reward.`],
+    lines: (p) => [`${reward(p) || "Reward non-tunai kamu"} sudah dikirim. Detailnya ada di tab Reward.`],
     cta: "Lihat reward",
     url: (_p, l) => join(l.app, "wallet"),
   },
   "payout.cancelled": {
     title: (p) => `Penarikan ${rupiah(p) || "kamu"} dibatalkan`,
-    lines: (p) => [reason(p), "Saldonya sudah kembali ke Tersedia dan bisa kamu tarik lagi."],
+    lines: (p) => [
+      reason(p),
+      `${rupiah(p) ? `Saldo ${rupiah(p)}` : "Saldonya"} sudah kembali ke Tersedia dan bisa kamu tarik lagi.`,
+    ],
     cta: "Buka wallet",
     url: (_p, l) => join(l.app, "wallet"),
   },
   "fulfillment.cancelled": {
     title: () => "Klaim reward dibatalkan",
-    lines: (p) => [reason(p), "Saldo reward sudah kembali dan bisa kamu klaim lagi."],
+    lines: (
+      p,
+    ) => [reason(p), `Saldo reward${reward(p) ? ` ${reward(p)}` : ""} sudah kembali dan bisa kamu klaim lagi.`],
     cta: "Buka wallet",
     url: (_p, l) => join(l.app, "wallet"),
   },
@@ -612,13 +734,14 @@ export function render(
   event: string,
   payload: Payload,
   links: Links,
-  opts: { unsubscribeUrl?: string | null } = {},
+  opts: { unsubscribeUrl?: string | null; now?: number } = {},
 ): Rendered {
   if (!isKnownEvent(event)) throw new Error(`event tidak dikenal: ${event}`);
   const def = DEFS[event];
   const p = payload ?? {};
-  const title = def.title(p);
-  const lines = def.lines(p).filter((x): x is string => typeof x === "string" && x.length > 0);
+  const now = opts.now ?? Date.now();
+  const title = def.title(p, now);
+  const lines = def.lines(p, now).filter((x): x is string => typeof x === "string" && x.length > 0);
   const url = def.url(p, links);
   const unsub = opts.unsubscribeUrl ? safeHttpsUrl(opts.unsubscribeUrl) : null;
 

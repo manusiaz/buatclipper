@@ -2,15 +2,15 @@ import { NextResponse, type NextRequest } from 'next/server';
 import { hosts } from '@clipper/auth';
 import { invokeFunction, requireClipper } from '@clipper/auth/server';
 import { isPlatform } from '@clipper/clipper-lib/pure';
-import { cookieOptions, encodeState, internalNext, redirectUri, STATE_COOKIE } from '@/features/social/oauth';
+import { APP_RETURN, cookieOptions, encodeState, internalNext, redirectUri, STATE_COOKIE } from '@/features/social/oauth';
 
 // C1.5: minta URL izin platform ke core/social (authorize), simpan state + code_verifier, lalu ke halaman resmi platform.
 export async function GET(request: NextRequest, { params }: { params: Promise<{ platform: string }> }) {
   await requireClipper();
   const { platform } = await params;
-  const back = (q: string) => NextResponse.redirect(new URL(`/social?${q}`, hosts.app));
-  if (!isPlatform(platform)) return back('error=bad_request');
   const next = internalNext(request.nextUrl.searchParams.get('next'));
+  const back = (q: string) => NextResponse.redirect(new URL(`${next === APP_RETURN ? APP_RETURN : '/social'}?${q}`, hosts.app));
+  if (!isPlatform(platform)) return back('error=bad_request');
   const pageId = request.nextUrl.searchParams.get('page_id')?.slice(0, 64) || undefined;
   const r = await invokeFunction<{ url: string; state: string; code_verifier?: string }>('core', 'social', {
     action: 'authorize',

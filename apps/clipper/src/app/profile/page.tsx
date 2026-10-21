@@ -18,7 +18,7 @@ import {
   formatDate,
   formatNumber,
 } from '@clipper/ui';
-import { arr, communityLinks, num } from '@clipper/clipper-lib/pure';
+import { arr, communityLinks, num, trustEffects } from '@clipper/clipper-lib/pure';
 import { core, publicUrl, readSettings, uiLocale } from '@/features/lib/server';
 import { formatAmount } from '@clipper/clipper-lib/units';
 import { AppealButton } from '@/features/tasks/appeal-button';
@@ -41,26 +41,11 @@ export default async function ProfilePage() {
   ]);
   const s = (stats.data ?? {}) as Record<string, unknown>;
   const score = num(me.data?.trust_score ?? s.trust_score);
-  const instantMin = num(settings['public.finance.instant_min_trust']) || 70;
   const earnings = arr<Record<string, unknown>>(s.earnings);
   const name = me.data?.display_name || me.data?.username || claims.email || '';
-  // Ambang dari config: instant (public.finance.instant_min_trust), cap & hold (public.finance.trust_tiers, §12);
-  // campaign premium ditentukan per campaign (min Trust Score brand).
   const holdDays = num(settings['public.finance.hold_days']) || 7;
   const support = communityLinks(settings['public.community.links']).find((l) => l.key === 'support')?.href ?? null;
-  const tiers = arr<Record<string, unknown>>(settings['public.finance.trust_tiers'])
-    .map((x) => ({ min: num(x.min_score), cap: num(x.cap_pct) || 100, hold: num(x.hold_days) || holdDays }))
-    .sort((a, b) => a.min - b.min);
-  const capTier = tiers.find((x) => x.cap > 100);
-  const holdTier = tiers.find((x) => x.hold < holdDays);
-  const mine = [...tiers].reverse().find((x) => score >= x.min);
-  const effects: { key: string; ok: boolean | null; vars: Record<string, number> }[] = [
-    { key: 'instant', ok: score >= instantMin, vars: { n: instantMin } },
-    { key: 'premium', ok: null, vars: {} },
-    // Tanpa tier yang menaikkan cap / memendekkan hold (config kosong) efeknya tidak ditampilkan, bukan "0%".
-    ...(capTier ? [{ key: 'cap', ok: (mine?.cap ?? 100) > 100, vars: { n: capTier.min, pct: mine && mine.cap > 100 ? mine.cap : capTier.cap } }] : []),
-    ...(holdTier ? [{ key: 'hold', ok: (mine?.hold ?? holdDays) < holdDays, vars: { n: holdTier.min, days: mine && mine.hold < holdDays ? mine.hold : holdTier.hold } }] : []),
-  ];
+  const effects = trustEffects(score, { instantMin: settings['public.finance.instant_min_trust'], holdDays, tiers: settings['public.finance.trust_tiers'] });
 
   return (
     <div className="flex flex-col gap-4">

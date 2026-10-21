@@ -66,6 +66,13 @@ begin
 end $$;
 revoke execute on function tracking.enqueue_due_submissions(int) from public;
 
+-- Submisi yang tracking-nya berhenti saat akun sosmed kehilangan token (social.token_expired: "tracking 3 video berhenti").
+create function tracking.paused_count(p_account uuid) returns int
+language sql stable security definer set search_path = '' as $$
+  select count(*)::int from tracking.submissions s where s.social_account_id = p_account and s.status in ('tracking', 'flagged');
+$$;
+revoke execute on function tracking.paused_count(uuid) from public;
+
 -- F-A01/F-X01 kesehatan tracking: submisi macet = jatuh tempo > 2 jam belum diantre, ATAU pesannya sudah bisa diambil
 -- (vt lewat, bukan backoff retry_later) > 1 jam tapi belum diproses worker — hanya submisi yang masih dilacak (R29-1).
 -- enqueue_due_submissions menggeser next_poll_at sebagai lease, jadi worker mati tidak terlihat dari next_poll_at saja (AA-6).

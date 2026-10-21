@@ -1,58 +1,74 @@
-// Kerangka layar native: latar kanvas DS, safe area, scroll + tarik-untuk-muat-ulang, judul opsional & tombol kembali.
-import { useRouter } from 'expo-router';
-import type { ReactNode } from 'react';
-import { Pressable, RefreshControl, ScrollView, View } from 'react-native';
+// Kerangka layar native: judul & tombol header lewat native-stack (src/ui/nav.tsx), latar kanvas DS, scroll +
+// tarik-untuk-muat-ulang (indikator turun, angka lama tetap tampil — DS Motion 25 #7), footer CTA, FAB opsional.
+// iOS: contentInsetAdjustmentBehavior automatic → large title menyusut ikut scroll di bawah nav bar material.
+import { Stack } from 'expo-router';
+import { useRef, useState, type ReactNode } from 'react';
+import { Platform, RefreshControl, ScrollView, View, type NativeScrollEvent, type NativeSyntheticEvent } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { useTranslations } from 'use-intl';
 import { useTheme } from '../theme';
-import { Icon, Txt } from './core';
+import { tabRootOptions } from './nav';
 
 export function Screen({
   title,
-  back,
-  right,
+  tabRoot,
+  headerRight,
   children,
   refreshing,
   onRefresh,
   footer,
-  tabbed,
+  fab,
+  banner,
+  onEndReached,
 }: {
   title?: string;
-  back?: boolean;
-  right?: ReactNode;
+  /** Layar akar tab: large title iOS + lonceng notifikasi. */
+  tabRoot?: boolean;
+  headerRight?: () => ReactNode;
   children: ReactNode;
   refreshing?: boolean;
   onRefresh?: () => void;
   footer?: ReactNode;
-  /** Layar tab: nav bawah sudah ada, tidak perlu padding bawah ekstra. */
-  tabbed?: boolean;
+  /** FAB (Android/web) — menerima status "scroll turun" untuk menyembunyikan label (DS Motion 25 #6). */
+  fab?: (collapsed: boolean) => ReactNode;
+  /** Pita di atas konten (mis. offline). */
+  banner?: ReactNode;
+  /** Dekat ujung bawah (± 600 pt) → muat halaman berikutnya (DS: daftar tanpa tombol "muat lagi"). */
+  onEndReached?: () => void;
 }) {
   const { c } = useTheme();
   const insets = useSafeAreaInsets();
-  const router = useRouter();
-  const t = useTranslations('clipper');
+  const [collapsed, setCollapsed] = useState(false);
+  const lastY = useRef(0);
+  const onScroll =
+    fab || onEndReached
+      ? (e: NativeSyntheticEvent<NativeScrollEvent>) => {
+          const { contentOffset, layoutMeasurement, contentSize } = e.nativeEvent;
+          if (onEndReached && contentOffset.y + layoutMeasurement.height >= contentSize.height - 600) onEndReached();
+          const y = contentOffset.y;
+          if (!fab || Math.abs(y - lastY.current) < 8) return;
+          setCollapsed(y > lastY.current && y > 20);
+          lastY.current = y;
+        }
+      : undefined;
+  const options = title ? (tabRoot ? tabRootOptions(title) : { title }) : {};
   return (
     <View style={{ flex: 1, backgroundColor: c.canvas }}>
-      {title || back || right ? (
-        <View style={{ paddingTop: tabbed ? 8 : insets.top + 8, paddingHorizontal: 16, paddingBottom: 8, flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-          {back ? (
-            <Pressable accessibilityRole="button" accessibilityLabel={t('nav.back')} onPress={() => router.back()} hitSlop={10} style={{ width: 40, height: 40, alignItems: 'center', justifyContent: 'center', marginLeft: -8 }}>
-              <Icon name="arrow_back" size={22} />
-            </Pressable>
-          ) : null}
-          <View style={{ flex: 1 }}>{title ? <Txt variant="h4" accessibilityRole="header" numberOfLines={1}>{title}</Txt> : null}</View>
-          {right}
-        </View>
-      ) : null}
+      <Stack.Screen options={headerRight ? { ...options, headerRight } : options} />
       <ScrollView
-        contentContainerStyle={{ padding: 16, paddingTop: title || back ? 4 : insets.top + 12, paddingBottom: (footer ? 120 : 32) + (tabbed ? 0 : insets.bottom), gap: 14 }}
-        refreshControl={onRefresh ? <RefreshControl refreshing={!!refreshing} onRefresh={onRefresh} tintColor={c.primary} /> : undefined}
+        contentInsetAdjustmentBehavior="automatic"
+        contentContainerStyle={{ padding: 16, gap: 14, paddingBottom: (footer ? 120 : fab ? 96 : 32) + (tabRoot ? 0 : insets.bottom) }}
+        refreshControl={onRefresh ? <RefreshControl refreshing={!!refreshing} onRefresh={onRefresh} tintColor={c.primary} colors={[c.primary]} progressBackgroundColor={c.surface} /> : undefined}
         keyboardShouldPersistTaps="handled"
+        keyboardDismissMode={Platform.OS === 'ios' ? 'interactive' : 'on-drag'}
+        onScroll={onScroll}
+        scrollEventThrottle={32}
       >
+        {banner}
         {children}
       </ScrollView>
+      {fab && Platform.OS !== 'ios' ? fab(collapsed) : null}
       {footer ? (
-        <View style={{ position: 'absolute', left: 0, right: 0, bottom: 0, padding: 12, paddingBottom: (tabbed ? 12 : insets.bottom + 12), backgroundColor: c.surface, borderTopWidth: 1, borderColor: c.border }}>{footer}</View>
+        <View style={{ position: 'absolute', left: 0, right: 0, bottom: 0, padding: 12, paddingBottom: tabRoot ? 12 : insets.bottom + 12, backgroundColor: c.surface, borderTopWidth: 1, borderColor: c.border }}>{footer}</View>
       ) : null}
     </View>
   );

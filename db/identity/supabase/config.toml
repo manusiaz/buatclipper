@@ -73,6 +73,8 @@ verify_jwt = false
 verify_jwt = false
 [functions.disburse]
 verify_jwt = false
+[functions.session-handoff]
+verify_jwt = false
 
 # Secret Edge Function untuk stack LOKAL saja (scripts/dev-stack.sh mengisi env-nya). Produksi: supabase secrets set.
 [edge_runtime.secrets]
@@ -98,3 +100,9 @@ VAPID_SUBJECT = "env(VAPID_SUBJECT)"
 DISBURSE_PROVIDER = "env(DISBURSE_PROVIDER)"
 DISBURSE_CALLBACK_TOKEN = "env(DISBURSE_CALLBACK_TOKEN)"
 XENDIT_SECRET_KEY = "env(XENDIT_SECRET_KEY)"
+# Live Activity iOS (APNs, _shared/apns.ts): kosong = fitur mati.
+APNS_KEY_ID = "env(APNS_KEY_ID)"
+APNS_TEAM_ID = "env(APNS_TEAM_ID)"
+APNS_PRIVATE_KEY = "env(APNS_PRIVATE_KEY)"
+APNS_BUNDLE_ID = "env(APNS_BUNDLE_ID)"
+APNS_ENV = "env(APNS_ENV)"

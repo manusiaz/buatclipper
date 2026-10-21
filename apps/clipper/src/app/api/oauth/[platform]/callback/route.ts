@@ -2,7 +2,7 @@ import { NextResponse, type NextRequest } from 'next/server';
 import { hosts } from '@clipper/auth';
 import { invokeFunction, requireClipper } from '@clipper/auth/server';
 import { isPlatform } from '@clipper/clipper-lib/pure';
-import { cookieOptions, decodeState, redirectUri, STATE_COOKIE, verifyState } from '@/features/social/oauth';
+import { APP_RETURN, cookieOptions, decodeState, redirectUri, STATE_COOKIE, verifyState } from '@/features/social/oauth';
 
 // Platform → app.{domain}/api/oauth/[platform]/callback: cek state (constant-time) → core/social connect → /social.
 export async function GET(request: NextRequest, { params }: { params: Promise<{ platform: string }> }) {
@@ -11,8 +11,10 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
   const sp = request.nextUrl.searchParams;
   const saved = decodeState(request.cookies.get(STATE_COOKIE)?.value);
   const done = (q: URLSearchParams) => {
-    if (saved?.next) q.set('next', saved.next);
-    const res = NextResponse.redirect(new URL(`/social?${q}`, hosts.app));
+    // Dibuka dari app native (next = /app-return): hasil langsung kembali ke app lewat clipper://social.
+    const toApp = saved?.next === APP_RETURN;
+    if (saved?.next && !toApp) q.set('next', saved.next);
+    const res = NextResponse.redirect(new URL(`${toApp ? APP_RETURN : '/social'}?${q}`, hosts.app));
     res.cookies.set(STATE_COOKIE, '', { ...cookieOptions(), maxAge: 0 });
     return res;
   };

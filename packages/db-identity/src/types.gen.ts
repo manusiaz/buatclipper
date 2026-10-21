@@ -124,6 +124,9 @@ export type Database = {
 "record_consent":
 { Args: { "p_granted"?: boolean,"p_kind": string,"p_version"?: string }; Returns: undefined
                            },
+"save_activity_token":
+{ Args: { "p_kind": string,"p_ref"?: string,"p_token": string }; Returns: string
+                           },
 "save_expo_push_token":
 { Args: { "p_token": string }; Returns: string
                            },
@@ -144,6 +147,9 @@ export type Database = {
 "store_recipient":
 { Args: { "p_data_enc": string,"p_key_version": number,"p_reward_type_id": string,"p_user_id": string }; Returns: string
                            },
+"svc_add_push_tickets":
+{ Args: { "p_endpoints": (string)[],"p_tickets": (string)[] }; Returns: undefined
+                           },
 "svc_admin_ids":
 { Args: { "p_roles": (string)[] }; Returns: (string)[]
                            },
@@ -156,8 +162,16 @@ export type Database = {
 "svc_close_member":
 { Args: { "p_blocked": boolean,"p_retain_until": string,"p_user": string }; Returns: Json
                            },
+"svc_create_handoff":
+{ Args: { "p_code_hash": string,"p_next": string,"p_user": string }; Returns: string
+                           },
 "svc_delete_push":
 { Args: { "p_endpoint": string }; Returns: undefined
+                           },
+"svc_due_push_tickets":
+{ Args: { "p_limit"?: number }; Returns: {
+              "endpoint": string,"ticket": string
+            }[]
                            },
 "svc_has_consent":
 { Args: { "p_kind": string,"p_user": string }; Returns: boolean
@@ -185,7 +199,7 @@ export type Database = {
                            },
 "svc_push_subscriptions":
 { Args: { "p_user": string }; Returns: {
-              "auth_secret": string,"endpoint": string,"expo_ticket": string,"kind": string,"p256dh": string
+              "activity_ref": string,"auth_secret": string,"endpoint": string,"kind": string,"p256dh": string
             }[]
                            },
 "svc_recipients":
@@ -193,8 +207,16 @@ export type Database = {
               "data_enc": string,"enc_key_version": number,"id": string,"reward_type_id": string,"user_id": string
             }[]
                            },
+"svc_redeem_handoff":
+{ Args: { "p_code_hash": string }; Returns: {
+              "next": string,"user_id": string
+            }[]
+                           },
+"svc_resolve_push_tickets":
+{ Args: { "p_dead_endpoints": (string)[],"p_tickets": (string)[] }; Returns: Json
+                           },
 "svc_touch_push":
-{ Args: { "p_endpoint": string,"p_ticket"?: string }; Returns: undefined
+{ Args: { "p_endpoint": string }; Returns: undefined
                            },
 "svc_user_payout_methods":
 { Args: { "p_user": string }; Returns: {

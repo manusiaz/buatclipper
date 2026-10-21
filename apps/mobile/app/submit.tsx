@@ -1,22 +1,31 @@
-// C1.8 / F-C06 native: pilih akun → pilih video (ditarik API, hanya setelah claim) atau tempel URL (tetap dicek API).
-// Link dari share sheet (/share) masuk sebagai ?url= → langsung mode tempel.
+// C1.8 / F-C06 native (sheet: iOS detent medium → large, Android bottom sheet): pilih akun → pilih video (ditarik API,
+// hanya setelah claim; video tanpa hashtag wajib tidak bisa dipilih) atau tempel URL (tetap dicek API). Link dari
+// share sheet masuk sebagai ?url= → langsung mode tempel. Sama dengan SubmitSheet web.
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useEffect, useState } from 'react';
 import { Image, Pressable, View } from 'react-native';
-import { useTranslations } from 'use-intl';
+import { useLocale, useTranslations } from 'use-intl';
+import { formatDateTime } from '@clipper/ui/format';
 import { platformLabels } from '@clipper/ui/platform-paths';
 import { useAuth } from '@/auth';
 import { listVideos, submitContext, submitVideo, useLoad, type VideoItem } from '@/data';
+import { haptic } from '@/haptics';
 import { useErrorText } from '@/i18n';
+import { connectPlatform } from '@/social-connect';
 import { useTheme } from '@/theme';
 import { Alert, Button, Card, EmptyState, Field, Icon, PlatformIcon, Row, Txt } from '@/ui/core';
 import { Screen } from '@/ui/screen';
+import { useToast } from '@/ui/toast';
+
+const RECONNECT = new Set(['token_expired', 'account_inactive']);
 
 export default function Submit() {
   const { campaignId, claimId, url: shared } = useLocalSearchParams<{ campaignId: string; claimId: string; url?: string }>();
   const t = useTranslations('clipper.submit');
+  const locale = useLocale() === 'en' ? 'en' : 'id';
   const err = useErrorText();
   const router = useRouter();
+  const toast = useToast();
   const { c, radius } = useTheme();
   const { claims } = useAuth();
   const ctx = useLoad(() => submitContext(claims!.sub, campaignId), [claims?.sub, campaignId]);
@@ -32,7 +41,7 @@ export default function Submit() {
   const [sending, setSending] = useState(false);
 
   useEffect(() => {
-    if (!accountId && usable.length === 1) setAccountId(usable[0]!.id);
+    if (!accountId && usable[0]) setAccountId(usable[0].id);
   }, [usable, accountId]);
 
   const load = async (id: string) => {
@@ -52,33 +61,50 @@ export default function Submit() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [accountId]);
 
+  const account = accounts.find((a) => a.id === accountId) ?? null;
+  const reconnect = async () => {
+    if (!account) return;
+    const r = await connectPlatform(account.platform);
+    if (r?.connected) haptic.success();
+    await ctx.reload();
+    if (accountId) await load(accountId);
+  };
+
   const send = async () => {
     if (!accountId) return;
     setError(null);
     setSending(true);
-    const r = await submitVideo({ claimId, accountId, ...(paste ? { url: url.trim() } : { postId: picked ?? '' }) });
+    const r = await submitVideo({ claimId, accountId, ...(paste ? { url } : { postId: picked ?? '' }) });
     setSending(false);
-    if (!r.ok) return setError(r.error);
+    if (!r.ok) {
+      haptic.error();
+      return setError(r.error);
+    }
+    haptic.success();
+    toast({ tone: 'success', title: t('success'), body: r.data.status === 'tracking' ? t('successTracking') : t('successReview') });
     router.dismissAll();
-    router.replace({ pathname: '/tasks', params: { submitted: r.data.status === 'tracking' ? 'tracking' : 'review' } });
+    router.replace('/clips');
   };
 
-  const account = accounts.find((a) => a.id === accountId) ?? null;
   const canSubmit = !!accountId && (paste ? /^https:\/\/\S+$/.test(url.trim()) : !!picked);
   return (
     <Screen
-      back
       title={t('title')}
       footer={
         <Button full size="lg" icon="send" loading={sending} disabled={!canSubmit} onPress={send} testID="submit-video">
-          {t('submit')}
+          {sending ? t('sending') : t('submit')}
         </Button>
       }
     >
       <Txt variant="bodyS" tone="text2">{t('description')}</Txt>
-      {error ? <Alert tone="danger">{err(error)}</Alert> : null}
+      {ctx.error && !ctx.data ? <Alert tone="danger" action={{ label: t('refresh'), onPress: ctx.reload }}>{err(ctx.error)}</Alert> : null}
+      {error ? (
+        <Alert tone="danger" action={RECONNECT.has(error) ? { label: t('reconnect'), onPress: reconnect } : undefined}>
+          {err(error)}
+        </Alert>
+      ) : null}
       {ctx.data && !accounts.length ? (
-        <EmptyState icon="link" title={t('noAccountTitle')} body={t('noAccountBody')} action={{ label: t('connect'), onPress: () => router.push('/social') }} />
+        <EmptyState icon="link" title={t('noAccountTitle')} body={t('noAccountBody')} action={{ label: t('connect'), onPress: () => router.push({ pathname: '/social', params: { next: `/campaign/${campaignId}` } }) }} />
       ) : (
         <View style={{ gap: 8 }} accessibilityRole="radiogroup" accessibilityLabel={t('account')}>
           <Txt variant="label" weight="600">{t('account')}</Txt>
@@ -90,13 +116,19 @@ export default function Submit() {
                 key={a.id}
                 accessibilityRole="radio"
                 accessibilityState={{ checked: active, disabled: off }}
-                disabled={off}
-                onPress={() => setAccountId(a.id)}
-                style={{ flexDirection: 'row', alignItems: 'center', gap: 10, padding: 12, borderRadius: radius.control, borderWidth: 1.5, borderColor: active ? c.primary : c.borderStrong, backgroundColor: active ? c.primarySoft : c.surface, opacity: off ? 0.6 : 1 }}
+                onPress={() => (off ? void connectPlatform(a.platform).then(() => ctx.reload()) : setAccountId(a.id))}
+                style={{ minHeight: 52, flexDirection: 'row', alignItems: 'center', gap: 10, padding: 12, borderRadius: radius.control, borderWidth: 1.5, borderColor: active ? c.primary : c.borderStrong, backgroundColor: active ? c.primarySoft : c.surface }}
               >
                 <PlatformIcon platform={a.platform} size={18} />
-                <Txt variant="label" weight="600" style={{ flex: 1 }}>@{a.handle.replace(/^@/, '')}</Txt>
-                {off ? <Txt variant="caption" tone="warnFg">{t('tokenExpired')}</Txt> : active ? <Icon name="check_circle" size={20} color={c.primary} filled /> : null}
+                <Txt variant="label" weight="600" style={{ flex: 1, opacity: off ? 0.6 : 1 }}>@{a.handle.replace(/^@/, '')}</Txt>
+                {off ? (
+                  <Row gap={4}>
+                    <Txt variant="caption" tone="warnFg">{t('tokenExpired')}</Txt>
+                    <Txt variant="caption" weight="700" tone="link">{t('reconnect')}</Txt>
+                  </Row>
+                ) : active ? (
+                  <Icon name="check_circle" size={20} color={c.primary} filled />
+                ) : null}
               </Pressable>
             );
           })}
@@ -104,23 +136,44 @@ export default function Submit() {
       )}
 
       {account && !paste ? (
-        <View style={{ gap: 8 }}>
+        <View style={{ gap: 8 }} accessibilityLabel={t('videosLabel')}>
           <Row style={{ justifyContent: 'space-between' }}>
             <Txt variant="label" weight="600">{t('videos', { platform: platformLabels[account.platform] })}</Txt>
             <Button variant="link" size="sm" icon="refresh" loading={loading} onPress={() => load(account.id)}>{t('refresh')}</Button>
           </Row>
+          {loading && !videos
+            ? [0, 1, 2].map((i) => <View key={i} style={{ height: 106, borderRadius: radius.card, backgroundColor: c.subtle }} />)
+            : null}
           {videos && !videos.length ? <Txt variant="bodyS" tone="muted">{t('noVideos')}</Txt> : null}
           {(videos ?? []).map((v) => {
             const active = picked === v.postId;
+            const blocked = v.missingTags.length > 0;
             return (
-              <Pressable key={v.postId} accessibilityRole="radio" accessibilityState={{ checked: active }} onPress={() => setPicked(v.postId)}>
-                <Card padding={10} style={{ flexDirection: 'row', gap: 10, borderWidth: 1.5, borderColor: active ? c.primary : c.border }}>
+              <Pressable
+                key={v.postId}
+                accessibilityRole="radio"
+                accessibilityState={{ checked: active, disabled: blocked }}
+                disabled={blocked}
+                onPress={() => {
+                  haptic.selection();
+                  setPicked(v.postId);
+                }}
+              >
+                <Card padding={10} style={{ flexDirection: 'row', gap: 10, borderWidth: 1.5, borderColor: blocked ? c.dangerBg : active ? c.primary : c.border, opacity: blocked ? 0.75 : 1 }}>
                   {v.thumbnail ? <Image source={{ uri: v.thumbnail }} style={{ width: 64, height: 86, borderRadius: 10, backgroundColor: c.subtle }} /> : <View style={{ width: 64, height: 86, borderRadius: 10, backgroundColor: c.subtle }} />}
                   <View style={{ flex: 1, gap: 4 }}>
                     <Txt variant="bodyS" numberOfLines={3}>{v.caption || t('noCaption')}</Txt>
-                    {v.durationSec != null ? <Txt variant="caption" tone="muted">{t('seconds', { n: v.durationSec })}</Txt> : null}
-                    {v.missingTags.length ? <Txt variant="caption" tone="dangerFg">{t('missing', { tags: v.missingTags.join(' ') })}</Txt> : null}
+                    <Txt variant="caption" tone="muted">
+                      {[v.postedAt ? formatDateTime(v.postedAt, locale, { dateStyle: 'medium', timeStyle: 'short' }) : null, v.durationSec != null ? t('seconds', { n: v.durationSec }) : null].filter(Boolean).join(' · ')}
+                    </Txt>
+                    {blocked ? (
+                      <Row gap={4} style={{ flexWrap: 'nowrap' }}>
+                        <Icon name="warning" size={14} color={c.danger} filled />
+                        <Txt variant="caption" tone="dangerFg" style={{ flex: 1 }}>{t('missing', { tags: v.missingTags.join(', ') })}</Txt>
+                      </Row>
+                    ) : null}
                   </View>
+                  {active ? <Icon name="check_circle" size={20} color={c.primary} filled /> : null}
                 </Card>
               </Pressable>
             );

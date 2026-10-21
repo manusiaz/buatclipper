@@ -1,5 +1,6 @@
 // Helper murni (tanpa React/Next) — dipakai server & client, dites vitest.
 import { parseDbError } from '@clipper/i18n/core';
+import nativePaths from './native-paths.json';
 
 export const PLATFORM_ORDER = ['tiktok', 'instagram', 'youtube', 'threads', 'facebook', 'x'] as const;
 export type PlatformId = (typeof PLATFORM_ORDER)[number];
@@ -129,6 +130,46 @@ export function sharedUrl(sp: { url?: string; text?: string; title?: string }): 
   return null;
 }
 
+const PLATFORM_HOSTS: [RegExp, PlatformId][] = [
+  [/(^|\.)tiktok\.com$/, 'tiktok'],
+  [/(^|\.)instagram\.com$/, 'instagram'],
+  [/(^|\.)(youtube\.com|youtu\.be)$/, 'youtube'],
+  [/(^|\.)threads\.(net|com)$/, 'threads'],
+  [/(^|\.)(facebook\.com|fb\.watch|fb\.com)$/, 'facebook'],
+  [/(^|\.)(x\.com|twitter\.com)$/, 'x'],
+];
+
+/** Platform dari host link video (termasuk link pendek vt./vm.tiktok, youtu.be, fb.watch); host lain → null. */
+export function urlPlatform(raw: string | null | undefined): PlatformId | null {
+  try {
+    const h = new URL(raw ?? '').hostname.toLowerCase();
+    return PLATFORM_HOSTS.find(([re]) => re.test(h))?.[1] ?? null;
+  } catch {
+    return null;
+  }
+}
+
+/** Share sheet (DS iOS 01 "link otomatis kebaca dan dicocokin ke campaign"): claim terbuka yang campaign-nya menerima
+ *  platform link itu didahulukan (paling cepat habis dulu); best = tujuan 1-tap, null kalau tak ada yang cocok. */
+export function matchShare<T extends { platforms: readonly string[]; expiresAt: string }>(url: string, claims: readonly T[]) {
+  const platform = urlPlatform(url);
+  const byExpiry = [...claims].sort((a, b) => a.expiresAt.localeCompare(b.expiresAt));
+  const matched = platform ? byExpiry.filter((c) => c.platforms.includes(platform)) : [];
+  return { platform, best: matched[0] ?? null, matched, others: byExpiry.filter((c) => !matched.includes(c)) };
+}
+
+/** Path app.{domain} yang punya layar native (apps/mobile/src/links.ts nativeRoute) → universal link / App Link.
+ *  JSON supaya apps/mobile/app.config.ts (intent filter Android) membaca daftar yang sama. */
+export const NATIVE_PATHS: readonly string[] = nativePaths;
+
+/** apple-app-site-association app iOS: path di NATIVE_PATHS dibuka di app; API, OAuth (app-return) & login tetap di
+ *  browser. Team ID 10 karakter + bundle id valid, selain itu null (route 404, belum ada app iOS). */
+export function appSiteAssociation(teamId: string | undefined, bundleId: string | undefined) {
+  if (!/^[A-Z0-9]{10}$/.test(teamId ?? '') || !/^[A-Za-z][A-Za-z0-9-]*(\.[A-Za-z0-9-]+)+$/.test(bundleId ?? '')) return null;
+  const excluded = ['/api/*', '/app-return*', '/login*', '/offline*', '/.well-known/*'].map((p) => ({ '/': p, exclude: true }));
+  return { applinks: { details: [{ appIDs: [`${teamId}.${bundleId}`], components: [...excluded, ...NATIVE_PATHS.map((p) => ({ '/': p }))] }] } };
+}
+
 /** Digital Asset Links app Android TWA (Play Store): package + sidik jari SHA-256 sertifikat signing (Play App Signing
  *  bisa lebih dari satu, pisah koma/spasi). Nilai tidak valid / kosong → null (route 404, belum ada app Android). */
 export function assetLinks(pkg: string | undefined, prints: string | undefined) {
@@ -231,4 +272,51 @@ export function weekStartUtc(now: Date): Date {
   const d = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
   d.setUTCDate(d.getUTCDate() - ((d.getUTCDay() + 6) % 7));
   return d;
+}
+
+/** Ikon placeholder kartu campaign tanpa cover, per kategori (nama ikon Material di @clipper/ui/icons). */
+const CATEGORY_ICON: Record<string, 'movie' | 'sports_esports' | 'music_note' | 'storefront' | 'smart_display' | 'mic'> = {
+  movies: 'movie',
+  games: 'sports_esports',
+  music: 'music_note',
+  brand: 'storefront',
+  ugc: 'smart_display',
+  podcast: 'mic',
+};
+export const categoryIcon = (id: string | null | undefined) => CATEGORY_ICON[id ?? ''] ?? 'movie';
+
+/** ?pages= (base64url JSON dari callback OAuth Facebook page_ambiguous) → daftar Page untuk dipilih. */
+export function parsePages(raw: string | null | undefined): { id: string; name: string }[] {
+  if (!raw) return [];
+  try {
+    const v: unknown = JSON.parse(new TextDecoder().decode(base64UrlToBytes(raw)));
+    return Array.isArray(v)
+      ? v
+          .filter((p): p is { id: string; name?: unknown } => !!p && typeof (p as { id?: unknown }).id === 'string')
+          .map((p) => ({ id: p.id.slice(0, 64), name: String(p.name ?? '').slice(0, 80) }))
+      : [];
+  } catch {
+    return [];
+  }
+}
+
+export type TrustEffect = { key: 'instant' | 'premium' | 'cap' | 'hold'; ok: boolean | null; vars: Record<string, number> };
+
+/** Efek Trust Score (§12) dari config: instant (public.finance.instant_min_trust), cap & hold (public.finance.trust_tiers);
+ * premium per campaign (info). Tanpa tier yang menaikkan cap / memendekkan hold, efek itu tidak ditampilkan. */
+export function trustEffects(score: number, s: { instantMin: unknown; holdDays: unknown; tiers: unknown }): TrustEffect[] {
+  const instantMin = num(s.instantMin) || 70;
+  const holdDays = num(s.holdDays) || 7;
+  const tiers = arr<Record<string, unknown>>(s.tiers)
+    .map((x) => ({ min: num(x.min_score), cap: num(x.cap_pct) || 100, hold: num(x.hold_days) || holdDays }))
+    .sort((a, b) => a.min - b.min);
+  const capTier = tiers.find((x) => x.cap > 100);
+  const holdTier = tiers.find((x) => x.hold < holdDays);
+  const mine = [...tiers].reverse().find((x) => score >= x.min);
+  return [
+    { key: 'instant', ok: score >= instantMin, vars: { n: instantMin } },
+    { key: 'premium', ok: null, vars: {} },
+    ...(capTier ? [{ key: 'cap' as const, ok: (mine?.cap ?? 100) > 100, vars: { n: capTier.min, pct: mine && mine.cap > 100 ? mine.cap : capTier.cap } }] : []),
+    ...(holdTier ? [{ key: 'hold' as const, ok: (mine?.hold ?? holdDays) < holdDays, vars: { n: holdTier.min, days: mine && mine.hold < holdDays ? mine.hold : holdTier.hold } }] : []),
+  ];
 }

@@ -1,40 +1,27 @@
-// Nav bawah app clipper (§6.8): Campaign · Tugas · Wallet · Sosmed — sama dengan MobileAppShell PWA.
+// Tujuan utama (DS Android/iOS 01): Campaign · Clip · Dompet · Akun. Android & web: nav bar M3 bawah, rail ≥ 600 dp
+// (src/ui/tab-bar.tsx), ganti tab = fade through. iOS: _layout.ios.tsx (UITabBar asli).
 import { Tabs } from 'expo-router';
 import { useTranslations } from 'use-intl';
-import { Icon, type IconName } from '@/ui/core';
-import { AppHeader } from '@/ui/header';
-import { fontFor, useTheme } from '@/theme';
-
-const TABS: { name: string; key: 'campaigns' | 'tasks' | 'wallet' | 'social'; icon: IconName }[] = [
-  { name: 'index', key: 'campaigns', icon: 'campaign' },
-  { name: 'tasks', key: 'tasks', icon: 'checklist' },
-  { name: 'wallet', key: 'wallet', icon: 'account_balance_wallet' },
-  { name: 'social', key: 'social', icon: 'link' },
-];
+import { M3TabBar, useRail } from '@/ui/tab-bar';
+import { TAB_ICONS, TAB_KEYS } from '@/ui/tabs';
+import { useTheme } from '@/theme';
 
 export default function TabsLayout() {
-  const t = useTranslations('clipper.nav');
+  const t = useTranslations('clipper.mobile.tabs');
   const { c } = useTheme();
+  const rail = useRail();
   return (
     <Tabs
+      tabBar={(props) => <M3TabBar {...props} icons={TAB_ICONS} />}
       screenOptions={{
-        header: () => <AppHeader />,
-        tabBarActiveTintColor: c.ink,
-        tabBarInactiveTintColor: c.muted,
-        tabBarStyle: { backgroundColor: c.surface, borderTopColor: c.border, height: 64, paddingTop: 6 },
-        tabBarLabelStyle: { fontFamily: fontFor('600'), fontSize: 11 },
+        headerShown: false,
+        tabBarPosition: rail ? 'left' : 'bottom',
+        animation: 'fade',
         sceneStyle: { backgroundColor: c.canvas },
       }}
     >
-      {TABS.map((tab) => (
-        <Tabs.Screen
-          key={tab.name}
-          name={tab.name}
-          options={{
-            title: t(tab.key),
-            tabBarIcon: ({ focused, color }) => <Icon name={tab.icon} size={22} filled={focused} color={String(color)} />,
-          }}
-        />
+      {TAB_KEYS.map(([name, key]) => (
+        <Tabs.Screen key={name} name={name} options={{ title: t(key) }} />
       ))}
     </Tabs>
   );

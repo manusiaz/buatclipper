@@ -1,7 +1,9 @@
 // identity/bridge — inbound server-to-server entry (§15.5).
 //   HMAC (from core, BRIDGE_SECRET_CORE_TO_IDENTITY): send_email, send_push (alur 4), check_ids (alur 10),
 //                                                     disburse (alur 11), ban_user (J-A4)
-//   apikey (pg_cron → pg_net, member.invoke_function): fraud_device_scan (alur 6, FR-05)
+//   apikey (pg_cron → pg_net, member.invoke_function): fraud_device_scan (alur 6, FR-05), push_receipts (receipt Expo)
+// send_push juga mengirim Live Activity iOS payout lewat APNs (_shared/apns.ts) bila APNS_* diisi.
+import { apnsFromEnv, type ApnsSender, sendPayoutActivity } from "../_shared/apns.ts";
 import { isCronRequest } from "../_shared/auth.ts";
 import { type CoreBridge, verifyBridge } from "../_shared/bridge.ts";
 import { type PiiCrypto, sha256Hex } from "../_shared/crypto.ts";
@@ -10,6 +12,7 @@ import { type DisbursementProvider, runDisburse } from "../_shared/disburse.ts";
 import type { EmailSender } from "../_shared/email.ts";
 import {
   HttpError,
+  isUuid,
   log,
   obj,
   okResponse,
@@ -21,7 +24,14 @@ import {
   wrap,
 } from "../_shared/http.ts";
 import { banUser, unbanUser } from "../_shared/moderation.ts";
-import { type PushSender, sendPushToUser } from "../_shared/push.ts";
+import type { MethodRow } from "../_shared/payouts.ts";
+import {
+  type ExpoReceiptFetcher,
+  expoReceipts,
+  type PushSender,
+  resolveExpoReceipts,
+  sendPushToUser,
+} from "../_shared/push.ts";
 import { isKnownEvent, type Links, PROMO_EVENTS, render, safeHttpsUrl } from "../_shared/templates.ts";
 
 export interface BridgeDeps {
@@ -36,6 +46,10 @@ export interface BridgeDeps {
   links: () => Links;
   isCron?: (req: Request) => boolean;
   nowS?: () => number;
+  /** Live Activity iOS (APNs); default dari env APNS_*, null = fitur mati. */
+  apns?: () => ApnsSender | null;
+  /** Receipt Expo untuk job:push-receipts (default Expo Push API). */
+  receipts?: ExpoReceiptFetcher;
 }
 
 export const MAX_IDS = 10_000;
@@ -55,6 +69,29 @@ export function notificationId(p: Record<string, unknown>): string | null {
   throw new HttpError(400, "invalid_input", "notification_id harus bilangan bulat positif");
 }
 
+/**
+ * Payload payout (payout_method_id dari core): bank_code + account_last4 rekening milik user itu ditambahkan dari identity
+ * (svc_payout_methods, sama dengan disburse) untuk template ("BCA •• 4821") dan Live Activity. Nomor rekening penuh tidak
+ * pernah ikut; nilai kiriman core untuk dua kunci itu dibuang. Gagal baca = tanpa info rekening.
+ */
+export async function withPayoutMethod(
+  rpc: Rpc,
+  userId: string,
+  data: Record<string, unknown>,
+): Promise<Record<string, unknown>> {
+  const { bank_code: _bank, account_last4: _last4, ...rest } = data;
+  if (!isUuid(rest.payout_method_id)) return rest;
+  try {
+    const [m] = (await rpc.invoke<MethodRow[] | null>("svc_payout_methods", {
+      p_ids: [rest.payout_method_id.toLowerCase()],
+    })) ?? [];
+    if (!m || m.user_id !== userId) return rest;
+    return { ...rest, bank_code: m.bank_code, ...(m.account_last4 ? { account_last4: m.account_last4 } : {}) };
+  } catch {
+    return rest;
+  }
+}
+
 async function sendEmail(deps: BridgeDeps, p: Record<string, unknown>) {
   const userId = uuid(p, "user_id");
   const event = eventOf(p);
@@ -68,7 +105,9 @@ async function sendEmail(deps: BridgeDeps, p: Record<string, unknown>) {
 
   const user = await deps.authAdmin.getUser(userId);
   if (!user?.email) return { sent: false, reason: "no_email" };
-  const r = render(event, data, deps.links(), { unsubscribeUrl: unsubscribe });
+  const r = render(event, await withPayoutMethod(deps.rpc, userId, data), deps.links(), {
+    unsubscribeUrl: unsubscribe,
+  });
   const res = await deps.email().send({
     to: user.email,
     subject: r.subject,
@@ -128,8 +167,21 @@ export async function notifyAdmins(
 async function sendPush(deps: BridgeDeps, p: Record<string, unknown>) {
   const userId = uuid(p, "user_id");
   const event = eventOf(p);
-  const r = render(event, obj(p.payload ?? {}, "payload"), deps.links());
-  return await sendPushToUser({ rpc: deps.rpc, sender: await deps.push() }, userId, { ...r.push, event });
+  const data = await withPayoutMethod(deps.rpc, userId, obj(p.payload ?? {}, "payload"));
+  const r = render(event, data, deps.links());
+  const res = await sendPushToUser({ rpc: deps.rpc, sender: await deps.push() }, userId, { ...r.push, event });
+  // Live Activity iOS: best-effort, tidak menggagalkan push biasa.
+  const live = await sendPayoutActivity(
+    { rpc: deps.rpc, apns: deps.apns ?? apnsFromEnv, nowS: deps.nowS },
+    userId,
+    event,
+    data,
+    { title: r.push.title, body: r.push.body },
+  ).catch((e) => {
+    log("warn", { fn: "bridge", action: "live_activity", error: e instanceof Error ? e.name : "unknown" });
+    return null;
+  });
+  return live ? { ...res, live_activity: live } : res;
 }
 
 async function checkIds(deps: BridgeDeps, p: Record<string, unknown>) {
@@ -230,6 +282,11 @@ export function createBridgeHandler(deps: BridgeDeps): (req: Request) => Promise
     if ((deps.isCron ?? isCronRequest)(req)) {
       const body = parseJsonObject(raw);
       if (body.action === "fraud_device_scan") return okResponse(await fraudDeviceScan(deps));
+      if (body.action === "push_receipts") {
+        return okResponse(
+          await resolveExpoReceipts({ rpc: deps.rpc, receipts: deps.receipts ?? ((ids) => expoReceipts(ids)) }),
+        );
+      }
       throw new HttpError(400, "unknown_action", "action cron tidak dikenal");
     }
     throw new HttpError(401, "unauthorized", "butuh tanda tangan bridge atau secret key");

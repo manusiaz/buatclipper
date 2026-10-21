@@ -27,14 +27,14 @@ const GROUPS = {
     'block', 'undo', 'visibility', 'visibility_off', 'schedule', 'calendar_today', 'event', 'timer', 'bolt', 'lock',
     'verified', 'shield', 'info', 'warning', 'error', 'help', 'bookmark', 'add_link', 'link_off', 'progress_activity',
     'hourglass_top', 'star', 'person_add', 'support_agent', 'wifi_off', 'percent', 'tag', 'image', 'article',
-    'description', 'add_circle',
+    'description', 'add_circle', 'delete_forever', 'ios_share', 'cloud_off', 'touch_app', 'sync',
   ],
   domain: [
     'play_circle', 'smartphone', 'mobile', 'movie', 'movie_edit', 'sports_esports', 'music_note', 'music_video', 'mic',
     'storefront', 'payments', 'account_balance', 'qr_code_2', 'receipt_long', 'redeem', 'diamond', 'card_giftcard',
     'trending_up', 'insights', 'monitoring', 'bar_chart', 'public', 'groups', 'badge', 'id_card', 'key', 'mail',
     'alternate_email', 'language', 'dark_mode', 'light_mode', 'contrast', 'install_mobile', 'mobile_arrow_down',
-    'forum', 'local_fire_department', 'workspace_premium', 'photo_camera', 'smart_display',
+    'forum', 'local_fire_department', 'workspace_premium', 'photo_camera', 'smart_display', 'military_tech', 'content_paste', 'bolt',
   ],
 };
 

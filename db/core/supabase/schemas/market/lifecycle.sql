@@ -29,7 +29,8 @@ begin
     from market.campaigns c
     cross join lateral (select jsonb_build_object('campaign_id', c.id, 'campaign_title', c.title, 'campaign_slug', c.slug,
                                                   'org_name', (select o.name from market.organizations o where o.id = c.org_id),
-                                                  'platforms', to_jsonb(c.platforms)) as payload) x
+                                                  'platforms', to_jsonb(c.platforms),
+                                                  'rate_per_1k', market.rate_per_1k(c.id)) as payload) x
     join market.profiles p on p.status = 'active' and p.trust_score >= c.min_trust_score
    where c.id = p_campaign and not c.is_template
      and not exists (select 1 from market.org_members m where m.org_id = c.org_id and m.user_id = p.id)

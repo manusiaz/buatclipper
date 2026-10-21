@@ -1,4 +1,5 @@
--- Fungsi service role untuk Edge Function identity (member-data, pii-export, delete-account, admin-auth, disburse, bridge).
+-- Fungsi service role untuk Edge Function identity (member-data, pii-export, delete-account, admin-auth, disburse, bridge,
+-- session-handoff).
 -- Browser tidak bisa memanggilnya: EXECUTE hanya untuk service_role (secret key identity). Ciphertext (bytea) keluar apa
 -- adanya; dekripsi + HMAC terjadi di Edge Function karena kuncinya secret fungsi, bukan isi database (§15.4).
 
@@ -92,11 +93,12 @@ language sql stable security definer set search_path = '' as $$
   where pr.role::text = any (p_roles);
 $$;
 
--- Push (alur 4): langganan per user (web push + token Expo app native), buang endpoint/token mati, catat terakhir dipakai.
+-- Push (alur 4): langganan per user (web push, token Expo, token Live Activity APNs), buang endpoint/token mati,
+-- catat terakhir dipakai.
 create function api.svc_push_subscriptions(p_user uuid)
-returns table (kind text, endpoint text, p256dh text, auth_secret text, expo_ticket text)
+returns table (kind text, endpoint text, p256dh text, auth_secret text, activity_ref text)
 language sql stable security definer set search_path = '' as $$
-  select ps.kind, ps.endpoint, ps.p256dh, ps.auth_secret, ps.expo_ticket
+  select ps.kind, ps.endpoint, ps.p256dh, ps.auth_secret, ps.activity_ref
   from member.push_subscriptions ps
   where ps.user_id = p_user
   order by ps.created_at;
@@ -108,11 +110,82 @@ language sql security definer set search_path = '' as $$
   delete from member.push_subscriptions where endpoint = p_endpoint;
 $$;
 
-create function api.svc_touch_push(p_endpoint text, p_ticket text default null)
+create function api.svc_touch_push(p_endpoint text)
 returns void
 language sql security definer set search_path = '' as $$
-  update member.push_subscriptions set last_used_at = now(), expo_ticket = coalesce(p_ticket, expo_ticket)
-  where endpoint = p_endpoint;
+  update member.push_subscriptions set last_used_at = now() where endpoint = p_endpoint;
+$$;
+
+-- Ticket Expo yang diterima (pasangan endpoint[i] ↔ ticket[i]); token yang sudah dihapus dilewati.
+create function api.svc_add_push_tickets(p_endpoints text[], p_tickets text[])
+returns void
+language plpgsql security definer set search_path = '' as $$
+begin
+  if coalesce(cardinality(p_endpoints), 0) <> coalesce(cardinality(p_tickets), 0) then
+    raise exception 'p_endpoints dan p_tickets harus sama panjang' using errcode = '22023';
+  end if;
+  insert into member.push_tickets (endpoint, ticket)
+  select x.endpoint, x.ticket
+  from unnest(p_endpoints, p_tickets) as x (endpoint, ticket)
+  where x.ticket is not null
+    and exists (select 1 from member.push_subscriptions ps where ps.endpoint = x.endpoint)
+  on conflict (ticket) do nothing;
+end $$;
+
+-- job:push-receipts: ticket ≥ 15 menit (receipt Expo sudah siap), terlama dulu.
+create function api.svc_due_push_tickets(p_limit int default 1000)
+returns table (ticket text, endpoint text)
+language sql stable security definer set search_path = '' as $$
+  select t.ticket, t.endpoint
+  from member.push_tickets t
+  where t.created_at <= now() - interval '15 minutes'
+  order by t.created_at
+  limit greatest(coalesce(p_limit, 1000), 0);
+$$;
+
+-- Hasil receipt: ticket yang sudah terbaca dihapus, token DeviceNotRegistered dihapus (ticket-nya ikut cascade),
+-- ticket > 24 jam dibuang (receipt Expo sudah kedaluwarsa).
+create function api.svc_resolve_push_tickets(p_tickets text[], p_dead_endpoints text[])
+returns jsonb
+language plpgsql security definer set search_path = '' as $$
+declare
+  removed int;
+  resolved int;
+  expired int;
+begin
+  delete from member.push_subscriptions ps where ps.endpoint = any (coalesce(p_dead_endpoints, '{}'));
+  get diagnostics removed = row_count;
+  delete from member.push_tickets t where t.ticket = any (coalesce(p_tickets, '{}'));
+  get diagnostics resolved = row_count;
+  delete from member.push_tickets t where t.created_at < now() - interval '24 hours';
+  get diagnostics expired = row_count;
+  return jsonb_build_object('resolved', resolved, 'removed', removed, 'expired', expired);
+end $$;
+
+-- Handoff sesi app native → web (session-handoff create): kode baru berlaku 60 detik; maks 10 kode belum kedaluwarsa
+-- per user (54000). Baris kedaluwarsa > 1 hari dibuang di sini.
+create function api.svc_create_handoff(p_user uuid, p_code_hash bytea, p_next text)
+returns timestamptz
+language plpgsql security definer set search_path = '' as $$
+declare
+  v_expires timestamptz := now() + interval '60 seconds';
+begin
+  perform pg_advisory_xact_lock(hashtextextended('session_handoff:' || p_user::text, 0));
+  delete from member.session_handoffs h where h.expires_at < now() - interval '1 day';
+  if (select count(*) from member.session_handoffs h where h.user_id = p_user and h.expires_at > now()) >= 10 then
+    raise exception 'terlalu banyak kode handoff aktif' using errcode = '54000';
+  end if;
+  insert into member.session_handoffs (code_hash, user_id, next, expires_at) values (p_code_hash, p_user, p_next, v_expires);
+  return v_expires;
+end $$;
+
+-- Tukar kode (session-handoff redeem): sekali pakai & belum kedaluwarsa, atomik; kosong = tidak sah.
+create function api.svc_redeem_handoff(p_code_hash bytea)
+returns table (user_id uuid, next text)
+language sql security definer set search_path = '' as $$
+  update member.session_handoffs h set used_at = now()
+  where h.code_hash = p_code_hash and h.used_at is null and h.expires_at > now()
+  returning h.user_id, h.next;
 $$;
 
 -- Rekonsiliasi ID lintas DB (alur 10). Rekening tombstone (akun dihapus) dihitung hilang karena tidak bisa dipakai lagi.
@@ -253,7 +326,12 @@ revoke execute on function api.svc_platform_roles(uuid) from public, anon, authe
 revoke execute on function api.svc_admin_ids(text[]) from public, anon, authenticated;
 revoke execute on function api.svc_push_subscriptions(uuid) from public, anon, authenticated;
 revoke execute on function api.svc_delete_push(text) from public, anon, authenticated;
-revoke execute on function api.svc_touch_push(text, text) from public, anon, authenticated;
+revoke execute on function api.svc_touch_push(text) from public, anon, authenticated;
+revoke execute on function api.svc_add_push_tickets(text[], text[]) from public, anon, authenticated;
+revoke execute on function api.svc_due_push_tickets(int) from public, anon, authenticated;
+revoke execute on function api.svc_resolve_push_tickets(text[], text[]) from public, anon, authenticated;
+revoke execute on function api.svc_create_handoff(uuid, bytea, text) from public, anon, authenticated;
+revoke execute on function api.svc_redeem_handoff(bytea) from public, anon, authenticated;
 revoke execute on function api.svc_check_ids(uuid[], uuid[], uuid[]) from public, anon, authenticated;
 revoke execute on function api.svc_close_member(uuid, boolean, date) from public, anon, authenticated;
 revoke execute on function api.svc_audit(uuid, text, text, jsonb) from public, anon, authenticated;
@@ -268,7 +346,12 @@ grant execute on function api.svc_platform_roles(uuid) to service_role;
 grant execute on function api.svc_admin_ids(text[]) to service_role;
 grant execute on function api.svc_push_subscriptions(uuid) to service_role;
 grant execute on function api.svc_delete_push(text) to service_role;
-grant execute on function api.svc_touch_push(text, text) to service_role;
+grant execute on function api.svc_touch_push(text) to service_role;
+grant execute on function api.svc_add_push_tickets(text[], text[]) to service_role;
+grant execute on function api.svc_due_push_tickets(int) to service_role;
+grant execute on function api.svc_resolve_push_tickets(text[], text[]) to service_role;
+grant execute on function api.svc_create_handoff(uuid, bytea, text) to service_role;
+grant execute on function api.svc_redeem_handoff(bytea) to service_role;
 grant execute on function api.svc_check_ids(uuid[], uuid[], uuid[]) to service_role;
 grant execute on function api.svc_close_member(uuid, boolean, date) to service_role;
 grant execute on function api.svc_audit(uuid, text, text, jsonb) to service_role;

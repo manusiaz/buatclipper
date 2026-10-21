@@ -13,6 +13,7 @@
     "./format": "./src/lib/format.ts",
     "./campaign-labels": "./src/lib/campaign-labels.ts",
     "./icons": "./src/icons.generated.ts",
+    "./embed": "./src/lib/embed.ts",
     "./platform-paths": "./src/lib/platform-paths.ts"
   },
   "scripts": {

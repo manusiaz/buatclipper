@@ -16,6 +16,19 @@
   },
   "reason": "Reason: {reason}",
   "unknown": { "title": "New notification", "body": "Open the app for details." },
+  "facts": {
+    "views": "{n} views counted",
+    "estimate": "±{amount} so far",
+    "release": "pays out ~{date}",
+    "rate": "{rate}/1K views",
+    "lost": "{amount} forfeited",
+    "held": "{amount} on hold",
+    "hoursLeft": "{n}h left",
+    "paused": "{n} videos paused",
+    "to": "to {bank}",
+    "fee": "fee {amount}",
+    "eta": "arrives {when}"
+  },
   "campaign": {
     "new": { "title": "New campaign: {campaign}", "body": "Claim it before the slots or budget run out." },
     "invited": { "title": "You are invited to campaign {campaign}", "body": "Open the campaign to read the brief and claim a slot." },
@@ -41,6 +54,7 @@
     "held": { "title": "Your earnings are on hold", "body": "{scope, select, submission {Earnings for your video in {campaign} are on hold while moderators review it.} other {Withdrawals are on hold while moderators review your account.}} If everything checks out, things continue as usual." }
   },
   "payout": {
+    "processing": { "title": "Payout of {amount} is on its way", "body": "Your withdrawal is being processed and sent to your payout account." },
     "paid": { "title": "Payout of {amount} sent", "body": "The money has been transferred. Arrival time depends on the destination bank or e-wallet." },
     "failed": { "title": "Payout of {amount} failed", "body": "The balance is back in your wallet. Check your payout account and try again." },
     "cancelled": { "title": "Withdrawal of {amount} cancelled", "body": "The balance is back in Available and can be withdrawn again." }

@@ -66,6 +66,7 @@ declare
   x record;
   score_delta smallint;
   notify boolean;
+  amts jsonb;
 begin
   if not ops.has_admin('admin_moderator') then
     raise exception 'auth:forbidden' using errcode = '42501';
@@ -98,10 +99,19 @@ begin
       update tracking.submissions set status = 'flagged' where id = sub.id;
     end if;
     -- A4.2 "Clipper menerima notifikasi" untuk setiap tindakan, termasuk tahan.
+    -- nominal yang ditahan: earning submisi belum rilis | payout | saldo Tersedia profil (DS: notif selalu ada angka)
     perform ops.enqueue_notification(target_user, 'earning.held',
                                      case when sub.id is null then '{}'::jsonb else market.campaign_ref(sub.campaign_id)
-                                          || jsonb_build_object('submission_id', sub.id) end
-                                     || jsonb_build_object('target_type', f.target_type, 'signal', f.signal));
+                                          || jsonb_build_object('submission_id', sub.id, 'platform', sub.platform,
+                                                                'views', greatest(sub.counted_views, coalesce(sub.last_views, 0))) end
+                                     || jsonb_build_object('target_type', f.target_type, 'signal', f.signal,
+                                                           'amounts', case f.target_type
+                                                             when 'submission' then finance.pending_amounts(sub.id)
+                                                             when 'payout' then (select jsonb_build_array(finance.amount_ref(finance.idr(), p.amount))
+                                                                                   from finance.payouts p where p.id = f.target_id)
+                                                             when 'profile' then finance.wallet_amounts(target_user, 'available')
+                                                             else '[]'::jsonb end)
+                                     || case when f.target_type = 'payout' then jsonb_build_object('payout_id', f.target_id) else '{}' end);
     if f.target_type = 'payout' then
       -- Instant requested sudah diteruskan ke penyedia (alur 11); menahannya membuka refund saat transfer berjalan.
       update finance.payouts set status = 'on_hold', hold_reason = 'fraud:' || f.signal
@@ -123,14 +133,18 @@ begin
         -- submisi locked yang masih punya earning belum rilis juga kehilangan earning → clipper tetap dikabari
         notify := x.status <> 'locked' or exists (select 1 from finance.clip_earnings ce where ce.submission_id = x.id
                                                    and ce.released_at is null and ce.amount > 0);
+        amts := finance.pending_amounts(x.id);  -- nominal hangus, dibaca sebelum reverse_earning
         perform finance.reverse_earning(x.id, 'fraud:' || f.signal);
         if x.status in ('tracking', 'flagged') then
           update tracking.submissions set status = 'forfeited', next_poll_at = null where id = x.id;
         end if;
         if notify then
           perform ops.enqueue_notification(target_user, 'submission.forfeited',
-                                           market.campaign_ref((select s.campaign_id from tracking.submissions s where s.id = x.id))
-                                           || jsonb_build_object('submission_id', x.id, 'reason', 'fraud:' || f.signal));
+                                           (select market.campaign_ref(s.campaign_id)
+                                                   || jsonb_build_object('platform', s.platform,
+                                                                         'views', greatest(s.counted_views, coalesce(s.last_views, 0)))
+                                              from tracking.submissions s where s.id = x.id)
+                                           || jsonb_build_object('submission_id', x.id, 'reason', 'fraud:' || f.signal, 'amounts', amts));
         end if;
       end loop;
     elsif p_action = 'suspend' then

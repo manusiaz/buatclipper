@@ -12,4 +12,6 @@ export const env = {
   appUrl: need(process.env.EXPO_PUBLIC_APP_URL, 'EXPO_PUBLIC_APP_URL'),
   accountsUrl: need(process.env.EXPO_PUBLIC_ACCOUNTS_URL, 'EXPO_PUBLIC_ACCOUNTS_URL'),
   brandUrl: need(process.env.EXPO_PUBLIC_BRAND_URL, 'EXPO_PUBLIC_BRAND_URL'),
+  /** Landing {domain}: link referral /?ref=… (sama dengan hosts.web app). */
+  webUrl: need(process.env.EXPO_PUBLIC_WEB_URL, 'EXPO_PUBLIC_WEB_URL'),
 };

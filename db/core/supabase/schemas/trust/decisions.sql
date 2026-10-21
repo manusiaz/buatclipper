@@ -47,11 +47,14 @@ begin
     insert into trust.score_events (user_id, delta, reason, ref_id, created_by)
     values (s.user_id, greatest(least(delta, 100), -100), score_reason, s.id::text, p_actor);
   end if;
+  -- DS "notif selalu ada angka": approve + views, rate/1K, ±earning & perkiraan cair (finance.clip_estimate); reject + views.
   perform ops.enqueue_notification(s.user_id, case when to_status = 'tracking' then 'submission.approved' else 'submission.rejected' end,
                                    jsonb_build_object('submission_id', s.id, 'campaign_id', s.campaign_id,
                                                       'campaign_title', (select c.title from market.campaigns c where c.id = s.campaign_id),
                                                       'url', s.url, 'reason', p_reason,
-                                                      'message', p_message, 'final', to_status = 'rejected_final'));
+                                                      'message', p_message, 'final', to_status = 'rejected_final',
+                                                      'platform', s.platform, 'views', greatest(s.counted_views, coalesce(s.last_views, 0)))
+                                   || case when to_status = 'tracking' then finance.clip_estimate(s.id) else '{}' end);
 end $$;
 
 -- F-B07: submisi campaign review brand yang tidak direview dalam public.market.brand_review_auto_approve_hours (72) → auto-approve.

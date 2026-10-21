@@ -1,5 +1,14 @@
 import { assertEquals, assertRejects } from "@std/assert";
-import { type ExpoMessage, expoMessage, expoReceipts, expoSend, type PushSender, sendPushToUser } from "./push.ts";
+import {
+  type ExpoMessage,
+  expoMessage,
+  type ExpoReceipt,
+  expoReceipts,
+  expoSend,
+  type PushSender,
+  resolveExpoReceipts,
+  sendPushToUser,
+} from "./push.ts";
 import { FakeRpc } from "./testing.ts";
 
 Deno.test("web push: 404/410 endpoints are deleted, others counted, delivered ones touched", async () => {
@@ -85,6 +94,7 @@ Deno.test("expo push (app native): one batch, DeviceNotRegistered deleted, ok to
     svc_push_subscriptions: () => subs,
     svc_delete_push: () => null,
     svc_touch_push: () => null,
+    svc_add_push_tickets: () => null,
   });
   const batches: ExpoMessage[][] = [];
   const web: string[] = [];
@@ -124,69 +134,165 @@ Deno.test("expo push (app native): one batch, DeviceNotRegistered deleted, ok to
     "ExponentPushToken[okokokokokokokok]",
     "https://push.test/ok",
   ]);
+  assertEquals(rpc.named("svc_add_push_tickets").map((c) => c.args), [
+    { p_endpoints: ["ExponentPushToken[okokokokokokokok]"], p_tickets: ["t1"] },
+  ]);
 });
 
-Deno.test("expo push: receipt of the previous ticket says DeviceNotRegistered → token deleted before sending", async () => {
+Deno.test("expo push: accepted tickets recorded in one svc_add_push_tickets call, no receipt lookup before sending", async () => {
   const subs = [
-    {
-      kind: "expo" as const,
-      endpoint: "ExponentPushToken[gonegonegonegone]",
-      p256dh: null,
-      auth_secret: null,
-      expo_ticket: "old-gone",
-    },
-    {
-      kind: "expo" as const,
-      endpoint: "ExponentPushToken[okokokokokokokok]",
-      p256dh: null,
-      auth_secret: null,
-      expo_ticket: "old-ok",
-    },
-    {
-      kind: "expo" as const,
-      endpoint: "ExponentPushToken[newnewnewnewnewn]",
-      p256dh: null,
-      auth_secret: null,
-      expo_ticket: null,
-    },
+    { kind: "expo" as const, endpoint: "ExponentPushToken[aaaaaaaaaaaaaaaa]", p256dh: null, auth_secret: null },
+    { kind: "expo" as const, endpoint: "ExponentPushToken[bbbbbbbbbbbbbbbb]", p256dh: null, auth_secret: null },
+    { kind: "expo" as const, endpoint: "ExponentPushToken[cccccccccccccccc]", p256dh: null, auth_secret: null },
   ];
   const rpc = new FakeRpc({
     svc_push_subscriptions: () => subs,
-    svc_delete_push: () => null,
     svc_touch_push: () => null,
+    svc_add_push_tickets: () => null,
   });
-  const asked: string[][] = [];
-  const sent: string[] = [];
   const res = await sendPushToUser(
     {
       rpc,
       sender: {
-        send: () => Promise.resolve(),
-        expoReceipts: (ids) => (asked.push(ids),
-          Promise.resolve({
-            "old-gone": { status: "error", details: { error: "DeviceNotRegistered" } },
-            "old-ok": { status: "ok" },
-          })),
-        sendExpo: (
-          messages,
-        ) => (sent.push(...messages.map((m) => m.to)),
-          Promise.resolve(messages.map((_, i) => ({ status: "ok" as const, id: `new-${i}` })))),
+        send: () => Promise.reject(new Error("web push not expected")),
+        sendExpo: () =>
+          Promise.resolve([
+            { status: "ok" as const, id: "tk-a" },
+            { status: "ok" as const }, // tanpa id: tidak ada receipt yang bisa dicek
+            { status: "ok" as const, id: "tk-c" },
+          ]),
       },
     },
     "u1",
     { title: "t", body: "b", url: "https://app.clipper.test/tasks", event: "submission.approved" },
   );
-  assertEquals(asked, [["old-gone", "old-ok"]]);
-  assertEquals(sent, ["ExponentPushToken[okokokokokokokok]", "ExponentPushToken[newnewnewnewnewn]"]);
-  assertEquals(res, { sent: 2, removed: 1, failed: 0 });
-  assertEquals(rpc.named("svc_delete_push").map((c) => c.args.p_endpoint), ["ExponentPushToken[gonegonegonegone]"]);
-  assertEquals(
-    rpc.named("svc_touch_push").map((c) => c.args).sort((a, b) => String(a.p_ticket).localeCompare(String(b.p_ticket))),
-    [
-      { p_endpoint: "ExponentPushToken[okokokokokokokok]", p_ticket: "new-0" },
-      { p_endpoint: "ExponentPushToken[newnewnewnewnewn]", p_ticket: "new-1" },
-    ],
+  assertEquals(res, { sent: 3, removed: 0, failed: 0 });
+  assertEquals(rpc.calls.map((c) => c.fn).filter((f) => f !== "svc_touch_push"), [
+    "svc_push_subscriptions",
+    "svc_add_push_tickets",
+  ]);
+  assertEquals(rpc.named("svc_add_push_tickets")[0].args, {
+    p_endpoints: ["ExponentPushToken[aaaaaaaaaaaaaaaa]", "ExponentPushToken[cccccccccccccccc]"],
+    p_tickets: ["tk-a", "tk-c"],
+  });
+  assertEquals(rpc.named("svc_touch_push").map((c) => Object.keys(c.args)), [["p_endpoint"], ["p_endpoint"], [
+    "p_endpoint",
+  ]]);
+});
+
+Deno.test("expo push: recording tickets fails → push still counted sent", async () => {
+  const rpc = new FakeRpc({
+    svc_push_subscriptions:
+      () => [{ kind: "expo", endpoint: "ExponentPushToken[aaaaaaaaaaaaaaaa]", p256dh: null, auth_secret: null }],
+    svc_touch_push: () => null,
+    svc_add_push_tickets: () => {
+      throw new Error("db down");
+    },
+  });
+  const res = await sendPushToUser(
+    {
+      rpc,
+      sender: { send: () => Promise.resolve(), sendExpo: () => Promise.resolve([{ status: "ok", id: "x" }]) },
+    },
+    "u",
+    { title: "t", body: "b", url: "u", event: "payout.paid" },
   );
+  assertEquals(res, { sent: 1, removed: 0, failed: 0 });
+});
+
+Deno.test("sendPushToUser ignores Live Activity tokens (apns_start / apns_activity): sent by apns.ts only", async () => {
+  const rpc = new FakeRpc({
+    svc_push_subscriptions: () => [
+      { kind: "apns_start", endpoint: "ab".repeat(32), p256dh: null, auth_secret: null, activity_ref: null },
+      { kind: "apns_activity", endpoint: "cd".repeat(32), p256dh: null, auth_secret: null, activity_ref: "p1" },
+      { kind: "webpush", endpoint: "https://push.test/ok", p256dh: "k", auth_secret: "a", activity_ref: null },
+    ],
+    svc_touch_push: () => null,
+  });
+  const web: string[] = [];
+  const res = await sendPushToUser(
+    {
+      rpc,
+      sender: {
+        send: (sub) => (web.push(sub.endpoint), Promise.resolve()),
+        sendExpo: () => Promise.reject(new Error("expo not expected")),
+      },
+    },
+    "u",
+    { title: "t", body: "b", url: "u", event: "payout.paid" },
+  );
+  assertEquals(web, ["https://push.test/ok"]);
+  assertEquals(res, { sent: 1, removed: 0, failed: 0 });
+  assertEquals(rpc.named("svc_touch_push").map((c) => c.args.p_endpoint), ["https://push.test/ok"]);
+});
+
+function receiptRpc(due: { ticket: string; endpoint: string }[][]) {
+  let round = 0;
+  return new FakeRpc({
+    svc_due_push_tickets: () => due[round++] ?? [],
+    svc_resolve_push_tickets: (a) => ({
+      resolved: (a.p_tickets as string[]).length,
+      removed: (a.p_dead_endpoints as string[]).length,
+      expired: 0,
+    }),
+  });
+}
+
+Deno.test("resolveExpoReceipts: DeviceNotRegistered → dead endpoint, ready receipts resolved, missing ones kept", async () => {
+  const rpc = receiptRpc([[
+    { ticket: "t-ok", endpoint: "ExponentPushToken[okokokokokokokok]" },
+    { ticket: "t-gone", endpoint: "ExponentPushToken[gonegonegonegone]" },
+    { ticket: "t-gone-2", endpoint: "ExponentPushToken[gonegonegonegone]" },
+    { ticket: "t-rate", endpoint: "ExponentPushToken[busybusybusybusy]" },
+    { ticket: "t-wait", endpoint: "ExponentPushToken[waitwaitwaitwait]" },
+  ]]);
+  const asked: string[][] = [];
+  const receipts: Record<string, ExpoReceipt> = {
+    "t-ok": { status: "ok" },
+    "t-gone": { status: "error", details: { error: "DeviceNotRegistered" } },
+    "t-gone-2": { status: "error", details: { error: "DeviceNotRegistered" } },
+    "t-rate": { status: "error", details: { error: "MessageRateExceeded" } },
+  };
+  const res = await resolveExpoReceipts({ rpc, receipts: (ids) => (asked.push(ids), Promise.resolve(receipts)) });
+  assertEquals(asked, [["t-ok", "t-gone", "t-gone-2", "t-rate", "t-wait"]]);
+  assertEquals(rpc.named("svc_due_push_tickets")[0].args, { p_limit: 1000 });
+  assertEquals(rpc.named("svc_resolve_push_tickets").map((c) => c.args), [{
+    p_tickets: ["t-ok", "t-gone", "t-gone-2", "t-rate"],
+    p_dead_endpoints: ["ExponentPushToken[gonegonegonegone]"],
+  }]);
+  assertEquals(res, { checked: 5, resolved: 4, removed: 1, expired: 0 });
+});
+
+Deno.test("resolveExpoReceipts: full batches loop until the queue drains, capped by rounds; no tickets → no Expo call", async () => {
+  const t = (n: string) => ({ ticket: n, endpoint: `ExponentPushToken[${n.padEnd(16, "x")}]` });
+  const ok = (ids: string[]) => Promise.resolve(Object.fromEntries(ids.map((id) => [id, { status: "ok" as const }])));
+  const rpc = receiptRpc([[t("a"), t("b")], [t("c"), t("d")], [t("e")]]);
+  const res = await resolveExpoReceipts({ rpc, receipts: ok }, { batch: 2 });
+  assertEquals(rpc.named("svc_due_push_tickets").length, 3);
+  assertEquals(res, { checked: 5, resolved: 5, removed: 0, expired: 0 });
+
+  const capped = receiptRpc([[t("a"), t("b")], [t("c"), t("d")], [t("e"), t("f")]]);
+  assertEquals((await resolveExpoReceipts({ rpc: capped, receipts: ok }, { batch: 2, rounds: 2 })).checked, 4);
+
+  let called = false;
+  const empty = receiptRpc([]);
+  assertEquals(
+    await resolveExpoReceipts({ rpc: empty, receipts: () => (called = true, Promise.resolve({})) }),
+    { checked: 0, resolved: 0, removed: 0, expired: 0 },
+  );
+  assertEquals([called, empty.named("svc_resolve_push_tickets").length], [false, 0]);
+});
+
+Deno.test("resolveExpoReceipts: no receipt ready in a full batch → stop (no busy loop); Expo down → rejects, nothing deleted", async () => {
+  const t = (n: string) => ({ ticket: n, endpoint: `ExponentPushToken[${n.padEnd(16, "x")}]` });
+  const rpc = receiptRpc([[t("a"), t("b")], [t("a"), t("b")]]);
+  const res = await resolveExpoReceipts({ rpc, receipts: () => Promise.resolve({}) }, { batch: 2 });
+  assertEquals(rpc.named("svc_due_push_tickets").length, 1);
+  assertEquals(rpc.named("svc_resolve_push_tickets")[0].args, { p_tickets: [], p_dead_endpoints: [] });
+  assertEquals(res.checked, 2);
+  const down = receiptRpc([[t("a")]]);
+  await assertRejects(() => resolveExpoReceipts({ rpc: down, receipts: () => Promise.reject(new Error("503")) }));
+  assertEquals(down.named("svc_resolve_push_tickets").length, 0);
 });
 
 Deno.test("expoReceipts: getReceipts in chunks of 1000 ids, merged by ticket id", async () => {

@@ -1,2 +1,2 @@
-// Expo web (uji lokal): widget layar utama hanya Android.
-export const refreshBalanceWidget = async () => {};
+// Expo web (uji lokal): tidak ada widget layar utama.
+export const refreshWidgets = async () => {};
