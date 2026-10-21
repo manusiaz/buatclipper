@@ -149,21 +149,26 @@ step('brand-create-org', ['brand'], async ({ brand }) => {
 });
 
 step('admin-login', ['admin'], async ({ admin }) => {
-  // J-A1: akun admin terpisah. Akun auth dibuat lewat jalur OTP accounts (GoTrue, shouldCreateUser), role admin_super diberikan
-  // dengan SQL yang sama dengan `deploy/deploy.sh admin` (bootstrap admin pertama; api.admin_set_role butuh admin_super).
+  // J-A1: akun admin terpisah. Bootstrap persis `deploy/deploy.sh admin`: Admin API GoTrue dipanggil dari Postgres (pg_net) dengan
+  // service key yang sudah di Vault identity (kunci tidak keluar dari DB), lalu role admin_super + audit log lewat SQL.
   S.adminEmail = `roles-admin-${Date.now().toString(36)}@clipper.localhost`; // selalu akun baru (re-run aman)
   await admin.context().clearCookies();
-  await admin.goto(ACC + '/login');
-  await admin.getByLabel('Email').fill(S.adminEmail);
-  await admin.getByRole('button', { name: 'Kirim kode' }).click();
-  await admin.getByLabel('Kode verifikasi').waitFor();
-  let uid = '';
-  for (let i = 0; i < 20 && !uid; i++) {
-    uid = ident(`select id from auth.users where email = ${lit(S.adminEmail)}`);
-    if (!uid) await admin.waitForTimeout(500);
+  const rid = ident(`select net.http_post(
+      url := (select decrypted_secret from vault.decrypted_secrets where name = 'identity_url') || '/auth/v1/admin/users',
+      headers := jsonb_build_object('Authorization', 'Bearer ' || k.v, 'apikey', k.v, 'Content-Type', 'application/json'),
+      body := jsonb_build_object('email', ${lit(S.adminEmail)}, 'email_confirm', true))
+    from (select decrypted_secret as v from vault.decrypted_secrets where name = 'identity_secret_key') k`);
+  let code = '';
+  for (let i = 0; i < 30 && !code; i++) {
+    code = ident(`select coalesce(status_code::text, '') from net._http_response where id = ${rid}`);
+    if (!code) await admin.waitForTimeout(500);
   }
+  check(/^2/.test(code), 'Admin API GoTrue membuat user admin: ' + code);
+  const uid = ident(`select id from auth.users where email = ${lit(S.adminEmail)}`);
   check(uid, 'auth.users admin dibuat');
-  ident(`insert into member.platform_roles (user_id, role) values ('${uid}', 'admin_super') on conflict do nothing`);
+  ident(`with g as (insert into member.platform_roles (user_id, role) values ('${uid}', 'admin_super') on conflict do nothing returning user_id)
+         insert into member.audit_logs (actor_id, action, target, after)
+         select null, 'role.grant', 'user:' || user_id, '{"role":"admin_super","via":"e2e/roles.cjs"}' from g`);
   S.adminId = uid;
   await admin.goto(ADMIN + '/login');
   await signIn(admin, S.adminEmail);
@@ -205,7 +210,8 @@ step('admin-verify-org', ['admin', 'brand'], async ({ admin, brand }) => {
 });
 
 step('brand-builder', ['brand'], async ({ brand }) => {
-  // B1.6: builder 7 langkah
+  // B1.6: builder 7 langkah (judul baru tiap percobaan supaya draft percobaan gagal tidak tertukar)
+  S.title = `QA Roles Campaign ${Date.now().toString(36)}`;
   await brand.goto(`${BRAND}/${S.orgSlug}/campaigns/new`);
   const next = () => brand.getByRole('navigation', { name: 'Navigasi langkah' }).getByRole('button', { name: /Lanjut|Lihat ringkasan/ }).click();
   const heading = (t) => brand.locator('#cb-step-heading', { hasText: t }).waitFor({ timeout: 15000 });
@@ -229,11 +235,9 @@ step('brand-builder', ['brand'], async ({ brand }) => {
   await chip('Hashtag wajib', '#' + S.hashtag);
   await brand.locator('input[type=file]').first().setInputFiles(PDF);
   await brand.getByText(/brief\.pdf terunggah/).first().waitFor({ timeout: 30000 });
-  await brand.getByRole('button', { name: 'Tambah FAQ' }).click().catch(() => note('tombol FAQ tidak ditemukan'));
-  if (await brand.getByLabel('Pertanyaan').count()) {
-    await brand.getByLabel('Pertanyaan').first().fill('Boleh pakai akun kedua?');
-    await brand.getByLabel('Jawaban').first().fill('Boleh, asal terhubung.');
-  }
+  await brand.getByRole('button', { name: 'Tambah pertanyaan' }).click();
+  await brand.getByRole('textbox', { name: 'Pertanyaan', exact: true }).fill('Boleh pakai akun kedua?');
+  await brand.getByRole('textbox', { name: 'Jawaban', exact: true }).fill('Boleh, asal terhubung.');
   await shot(brand, 'builder-2-brief');
   await next();
   // 3 Platform & rate: hanya TikTok, Rp10.000 / 1K
@@ -251,24 +255,25 @@ step('brand-builder', ['brand'], async ({ brand }) => {
   const kinds = brand.getByRole('combobox', { name: 'Jenis rule' });
   await kinds.last().click();
   await brand.getByRole('option', { name: /Bonus milestone/ }).click();
-  await brand.getByLabel(/Tembus di/).fill('10000');
-  await brand.getByLabel(/^Bonus/).fill('20000');
+  await brand.getByRole('option').first().waitFor({ state: 'detached' });
+  await brand.getByRole('textbox', { name: /Tembus di/ }).fill('10000');
+  await brand.getByRole('textbox', { name: /^Bonus/ }).fill('20000');
   await shot(brand, 'builder-4-rewards');
   await next();
   // 5 Budget & batas
   await heading('Budget & batas');
-  await brand.getByLabel(/^Budget/).first().fill('2000000');
-  await brand.getByLabel(/Maks per klip/).fill('500000');
+  await brand.getByRole('textbox', { name: /^Budget/ }).first().fill('2000000');
+  await brand.getByRole('textbox', { name: /Maks per klip/ }).fill('500000');
   await shot(brand, 'builder-5-budget');
   await next();
   // 6 Syarat clipper
   await heading('Syarat clipper');
-  await brand.getByLabel(/Min follower/).fill('1000');
+  await brand.getByRole('textbox', { name: /Min follower/ }).fill('1000');
   await shot(brand, 'builder-6-eligibility');
   await next();
   // 7 Jadwal & review: mulai sekarang, deadline +14 hari, review oleh brand
   await heading('Jadwal & review');
-  await brand.getByLabel(/^Mulai/).fill(wibInput(Date.now() - 60e3));
+  await brand.getByLabel(/^Mulai/).first().fill(wibInput(Date.now() - 60e3));
   await brand.getByLabel(/Batas submit/).fill(wibInput(Date.now() + 14 * 864e5));
   await brand.getByRole('radio', { name: /Direview brand/ }).check();
   await shot(brand, 'builder-7-schedule');
@@ -318,6 +323,7 @@ step('brand-billing', ['brand'], async ({ brand }) => {
 step('admin-confirm-payment', ['admin'], async ({ admin }) => {
   // A3.1: tidak ada payment gateway sandbox — admin finance mencocokkan mutasi lalu Konfirmasi (alur produk yang sebenarnya)
   await admin.goto(ADMIN + '/finance');
+  if (core(`select status from finance.invoices where id = '${S.invoiceId}'`) === 'issued') {
   const row = admin.getByRole('row').filter({ hasText: S.invoiceNumber });
   await row.waitFor({ timeout: 30000 });
   await row.getByRole('button', { name: 'Konfirmasi' }).click();
@@ -326,10 +332,11 @@ step('admin-confirm-payment', ['admin'], async ({ admin }) => {
   await shot(admin, 'admin-confirm-dialog');
   await dlg.getByRole('button', { name: 'Konfirmasi' }).click();
   await dlg.waitFor({ state: 'detached', timeout: 20000 });
+  } // (re-run ROLES_FROM: invoice sudah lunas dari percobaan sebelumnya)
   const st = core(`select status || '|' || payment_ref from finance.invoices where id = '${S.invoiceId}'`);
   check(st === `paid|QA-REF-${S.stamp}`, 'invoice paid: ' + st);
   const poolBal = core(`select coalesce(sum(e.amount), 0) from finance.ledger_entries e join finance.ledger_accounts a on a.id = e.account_id
-                        join finance.reward_pools p on p.id = a.owner_id where a.kind = 'campaign_pool' and p.campaign_id = '${S.campaignId}'`);
+                        join finance.reward_pools p on p.id = a.owner_id where a.owner_type = 'campaign_pool' and p.campaign_id = '${S.campaignId}'`);
   check(Number(poolBal) === 2000000, 'saldo pool ledger = 2.000.000: ' + poolBal);
   await shot(admin, 'admin-confirmed');
   log('admin: pembayaran dikonfirmasi; pool ledger', poolBal);
@@ -359,18 +366,20 @@ step('admin-approve-campaign', ['admin', 'brand'], async ({ admin, brand }) => {
 
 step('public-visible', ['anon'], async ({ anon }) => {
   // C1.1 / F-X02: campaign tayang di landing & /c/[slug]
-  await anon.goto(WEB + '/');
-  await anon.getByText(S.title).first().waitFor({ timeout: 30000 });
+  // Landing memakai unstable_cache revalidate 60 dtk (apps/web/src/features/landing/data.ts) → muat ulang sampai muncul
+  await reloadUntil(anon, WEB + '/', anon.getByText(S.title).first(), 90000);
   await shot(anon, 'web-landing');
-  await anon.goto(`${WEB}/c/${S.slug}`);
-  await anon.getByRole('heading', { name: S.title }).waitFor({ timeout: 30000 });
+  await reloadUntil(anon, `${WEB}/c/${S.slug}`, anon.getByRole('heading', { name: S.title }), 90000);
   await anon.getByText(S.orgName).first().waitFor();
   await shot(anon, 'web-campaign-public');
   log('web: landing + /c/' + S.slug);
 });
 
 step('clipper-signup', ['clipper'], async ({ clipper }) => {
-  // C1.2–C1.4
+  // C1.2–C1.4 (akun baru tiap percobaan)
+  const k = Date.now().toString(36);
+  Object.assign(S, { clipperEmail: `roles-clip-${k}@clipper.localhost`, clipperUser: `rc_${k}` });
+  await clipper.context().clearCookies();
   await clipper.goto(`${ACC}/login?next=${encodeURIComponent(APP + '/campaigns')}`);
   await signIn(clipper, S.clipperEmail);
   await clipper.waitForURL(/\/onboarding/, { timeout: 30000 });
@@ -405,7 +414,7 @@ async function claimOnce(clipper, n) {
 // SIMULASI C1.8: Edge Function core/social memvalidasi lewat API platform (offline tidak bisa) lalu memanggil
 // api.worker_create_submission dengan service role — fungsi yang sama dipanggil di sini.
 function createSubmission(claimId, n) {
-  const post = `73920${S.stamp.replace(/\D/g, '')}${n}`.slice(0, 19);
+  const post = `7392${Date.now()}${n}`;
   const url = `https://www.tiktok.com/@${S.clipperUser}/video/${post}`;
   const r = core(`select api.worker_create_submission('${S.clipperId}', '${claimId}', '${S.accountId}', '${post}', '${url}',
                    now(), 'klip QA #${S.hashtag}', 30, null)::text`);
@@ -454,6 +463,7 @@ step('clipper-claim-submit', ['clipper'], async ({ clipper }) => {
 step('brand-review', ['brand'], async ({ brand }) => {
   // B3.2: approve #1, reject #2 dengan alasan
   await brand.goto(`${BRAND}/${S.orgSlug}/review`);
+  if (core(`select status from tracking.submissions where id = '${S.sub2}'`) === 'in_review') {
   const card1 = brand.locator('li').filter({ hasText: S.url1 });
   const card2 = brand.locator('li').filter({ hasText: S.url2 });
   await card1.waitFor({ timeout: 30000 });
@@ -473,10 +483,12 @@ step('brand-review', ['brand'], async ({ brand }) => {
   await dlg.getByRole('button', { name: 'Tolak klip' }).click();
   await brand.getByText(/1 klip ditolak/).first().waitFor({ timeout: 20000 });
   await shot(brand, 'brand-review-done');
+  }
   const st = core(`select string_agg(status::text, ',' order by created_at) from tracking.submissions where user_id = '${S.clipperId}'`);
   check(st === 'tracking,rejected', 'status submisi tracking,rejected: ' + st);
-  const dec = core(`select string_agg(decision || ':' || coalesce(reason, '') , ',' order by created_at) from trust.review_decisions
-                    where target_id in ('${S.sub1}', '${S.sub2}')`);
+  const dec = core(`select string_agg(decision || ':' || coalesce(reason_code, '') || ':' || coalesce(message, ''), ' ; ' order by id)
+                    from trust.review_decisions where target_id in ('${S.sub1}', '${S.sub2}')`);
+  check(/approve::/.test(dec) && /reject:[a-z_]+:Caption belum menyebut judul film\./.test(dec), 'keputusan + alasan + pesan: ' + dec);
   log('brand: approve + reject; keputusan', dec);
 });
 
@@ -531,7 +543,7 @@ step('tracking-earnings', ['clipper'], async ({ clipper }) => {
   check(r1.snapshot_id && !r1.flagged && r2.snapshot_id && !r2.flagged, 'snapshot tercatat tanpa flag: ' + JSON.stringify([r1, r2]));
   // Harapan: #1 15.000 views × Rp10.000/1K = 150.000 + milestone 20.000 = 170.000 (cap 500.000 × 80% TikTok); #2 3.000 → 30.000
   const pend = core(`select coalesce(sum(e.amount), 0) from finance.ledger_entries e join finance.ledger_accounts a on a.id = e.account_id
-                     where a.kind = 'user_wallet' and a.owner_id = '${S.clipperId}' and e.state = 'pending'`);
+                     where a.owner_type = 'user_wallet' and a.owner_id = '${S.clipperId}' and e.state = 'pending'`);
   check(Number(pend) === 200000, 'pending wallet 200.000: ' + pend);
   await clipper.goto(APP + '/wallet');
   await clipper.getByText(/Pending/).first().waitFor({ timeout: 30000 });
@@ -551,7 +563,7 @@ step('tracking-earnings', ['clipper'], async ({ clipper }) => {
   const st = core(`select string_agg(status::text, ',') from tracking.submissions where id in ('${S.sub1}', '${S.sub2}')`);
   check(st === 'settled,settled', 'submisi settled: ' + st);
   const avail = core(`select coalesce(sum(e.amount), 0) from finance.ledger_entries e join finance.ledger_accounts a on a.id = e.account_id
-                      where a.kind = 'user_wallet' and a.owner_id = '${S.clipperId}' and e.state = 'available'`);
+                      where a.owner_type = 'user_wallet' and a.owner_id = '${S.clipperId}' and e.state = 'available'`);
   check(Number(avail) === 200000, 'available 200.000: ' + avail);
   await clipper.goto(APP + '/wallet');
   await clipper.getByText('Saldo tersedia').first().waitFor({ timeout: 30000 });
@@ -596,6 +608,8 @@ step('clipper-payout-method', ['clipper'], async ({ clipper }) => {
   await clipper.getByLabel(/Nama pemilik/).fill('QA Clipper Satu');
   await shot(clipper, 'accounts-payout-form');
   await clipper.getByRole('button', { name: 'Simpan rekening' }).click();
+  // C1.13 → next: kembali ke withdraw dengan rekening terpilih
+  await clipper.waitForURL(new RegExp('^' + APP + '/wallet/withdraw\\?method_id='), { timeout: 30000 });
   await clipper.getByText(/7890/).first().waitFor({ timeout: 30000 });
   const n = ident(`select count(*) from member.payout_methods where user_id = '${S.clipperId}'`);
   check(n === '1', 'payout method tersimpan: ' + n);
@@ -644,6 +658,16 @@ step('authz-negative', ['clipper', 'brand'], async ({ clipper, brand }) => {
   await shot(clipper, 'authz-clipper-on-brand');
   log('authz: clipper tidak bisa membuka org brand');
 });
+
+async function reloadUntil(page, url, locator, ms) {
+  const end = Date.now() + ms;
+  for (;;) {
+    await page.goto(url);
+    if (await locator.waitFor({ timeout: 5000 }).then(() => true, () => false)) return;
+    if (Date.now() > end) throw new Error('tidak muncul setelah ' + ms / 1000 + ' dtk di ' + url);
+    await page.waitForTimeout(5000);
+  }
+}
 
 // =============================== RUNNER ===============================
 
