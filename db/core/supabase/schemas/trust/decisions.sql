@@ -37,6 +37,11 @@ begin
   if to_status in ('rejected', 'rejected_final') and nullif(btrim(p_reason), '') is null then
     perform market.fail('invalid:reason', 'penolakan wajib alasan standar');
   end if;
+  -- Profil banned/closed tidak boleh kembali tracking (R68). FOR SHARE: serial dengan ban yang sedang mengubah profil.
+  if to_status = 'tracking'
+     and (select p.status::text from market.profiles p where p.id = s.user_id for share) in ('banned', 'closed') then
+    perform market.fail('not_eligible:profile_inactive', 'profil diblokir');
+  end if;
 
   update tracking.submissions
      set status = to_status, next_poll_at = case when to_status = 'tracking' then now() else next_poll_at end
@@ -69,6 +74,7 @@ begin
   for r in select s.id from tracking.submissions s join market.campaigns c on c.id = s.campaign_id
             where s.status = 'in_review' and c.review_mode = 'brand' and s.created_at <= now() - make_interval(hours => h)
               and not (c.type = 'music' and s.platform = 'tiktok')  -- §11 sound TikTok wajib diverifikasi manual (R34-2)
+              and exists (select 1 from market.profiles p where p.id = s.user_id and p.status not in ('banned', 'closed'))
               and not (s.duration_sec is null and (c.min_duration_sec is not null or c.max_duration_sec is not null))  -- durasi wajib dicek manusia (R66)
             order by s.created_at
             for update of s skip locked loop

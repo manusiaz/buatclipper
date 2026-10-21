@@ -48,6 +48,9 @@ begin
       update tracking.submissions set status = 'forfeited', next_poll_at = null where id = x.id;
     end if;
   end loop;
+  -- Submisi yang masih menunggu review/banding ditutup (transisi S-03 yang sah) supaya tidak bisa di-approve lalu tracking (R68).
+  update tracking.submissions set status = 'rejected' where user_id = p_user and status in ('validating', 'in_review');
+  update tracking.submissions set status = 'rejected_final' where user_id = p_user and status = 'appealed';
   update market.claims set status = 'released' where user_id = p_user and status = 'open';
   perform finance.hold_payouts(p_user, null, 'profile_banned');
   perform ops.enqueue_notification(p_user, 'account.banned', p_payload);

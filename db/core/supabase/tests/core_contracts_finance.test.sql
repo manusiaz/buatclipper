@@ -2081,10 +2081,31 @@ select throws_ok($$ select api.bridge_attach_export((select id from t_pay where 
                     (select array_agg(p.id) from finance.payouts p where p.batch_id = (select id from t_pay where k = 'ph_batch') and p.status = 'requested')) $$,
                  'P0001', 'export_stale', 'regresi R21-1: sanksi di antara get_batch dan attach_export → CSV basi ditolak');
 update market.profiles set status = 'active', suspended_until = null where id = '11111111-0000-0000-0000-000000000f10';
+-- Regresi R68: submisi yang masih in_review / appealed saat ban ditutup, tidak bisa di-approve lalu tracking.
+insert into tracking.social_accounts (id, user_id, platform, external_id, handle, status, platform_created_at)
+values ('99999999-0000-0000-0000-000000000f10', '11111111-0000-0000-0000-000000000f10', 'tiktok', 'tt-f10', '@f10', 'verified', now() - interval '2 years');
+insert into market.claims (id, campaign_id, user_id, expires_at, created_at) values
+  ('88888888-0000-0000-0000-000000000f11', '55555555-0000-0000-0000-0000000000b0', '11111111-0000-0000-0000-000000000f10', now() + interval '40 hours', now() - interval '5 hours');
+update market.claims set status = 'submitted' where id = '88888888-0000-0000-0000-000000000f11';
+insert into market.claims (id, campaign_id, user_id, expires_at, created_at) values
+  ('88888888-0000-0000-0000-000000000f12', '55555555-0000-0000-0000-0000000000b0', '11111111-0000-0000-0000-000000000f10', now() + interval '40 hours', now() - interval '5 hours');
+update market.claims set status = 'submitted' where id = '88888888-0000-0000-0000-000000000f12';
+insert into tracking.submissions (id, claim_id, user_id, campaign_id, social_account_id, platform, post_id, url, posted_at) values
+  ('aaaaaaaa-0000-0000-0000-000000000f11', '88888888-0000-0000-0000-000000000f11', '11111111-0000-0000-0000-000000000f10', '55555555-0000-0000-0000-0000000000b0',
+   '99999999-0000-0000-0000-000000000f10', 'tiktok', 'v-f11', 'https://tiktok.com/v/f11', now() - interval '4 hours'),
+  ('aaaaaaaa-0000-0000-0000-000000000f12', '88888888-0000-0000-0000-000000000f12', '11111111-0000-0000-0000-000000000f10', '55555555-0000-0000-0000-0000000000b0',
+   '99999999-0000-0000-0000-000000000f10', 'tiktok', 'v-f12', 'https://tiktok.com/v/f12', now() - interval '4 hours');
+update tracking.submissions set status = 'in_review' where id in ('aaaaaaaa-0000-0000-0000-000000000f11', 'aaaaaaaa-0000-0000-0000-000000000f12');
+update tracking.submissions set status = 'rejected' where id = 'aaaaaaaa-0000-0000-0000-000000000f12';
+update tracking.submissions set status = 'appealed' where id = 'aaaaaaaa-0000-0000-0000-000000000f12';
 set local role authenticated;
 select pg_temp.jwt('33333333-0000-0000-0000-0000000000e1', '{"app_roles":["admin_moderator"],"aal":"aal2"}');
 select api.manage_user('11111111-0000-0000-0000-000000000f10', 'ban', '{"reason":"pelanggaran ToS"}');
 reset role;
+select is((select array_agg(status::text order by id) from tracking.submissions where user_id = '11111111-0000-0000-0000-000000000f10'),
+          array['rejected', 'rejected_final'], 'R68: ban menutup submisi in_review → rejected dan appealed → rejected_final');
+select throws_ok($$ select trust.apply_submission_decision('aaaaaaaa-0000-0000-0000-000000000f12', 'overturn', null, null, null, null) $$,
+                 'P0001', 'invalid_state:rejected_final', 'R68: banding user banned tidak bisa dibalik ke tracking');
 select ok(exists (select 1 from ops.notifications where user_id = '11111111-0000-0000-0000-000000000f10' and event = 'account.banned'),
           'regresi AA-7: ban dari manajemen user mengabari clipper (paritas dengan ban fraud queue)');
 
