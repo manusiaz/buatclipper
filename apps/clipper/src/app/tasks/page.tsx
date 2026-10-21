@@ -19,9 +19,9 @@ import {
   type Platform,
 } from '@clipper/ui';
 import { Flash } from '@/features/lib/flash';
-import { estimateRelease, isPlatform, num, taskGroup, type TaskGroup } from '@/features/lib/pure';
+import { estimateRelease, isPlatform, num, taskGroup, type TaskGroup } from '@clipper/clipper-lib/pure';
 import { core, myClipTerms, rewardTypes, uiLocale } from '@/features/lib/server';
-import { formatAmount } from '@/features/lib/units';
+import { formatAmount } from '@clipper/clipper-lib/units';
 import { AppealButton } from '@/features/tasks/appeal-button';
 
 export const metadata: Metadata = { title: 'Tugas' };

@@ -2,7 +2,7 @@
 
 import { revalidatePath } from 'next/cache';
 import { requireClipper } from '@clipper/auth/server';
-import { isUuid } from '../lib/pure';
+import { isUuid } from '@clipper/clipper-lib/pure';
 import { core, fail, ok, type Result } from '../lib/server';
 
 const KEY = /^[A-Za-z0-9-]{8,100}$/;

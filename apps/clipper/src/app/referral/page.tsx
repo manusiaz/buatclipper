@@ -4,9 +4,9 @@ import { getTranslations } from 'next-intl/server';
 import { hosts } from '@clipper/auth';
 import { requireClipper } from '@clipper/auth/server';
 import { Badge, Card, CardHeader, CardTitle, CopyField, EmptyState, ErrorState, Icon, StatCard, formatDate, type BadgeTone } from '@clipper/ui';
-import { num } from '@/features/lib/pure';
+import { num } from '@clipper/clipper-lib/pure';
 import { core, errorText, rewardTypes, uiLocale } from '@/features/lib/server';
-import { formatAmount } from '@/features/lib/units';
+import { formatAmount } from '@clipper/clipper-lib/units';
 import { ShareButton } from '@/features/referral/share-button';
 
 export const metadata: Metadata = { title: 'Ajak teman' };

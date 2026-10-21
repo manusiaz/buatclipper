@@ -6,9 +6,9 @@ import { Alert, EmptyState, ErrorState, HomeBanners, parseHomeBanners, type Plat
 import { categoryNames, fetchCampaignPage } from '@/features/campaigns/cards';
 import { CampaignFeed } from '@/features/campaigns/feed';
 import { FilterBar } from '@/features/campaigns/filter-bar';
-import { filtersToQuery, isFiltered, parseFilters } from '@/features/campaigns/filters';
+import { filtersToQuery, isFiltered, parseFilters } from '@clipper/clipper-lib/filters';
 import { InstallBanner } from '@/features/pwa/install-banner';
-import { enabledPlatforms } from '@/features/lib/pure';
+import { enabledPlatforms } from '@clipper/clipper-lib/pure';
 import { core, readSettings } from '@/features/lib/server';
 
 export const metadata: Metadata = { title: 'Campaign' };

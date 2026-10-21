@@ -5,11 +5,12 @@
 
 Last verified: 6a084ab — audit PRD 2 (high/medium/low terverifikasi) selesai; loop Claudex R21–R37 konvergen ([] di R33 & R37): build 5 app, E2E lintas host 9/9, pgTAP core 972 + identity 119, deno core 80 + identity 91, vitest 204, db lint bersih (2026-10-20)
 
-**Status:** sistem sudah dibangun dan dites. 5 app Next.js 16 (`apps/web`, `apps/accounts`, `apps/clipper`, `apps/brand`, `apps/admin`) di atas `packages/{ui,campaign-builder,auth,db-core,db-identity,i18n,config}`. 2 project Supabase (`db/identity`, `db/core`): schema deklaratif, `migrations/` (pg-delta), config.toml, seed.sql. 12 Edge Function: core `bridge`, `fulfill`, `notify`, `refresh-tokens`, `social`, `track-worker`; identity `admin-auth`, `bridge`, `delete-account`, `disburse`, `member-data`, `pii-export`. Tes: pgTAP 6 file (`db/core/supabase/tests` 4, `db/identity/supabase/tests` 2), unit test app/package (`pnpm test`, 38 file `*.test.ts(x)`), unit test Deno (29 file `*_test.ts` di `db/*/supabase/functions`), journey E2E lintas host `e2e/journey.cjs` (Playwright: web → accounts → app → undangan → brand), CI `.github/workflows/ci.yml` (job apps, functions, db per project). Diverifikasi di 7408318: `pnpm lint` ok, `pnpm typecheck` ok, `pnpm test` 197 tes lulus (campaign-builder 69, accounts 32, web 29, admin 24, brand 22, clipper 21), `pnpm build` 5 app ok, Deno fmt/lint/check ok + tes core 70 & identity 82, pgTAP core 727 & identity 107 (stub Postgres 16 dan `supabase test db`), `supabase db lint` (schema app) & `db advisors --type security` bersih, `pnpm e2e` 9/9 langkah 2× di build produksi. Node yang filenya ada punya kolom Path; bukti edge = `file:line` (dicek `check_graph.py`). Bukti yang masih rujukan PRD v0.3.1 = belum ada satu baris kode yang menyebut target, atau kodenya ada di folder route group `(account)`, `(auth)`, `(console)`: regex checker tidak menerima tanda kurung, jadi baris kodenya ditulis `kode baris N` (dicek manual). `(belum di kode)` = edge PRD yang tidak dibangun begitu. Edge `reads` page → table = dependency data logis; di kode jalannya lewat view/fungsi schema `api` (`policy:core.api-only`). Rujukan lintas DB (`table → table` antar project) tidak punya foreign key.
+**Status:** sistem sudah dibangun dan dites. 5 app Next.js 16 (`apps/web`, `apps/accounts`, `apps/clipper`, `apps/brand`, `apps/admin`) di atas `packages/{ui,campaign-builder,clipper-lib,auth,db-core,db-identity,i18n,config}`, plus app native Expo `apps/mobile` (Android + iOS, satu kode). 2 project Supabase (`db/identity`, `db/core`): schema deklaratif, `migrations/` (pg-delta), config.toml, seed.sql. 12 Edge Function: core `bridge`, `fulfill`, `notify`, `refresh-tokens`, `social`, `track-worker`; identity `admin-auth`, `bridge`, `delete-account`, `disburse`, `member-data`, `pii-export`. Tes: pgTAP 6 file (`db/core/supabase/tests` 4, `db/identity/supabase/tests` 2), unit test app/package (`pnpm test`, 38 file `*.test.ts(x)`), unit test Deno (29 file `*_test.ts` di `db/*/supabase/functions`), journey E2E lintas host `e2e/journey.cjs` (Playwright: web → accounts → app → undangan → brand), CI `.github/workflows/ci.yml` (job apps, functions, db per project). Diverifikasi di 7408318: `pnpm lint` ok, `pnpm typecheck` ok, `pnpm test` 197 tes lulus (campaign-builder 69, accounts 32, web 29, admin 24, brand 22, clipper 21), `pnpm build` 5 app ok, Deno fmt/lint/check ok + tes core 70 & identity 82, pgTAP core 727 & identity 107 (stub Postgres 16 dan `supabase test db`), `supabase db lint` (schema app) & `db advisors --type security` bersih, `pnpm e2e` 9/9 langkah 2× di build produksi. Node yang filenya ada punya kolom Path; bukti edge = `file:line` (dicek `check_graph.py`). Bukti yang masih rujukan PRD v0.3.1 = belum ada satu baris kode yang menyebut target, atau kodenya ada di folder route group `(account)`, `(auth)`, `(console)`: regex checker tidak menerima tanda kurung, jadi baris kodenya ditulis `kode baris N` (dicek manual). `(belum di kode)` = edge PRD yang tidak dibangun begitu. Edge `reads` page → table = dependency data logis; di kode jalannya lewat view/fungsi schema `api` (`policy:core.api-only`). Rujukan lintas DB (`table → table` antar project) tidak punya foreign key.
 
 ## Stack
 
-- Monorepo pnpm workspaces: `apps/{web,accounts,clipper,brand,admin}`, `packages/{ui,campaign-builder,auth,db-core,db-identity,i18n,config}`, `db/{identity,core}/supabase`.
+- Monorepo pnpm workspaces: `apps/{web,accounts,clipper,brand,admin,mobile}`, `packages/{ui,campaign-builder,clipper-lib,auth,db-core,db-identity,i18n,config}`, `db/{identity,core}/supabase`.
+- App native `apps/mobile`: Expo SDK 57 + expo-router (React Native 0.86), build lewat EAS (`config:eas`). Memakai RPC/view/Edge Function yang sama dengan app.{domain} (JWT identity sebagai access token core), logika murni dari `packages/clipper-lib`, copy dari `packages/i18n`, token DS dibangkitkan dari `packages/ui/src/styles.css`. Push native lewat Expo Push API (FCM/APNs), share sheet (Android SEND, iOS Share Extension), widget saldo Android.
 - Next.js 16 App Router + TypeScript (`proxy.ts` per app), Tailwind + shadcn/ui, next-intl, next-themes, Recharts. Hosting: Vercel Pro, 1 project per app, region Functions sin1.
 - Supabase ×2 di ap-southeast-1, compute Small + PITR: **identity** (Auth + MFA, schema `member`, Storage privat, Edge Functions `bridge`, `member-data`, `pii-export`, `delete-account`, `admin-auth`, `disburse`) dan **core** (schema `market`, `tracking`, `finance`, `trust`, `ops`, `api`; Vault; pg_cron; Queues `tracking` & `email`; Edge Functions `social`, `track-worker`, `refresh-tokens`, `notify`, `bridge`, `fulfill`). Core percaya JWT identity lewat Third-Party Auth → Custom OIDC; core tidak memegang private key identity.
 - Sumber kebenaran schema: `db/<project>/supabase/schemas/` (declarative, wajib pg-delta lewat `[experimental.pgdelta]`; engine migra membuang security_invoker) → `migrations/`. Registri entitas & state: `spec/kg.yaml` (fields dibangkitkan dari katalog DB). Struktur domain/URL/folder: `spec/structure.yaml`. Journey: `spec/journeys.yaml`. Kontrak fungsi (PRD Lampiran A.3; semua sudah ditulis di `db/**`, berkas belum dipangkas): `spec/contracts.yaml`. Types: `packages/db-core`, `packages/db-identity` (supabase gen types).
@@ -21,6 +22,7 @@ Last verified: 6a084ab — audit PRD 2 (high/medium/low terverifikasi) selesai; 
 - Page publik: `page:accounts/invite/[token]`, `page:accounts/login`, `page:admin/login`, `page:app/login`, `page:www/`, `page:www/c/[slug]`, `page:www/legal/[doc]`, `page:www/r/[token]`.
 - Job terjadwal: `job:alert-notify`, `job:broadcast-dispatch`, `job:budget-alerts`, `job:claim-expiry`, `job:earning-release`, `job:fraud-device-scan`, `job:fulfillment-retry`, `job:leaderboard-refresh`, `job:lifecycle`, `job:notify-drain`, `job:reconcile-daily`, `job:referral-bonus`, `job:token-refresh`, `job:track-due`, `job:trust-score`.
 - Dipanggil sistem luar: `api:GET app/api/oauth/[platform]/callback` (redirect TikTok/Meta/Google), `api:GET accounts/auth/callback` dan `api:GET app/auth/callback` (redirect Google lewat Auth identity), `api:GET accounts/auth/confirm` (link email undangan), `fn:custom_access_token_hook` (dipanggil Supabase Auth), `api:fn identity/disburse` (callback penyedia disbursement).
+- Dipanggil OS (app native `layout:mobile`): share sheet Android/iOS → layar Share, tap notifikasi push (Expo) → `nativeRoute`, widget `mod:mobile-widget` (handler headless Android).
 - Test & CI (Path terisi = berkas tes ada; kosong = manual/Fase 0): `test:accrue.idempotent`, `test:core.full-product`, `test:e2e.cross-host`, `test:member-data.integrity`, `test:pwa.ios-login`, `test:rls.access-matrix`, `test:spike.oidc-cross-project`, `config:ci`.
 
 ## Perintah verifikasi
@@ -35,7 +37,7 @@ deploy/deploy.sh admin email    # server identity: admin_super pertama (login OT
 deploy/deploy.sh check identity # pra-cek per peran: compose ≥ 2.24.4, secret, DNS host server ini, JWKS server lain
 deploy/deploy.sh backup         # cron harian di server identity/core: dump DB + file Storage → deploy/stack/*/backups
 pnpm install --frozen-lockfile
-pnpm lint && pnpm typecheck && pnpm test && pnpm build      # lint = scripts/check-arch.mjs
+pnpm lint && pnpm typecheck && pnpm test && pnpm build      # lint = scripts/check-arch.mjs + drift token native (gen-native-tokens.mjs --check)
 (cd db/identity/supabase/functions && deno fmt --check && deno lint && deno task check && deno task test)
 (cd db/core/supabase/functions && deno fmt --check && deno lint && deno task check && deno task test)
 # pgTAP tanpa Docker (Postgres 16 + stub Supabase), p = identity | core
@@ -48,6 +50,8 @@ supabase db lint --workdir db/core -s market,tracking,finance,trust,ops,api --fa
 supabase db advisors --workdir db/identity --type security --fail-on warn
 supabase db advisors --workdir db/core --type security --fail-on warn
 pnpm e2e                        # e2e/seed.sql ke core + e2e/journey.cjs; butuh dev-stack + app web/accounts/clipper/brand di port 3000–3003
+pnpm e2e:mobile                 # app native (build web Expo disajikan di :3002) + e2e/mobile.cjs; butuh dev-stack + accounts di :3001
+(cd apps/mobile && npx expo prebuild --no-install --platform android)   # cek config plugin native (manifest SEND, widget, scheme); ios sama, lalu hapus android/ ios/
 python3 <skill alaconnect>/scripts/check_graph.py .         # harus berakhir RESULT PASS
 ```
 
@@ -58,7 +62,7 @@ Wajib tetap benar setiap perubahan (dicek otomatis saat graph ini dibuat; cek ul
 1. Dari `layout:brand`, `layout:web`, semua `page:brand/…` dan `page:www/…` tidak ada jalur dependency ke data identity (`table:member.*`, `table:auth.*`, bucket identity, `api:* identity`, `mod:db-identity`, `env:PII_ENC_KEY`, `env:PII_HMAC_KEY`). Satu-satunya sentuhan ke identity = refresh sesi lewat `mod:auth`.
 2. Tabel `finance.*` hanya ditulis node `api:`, `fn:`, atau `job:` — tidak pernah langsung dari page.
 3. Tabel `member.*` dan `auth.*` hanya ditulis fungsi di project identity.
-4. Secret (client secret sosmed, HMAC bridge, Resend, kunci PII, secret key core, URL DB, Turnstile) hanya dibaca Edge Functions, RPC identity, job, `mod:social` (Deno), `policy:fn-cron-key`, atau setelan Auth identity — tidak pernah oleh app Next.js.
+4. Secret (client secret sosmed, HMAC bridge, Resend, kunci PII, secret key core, URL DB, Turnstile) hanya dibaca Edge Functions, RPC identity, job, `mod:social` (Deno), `policy:fn-cron-key`, atau setelan Auth identity — tidak pernah oleh app Next.js maupun app native (`layout:mobile`, hanya publishable key + JWT user).
 5. Tiap page dibungkus tepat satu layout sesuai host-nya; tiap tabel punya minimal satu `guarded-by`.
 6. `env:PII_ENC_KEY` dan `env:PII_HMAC_KEY` hanya dibaca Edge Functions identity, tidak pernah oleh fungsi SQL: kunci tidak berada di database yang sama dengan ciphertext.
 7. Setiap page bisa dicapai dari entry point lewat `routes-to` (menu + journey §6), dan tidak ada edge navigasi bertanda `?`.
@@ -124,12 +128,16 @@ Wajib tetap benar setiap perubahan (dicek otomatis saat graph ini dibuat; cek ul
 | `layout:admin` | layout | apps/admin/src/app/layout.tsx | Shell admin.{domain}: cookie host-only; semua halaman selain /login wajib aal2 |  |
 | `layout:brand` | layout | apps/brand/src/app/layout.tsx | Shell brand.{domain} per org, membaca cookie SSO |  |
 | `layout:clipper` | layout | apps/clipper/src/app/layout.tsx | Shell app.{domain}: PWA clipper, membaca cookie SSO |  |
+| `layout:mobile` | layout | apps/mobile/app/_layout.tsx | App native Android/iOS (Expo, satu kode): sesi identity di SecureStore, gate login → onboarding → tab Campaign/Tugas/Wallet/Sosmed + detail, submit, notifikasi, share sheet, push, widget. KYC, rekening, hubungkan sosmed, tarik saldo & onboarding dibuka di browser (accounts./app.{domain}); tanpa secret (invarian 4) |  |
 | `layout:web` | layout | apps/web/src/app/layout.tsx | Shell {domain}: halaman publik, tanpa sesi |  |
 | `comp:CampaignBuilder` | comp | packages/campaign-builder/src/index.ts | Wizard 7 langkah F-B02, satu kode untuk brand & admin |  |
 | `mod:auth` | mod | packages/auth | Cookie SSO .{domain}, cookie admin host-only, getClaims, guard role + aal2; tolak sesi ber-role admin di luar admin.{domain} |  |
+| `mod:clipper-lib` | mod | packages/clipper-lib | Logika murni permukaan clipper (rate/budget, parse detail, teks detail, filter, render notifikasi, unit reward) — dipakai app clipper web dan app native supaya angka di HP = web |  |
 | `mod:db-core` | mod | packages/db-core | Client + types core; memakai access token sesi identity |  |
 | `mod:db-identity` | mod | packages/db-identity | Client + types identity; hanya untuk accounts, clipper, admin |  |
 | `mod:i18n` | mod | packages/i18n | Pesan ID/EN |  |
+| `mod:mobile-widget` | mod | apps/mobile/src/widget.tsx | Widget layar utama Android "Saldo": saldo Rp tersedia + pending dari sesi app (headless, tiap 30 menit / saat Wallet dibuka), tap → tab Wallet |  |
+| `mod:native-tokens` | mod | apps/mobile/src/tokens.gen.ts | Token DS untuk React Native (warna light/dark, radius, tipografi) — dibangkitkan dari packages/ui/src/styles.css, drift dicek `pnpm lint` |  |
 | `mod:social` | mod | db/core/supabase/functions/_shared/social | PlatformAdapter TikTok/Instagram/YouTube/Threads/Facebook/X (§11) + feature flag platform, dipakai Edge Functions core |  |
 | `mod:ui` | mod | packages/ui | shadcn/ui + design token untuk 5 app |  |
 | `api:GET accounts/auth/callback` | api | apps/accounts/src/app/auth/callback/route.ts | Tukar code OAuth Google (PKCE) jadi sesi, lalu ke onboarding atau next |  |
@@ -219,6 +227,7 @@ Wajib tetap benar setiap perubahan (dicek otomatis saat graph ini dibuat; cek ul
 | `api:rpc identity.admin_set_role` | api | db/identity/supabase/schemas/api/admin_set_role.sql | admin_super ubah role platform (E-27), aal2 |  |
 | `api:rpc identity.my_payout_methods` | api | db/identity/supabase/schemas/api/my_payout_methods.sql | Daftar rekening tersamar milik sendiri (withdraw) |  |
 | `api:rpc identity.record_consent` | api | db/identity/supabase/schemas/api/record_consent.sql | Catat consent ToS/privasi/kyc/share_with_brand (E-28) |  |
+| `api:rpc identity.save_expo_push_token` | api | db/identity/supabase/schemas/member/push_subscriptions.sql | Simpan token Expo push perangkat ini (E-36, kind expo; app native); token pindah ke akun yang sedang login |  |
 | `api:rpc identity.save_push_subscription` | api | db/identity/supabase/schemas/member/push_subscriptions.sql | Simpan langganan web push perangkat ini (E-36); endpoint pindah ke akun yang sedang login |  |
 | `api:rpc identity.shared_device_groups` | api | db/identity/supabase/schemas/api/shared_device_groups.sql | Grup sesi IP + user agent dengan ≥ N akun (FR-05); hanya service role |  |
 | `api:rpc identity.store_kyc` | api | db/identity/supabase/schemas/api/member_data.sql | Simpan KYC (hash + ciphertext dari member-data); NIK di akun lain ditolak; hanya service role |  |
@@ -330,6 +339,7 @@ Wajib tetap benar setiap perubahan (dicek otomatis saat graph ini dibuat; cek ul
 | `env:COOKIE_DOMAIN` | env | .env.example | Nama asli NEXT_PUBLIC_COOKIE_DOMAIN: .{domain} untuk cookie SSO accounts/app/brand (dibaca packages/auth/src/cookies.ts) |  |
 | `env:CORE_SECRET_KEY` | env | db/core/supabase/schemas/ops/enqueue_notification.sql | Secret key core: di Edge Functions = SUPABASE_SECRET_KEYS / SUPABASE_SERVICE_ROLE_KEY (otomatis); salinan di Vault core 'core_secret_key' dibaca ops.invoke_function untuk pg_net |  |
 | `env:DISBURSEMENT_API_KEY` | env | db/identity/supabase/config.toml | Nama asli XENDIT_SECRET_KEY (+ DISBURSE_PROVIDER, DISBURSE_CALLBACK_TOKEN): kredensial penyedia disbursement — hanya Edge Function identity (_shared/disburse.ts) |  |
+| `env:EXPO_ACCESS_TOKEN` | env | deploy/config.env.example | Opsional: access token Expo (enhanced push security) — hanya Edge Function identity (bridge) |  |
 | `env:GOOGLE_CLIENT_SECRET` | env | db/core/supabase/config.toml | Secret Google (YouTube) — hanya Edge Functions core |  |
 | `env:IDENTITY_ISSUER` | env | db/core/supabase/config.toml | Issuer Auth identity (publik); JWKS = issuer + /.well-known/jwks.json atau IDENTITY_JWKS_URL — `[edge_runtime.secrets]` kedua project |  |
 | `env:META_APP_SECRET` | env | db/core/supabase/config.toml | Secret Meta — hanya Edge Functions core |  |
@@ -355,6 +365,7 @@ Wajib tetap benar setiap perubahan (dicek otomatis saat graph ini dibuat; cek ul
 | `env:YOUTUBE_API_KEY` | env | db/core/supabase/config.toml | API key YouTube Data (fallback kode deskripsi D-11) — Edge Functions core; kosong = verifikasi deskripsi mati (fallback_unavailable) |  |
 | `config:eslint.imports` | config | scripts/check-arch.mjs | Arah import apps → packages; db-identity & invokeFunction identity dilarang di brand & web; secret tidak boleh dibaca app/package (`pnpm lint`) |  |
 | `config:ci` | config | .github/workflows/ci.yml | CI: job apps (pnpm lint/typecheck/test/build), functions (deno per project), db (supabase test db, db lint, db advisors per project) |  |
+| `config:eas` | config | apps/mobile/eas.json | Profil EAS Build: preview (APK internal) & production (AAB/IPA, autoIncrement); EXPO_PUBLIC_* dari EAS environment |  |
 | `config:host.accounts` | config |  | accounts.{domain} → project Vercel apps/accounts; Vercel Pro, region Functions sin1 | Vercel / Supabase dashboard + DNS |
 | `config:host.admin` | config |  | admin.{domain} → project Vercel apps/admin; halaman dibatasi IP/zero-trust (tidak menjaga API Supabase); Vercel Pro, region Functions sin1 | Vercel / Supabase dashboard + DNS |
 | `config:host.app` | config |  | app.{domain} → project Vercel apps/clipper; host redirect URI OAuth sosmed; Vercel Pro, region Functions sin1 | Vercel / Supabase dashboard + DNS |
@@ -372,6 +383,7 @@ Wajib tetap benar setiap perubahan (dicek otomatis saat graph ini dibuat; cek ul
 | `ext:disbursement` | ext |  | Penyedia disbursement otomatis (API transfer + callback) untuk instant withdraw — dependency D-02 | — |
 | `ext:google` | ext |  | Google login (Auth identity) + YouTube Data/Analytics | — |
 | `ext:meta` | ext |  | Instagram API (Instagram Login) + Threads API | — |
+| `ext:expo-push` | ext |  | Expo Push API (exp.host) → FCM/APNs untuk app native | — |
 | `ext:resend` | ext |  | Email transaksional | — |
 | `ext:supabase-core` | ext |  | Project Supabase core (marketplace + ledger) | — |
 | `ext:supabase-identity` | ext |  | Project Supabase identity (Auth + PII) | — |
@@ -381,6 +393,7 @@ Wajib tetap benar setiap perubahan (dicek otomatis saat graph ini dibuat; cek ul
 | `test:accrue.idempotent` | test | db/core/supabase/tests/core_contracts_finance.test.sql | accrue_earnings dipanggil 2× = hasil sama; pool tidak minus (bagian pgTAP kontrak finance core) |  |
 | `test:core.full-product` | test | db/core/supabase/tests/core_full_product.test.sql | pgTAP core fitur penuh: campaign privat & template, agency, referral, leaderboard, kode voucher, invoice pinned/managed, instant withdraw, Trust Score, brief terstruktur (format, cek caption, brief terkunci, berkas internal) — 36 tes |  |
 | `test:e2e.cross-host` | test | e2e/journey.cjs | Journey Playwright 390px lintas host: web → accounts (OTP Mailpit, onboarding + avatar) → app (claim, tasks) → accounts/invite → brand; seed e2e/seed.sql (`pnpm e2e`) |  |
+| `test:e2e.mobile` | test | e2e/mobile.cjs | Journey Playwright 390px app native (build web Expo di host app): login OTP → gate onboarding → onboarding di accounts → tab Campaign → claim → Tugas → share sheet → Wallet → tema gelap (`pnpm e2e:mobile`) |  |
 | `test:member-data.integrity` | test | db/identity/supabase/tests/identity_access.test.sql | pgTAP identity: consent versi terbaru, hook claim, NIK/rekening ganda, nama rekening = KYC, reviewer KYC aal2, tombstone hapus akun, push — 50 tes |  |
 | `test:pwa.ios-login` | test |  | Fase 0 di iPhone: login OTP & Google di PWA terinstal, buka accounts dari PWA, sesi > 7 hari | Manual Fase 0 di iPhone (belum ada berkas tes) |
 | `test:rls.access-matrix` | test | db/core/supabase/tests/core_access.test.sql | pgTAP core: RLS per role (anon, clipper, anggota org, admin aal1/aal2, iss lain), state machine, ledger, constraint uang, link laporan, storage, job; bagian identity di db/identity/supabase/tests/identity_access.test.sql |  |
@@ -419,7 +432,7 @@ Arah: `A --tipe--> B` = A bergantung pada B. `?` = belum terverifikasi.
 | `page:accounts/kyc` | wrapped-by | `layout:accounts` | apps/accounts/src/app/layout.tsx:20 |
 | `page:accounts/kyc` | writes | `table:bucket.kyc-docs` | apps/accounts/src/features/kyc/actions.ts:16 |
 | `page:accounts/login` | calls | `mod:auth` | PRD v0.3.1 §7 F-C01; kode baris 6 (LoginForm @clipper/auth/components) |
-| `page:accounts/login` | routes-to | `api:GET accounts/auth/callback` | packages/auth/src/actions.ts:62 (googleSignIn redirectTo) |
+| `page:accounts/login` | routes-to | `api:GET accounts/auth/callback` | packages/auth/src/actions.ts:52 (googleSignIn redirectTo) |
 | `page:accounts/login` | routes-to | `page:accounts/onboarding` | packages/auth/src/proxy.ts:93 (user baru: guard app → onboarding) |
 | `page:accounts/login` | wrapped-by | `layout:accounts` | apps/accounts/src/app/layout.tsx:20 |
 | `page:accounts/onboarding` | calls | `api:rpc core.ensure_profile` | apps/accounts/src/features/onboarding/actions.ts:67 |
@@ -551,20 +564,20 @@ Arah: `A --tipe--> B` = A bergantung pada B. `?` = belum terverifikasi.
 | `page:app/campaigns/[id]` | calls | `api:rpc core.my_clip_terms` | apps/clipper/src/features/lib/server.ts:34 (myClipTerms → rpc my_clip_terms: cap efektif per platform) |
 | `page:app/campaigns/[id]` | calls | `api:rpc core.claim_campaign` | apps/clipper/src/features/claim/actions.ts:13 |
 | `page:app/campaigns/[id]` | calls | `api:rpc core.missing_brief_tags` | PRD v0.3.1 §6 C1.8 tanda caption kurang sebelum Submit (belum di kode langsung: tag kurang dihitung core/social list_videos → missing_brief_tags, features/submit/actions.ts baris 20) |
-| `page:app/campaigns/[id]` | reads | `table:bucket.campaign-assets` | apps/clipper/src/app/campaigns/[id]/page.tsx:66 |
+| `page:app/campaigns/[id]` | reads | `table:bucket.campaign-assets` | apps/clipper/src/app/campaigns/[id]/page.tsx:65 |
 | `page:app/campaigns/[id]` | reads | `table:market.campaign_assets` | PRD v0.3.1 §14 kg.yaml features.F-C04; kode: lewat rpc campaign_detail (page.tsx baris 44) |
 | `page:app/campaigns/[id]` | reads | `table:market.campaigns` | PRD v0.3.1 §14 kg.yaml features.F-C04; kode: lewat rpc campaign_detail (page.tsx baris 44) |
 | `page:app/campaigns/[id]` | reads | `table:market.rate_rules` | PRD v0.3.1 §14 kg.yaml features.F-C04; kode: lewat rpc campaign_detail (page.tsx baris 44) |
-| `page:app/campaigns/[id]` | routes-to | `page:accounts/kyc` | apps/clipper/src/features/campaigns/fix.ts:13 (fixFor, features/claim/detail-cta.tsx baris 77) |
+| `page:app/campaigns/[id]` | routes-to | `page:accounts/kyc` | apps/clipper/src/features/campaigns/fix.ts:12 (fixFor, features/claim/detail-cta.tsx baris 77) |
 | `page:app/campaigns/[id]` | routes-to | `page:app/social` | apps/clipper/src/features/campaigns/fix.ts:11 |
-| `page:app/campaigns/[id]` | routes-to | `page:app/tasks` | apps/clipper/src/app/campaigns/[id]/page.tsx:403 |
+| `page:app/campaigns/[id]` | routes-to | `page:app/tasks` | apps/clipper/src/app/campaigns/[id]/page.tsx:359 |
 | `page:app/campaigns/[id]` | wrapped-by | `layout:clipper` | apps/clipper/src/app/layout.tsx:31 |
 | `page:app/leaderboard` | reads | `table:market.leaderboard_campaign` | apps/clipper/src/app/leaderboard/page.tsx:43 (view api.leaderboard scope campaign) |
 | `page:app/leaderboard` | reads | `table:market.leaderboard_weekly` | apps/clipper/src/app/leaderboard/page.tsx:41 (view api.leaderboard scope week) |
 | `page:app/leaderboard` | routes-to | `page:app/campaigns/[id]` | apps/clipper/src/app/leaderboard/page.tsx:78 |
 | `page:app/leaderboard` | wrapped-by | `layout:clipper` | apps/clipper/src/app/layout.tsx:31 |
 | `page:app/login` | calls | `mod:auth` | apps/clipper/src/app/login/page.tsx:7 |
-| `page:app/login` | routes-to | `api:GET app/auth/callback` | packages/auth/src/actions.ts:62 (googleSignIn redirectTo origin app) |
+| `page:app/login` | routes-to | `api:GET app/auth/callback` | packages/auth/src/actions.ts:52 (googleSignIn redirectTo origin app) |
 | `page:app/login` | routes-to | `page:accounts/onboarding` | packages/auth/src/server.ts:72 (requireClipper: belum consent → onboarding) |
 | `page:app/login` | routes-to | `page:app/campaigns` | apps/clipper/src/app/login/page.tsx:17 |
 | `page:app/login` | wrapped-by | `layout:clipper` | apps/clipper/src/app/layout.tsx:31 |
@@ -762,6 +775,27 @@ Arah: `A --tipe--> B` = A bergantung pada B. `?` = belum terverifikasi.
 | `layout:clipper` | routes-to | `page:app/wallet` | apps/clipper/src/features/shell/app-chrome.tsx:35 |
 | `layout:clipper` | routes-to | `page:www/` | PRD v0.3.1 §6.6 menu: Menu avatar: Keluar; kode: features/shell/account-menu.tsx baris 76 → signOut → hosts.web (packages/auth/src/actions.ts baris 70) |
 | `layout:clipper` | wrapped-by | `mod:i18n` | apps/clipper/src/i18n/request.ts:3 |
+| `layout:mobile` | calls | `mod:auth` | apps/mobile/app/login.tsx:6 (validasi email + pesan error OTP sama dengan accounts) |
+| `layout:mobile` | calls | `mod:db-core` | apps/mobile/src/supabase.ts:5 |
+| `layout:mobile` | calls | `mod:db-identity` | apps/mobile/src/supabase.ts:6 |
+| `layout:mobile` | calls | `mod:i18n` | apps/mobile/src/i18n.tsx:4 |
+| `layout:mobile` | calls | `mod:clipper-lib` | apps/mobile/src/data.ts:4 |
+| `layout:mobile` | renders | `mod:native-tokens` | apps/mobile/src/theme.tsx:4 |
+| `layout:mobile` | renders | `mod:mobile-widget` | apps/mobile/index.ts:7 (registerWidgetTaskHandler, Android) |
+| `layout:mobile` | calls | `api:rpc core.list_campaigns` | apps/mobile/src/data.ts:93 |
+| `layout:mobile` | calls | `api:rpc core.claim_campaign` | apps/mobile/src/data.ts:167 |
+| `layout:mobile` | calls | `api:fn core/social` | apps/mobile/src/data.ts:185 (list_videos; submit baris 206) |
+| `layout:mobile` | reads | `table:finance.ledger_accounts` | kode: view api.wallet_balances (apps/mobile src/data.ts baris 255) |
+| `layout:mobile` | calls | `api:rpc identity.save_expo_push_token` | apps/mobile/src/push.ts:49 |
+| `layout:mobile` | calls | `ext:expo-push` | apps/mobile/src/push.ts:26 (token perangkat dari Expo) |
+| `layout:mobile` | configured-by | `config:eas` | apps/mobile/app.config.ts:62 (extra.eas.projectId) |
+| `layout:mobile` | routes-to | `page:accounts/onboarding` | apps/mobile/app/onboarding.tsx:28 |
+| `layout:mobile` | routes-to | `page:accounts/kyc` | kode: app/(tabs)/index.tsx baris 92 (fix kyc_required) |
+| `layout:mobile` | routes-to | `page:app/social` | kode: app/(tabs)/social.tsx baris 27 (OAuth resmi platform di browser) |
+| `layout:mobile` | routes-to | `page:app/wallet/withdraw` | kode: app/(tabs)/wallet.tsx baris 55 |
+| `mod:mobile-widget` | reads | `table:finance.ledger_accounts` | kode: wallet() → view api.wallet_balances (apps/mobile src/widget.tsx baris 9, src/data.ts baris 255) |
+| `mod:native-tokens` | reads | `mod:ui` | packages/ui/scripts/gen-native-tokens.mjs:67 |
+| `layout:clipper` | calls | `mod:clipper-lib` | apps/clipper/package.json:16 |
 | `layout:web` | calls | `mod:db-core` | apps/web/src/lib/core.ts:2 (client anon app web) |
 | `layout:web` | configured-by | `config:host.www` | apps/web/src/app/layout.tsx:14 |
 | `layout:web` | renders | `mod:ui` | apps/web/src/app/layout.tsx:7 |
@@ -895,7 +929,9 @@ Arah: `A --tipe--> B` = A bergantung pada B. `?` = belum terverifikasi.
 | `api:fn identity/bridge` | calls | `ext:web-push` | db/identity/supabase/functions/bridge/index.ts:29 |
 | `api:fn identity/bridge` | configured-by | `env:BRIDGE_SECRET_CORE_TO_IDENTITY` | db/identity/supabase/functions/bridge/index.ts:21 |
 | `api:fn identity/bridge` | configured-by | `env:RESEND_API_KEY` | db/identity/supabase/functions/bridge/index.ts:28 |
-| `api:fn identity/bridge` | configured-by | `env:VAPID_PRIVATE_KEY` | db/identity/supabase/functions/_shared/push.ts:38 |
+| `api:fn identity/bridge` | configured-by | `env:VAPID_PRIVATE_KEY` | db/identity/supabase/functions/_shared/push.ts:102 |
+| `api:fn identity/bridge` | calls | `ext:expo-push` | db/identity/supabase/functions/_shared/push.ts:64 (send_push: token kind expo dikirim batch 100) |
+| `api:fn identity/bridge` | configured-by | `env:EXPO_ACCESS_TOKEN` | db/identity/supabase/functions/_shared/push.ts:69 |
 | `api:fn identity/bridge` | guarded-by | `policy:bridge-hmac` | db/identity/supabase/functions/bridge/handler.ts:200 |
 | `api:fn identity/bridge` | reads | `table:auth.users` | db/identity/supabase/functions/bridge/handler.ts:69 |
 | `api:fn identity/bridge` | calls | `api:fn core/bridge` | db/identity/supabase/functions/_shared/disburse.ts:264 (aksi disburse: get_payout, lalu mark_instant) |
@@ -1131,8 +1167,10 @@ Arah: `A --tipe--> B` = A bergantung pada B. `?` = belum terverifikasi.
 | `api:rpc identity.record_consent` | guarded-by | `policy:identity.rls-self` | PRD v0.3.1 §15.4 data sendiri; kode: uid = auth.uid() (api/record_consent.sql baris 10) |
 | `api:rpc identity.record_consent` | reads | `table:member.legal_versions` | db/identity/supabase/schemas/api/record_consent.sql:22 |
 | `api:rpc identity.record_consent` | writes | `table:member.consents` | db/identity/supabase/schemas/api/record_consent.sql:29 |
+| `api:rpc identity.save_expo_push_token` | guarded-by | `policy:identity.rls-self` | kode: uid = auth.uid() (member/push_subscriptions.sql baris 52), execute hanya authenticated baris 65 |
+| `api:rpc identity.save_expo_push_token` | writes | `table:member.push_subscriptions` | db/identity/supabase/schemas/member/push_subscriptions.sql:58 |
 | `api:rpc identity.save_push_subscription` | guarded-by | `policy:identity.rls-self` | PRD v0.3.1 Lampiran A.2 save_push_subscription; kode: uid = auth.uid() (member/push_subscriptions.sql baris 26) |
-| `api:rpc identity.save_push_subscription` | writes | `table:member.push_subscriptions` | db/identity/supabase/schemas/member/push_subscriptions.sql:32 |
+| `api:rpc identity.save_push_subscription` | writes | `table:member.push_subscriptions` | db/identity/supabase/schemas/member/push_subscriptions.sql:38 |
 | `api:rpc identity.shared_device_groups` | reads | `table:auth.sessions` | db/identity/supabase/schemas/api/shared_device_groups.sql:6 |
 | `api:rpc identity.store_kyc` | guarded-by | `policy:identity.unique-identity` | db/identity/supabase/schemas/api/member_data.sql:10 |
 | `api:rpc identity.store_kyc` | writes | `table:member.audit_logs` | db/identity/supabase/schemas/api/member_data.sql:23 |
@@ -1359,7 +1397,7 @@ Arah: `A --tipe--> B` = A bergantung pada B. `?` = belum terverifikasi.
 | `table:member.platform_roles` | guarded-by | `policy:identity.admin-aal2` | db/identity/supabase/schemas/member/platform_roles.sql:13 |
 | `table:member.platform_roles` | guarded-by | `policy:identity.auth-hook` | db/identity/supabase/schemas/member/platform_roles.sql:12 |
 | `table:member.platform_roles` | typed-by | `table:auth.users` | db/identity/supabase/schemas/member/platform_roles.sql:3 |
-| `table:member.push_subscriptions` | guarded-by | `policy:identity.rls-self` | db/identity/supabase/schemas/member/push_subscriptions.sql:18 |
+| `table:member.push_subscriptions` | guarded-by | `policy:identity.rls-self` | db/identity/supabase/schemas/member/push_subscriptions.sql:24 |
 | `table:member.push_subscriptions` | typed-by | `table:auth.users` | db/identity/supabase/schemas/member/push_subscriptions.sql:5 |
 | `table:member.recipient_details` | guarded-by | `policy:identity.rls-self` | db/identity/supabase/schemas/member/recipient_details.sql:13 |
 | `table:member.recipient_details` | typed-by | `table:auth.users` | db/identity/supabase/schemas/member/recipient_details.sql:4 |
@@ -1470,6 +1508,8 @@ Arah: `A --tipe--> B` = A bergantung pada B. `?` = belum terverifikasi.
 | `test:e2e.cross-host` | tests | `page:brand/` | e2e/journey.cjs:128 |
 | `test:e2e.cross-host` | tests | `page:www/` | e2e/journey.cjs:44 |
 | `test:e2e.cross-host` | tests | `page:www/c/[slug]` | e2e/journey.cjs:49 |
+| `test:e2e.mobile` | tests | `layout:mobile` | e2e/mobile.cjs:11 |
+| `test:e2e.mobile` | tests | `page:accounts/onboarding` | e2e/mobile.cjs:75 |
 | `test:member-data.integrity` | tests | `api:fn identity/member-data` | db/identity/supabase/tests/identity_access.test.sql:69 (SQL di balik member-data; handler dites Deno member-data/handler_test.ts) |
 | `test:member-data.integrity` | tests | `api:rpc identity.store_kyc` | db/identity/supabase/tests/identity_access.test.sql:72 |
 | `test:member-data.integrity` | tests | `fn:custom_access_token_hook` | db/identity/supabase/tests/identity_access.test.sql:46 |
@@ -2357,6 +2397,7 @@ Masalah sistem yang ditemukan saat menyusun PRD v0.2 dan saat dicek ulang (v0.2.
 | 2026-10-21 | `doc:deploy/deploy.sh` | Review Claudex R46: check DNS meloloskan record campuran (server ini + sisa server lama) karena cukup satu IP cocok — ACME/pengunjung bisa memilih record lama (direproduksi: HEAD rc 0) | diperbaiki: semua A record harus IP interface/PUBLIC_IP server ini, IP asing disebut di pesan (diuji: campuran gagal, hanya lama gagal, hanya lokal lolos) |
 | 2026-10-21 | `doc:deploy/deploy.sh` | Review Claudex R47: PUBLIC_IP menggantikan (bukan menambah) IP interface → server NAT dengan split DNS ke IP privatnya gagal palsu (direproduksi: HEAD rc 1) | diperbaiki: himpunan IP server = PUBLIC_IP + hostname -I (diuji: split DNS lolos, record server lama tetap gagal, record publik = PUBLIC_IP lolos) |
 | 2026-10-21 | `page:www/` | Keluhan user ("websitenya gajelas", "apps mobile kan ada di desainnya"), dicek ke DS: (1) hero landing hanya teks + kartu biru, tanpa visual — Clipper Hero DS 16–18 meminta split/layered hero dengan media, kartu kaca melayang, mockup HP; (2) DS Android/iOS v2 hanya halaman 01 Brand Overview berisi momen native (share sheet kirim clip, notif approve dengan tombol, widget saldo, Live Activity) sedangkan PRD §3 menulis native app = non-goal (cukup PWA, F-C14); PWA belum punya share target, tombol aksi notifikasi, maupun badge; tidak ada jalur Play Store | hero: mockup HP berisi CampaignCard asli (campaign live teratas, stream di Suspense supaya LCP tetap teks), kartu kaca contoh cuan + rate tertinggi dari data live (tanpa angka sosial palsu seperti "25K+ kreator"), blob token, HP: kartu jadi grid di bawah mockup; PWA: share_target → /share → detail ?submit=1&url (sheet Submit terisi), push submission.approved membawa aksi Lihat saldo / Kirim clip lagi, sw.js aksi + setAppBadge; Android: assetlinks.json dari env + Bubblewrap (project TWA ter-generate: SEND intent, autoVerify, asset_statements). Diuji: e2e 10/10 (langkah share baru), tes sw.js di vm gagal di versi lama, templates_test, light/dark 390/1440 tanpa overflow. Tidak dibuat: widget home screen, Live Activity, Dynamic Island, Share Extension iOS (butuh app native Kotlin/SwiftUI; iOS butuh Mac + Xcode) |
+| 2026-10-21 | `layout:mobile` | User minta app mobile native ("lanjutlah bikin") walau PRD §3 menulis native app = non-goal; DS Android/iOS v2 hanya punya halaman 01 (momen native: share sheet, notif dengan tombol, widget saldo, Live Activity). Saat membangun ketemu: (1) modul murni app clipper diimport app lain → melanggar check-arch "app tidak boleh import app lain"; (2) bridge send_push hanya web push; (3) `@clipper/i18n` index memakai dynamic import yang tidak didukung Metro; (4) lockfile memuat apps/mobile sedangkan image app tidak | app Expo satu kode Android/iOS di atas RPC/view/Edge Function yang sama; modul murni dipindah ke `packages/clipper-lib` (git mv, tes ikut); push native = `member.push_subscriptions` kind expo (CHECK bentuk) + `api.save_expo_push_token` + bridge kirim lewat Expo Push API (DeviceNotRegistered → token dihapus); `i18n/core`, `ui/format`, `ui/platform-paths`, `ui/campaign-labels`, `auth/otp` dipisah supaya bisa dipakai RN; token DS dibangkitkan dari styles.css (drift dicek `pnpm lint`); widget saldo Android; share sheet Android SEND + iOS Share Extension (expo prebuild terverifikasi); `apps/mobile` di .dockerignore + install frozen tanpa mobile disimulasikan. Diuji: e2e:mobile 9/9, pgTAP identity 128, deno push 6 (3 baru gagal di kode lama), vitest. Tidak dibuat: Live Activity/Dynamic Island & widget iOS (butuh target Swift/WidgetKit), build APK/IPA (butuh akun EAS, Android SDK/Xcode di luar sandbox) |
 
 ## Keputusan
 
@@ -2400,3 +2441,4 @@ Keputusan yang sudah diambil — jangan dibahas ulang tanpa alasan baru.
 | 2026-10-19 | Kunci config yang dibaca app wajib public.*; selain itu hanya fungsi definer | Satu aturan RLS (settings_public_read); app tidak menebak default | `table:ops.settings` |
 | 2026-10-19 | Biaya paket managed ikut dikembalikan bila campaign dibatalkan sebelum live (keputusan owner) | Refund batal satu E-35 untuk semua yang sudah dibayar (budget, fee, jasa, pajak) | `api:rpc core.control_campaign` |
 | 2026-10-19 | Lokal: dua stack Supabase di network Docker terpisah, lintas stack lewat host.docker.internal; email lewat Mailpit; typecheck = next typegen + tsc (next-env.d.ts & AGENTS.md tidak di-commit) | Alias kong/db bentrok di satu network; file hasil generate berubah tiap build | `scripts/dev-stack.sh`, `.github/workflows/ci.yml` |
+| 2026-10-21 | App native = Expo (React Native) satu kode Android & iOS; KYC, rekening, hubungkan sosmed, tarik saldo & onboarding tetap di web (browser sistem) | Satu bahasa (TypeScript) dengan 5 app dan logika bersama (`packages/clipper-lib`); Google/Meta menolak OAuth di WebView; NIK & rekening tetap hanya diproses accounts.{domain} + identity; app native tanpa secret (invarian 4). PRD §3 (native = non-goal) dilangkahi atas permintaan user | `layout:mobile`, `mod:clipper-lib`, `api:rpc identity.save_expo_push_token` |

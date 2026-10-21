@@ -1,17 +1,16 @@
 // State terblokir harus jadi aksi berikutnya (Catatan UX KitaClip): alasan not_eligible → tombol perbaiki.
 import { hosts, kycUrl, onboardingUrl } from '@clipper/auth';
+import { fixKey, type FixKey } from '@clipper/clipper-lib/pure';
 
-export type FixKey = 'connect' | 'kyc' | 'onboarding' | 'trust';
+export type { FixKey };
 
 /** reason = cta_reason list_campaigns (mis. "need_social_account:tiktok") atau kode error claim tanpa awalan not_eligible:. */
 export function fixFor(reason: string | null | undefined, campaignId: string): { key: FixKey; href: string } | null {
   const back = `/campaigns/${campaignId}`;
-  const r = (reason ?? '').replace(/^not_eligible:/, '');
-  if (r.startsWith('need_social_account') || r === 'min_followers' || r === 'min_account_age') {
-    return { key: 'connect', href: `/social?next=${encodeURIComponent(back)}` };
-  }
-  if (r === 'kyc_required') return { key: 'kyc', href: kycUrl(`${hosts.app}${back}`) };
-  if (r === 'profile_missing') return { key: 'onboarding', href: onboardingUrl('clipper', `${hosts.app}${back}`) };
-  if (r === 'min_trust_score') return { key: 'trust', href: '/profile' };
+  const key = fixKey(reason);
+  if (key === 'connect') return { key, href: `/social?next=${encodeURIComponent(back)}` };
+  if (key === 'kyc') return { key, href: kycUrl(`${hosts.app}${back}`) };
+  if (key === 'onboarding') return { key, href: onboardingUrl('clipper', `${hosts.app}${back}`) };
+  if (key === 'trust') return { key, href: '/profile' };
   return null;
 }

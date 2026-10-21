@@ -19,7 +19,7 @@ import {
   formatIDR,
   type IconName,
 } from '@clipper/ui';
-import { communityLinks, isUuid, nextBatchDate, num, recipientFields } from '@/features/lib/pure';
+import { communityLinks, isUuid, nextBatchDate, num, recipientFields } from '@clipper/clipper-lib/pure';
 import { core, errorText, readSettings, uiLocale } from '@/features/lib/server';
 import { balances } from '@/features/wallet/data';
 import { CashForm } from '@/features/withdraw/cash-form';

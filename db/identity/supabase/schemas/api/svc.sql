@@ -92,11 +92,11 @@ language sql stable security definer set search_path = '' as $$
   where pr.role::text = any (p_roles);
 $$;
 
--- Web push (alur 4): langganan per user, buang endpoint mati (404/410), catat terakhir dipakai.
+-- Push (alur 4): langganan per user (web push + token Expo app native), buang endpoint/token mati, catat terakhir dipakai.
 create function api.svc_push_subscriptions(p_user uuid)
-returns table (endpoint text, p256dh text, auth_secret text)
+returns table (kind text, endpoint text, p256dh text, auth_secret text)
 language sql stable security definer set search_path = '' as $$
-  select ps.endpoint, ps.p256dh, ps.auth_secret
+  select ps.kind, ps.endpoint, ps.p256dh, ps.auth_secret
   from member.push_subscriptions ps
   where ps.user_id = p_user
   order by ps.created_at;

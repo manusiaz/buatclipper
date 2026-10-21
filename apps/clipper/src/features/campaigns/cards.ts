@@ -3,10 +3,10 @@ import { getTranslations } from 'next-intl/server';
 import { getAuth } from '@clipper/auth/server';
 import type { CampaignCtaState, IconName, Platform } from '@clipper/ui';
 import type { CoreFn } from '@clipper/db-core';
-import { budgetUsedRatio, cardRates, isPlatform, maxViews, type RateRule } from '../lib/pure';
+import { budgetUsedRatio, cardRates, isPlatform, maxViews, type RateRule } from '@clipper/clipper-lib/pure';
 import { core, errorText, publicUrl, rewardTypes, uiLocale } from '../lib/server';
 import { fixFor } from './fix';
-import { toRpcFilters, type CampaignFilters } from './filters';
+import { toRpcFilters, type CampaignFilters } from '@clipper/clipper-lib/filters';
 
 export const PAGE_SIZE = 12;
 

@@ -1,5 +1,5 @@
 // Saldo per reward type × bucket S-04 (api.wallet_balances) — dipakai Wallet & Withdraw.
-import { num } from '../lib/pure';
+import { num } from '@clipper/clipper-lib/pure';
 import { core, rewardTypes, type RewardUnit } from '../lib/server';
 
 export interface Balance {

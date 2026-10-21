@@ -4,7 +4,7 @@ import { useEffect, useRef, useState, useTransition } from 'react';
 import { useRouter } from 'next/navigation';
 import { useTranslations } from 'next-intl';
 import { Button, SearchInput, Select, platformLabels, type Platform } from '@clipper/ui';
-import { filtersToQuery, SORTS, STATUSES, type CampaignFilters } from './filters';
+import { filtersToQuery, SORTS, STATUSES, type CampaignFilters } from '@clipper/clipper-lib/filters';
 
 const ANY = 'any';
 

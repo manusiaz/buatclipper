@@ -9,7 +9,11 @@
   "exports": {
     ".": "./src/index.ts",
     "./styles.css": "./src/styles.css",
-    "./banners": "./src/lib/banners.ts"
+    "./banners": "./src/lib/banners.ts",
+    "./format": "./src/lib/format.ts",
+    "./campaign-labels": "./src/lib/campaign-labels.ts",
+    "./icons": "./src/icons.generated.ts",
+    "./platform-paths": "./src/lib/platform-paths.ts"
   },
   "scripts": {
     "typecheck": "tsc --noEmit -p .",

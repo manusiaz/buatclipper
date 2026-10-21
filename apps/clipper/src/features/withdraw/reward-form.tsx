@@ -6,7 +6,7 @@ import { useMemo, useState, useTransition } from 'react';
 import { useRouter } from 'next/navigation';
 import { useLocale, useTranslations } from 'next-intl';
 import { Alert, Badge, Button, Card, CardDescription, CardHeader, CardTitle, Field, Icon, Input, formatNumber, toast } from '@clipper/ui';
-import type { RecipientField } from '../lib/pure';
+import type { RecipientField } from '@clipper/clipper-lib/pure';
 import { requestFulfillment } from './actions';
 
 export interface RewardOption {

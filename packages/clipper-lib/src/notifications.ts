@@ -1,5 +1,10 @@
 // Notifikasi in-app (E-23, F-C11): event + payload → kunci pesan namespace notifications + nilai + deep link.
 // Event & kunci payload = db/identity/supabase/functions/_shared/templates.ts (40 event, sama dengan email/push).
+import { REJECT_REASONS } from '@clipper/i18n/core';
+import { formatDateTime, type UiLocale } from '@clipper/ui/format';
+import { platformLabel, type Platform } from '@clipper/ui/platform-paths';
+import { isPlatform, num } from './pure';
+import { formatAmount } from './units';
 
 export const EVENTS = [
   'campaign.new', 'campaign.invited', 'claim.expiring', 'submission.approved', 'submission.rejected', 'submission.forfeited',
@@ -114,4 +119,84 @@ export interface AmountRef {
 export function amountRefs(payload: P): AmountRef[] {
   if (Array.isArray(payload.amounts)) return payload.amounts.filter((a): a is AmountRef => !!a && typeof a === 'object');
   return payload.amount !== undefined && payload.amount !== null ? [payload as unknown as AmountRef] : [];
+}
+
+export interface NotificationRow {
+  id: number | null;
+  event: string | null;
+  payload: unknown;
+  read_at: string | null;
+  created_at: string | null;
+}
+
+export interface NotificationView {
+  id: number;
+  title: string;
+  body: string;
+  reason: string | null;
+  href: string | null;
+  read: boolean;
+  createdAt: string;
+  event: string;
+}
+
+/** Builder murni (web RSC & app native): t = namespace notifications, tc = namespace common. */
+export function buildNotificationViews(
+  rows: NotificationRow[],
+  locale: UiLocale,
+  t: (key: string, values?: Record<string, string>) => string,
+  tc: (key: string) => string,
+  links: Links,
+): NotificationView[] {
+  const when = (v: unknown) =>
+    typeof v === 'string' && !Number.isNaN(new Date(v).getTime())
+      ? `${formatDateTime(v, locale, { dateStyle: 'medium', timeStyle: 'short' })} WIB`
+      : '';
+  return rows
+    .filter((r) => r.id !== null)
+    .map((r) => {
+      const p = (r.payload && typeof r.payload === 'object' ? r.payload : {}) as Record<string, unknown>;
+      const event = r.event ?? '';
+      const amounts = amountRefs(p)
+        .map((a) => formatAmount(num(a.amount), { code: String(a.reward_type ?? 'IDR'), unit_label: String(a.unit_label ?? ''), decimals: 2 }, locale))
+        .join(', ');
+      const platform = text(p, 'platform', 30).toLowerCase();
+      const values = {
+        campaign: text(p, 'campaign_title') || t('fallback.campaign'),
+        platform: isPlatform(platform) ? platformLabel(platform as Platform) : text(p, 'platform', 30) || t('fallback.platform'),
+        handle: text(p, 'handle', 60) ? ` @${text(p, 'handle', 60)}` : '',
+        amount: amounts || t('fallback.amount'),
+        expiresAt: when(p.expires_at) || t('fallback.soon'),
+        until: when(p.until) || t('fallback.further'),
+        count: text(p, 'count', 6) || t('fallback.count'),
+        invoice: text(p, 'invoice_number', 40) || t('fallback.invoice'),
+        dueAt: when(p.due_at) || t('fallback.dueAt'),
+        reward: text(p, 'reward_name') || t('fallback.reward'),
+        title: text(p, 'title') || t('fallback.broadcast'),
+        body: text(p, 'body', 600),
+        org: text(p, 'org_name') || t('fallback.org'),
+        agency: text(p, 'agency_org_name') || t('fallback.agency'),
+        client: text(p, 'client_org_name') || t('fallback.client'),
+        level: budgetLevel(p.pct),
+        decision: text(p, 'decision', 20),
+        cause: text(p, 'reason', 60).startsWith('fraud:') ? 'fraud' : 'gone',
+        scope: p.submission_id ? 'submission' : 'account',
+      };
+      const known = isEvent(event);
+      // Kode alasan standar → label common.rejectReasons; pesan reviewer ikut di belakangnya.
+      const code = text(p, 'reason', 60);
+      const label = (REJECT_REASONS as readonly string[]).includes(code) ? tc(`rejectReasons.${code}`) : null;
+      const message = text(p, 'message', 300);
+      const reason = label ? (message ? `${label} — ${message}` : label) : message || text(p, 'reason', 300);
+      return {
+        id: r.id!,
+        event,
+        title: known ? t(`${event}.title`, values) : t('unknown.title'),
+        body: known ? t(`${event}.body`, values) : t('unknown.body'),
+        reason: reason && event !== 'broadcast.sent' ? t('reason', { reason }) : null,
+        href: notificationHref(event, p, links),
+        read: !!r.read_at,
+        createdAt: r.created_at ?? new Date().toISOString(),
+      };
+    });
 }

@@ -1,6 +1,6 @@
 import { getTranslations } from 'next-intl/server';
 import { Avatar, Badge, Icon, cn, formatCompact, type UiLocale } from '@clipper/ui';
-import { num } from '../lib/pure';
+import { num } from '@clipper/clipper-lib/pure';
 import { publicUrl } from '../lib/server';
 
 export interface BoardRow {

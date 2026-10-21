@@ -1,4 +1,4 @@
-import { assetLinks } from '@/features/lib/pure';
+import { assetLinks } from '@clipper/clipper-lib/pure';
 
 // App Android (TWA dari PWA ini, Play Store): Chrome memverifikasi app.{domain} ↔ package + sertifikat lewat file ini.
 export const dynamic = 'force-dynamic';

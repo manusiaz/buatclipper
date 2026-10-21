@@ -16,7 +16,7 @@ import {
   type Platform,
 } from '@clipper/ui';
 import { Flash } from '@/features/lib/flash';
-import { enabledPlatforms, isPlatform, num } from '@/features/lib/pure';
+import { enabledPlatforms, isPlatform, num } from '@clipper/clipper-lib/pure';
 import { core, errorText, readSettings, uiLocale } from '@/features/lib/server';
 import { IgGuide } from '@/features/social/ig-guide';
 import { internalNext } from '@/features/social/oauth';

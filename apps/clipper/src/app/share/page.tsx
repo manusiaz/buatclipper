@@ -3,7 +3,7 @@ import Link from 'next/link';
 import { getTranslations } from 'next-intl/server';
 import { requireClipper } from '@clipper/auth/server';
 import { Button, Card, Countdown, EmptyState } from '@clipper/ui';
-import { sharedUrl } from '@/features/lib/pure';
+import { sharedUrl } from '@clipper/clipper-lib/pure';
 import { core, uiLocale } from '@/features/lib/server';
 
 export const metadata: Metadata = { title: 'Kirim clip' };

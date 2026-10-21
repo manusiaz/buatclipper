@@ -183,6 +183,26 @@ reset role;
 select ok(not has_column_privilege('authenticated', 'member.push_subscriptions', 'auth_secret', 'select'),
           'kunci langganan push tidak bisa dibaca browser');
 
+-- Push app native (Expo): token perangkat disimpan tanpa kunci, ikut aturan pindah akun yang sama; bentuk tiap jenis dijaga.
+set local role authenticated;
+set local request.jwt.claims = '{"sub":"00000000-0000-0000-0000-00000000000b","role":"authenticated","aal":"aal1"}';
+select lives_ok($$ select api.save_expo_push_token('ExponentPushToken[xxxxxxxxxxxxxxxxxxxxxx]') $$, 'B menyimpan token Expo');
+select is((select count(*)::int from api.push_subscriptions), 1, 'B melihat token perangkat native-nya');
+select throws_ok($$ select api.save_expo_push_token('https://push.contoh.id/ep-2') $$, '23514', null, 'URL web push bukan token Expo');
+select throws_ok($$ select api.save_expo_push_token('ExponentPushToken[]') $$, '23514', null, 'token Expo kosong ditolak');
+select throws_ok($$ select api.save_push_subscription('http://push.contoh.id/ep-3', 'k', 'a') $$, '23514', null, 'web push tetap wajib https');
+set local request.jwt.claims = '{"sub":"00000000-0000-0000-0000-00000000000c","role":"authenticated","aal":"aal1"}';
+select lives_ok($$ select api.save_expo_push_token('ExponentPushToken[xxxxxxxxxxxxxxxxxxxxxx]') $$, 'HP yang sama login sebagai C');
+select is((select count(*)::int from api.push_subscriptions where endpoint like 'ExponentPushToken%'), 1, 'token pindah ke C');
+reset role;
+set local role service_role;
+select is((select array_agg(kind order by kind) from api.svc_push_subscriptions('00000000-0000-0000-0000-00000000000c')),
+          array['expo', 'webpush'], 'svc_push_subscriptions menyebut jenis tiap langganan');
+set local role authenticated;
+select throws_ok($$ select api.svc_push_subscriptions('00000000-0000-0000-0000-00000000000c') $$, '42501', null,
+                 'daftar langganan (berisi kunci) tidak bisa dipanggil browser');
+reset role;
+
 -- Regresi 2026-10-19: enum internal di parameter RPC → 42501 lewat REST walau pgTAP (literal) lulus.
 select is((select array_agg(p.proname::text order by p.proname) from pg_proc p join pg_namespace n on n.oid = p.pronamespace
             where n.nspname = 'api' and exists (select 1 from unnest(p.proargtypes) t join pg_type ty on ty.oid = t

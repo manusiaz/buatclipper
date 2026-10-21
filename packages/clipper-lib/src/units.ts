@@ -1,5 +1,5 @@
 // Format nominal per reward type: IDR → "Rp1.500", lainnya → "8 Diamonds" (desimal sesuai reward type).
-import { formatIDR, formatNumber, type UiLocale } from '@clipper/ui';
+import { formatIDR, formatNumber, type UiLocale } from '@clipper/ui/format';
 
 export interface UnitLike {
   code: string;

@@ -2,7 +2,7 @@
 import { getLocale, getTranslations } from 'next-intl/server';
 import { coreServer } from '@clipper/auth/server';
 import { platformLabel, type Platform, type UiLocale } from '@clipper/ui';
-import { errorKey, isPlatform } from './pure';
+import { errorKey, isPlatform } from '@clipper/clipper-lib/pure';
 
 export type Fail = { ok: false; code: string; message: string };
 export type Result<T = null> = { ok: true; data: T } | Fail;

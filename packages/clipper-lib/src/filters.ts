@@ -1,5 +1,5 @@
 // Filter daftar campaign (F-C03) ↔ query string ↔ p_filters api.list_campaigns.
-import { isPlatform } from '../lib/pure';
+import { isPlatform } from './pure';
 
 export const SORTS = ['newest', 'rate', 'budget', 'deadline'] as const;
 export const STATUSES = ['active', 'live', 'paused', 'ended', 'all'] as const;

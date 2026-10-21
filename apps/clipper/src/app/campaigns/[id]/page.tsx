@@ -21,16 +21,15 @@ import {
   formatDateTime,
   formatIDR,
   formatNumber,
-  platformLabels,
   type Platform,
 } from '@clipper/ui';
 import { Brief } from '@/features/campaigns/brief';
 import { categoryNames } from '@/features/campaigns/cards';
-import { parseDetail } from '@/features/campaigns/detail';
+import { parseDetail } from '@clipper/clipper-lib/detail';
+import { detailText } from '@clipper/clipper-lib/detail-text';
 import { DetailCta } from '@/features/claim/detail-cta';
-import { arr, budgetUsedRatio, cardRates, httpsUrl, isPlatform, isUuid, maxViews, num, type RateRule } from '@/features/lib/pure';
+import { budgetUsedRatio, cardRates, httpsUrl, isPlatform, isUuid, maxViews } from '@clipper/clipper-lib/pure';
 import { core, errorText, myClipTerms, publicUrl, uiLocale } from '@/features/lib/server';
-import { formatAmount } from '@/features/lib/units';
 
 export const metadata: Metadata = { title: 'Detail campaign' };
 
@@ -80,52 +79,9 @@ export default async function CampaignDetailPage({ params, searchParams }: Props
   const top = cardRates(d.rules, platforms, idr).sort((a, b) => b.ratePer1k - a.ratePer1k)[0];
   const views = maxViews(d.est_remaining_views);
   const used = budgetUsedRatio(d.budget_idr, d.remaining_idr);
-  // Cap efektif = max_per_clip pool × ketentuan Trust Score & platform clipper ini (sama dengan accrual).
-  const capText = (p: (typeof d.pools)[number]) => {
-    const by = new Map<number, Platform[]>();
-    for (const pf of platforms) {
-      const v = (num(p.max_per_clip) * num(terms[pf]?.cap_pct ?? 100)) / 100;
-      by.set(v, [...(by.get(v) ?? []), pf]);
-    }
-    return [...by]
-      .map(([v, pfs]) => (by.size > 1 ? `${formatAmount(v, p, locale)} (${pfs.map((x) => platformLabels[x]).join(', ')})` : formatAmount(v, p, locale)))
-      .join(' · ');
-  };
   const when = (v: string | null) => (v ? `${formatDateTime(v, locale, { dateStyle: 'long', timeStyle: 'short' })} WIB` : '—');
-  const amount = (r: RateRule, v: unknown) =>
-    formatAmount(num(v), { code: r.code ?? 'IDR', unit_label: r.unit_label ?? '', decimals: r.decimals ?? 0 }, locale);
-  const describe = (r: RateRule): string[] => {
-    if (r.kind === 'per_1k_views') return [t('detail.rate.per1k', { amount: amount(r, r.params.rate) })];
-    if (r.kind === 'flat_per_post') return [t('detail.rate.flat', { amount: amount(r, r.params.amount) })];
-    if (r.kind === 'milestone_bonus')
-      return [t('detail.rate.milestone', { amount: amount(r, r.params.amount), views: formatNumber(num(r.params.threshold), locale) })];
-    if (r.kind === 'tiered_cpm')
-      return arr<Record<string, unknown>>(r.params.tiers).map((tier) =>
-        t('detail.rate.tier', {
-          from: formatCompact(num(tier.from), locale),
-          to: tier.to == null ? '∞' : formatCompact(num(tier.to), locale),
-          amount: amount(r, tier.rate),
-        }),
-      );
-    return [];
-  };
-  const rateGroups = [null, ...platforms]
-    .map((p) => ({ platform: p, rules: d.rules.filter((r) => r.platform === p) }))
-    .filter((g) => g.rules.length);
-  const tags = [...c.required_hashtags.map((h) => `#${h}`), ...c.required_mentions.map((m) => `@${m}`), ...c.required_links];
-  const requirements = [
-    c.min_duration_sec || c.max_duration_sec
-      ? t('detail.req.duration', { min: c.min_duration_sec ?? 0, max: c.max_duration_sec ?? '∞' })
-      : null,
-    c.min_followers ? t('detail.req.followers', { n: formatNumber(c.min_followers, locale) }) : null,
-    c.min_account_age_days ? t('detail.req.accountAge', { n: c.min_account_age_days }) : null,
-    c.min_trust_score ? t('detail.req.trust', { n: c.min_trust_score }) : null,
-    c.kyc_required ? t('detail.req.kyc') : null,
-    c.min_views ? t('detail.req.minViews', { n: formatNumber(c.min_views, locale) }) : null,
-    t('detail.req.maxClips', { n: c.max_clips_per_clipper, used: d.my.clips_used }),
-    c.clipper_quota ? t('detail.req.quota', { n: formatNumber(c.clipper_quota, locale) }) : null,
-    t(`detail.req.review.${c.review_mode === 'auto' ? 'auto' : 'manual'}`),
-  ].filter((x): x is string => !!x);
+  const text = detailText(d, platforms, terms, locale, (k, v) => t(k as Parameters<typeof t>[0], v as never));
+  const { capText, describe, rateGroups, tags, requirements } = text;
 
   return (
     <article className="flex flex-col gap-4">

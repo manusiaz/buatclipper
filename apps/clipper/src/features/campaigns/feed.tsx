@@ -6,7 +6,7 @@ import { useLocale, useTranslations } from 'next-intl';
 import { Alert, Button, CampaignCard, StatusBadge } from '@clipper/ui';
 import { loadMoreCampaigns } from './actions';
 import type { CampaignCardData } from './cards';
-import type { CampaignFilters } from './filters';
+import type { CampaignFilters } from '@clipper/clipper-lib/filters';
 
 export function CampaignFeed({ initial, next, filters }: { initial: CampaignCardData[]; next: string | null; filters: CampaignFilters }) {
   const t = useTranslations('clipper.campaigns');

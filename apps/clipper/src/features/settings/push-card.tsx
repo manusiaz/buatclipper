@@ -5,7 +5,7 @@
 import { useEffect, useState, useTransition } from 'react';
 import { useTranslations } from 'next-intl';
 import { Alert, Badge, Button } from '@clipper/ui';
-import { base64UrlToBytes } from '../lib/pure';
+import { base64UrlToBytes } from '@clipper/clipper-lib/pure';
 import { deletePush, savePush } from './actions';
 
 type State = 'loading' | 'unsupported' | 'ios-install' | 'denied' | 'off' | 'on';

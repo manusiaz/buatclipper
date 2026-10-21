@@ -1,7 +1,7 @@
 import { NextResponse, type NextRequest } from 'next/server';
 import { hosts } from '@clipper/auth';
 import { invokeFunction, requireClipper } from '@clipper/auth/server';
-import { isPlatform } from '@/features/lib/pure';
+import { isPlatform } from '@clipper/clipper-lib/pure';
 import { cookieOptions, encodeState, internalNext, redirectUri, STATE_COOKIE } from '@/features/social/oauth';
 
 // C1.5: minta URL izin platform ke core/social (authorize), simpan state + code_verifier, lalu ke halaman resmi platform.

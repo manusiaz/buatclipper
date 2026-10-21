@@ -3,7 +3,7 @@
   "version": "0.0.0",
   "private": true,
   "type": "module",
-  "exports": {".":"./src/index.ts","./messages/*":"./messages/*.json"},
+  "exports": {".":"./src/index.ts","./core":"./src/core.ts","./messages/*":"./messages/*.json"},
   "scripts": { "typecheck": "tsc --noEmit -p ." },
   "dependencies": {},
   "peerDependencies": {"next-intl":"catalog:"},

@@ -3,21 +3,11 @@
 import { redirect } from 'next/navigation';
 import { getAuth, identityServer } from './server';
 import { hosts, isAdmin, safeNext, type Claims, type SessionKind } from './index';
+import { EMAIL, mapAuthError as mapError } from './otp';
 
 export type AuthResult =
   | { ok: true; redirect?: string; step?: 'mfa_enroll' | 'mfa_challenge' }
   | { ok: false; error: string };
-
-const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-
-function mapError(e: { code?: string; status?: number; message?: string } | null): string {
-  const code = e?.code ?? '';
-  if (code.includes('rate_limit') || e?.status === 429) return 'rate_limited';
-  if (code.includes('captcha')) return 'captcha';
-  if (code === 'otp_expired' || code === 'invalid_credentials' || code === 'bad_jwt') return 'invalid_code';
-  if (code === 'mfa_verification_failed') return 'mfa_invalid';
-  return 'generic';
-}
 
 /** Kirim kode OTP (template Magic Link Auth identity berisi {{ .Token }}, §15.10). */
 export async function sendOtp(kind: SessionKind, email: string, captchaToken?: string): Promise<AuthResult> {

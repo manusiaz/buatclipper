@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { createTranslator } from 'next-intl';
 import id from '@clipper/i18n/messages/id/notifications';
 import en from '@clipper/i18n/messages/en/notifications';
-import { amountRefs, budgetLevel, EVENTS, notificationHref } from './render';
+import { amountRefs, budgetLevel, EVENTS, notificationHref } from './notifications';
 
 const links = { brand: 'https://brand.x', accounts: 'https://accounts.x' };
 const C = '11111111-2222-4333-8444-555555555555';

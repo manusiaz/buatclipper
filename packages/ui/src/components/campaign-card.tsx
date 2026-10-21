@@ -9,62 +9,9 @@ import { Icon, type IconName } from './icon';
 import { PlatformIcon, platformLabels, type Platform } from './platform-icon';
 import { ProgressBar } from './progress-bar';
 import { RelativeTime } from './relative-time';
+import { cardLabels, type CampaignCardLabels, type CampaignCtaState } from '../lib/campaign-labels';
 
-/** CTA per user from api.list_campaigns (F-C03). */
-export type CampaignCtaState = 'can_claim' | 'claimed_not_submitted' | 'slots_full' | 'budget_exhausted' | 'deadline_passed' | 'not_eligible';
-
-export interface CampaignCardLabels {
-  pinned: string;
-  isNew: string;
-  perViews: string;
-  viewsLeft: (compact: string) => string;
-  example: (views: string, earning: string) => string;
-  creators: (n: string) => string;
-  deadlinePrefix: string;
-  budgetUsed: string;
-  cta: Record<CampaignCtaState, string>;
-  claimExpires: string;
-}
-
-const LABELS_ID: CampaignCardLabels = {
-  pinned: 'Pinned',
-  isNew: 'Baru',
-  perViews: '/1K views',
-  viewsLeft: (c) => `± ${c} views lagi`,
-  example: (v, e) => `${v} views = ${e}`,
-  creators: (n) => `${n} kreator`,
-  deadlinePrefix: 'Berakhir',
-  budgetUsed: 'Budget terpakai',
-  cta: {
-    can_claim: 'Ambil Campaign',
-    claimed_not_submitted: 'Kirim Video',
-    slots_full: 'Slot penuh',
-    budget_exhausted: 'Budget habis',
-    deadline_passed: 'Deadline lewat',
-    not_eligible: 'Belum memenuhi syarat',
-  },
-  claimExpires: 'Sisa waktu',
-};
-
-const LABELS_EN: CampaignCardLabels = {
-  pinned: 'Pinned',
-  isNew: 'New',
-  perViews: '/1K views',
-  viewsLeft: (c) => `± ${c} views left`,
-  example: (v, e) => `${v} views = ${e}`,
-  creators: (n) => `${n} creators`,
-  deadlinePrefix: 'Ends',
-  budgetUsed: 'Budget used',
-  cta: {
-    can_claim: 'Claim campaign',
-    claimed_not_submitted: 'Submit video',
-    slots_full: 'Slots full',
-    budget_exhausted: 'Budget used up',
-    deadline_passed: 'Deadline passed',
-    not_eligible: 'Not eligible yet',
-  },
-  claimExpires: 'Time left',
-};
+export type { CampaignCardLabels, CampaignCtaState } from '../lib/campaign-labels';
 
 export interface CampaignRate {
   platform: Platform;
@@ -247,7 +194,7 @@ export function CampaignCard({
   labels: labelsProp,
   className,
 }: CampaignCardProps) {
-  const labels = { ...(locale === 'en' ? LABELS_EN : LABELS_ID), ...labelsProp, cta: { ...(locale === 'en' ? LABELS_EN : LABELS_ID).cta, ...labelsProp?.cta } };
+  const labels = { ...cardLabels(locale), ...labelsProp, cta: { ...cardLabels(locale).cta, ...labelsProp?.cta } };
   const sorted = [...rates].sort((a, b) => b.ratePer1k - a.ratePer1k);
   const top = sorted[0];
   const ratesDiffer = sorted.length > 1 && sorted.some((r) => r.ratePer1k !== top?.ratePer1k);

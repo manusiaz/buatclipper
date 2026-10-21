@@ -1,6 +1,6 @@
 // api.campaign_detail (jsonb) → bentuk bertipe untuk halaman detail (F-C04–C06).
-import type { RateRule } from '../lib/pure';
-import { arr, num, str } from '../lib/pure';
+import type { RateRule } from './pure';
+import { arr, num, str } from './pure';
 
 export interface DetailCampaign {
   id: string;

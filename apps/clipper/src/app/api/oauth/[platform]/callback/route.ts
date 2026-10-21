@@ -1,7 +1,7 @@
 import { NextResponse, type NextRequest } from 'next/server';
 import { hosts } from '@clipper/auth';
 import { invokeFunction, requireClipper } from '@clipper/auth/server';
-import { isPlatform } from '@/features/lib/pure';
+import { isPlatform } from '@clipper/clipper-lib/pure';
 import { cookieOptions, decodeState, redirectUri, STATE_COOKIE, verifyState } from '@/features/social/oauth';
 
 // Platform → app.{domain}/api/oauth/[platform]/callback: cek state (constant-time) → core/social connect → /social.

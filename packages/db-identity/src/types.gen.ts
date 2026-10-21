@@ -124,6 +124,9 @@ export type Database = {
 "record_consent":
 { Args: { "p_granted"?: boolean,"p_kind": string,"p_version"?: string }; Returns: undefined
                            },
+"save_expo_push_token":
+{ Args: { "p_token": string }; Returns: string
+                           },
 "save_push_subscription":
 { Args: { "p_auth": string,"p_endpoint": string,"p_p256dh": string }; Returns: string
                            },
@@ -182,7 +185,7 @@ export type Database = {
                            },
 "svc_push_subscriptions":
 { Args: { "p_user": string }; Returns: {
-              "auth_secret": string,"endpoint": string,"p256dh": string
+              "auth_secret": string,"endpoint": string,"kind": string,"p256dh": string
             }[]
                            },
 "svc_recipients":

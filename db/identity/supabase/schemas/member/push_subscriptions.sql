@@ -3,12 +3,18 @@
 create table member.push_subscriptions (
   id uuid primary key default gen_random_uuid(),
   user_id uuid not null references auth.users (id) on delete cascade,
-  endpoint text not null check (endpoint ~ '^https://'),
-  p256dh text not null,
-  auth_secret text not null,
+  -- webpush = PWA (VAPID, endpoint https + kunci p256dh/auth); expo = app native (token Expo push, tanpa kunci).
+  kind text not null default 'webpush' check (kind in ('webpush', 'expo')),
+  endpoint text not null,
+  p256dh text,
+  auth_secret text,
   created_at timestamptz not null default now(),
   last_used_at timestamptz,
-  constraint push_subscriptions_endpoint_unique unique (endpoint)
+  constraint push_subscriptions_endpoint_unique unique (endpoint),
+  constraint push_subscriptions_kind_shape check (
+    (kind = 'webpush' and endpoint ~ '^https://' and p256dh is not null and auth_secret is not null)
+    or (kind = 'expo' and endpoint ~ '^Expo(nent)?PushToken\[[A-Za-z0-9_-]{10,200}\]$' and p256dh is null and auth_secret is null)
+  )
 );
 create index push_subscriptions_user_idx on member.push_subscriptions (user_id);
 
@@ -38,6 +44,25 @@ begin
 end $$;
 revoke execute on function api.save_push_subscription(text, text, text) from public;
 grant execute on function api.save_push_subscription(text, text, text) to authenticated;
+
+-- App native (Android/iOS): token Expo push perangkat ini. Sama dengan web push: perangkat berganti akun → token pindah.
+create function api.save_expo_push_token(p_token text) returns uuid
+language plpgsql security definer set search_path = '' as $$
+declare
+  uid uuid := (select auth.uid());
+  sid uuid;
+begin
+  if uid is null then
+    raise exception 'login dulu' using errcode = '42501';
+  end if;
+  insert into member.push_subscriptions (user_id, kind, endpoint)
+  values (uid, 'expo', p_token)
+  on conflict (endpoint) do update set user_id = excluded.user_id, created_at = now()
+  returning id into sid;
+  return sid;
+end $$;
+revoke execute on function api.save_expo_push_token(text) from public;
+grant execute on function api.save_expo_push_token(text) to authenticated;
 
 create view api.push_subscriptions with (security_invoker = true) as
   select id, endpoint, created_at, last_used_at from member.push_subscriptions;

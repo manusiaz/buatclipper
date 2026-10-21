@@ -1,7 +1,7 @@
 // Data header app (lonceng, avatar, menu komunitas/AI Clip). Dibaca root layout; null = tanpa shell (login, belum onboarding).
 import { getAuth } from '@clipper/auth/server';
 import { isAdmin } from '@clipper/auth';
-import { communityLinks, httpsUrl } from '../lib/pure';
+import { communityLinks, httpsUrl } from '@clipper/clipper-lib/pure';
 import { core, publicUrl } from '../lib/server';
 
 export interface ChromeData {

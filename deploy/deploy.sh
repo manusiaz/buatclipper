@@ -187,7 +187,7 @@ prepare_stack() { # identity|core
     for k in PII_HMAC_KEY PII_ENC_KEYS PII_ENC_KEY_VERSION VAPID_PUBLIC_KEY VAPID_PRIVATE_KEY; do setenv "$e" "$k" "${!k}"; done
     # Xendit menandatangani callback dengan "Callback Verification Token" miliknya (header x-callback-token) → pakai itu.
     setenv "$e" DISBURSE_CALLBACK_TOKEN "${XENDIT_CALLBACK_TOKEN:-$DISBURSE_CALLBACK_TOKEN}"
-    for k in RESEND_API_KEY EMAIL_FROM XENDIT_SECRET_KEY; do setenv "$e" "$k" "${!k:-}"; done
+    for k in RESEND_API_KEY EMAIL_FROM XENDIT_SECRET_KEY EXPO_ACCESS_TOKEN; do setenv "$e" "$k" "${!k:-}"; done
     setenv "$e" DISBURSE_PROVIDER "${DISBURSE_PROVIDER:-mock}"
     setenv "$e" VAPID_SUBJECT "mailto:${SMTP_ADMIN_EMAIL:-admin@$DOMAIN}"
     setenv "$e" APP_URL "$APP"; setenv "$e" BRAND_URL "$BRAND"; setenv "$e" ACCOUNTS_URL "$ACC"; setenv "$e" ADMIN_URL "$ADMIN"

@@ -1,6 +1,6 @@
 // OAuth sosmed (C1.5): state anti-CSRF + code_verifier PKCE di cookie httpOnly 10 menit, path /api/oauth.
 import { hosts, safeNext } from '@clipper/auth';
-import { safeEqual } from '../lib/pure';
+import { safeEqual } from '@clipper/clipper-lib/pure';
 
 export const STATE_COOKIE = 'clipper-oauth';
 export const STATE_MAX_AGE = 600;

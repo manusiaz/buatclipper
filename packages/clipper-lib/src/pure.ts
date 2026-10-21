@@ -1,5 +1,5 @@
 // Helper murni (tanpa React/Next) — dipakai server & client, dites vitest.
-import { parseDbError } from '@clipper/i18n';
+import { parseDbError } from '@clipper/i18n/core';
 
 export const PLATFORM_ORDER = ['tiktok', 'instagram', 'youtube', 'threads', 'facebook', 'x'] as const;
 export type PlatformId = (typeof PLATFORM_ORDER)[number];
@@ -144,6 +144,18 @@ export function assetLinks(pkg: string | undefined, prints: string | undefined) 
       target: { namespace: 'android_app', package_name: name, sha256_cert_fingerprints: fps },
     },
   ];
+}
+
+export type FixKey = 'connect' | 'kyc' | 'onboarding' | 'trust';
+
+/** reason = cta_reason list_campaigns (mis. "need_social_account:tiktok") atau kode error claim → aksi perbaikan (web & native). */
+export function fixKey(reason: string | null | undefined): FixKey | null {
+  const r = (reason ?? '').replace(/^not_eligible:/, '');
+  if (r.startsWith('need_social_account') || r === 'min_followers' || r === 'min_account_age') return 'connect';
+  if (r === 'kyc_required') return 'kyc';
+  if (r === 'profile_missing') return 'onboarding';
+  if (r === 'min_trust_score') return 'trust';
+  return null;
 }
 
 /** public.community.links {discord, whatsapp, …} → link https yang terisi (F-C19). */

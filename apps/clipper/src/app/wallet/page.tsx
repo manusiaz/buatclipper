@@ -19,9 +19,9 @@ import {
   formatDate,
   formatIDR,
 } from '@clipper/ui';
-import { estimateRelease, nextBatchDate, num } from '@/features/lib/pure';
+import { estimateRelease, nextBatchDate, num } from '@clipper/clipper-lib/pure';
 import { core, myClipTerms, readSettings, rewardTypes, uiLocale } from '@/features/lib/server';
-import { formatAmount } from '@/features/lib/units';
+import { formatAmount } from '@clipper/clipper-lib/units';
 import { balances } from '@/features/wallet/data';
 
 export const metadata: Metadata = { title: 'Wallet' };

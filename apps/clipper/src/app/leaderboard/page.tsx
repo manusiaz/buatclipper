@@ -5,7 +5,7 @@ import { requireClipper } from '@clipper/auth/server';
 import { Button, EmptyState, Tabs, TabsContent, TabsList, TabsTrigger, formatDate } from '@clipper/ui';
 import { Board } from '@/features/leaderboard/board';
 import { CampaignPicker } from '@/features/leaderboard/campaign-picker';
-import { isUuid, weekStartUtc } from '@/features/lib/pure';
+import { isUuid, weekStartUtc } from '@clipper/clipper-lib/pure';
 import { core, uiLocale } from '@/features/lib/server';
 
 export const metadata: Metadata = { title: 'Leaderboard' };

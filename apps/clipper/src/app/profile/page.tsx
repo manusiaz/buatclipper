@@ -18,9 +18,9 @@ import {
   formatDate,
   formatNumber,
 } from '@clipper/ui';
-import { arr, communityLinks, num } from '@/features/lib/pure';
+import { arr, communityLinks, num } from '@clipper/clipper-lib/pure';
 import { core, publicUrl, readSettings, uiLocale } from '@/features/lib/server';
-import { formatAmount } from '@/features/lib/units';
+import { formatAmount } from '@clipper/clipper-lib/units';
 import { AppealButton } from '@/features/tasks/appeal-button';
 import { EditProfile } from '@/features/profile/edit-profile';
 

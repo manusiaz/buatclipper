@@ -1,82 +1,18 @@
-// Baris api.notifications → judul/isi terjemahan (namespace notifications) + link.
+// Baris api.notifications → judul/isi terjemahan (namespace notifications) + link (builder murni di render.ts).
 import { getTranslations } from 'next-intl/server';
 import { hosts } from '@clipper/auth';
-import { REJECT_REASONS } from '@clipper/i18n';
-import { formatDateTime, platformLabel, type Platform, type UiLocale } from '@clipper/ui';
-import { isPlatform, num } from '../lib/pure';
-import { formatAmount } from '../lib/units';
-import { amountRefs, budgetLevel, isEvent, notificationHref, text } from './render';
+import type { UiLocale } from '@clipper/ui';
+import { buildNotificationViews, type NotificationRow, type NotificationView } from '@clipper/clipper-lib/notifications';
 
-export interface NotificationRow {
-  id: number | null;
-  event: string | null;
-  payload: unknown;
-  read_at: string | null;
-  created_at: string | null;
-}
-
-export interface NotificationView {
-  id: number;
-  title: string;
-  body: string;
-  reason: string | null;
-  href: string | null;
-  read: boolean;
-  createdAt: string;
-  event: string;
-}
+export type { NotificationRow, NotificationView };
 
 export async function notificationViews(rows: NotificationRow[], locale: UiLocale): Promise<NotificationView[]> {
   const [t, tc] = await Promise.all([getTranslations('notifications'), getTranslations('common')]);
-  const when = (v: unknown) =>
-    typeof v === 'string' && !Number.isNaN(new Date(v).getTime())
-      ? `${formatDateTime(v, locale, { dateStyle: 'medium', timeStyle: 'short' })} WIB`
-      : '';
-  return rows
-    .filter((r) => r.id !== null)
-    .map((r) => {
-      const p = (r.payload && typeof r.payload === 'object' ? r.payload : {}) as Record<string, unknown>;
-      const event = r.event ?? '';
-      const amounts = amountRefs(p)
-        .map((a) => formatAmount(num(a.amount), { code: String(a.reward_type ?? 'IDR'), unit_label: String(a.unit_label ?? ''), decimals: 2 }, locale))
-        .join(', ');
-      const platform = text(p, 'platform', 30).toLowerCase();
-      const values = {
-        campaign: text(p, 'campaign_title') || t('fallback.campaign'),
-        platform: isPlatform(platform) ? platformLabel(platform as Platform) : text(p, 'platform', 30) || t('fallback.platform'),
-        handle: text(p, 'handle', 60) ? ` @${text(p, 'handle', 60)}` : '',
-        amount: amounts || t('fallback.amount'),
-        expiresAt: when(p.expires_at) || t('fallback.soon'),
-        until: when(p.until) || t('fallback.further'),
-        count: text(p, 'count', 6) || t('fallback.count'),
-        invoice: text(p, 'invoice_number', 40) || t('fallback.invoice'),
-        dueAt: when(p.due_at) || t('fallback.dueAt'),
-        reward: text(p, 'reward_name') || t('fallback.reward'),
-        title: text(p, 'title') || t('fallback.broadcast'),
-        body: text(p, 'body', 600),
-        org: text(p, 'org_name') || t('fallback.org'),
-        agency: text(p, 'agency_org_name') || t('fallback.agency'),
-        client: text(p, 'client_org_name') || t('fallback.client'),
-        level: budgetLevel(p.pct),
-        decision: text(p, 'decision', 20),
-        cause: text(p, 'reason', 60).startsWith('fraud:') ? 'fraud' : 'gone',
-        scope: p.submission_id ? 'submission' : 'account',
-      };
-      const known = isEvent(event);
-      // Kode alasan standar → label common.rejectReasons; pesan reviewer ikut di belakangnya.
-      const code = text(p, 'reason', 60);
-      const label = (REJECT_REASONS as readonly string[]).includes(code) ? tc(`rejectReasons.${code}`) : null;
-      const message = text(p, 'message', 300);
-      const reason = label ? (message ? `${label} — ${message}` : label) : message || text(p, 'reason', 300);
-      return {
-        id: r.id!,
-        event,
-        title: known ? t(`${event}.title`, values) : t('unknown.title'),
-        body: known ? t(`${event}.body`, values) : t('unknown.body'),
-        reason: reason && event !== 'broadcast.sent' ? t('reason', { reason }) : null,
-        href: notificationHref(event, p, { brand: hosts.brand, accounts: hosts.accounts }),
-        read: !!r.read_at,
-        createdAt: r.created_at ?? new Date().toISOString(),
-      };
-    });
+  return buildNotificationViews(
+    rows,
+    locale,
+    (k, v) => t(k as Parameters<typeof t>[0], v),
+    (k) => tc(k as Parameters<typeof tc>[0]),
+    { brand: hosts.brand, accounts: hosts.accounts },
+  );
 }

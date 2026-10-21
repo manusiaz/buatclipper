@@ -2,7 +2,7 @@
 
 import { requireClipper } from '@clipper/auth/server';
 import { fetchCampaignPage, type CampaignCardData } from './cards';
-import { parseFilters, type CampaignFilters } from './filters';
+import { parseFilters, type CampaignFilters } from '@clipper/clipper-lib/filters';
 
 /** Infinite scroll F-C03: halaman berikut dari next_cursor baris terakhir. */
 export async function loadMoreCampaigns(

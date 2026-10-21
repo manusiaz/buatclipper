@@ -1,0 +1,29 @@
+{
+  "name": "@clipper/clipper-lib",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    "./pure": "./src/pure.ts",
+    "./units": "./src/units.ts",
+    "./detail": "./src/detail.ts",
+    "./detail-text": "./src/detail-text.ts",
+    "./filters": "./src/filters.ts",
+    "./notifications": "./src/notifications.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit -p .",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@clipper/i18n": "workspace:*",
+    "@clipper/ui": "workspace:*"
+  },
+  "devDependencies": {
+    "@clipper/config": "workspace:*",
+    "next-intl": "catalog:",
+    "typescript": "catalog:",
+    "@types/node": "catalog:",
+    "vitest": "catalog:"
+  }
+}

@@ -6,6 +6,7 @@
 **/.env
 **/.env.*
 !**/.env.example
+apps/mobile
 db
 deploy
 e2e

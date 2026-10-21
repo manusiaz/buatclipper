@@ -2,7 +2,7 @@
 
 import { revalidatePath } from 'next/cache';
 import { invokeFunction, requireClipper } from '@clipper/auth/server';
-import { httpsUrl, isUuid, safeThumb } from '../lib/pure';
+import { httpsUrl, isUuid, safeThumb } from '@clipper/clipper-lib/pure';
 import { fail, ok, type Result } from '../lib/server';
 
 export interface VideoItem {
