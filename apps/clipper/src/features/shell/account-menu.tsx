@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { useTranslations } from 'next-intl';
 import { hosts } from '@clipper/auth';
 import { signOut } from '@clipper/auth/actions';
+import { deletePush } from '@/features/settings/actions';
 import {
   Avatar,
   DropdownMenu,
@@ -73,6 +74,12 @@ export function AccountMenu({ data, pathname }: { data: ChromeData; pathname: st
           onSelect={(e) => {
             e.preventDefault();
             start(async () => {
+              // Lepas web push perangkat ini selagi masih login (RLS): browser bersama tidak menerima notifikasi akun lama.
+              const sub = await navigator.serviceWorker
+                ?.getRegistration()
+                .then((r) => r?.pushManager.getSubscription())
+                .catch(() => null);
+              if (sub) await deletePush(sub.endpoint).then(() => sub.unsubscribe()).catch(() => {});
               await signOut('sso');
             });
           }}

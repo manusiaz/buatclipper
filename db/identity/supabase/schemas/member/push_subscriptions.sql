@@ -10,6 +10,8 @@ create table member.push_subscriptions (
   auth_secret text,
   created_at timestamptz not null default now(),
   last_used_at timestamptz,
+  -- expo: id ticket kiriman terakhir; receipt-nya dicek sebelum kiriman berikutnya (DeviceNotRegistered → token dihapus).
+  expo_ticket text,
   constraint push_subscriptions_endpoint_unique unique (endpoint),
   constraint push_subscriptions_kind_shape check (
     (kind = 'webpush' and endpoint ~ '^https://' and p256dh is not null and auth_secret is not null)

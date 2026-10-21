@@ -1,5 +1,5 @@
 import { assertEquals, assertRejects } from "@std/assert";
-import { type ExpoMessage, expoMessage, expoSend, type PushSender, sendPushToUser } from "./push.ts";
+import { type ExpoMessage, expoMessage, expoReceipts, expoSend, type PushSender, sendPushToUser } from "./push.ts";
 import { FakeRpc } from "./testing.ts";
 
 Deno.test("web push: 404/410 endpoints are deleted, others counted, delivered ones touched", async () => {
@@ -124,6 +124,81 @@ Deno.test("expo push (app native): one batch, DeviceNotRegistered deleted, ok to
     "ExponentPushToken[okokokokokokokok]",
     "https://push.test/ok",
   ]);
+});
+
+Deno.test("expo push: receipt of the previous ticket says DeviceNotRegistered → token deleted before sending", async () => {
+  const subs = [
+    {
+      kind: "expo" as const,
+      endpoint: "ExponentPushToken[gonegonegonegone]",
+      p256dh: null,
+      auth_secret: null,
+      expo_ticket: "old-gone",
+    },
+    {
+      kind: "expo" as const,
+      endpoint: "ExponentPushToken[okokokokokokokok]",
+      p256dh: null,
+      auth_secret: null,
+      expo_ticket: "old-ok",
+    },
+    {
+      kind: "expo" as const,
+      endpoint: "ExponentPushToken[newnewnewnewnewn]",
+      p256dh: null,
+      auth_secret: null,
+      expo_ticket: null,
+    },
+  ];
+  const rpc = new FakeRpc({
+    svc_push_subscriptions: () => subs,
+    svc_delete_push: () => null,
+    svc_touch_push: () => null,
+  });
+  const asked: string[][] = [];
+  const sent: string[] = [];
+  const res = await sendPushToUser(
+    {
+      rpc,
+      sender: {
+        send: () => Promise.resolve(),
+        expoReceipts: (ids) => (asked.push(ids),
+          Promise.resolve({
+            "old-gone": { status: "error", details: { error: "DeviceNotRegistered" } },
+            "old-ok": { status: "ok" },
+          })),
+        sendExpo: (
+          messages,
+        ) => (sent.push(...messages.map((m) => m.to)),
+          Promise.resolve(messages.map((_, i) => ({ status: "ok" as const, id: `new-${i}` })))),
+      },
+    },
+    "u1",
+    { title: "t", body: "b", url: "https://app.clipper.test/tasks", event: "submission.approved" },
+  );
+  assertEquals(asked, [["old-gone", "old-ok"]]);
+  assertEquals(sent, ["ExponentPushToken[okokokokokokokok]", "ExponentPushToken[newnewnewnewnewn]"]);
+  assertEquals(res, { sent: 2, removed: 1, failed: 0 });
+  assertEquals(rpc.named("svc_delete_push").map((c) => c.args.p_endpoint), ["ExponentPushToken[gonegonegonegone]"]);
+  assertEquals(
+    rpc.named("svc_touch_push").map((c) => c.args).sort((a, b) => String(a.p_ticket).localeCompare(String(b.p_ticket))),
+    [
+      { p_endpoint: "ExponentPushToken[okokokokokokokok]", p_ticket: "new-0" },
+      { p_endpoint: "ExponentPushToken[newnewnewnewnewn]", p_ticket: "new-1" },
+    ],
+  );
+});
+
+Deno.test("expoReceipts: getReceipts in chunks of 1000 ids, merged by ticket id", async () => {
+  const bodies: { ids: string[] }[] = [];
+  const ids = Array.from({ length: 1001 }, (_, i) => `t${i}`);
+  const out = await expoReceipts(ids, (_url, init) => {
+    const body = JSON.parse(String(init?.body)) as { ids: string[] };
+    bodies.push(body);
+    return Promise.resolve(Response.json({ data: { [body.ids[0]]: { status: "ok" } } }));
+  }, undefined);
+  assertEquals(bodies.map((b) => b.ids.length), [1000, 1]);
+  assertEquals(Object.keys(out).sort(), ["t0", "t1000"]);
 });
 
 Deno.test("expo push: Expo API down → tokens counted failed, nothing deleted", async () => {

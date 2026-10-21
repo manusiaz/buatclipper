@@ -1,7 +1,8 @@
 // Push (F-C14, alur 4) to every E-36 subscription of a user: web push for the PWA (VAPID private key = identity Edge
 // Function secret VAPID_PUBLIC_KEY, VAPID_PRIVATE_KEY, VAPID_SUBJECT) and Expo push for the native app (Expo relays to
 // FCM/APNs; EXPO_ACCESS_TOKEN optional, only when "enhanced push security" is on). Endpoints answering 404/410 and
-// Expo tokens reported DeviceNotRegistered are gone for good and are deleted; other failures wait for the next one.
+// Expo tokens reported DeviceNotRegistered (in the ticket, or in the receipt of the previous ticket, checked before the
+// next send) are gone for good and are deleted; other failures wait for the next one.
 import type { Rpc } from "./db.ts";
 import { env } from "./http.ts";
 
@@ -10,6 +11,8 @@ export interface PushSubscriptionRow {
   endpoint: string;
   p256dh: string | null;
   auth_secret: string | null;
+  /** Expo: ticket id of the last accepted send; its receipt tells whether the device was still registered. */
+  expo_ticket?: string | null;
 }
 
 /** Expo push ticket (https://docs.expo.dev/push-notifications/sending-notifications/#push-tickets). */
@@ -18,6 +21,9 @@ export type ExpoTicket = { status: "ok"; id?: string } | {
   message?: string;
   details?: { error?: string };
 };
+
+/** Expo push receipt: delivery result of a ticket, available for about a day after the send. */
+export type ExpoReceipt = { status: "ok" } | { status: "error"; message?: string; details?: { error?: string } };
 
 export interface PushMessage {
   title: string;
@@ -32,6 +38,8 @@ export interface PushSender {
   send(sub: PushSubscriptionRow, payload: string): Promise<void>;
   /** One ticket per message, same order; rejects on HTTP/network failure (whole batch retried next time). */
   sendExpo?(messages: ExpoMessage[]): Promise<ExpoTicket[]>;
+  /** Receipts by ticket id (missing = not ready or expired); rejects on HTTP/network failure. */
+  expoReceipts?(ids: string[]): Promise<Record<string, ExpoReceipt>>;
 }
 
 export interface ExpoMessage {
@@ -61,7 +69,22 @@ export function expoMessage(token: string, msg: PushMessage): ExpoMessage {
   };
 }
 
-const EXPO_PUSH_URL = "https://exp.host/--/api/v2/push/send";
+const EXPO_API = "https://exp.host/--/api/v2/push";
+
+async function expoPost<T>(path: string, body: unknown, fetchFn: typeof fetch, accessToken?: string): Promise<T> {
+  const res = await fetchFn(`${EXPO_API}/${path}`, {
+    method: "POST",
+    headers: {
+      "content-type": "application/json",
+      accept: "application/json",
+      ...(accessToken ? { authorization: `Bearer ${accessToken}` } : {}),
+    },
+    body: JSON.stringify(body),
+    signal: AbortSignal.timeout(10_000),
+  });
+  if (!res.ok) throw Object.assign(new Error(`expo push ${res.status}`), { statusCode: res.status });
+  return (await res.json() as { data?: T }).data as T;
+}
 
 export async function expoSend(
   messages: ExpoMessage[],
@@ -70,21 +93,21 @@ export async function expoSend(
 ): Promise<ExpoTicket[]> {
   const tickets: ExpoTicket[] = [];
   for (let i = 0; i < messages.length; i += 100) { // Expo: max 100 messages per request
-    const res = await fetchFn(EXPO_PUSH_URL, {
-      method: "POST",
-      headers: {
-        "content-type": "application/json",
-        accept: "application/json",
-        ...(accessToken ? { authorization: `Bearer ${accessToken}` } : {}),
-      },
-      body: JSON.stringify(messages.slice(i, i + 100)),
-      signal: AbortSignal.timeout(10_000),
-    });
-    if (!res.ok) throw Object.assign(new Error(`expo push ${res.status}`), { statusCode: res.status });
-    const json = await res.json() as { data?: ExpoTicket[] };
-    tickets.push(...(json.data ?? []));
+    tickets.push(...(await expoPost<ExpoTicket[]>("send", messages.slice(i, i + 100), fetchFn, accessToken) ?? []));
   }
   return tickets;
+}
+
+export async function expoReceipts(
+  ids: string[],
+  fetchFn: typeof fetch = fetch,
+  accessToken = Deno.env.get("EXPO_ACCESS_TOKEN"),
+): Promise<Record<string, ExpoReceipt>> {
+  const out: Record<string, ExpoReceipt> = {};
+  for (let i = 0; i < ids.length; i += 1000) { // Expo: max 1000 ids per request
+    Object.assign(out, await expoPost("getReceipts", { ids: ids.slice(i, i + 1000) }, fetchFn, accessToken) ?? {});
+  }
+  return out;
 }
 
 export interface PushResult {
@@ -110,6 +133,7 @@ export async function webPushSender(): Promise<PushSender> {
       );
     },
     sendExpo: (messages) => expoSend(messages),
+    expoReceipts: (ids) => expoReceipts(ids),
   };
 }
 
@@ -127,7 +151,22 @@ export async function sendPushToUser(
     [];
   const payload = JSON.stringify(msg);
   const result: PushResult = { sent: 0, removed: 0, failed: 0 };
-  const expo = subs.filter((s) => s.kind === "expo");
+  let expo = subs.filter((s) => s.kind === "expo");
+  const checked = expo.filter((s) => s.expo_ticket);
+  if (checked.length && deps.sender.expoReceipts) {
+    const receipts = await deps.sender.expoReceipts(checked.map((s) => s.expo_ticket!)).catch(() => ({}));
+    const gone = new Set(
+      checked.filter((s) => {
+        const r = (receipts as Record<string, ExpoReceipt>)[s.expo_ticket!];
+        return r?.status === "error" && r.details?.error === "DeviceNotRegistered";
+      }).map((s) => s.endpoint),
+    );
+    for (const endpoint of gone) {
+      await deps.rpc.invoke("svc_delete_push", { p_endpoint: endpoint });
+      result.removed++;
+    }
+    expo = expo.filter((s) => !gone.has(s.endpoint));
+  }
   if (expo.length) {
     let tickets: ExpoTicket[] = [];
     try {
@@ -139,7 +178,7 @@ export async function sendPushToUser(
       const t = tickets[i];
       if (t?.status === "ok") {
         result.sent++;
-        await deps.rpc.invoke("svc_touch_push", { p_endpoint: sub.endpoint }).catch(() => {});
+        await deps.rpc.invoke("svc_touch_push", { p_endpoint: sub.endpoint, p_ticket: t.id ?? null }).catch(() => {});
       } else if (t?.status === "error" && t.details?.error === "DeviceNotRegistered") {
         await deps.rpc.invoke("svc_delete_push", { p_endpoint: sub.endpoint });
         result.removed++;

@@ -1,7 +1,8 @@
 // Jalankan: pnpm e2e:mobile (butuh scripts/dev-stack.sh, e2e/seed.sql, accounts di :3001, dan build web app native
 // `pnpm --filter @clipper/mobile export:web`). Build web app native disajikan di host app (:3002) supaya origin-nya lolos
 // CORS Edge Function; kode layarnya sama dengan build Android/iOS (beda hanya modul .web stub: push, widget, share intent).
-// Journey: login OTP native → gate onboarding → onboarding di accounts → tab Campaign → claim → Tugas → share → Wallet.
+// Journey: login OTP native → gate onboarding → onboarding di accounts → tab Campaign → claim → Tugas → share → Wallet
+// → tema gelap → keluar.
 const { chromium } = require('playwright');
 const { execFileSync } = require('child_process');
 const fs = require('fs');
@@ -122,6 +123,10 @@ const server = http.createServer((req, res) => {
     await page.waitForTimeout(500);
     await shot('08-account-dark');
     log('native: tema gelap');
+    // 8. Keluar: push perangkat dilepas lalu sesi lokal dihapus → kembali ke login
+    await page.getByRole('button', { name: 'Keluar' }).last().click();
+    await page.getByRole('heading', { name: 'Masuk ke Clipper' }).waitFor({ timeout: 15000 });
+    log('native: keluar → layar login');
   } catch (e) {
     await shot('99-fail').catch(() => {});
     console.error('✗', e.message, '@', page.url());

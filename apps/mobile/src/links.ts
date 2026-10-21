@@ -9,3 +9,6 @@ export function nativeRoute(href: string): string | null {
   if (/^\/(tasks|wallet|social|notifications)(\?|$)/.test(path)) return path.split('?')[0]!;
   return path === '/campaigns' || path === '/' ? '/' : null;
 }
+
+/** href tanpa padanan native → URL yang bisa dibuka browser (path relatif notifikasi = halaman app.{domain}). */
+export const webHref = (href: string) => (href.startsWith('/') ? env.appUrl + href : href);

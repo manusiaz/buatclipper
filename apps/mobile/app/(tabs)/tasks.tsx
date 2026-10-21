@@ -4,7 +4,8 @@ import { useCallback } from 'react';
 import { View } from 'react-native';
 import { useLocale, useTranslations } from 'use-intl';
 import { taskGroup, type TaskGroup } from '@clipper/clipper-lib/pure';
-import { formatCompact, formatIDR, formatRelative } from '@clipper/ui/format';
+import { formatAmount } from '@clipper/clipper-lib/units';
+import { formatCompact, formatRelative } from '@clipper/ui/format';
 import { useAuth } from '@/auth';
 import { tasks, useLoad } from '@/data';
 import { Alert, Badge, Button, Card, EmptyState, PlatformIcon, Row, Txt } from '@/ui/core';
@@ -67,9 +68,12 @@ export default function Tasks() {
                   <Txt variant="caption" tone="muted" numberOfLines={1} style={{ flex: 1 }}>{s.url}</Txt>
                 </Row>
                 <Row style={{ justifyContent: 'space-between' }}>
-                  <Txt variant="caption" tone="text2">{t('tasks.views', { n: formatCompact(s.views, locale) })}</Txt>
-                  {s.earned ? <Txt variant="caption" weight="700" tone="successFg">{formatIDR(s.earned, { locale })}</Txt> : null}
+                  <Txt variant="caption" tone="text2">{`${t('tasks.views')}: ${formatCompact(s.views, locale)}`}</Txt>
+                  {s.earned.map((e) => (
+                    <Txt key={e.unit?.id ?? e.unit?.code ?? 'idr'} variant="caption" weight="700" tone="successFg">{formatAmount(e.pending + e.released, e.unit, locale)}</Txt>
+                  ))}
                 </Row>
+                {s.counted != null ? <Txt variant="caption" tone="muted">{t('tasks.counted', { n: formatCompact(s.counted, locale) })}</Txt> : null}
               </Card>
             ))}
           </View>

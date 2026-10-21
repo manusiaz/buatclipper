@@ -21,7 +21,7 @@ import {
 import { Flash } from '@/features/lib/flash';
 import { estimateRelease, isPlatform, num, taskGroup, type TaskGroup } from '@clipper/clipper-lib/pure';
 import { core, myClipTerms, rewardTypes, uiLocale } from '@/features/lib/server';
-import { formatAmount } from '@clipper/clipper-lib/units';
+import { earningsBySubmission, formatAmount } from '@clipper/clipper-lib/units';
 import { AppealButton } from '@/features/tasks/appeal-button';
 
 export const metadata: Metadata = { title: 'Tugas' };
@@ -74,19 +74,7 @@ export default async function TasksPage({ searchParams }: Props) {
   const campaign = new Map((campaigns.data ?? []).map((c) => [c.id, c]));
   const accountStatus = new Map((accounts.data ?? []).map((a) => [a.id, a.status]));
 
-  const earningOf = (sid: string) => {
-    const per = new Map<string, { unit: ReturnType<typeof poolUnit.get>; pending: number; released: number }>();
-    for (const e of earnings.data ?? []) {
-      if (e.submission_id !== sid) continue;
-      const unit = poolUnit.get(e.pool_id);
-      const key = unit?.id ?? e.pool_id ?? '';
-      const cur = per.get(key) ?? { unit, pending: 0, released: 0 };
-      if (e.released_at) cur.released += num(e.amount);
-      else cur.pending += num(e.amount);
-      per.set(key, cur);
-    }
-    return [...per.values()].filter((x) => x.pending > 0 || x.released > 0);
-  };
+  const earningOf = earningsBySubmission(earnings.data ?? [], poolUnit);
   const decisionOf = (sid: string) => (decisions.data ?? []).filter((d) => d.target_id === sid);
 
   const grouped = new Map<TaskGroup, typeof list>(GROUPS.map((g) => [g, []]));

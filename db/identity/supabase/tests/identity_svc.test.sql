@@ -142,6 +142,18 @@ select isnt((select last_used_at from member.push_subscriptions where endpoint =
 select is((select count(*)::int from member.push_subscriptions where endpoint = 'https://push.contoh.id/b-2'), 0,
           'svc_delete_push menghapus endpoint mati');
 
+-- Expo push: ticket kiriman terakhir disimpan (receipt-nya dicek sebelum kiriman berikutnya); touch tanpa ticket tidak menghapusnya.
+set local role authenticated;
+set local request.jwt.claims = '{"sub":"00000000-0000-0000-0000-0000000000b1","role":"authenticated","aal":"aal1"}';
+select api.save_expo_push_token('ExponentPushToken[svcsvcsvcsvcsvcs]');
+reset role;
+set local role service_role;
+select api.svc_touch_push('ExponentPushToken[svcsvcsvcsvcsvcs]', 'ticket-1');
+select api.svc_touch_push('ExponentPushToken[svcsvcsvcsvcsvcs]');
+select is((select expo_ticket from api.svc_push_subscriptions('00000000-0000-0000-0000-0000000000b1') where kind = 'expo'),
+          'ticket-1', 'svc_touch_push menyimpan ticket Expo; svc_push_subscriptions mengembalikannya');
+reset role;
+
 -- Unduh data saya: hanya baris milik sendiri, ciphertext ikut sebagai hex bytea.
 set local role service_role;
 select is((api.svc_my_data('00000000-0000-0000-0000-0000000000b1') -> 'kyc' ->> 'nik_enc'), '\x0b01',

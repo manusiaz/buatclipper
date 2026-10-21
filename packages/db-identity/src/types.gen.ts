@@ -185,7 +185,7 @@ export type Database = {
                            },
 "svc_push_subscriptions":
 { Args: { "p_user": string }; Returns: {
-              "auth_secret": string,"endpoint": string,"kind": string,"p256dh": string
+              "auth_secret": string,"endpoint": string,"expo_ticket": string,"kind": string,"p256dh": string
             }[]
                            },
 "svc_recipients":
@@ -194,7 +194,7 @@ export type Database = {
             }[]
                            },
 "svc_touch_push":
-{ Args: { "p_endpoint": string }; Returns: undefined
+{ Args: { "p_endpoint": string,"p_ticket"?: string }; Returns: undefined
                            },
 "svc_user_payout_methods":
 { Args: { "p_user": string }; Returns: {

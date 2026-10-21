@@ -94,9 +94,9 @@ $$;
 
 -- Push (alur 4): langganan per user (web push + token Expo app native), buang endpoint/token mati, catat terakhir dipakai.
 create function api.svc_push_subscriptions(p_user uuid)
-returns table (kind text, endpoint text, p256dh text, auth_secret text)
+returns table (kind text, endpoint text, p256dh text, auth_secret text, expo_ticket text)
 language sql stable security definer set search_path = '' as $$
-  select ps.kind, ps.endpoint, ps.p256dh, ps.auth_secret
+  select ps.kind, ps.endpoint, ps.p256dh, ps.auth_secret, ps.expo_ticket
   from member.push_subscriptions ps
   where ps.user_id = p_user
   order by ps.created_at;
@@ -108,10 +108,11 @@ language sql security definer set search_path = '' as $$
   delete from member.push_subscriptions where endpoint = p_endpoint;
 $$;
 
-create function api.svc_touch_push(p_endpoint text)
+create function api.svc_touch_push(p_endpoint text, p_ticket text default null)
 returns void
 language sql security definer set search_path = '' as $$
-  update member.push_subscriptions set last_used_at = now() where endpoint = p_endpoint;
+  update member.push_subscriptions set last_used_at = now(), expo_ticket = coalesce(p_ticket, expo_ticket)
+  where endpoint = p_endpoint;
 $$;
 
 -- Rekonsiliasi ID lintas DB (alur 10). Rekening tombstone (akun dihapus) dihitung hilang karena tidak bisa dipakai lagi.
@@ -252,7 +253,7 @@ revoke execute on function api.svc_platform_roles(uuid) from public, anon, authe
 revoke execute on function api.svc_admin_ids(text[]) from public, anon, authenticated;
 revoke execute on function api.svc_push_subscriptions(uuid) from public, anon, authenticated;
 revoke execute on function api.svc_delete_push(text) from public, anon, authenticated;
-revoke execute on function api.svc_touch_push(text) from public, anon, authenticated;
+revoke execute on function api.svc_touch_push(text, text) from public, anon, authenticated;
 revoke execute on function api.svc_check_ids(uuid[], uuid[], uuid[]) from public, anon, authenticated;
 revoke execute on function api.svc_close_member(uuid, boolean, date) from public, anon, authenticated;
 revoke execute on function api.svc_audit(uuid, text, text, jsonb) from public, anon, authenticated;
@@ -267,7 +268,7 @@ grant execute on function api.svc_platform_roles(uuid) to service_role;
 grant execute on function api.svc_admin_ids(text[]) to service_role;
 grant execute on function api.svc_push_subscriptions(uuid) to service_role;
 grant execute on function api.svc_delete_push(text) to service_role;
-grant execute on function api.svc_touch_push(text) to service_role;
+grant execute on function api.svc_touch_push(text, text) to service_role;
 grant execute on function api.svc_check_ids(uuid[], uuid[], uuid[]) to service_role;
 grant execute on function api.svc_close_member(uuid, boolean, date) to service_role;
 grant execute on function api.svc_audit(uuid, text, text, jsonb) to service_role;

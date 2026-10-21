@@ -7,7 +7,7 @@ import { formatRelative } from '@clipper/ui/format';
 import { useAuth } from '@/auth';
 import { markRead, notifications, useLoad } from '@/data';
 import { env } from '@/env';
-import { nativeRoute } from '@/links';
+import { nativeRoute, webHref } from '@/links';
 import { useTheme } from '@/theme';
 import { Button, Card, EmptyState, Row, Txt } from '@/ui/core';
 import { Screen } from '@/ui/screen';
@@ -36,7 +36,7 @@ export default function Notifications() {
     if (!href) return;
     const r = nativeRoute(href);
     if (r) router.push(r as never);
-    else await Linking.openURL(href);
+    else await Linking.openURL(webHref(href));
   };
   return (
     <Screen back title={tn('title')} refreshing={data.loading && !!data.data} onRefresh={data.reload}>

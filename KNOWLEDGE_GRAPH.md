@@ -3,7 +3,7 @@
 > Everything is one system. Every page is a node; every line is a real data or design dependency.
 > Dikelola oleh skill `alaconnect`. Edit inkremental — jangan generate ulang.
 
-Last verified: 6a084ab — audit PRD 2 (high/medium/low terverifikasi) selesai; loop Claudex R21–R37 konvergen ([] di R33 & R37): build 5 app, E2E lintas host 9/9, pgTAP core 972 + identity 119, deno core 80 + identity 91, vitest 204, db lint bersih (2026-10-20)
+Last verified: cd646c8 (+ perbaikan Codex R50) — app native Expo (apps/mobile) + push native + packages/clipper-lib: lint (check-arch + drift token), typecheck semua workspace, vitest 215, deno identity 97 + core 81, pgTAP identity 129 + core 972 (stub & supabase test db), db lint + advisors identity bersih, build 5 app, e2e 10/10, e2e:mobile 10/10, expo prebuild android+ios (2026-10-21)
 
 **Status:** sistem sudah dibangun dan dites. 5 app Next.js 16 (`apps/web`, `apps/accounts`, `apps/clipper`, `apps/brand`, `apps/admin`) di atas `packages/{ui,campaign-builder,clipper-lib,auth,db-core,db-identity,i18n,config}`, plus app native Expo `apps/mobile` (Android + iOS, satu kode). 2 project Supabase (`db/identity`, `db/core`): schema deklaratif, `migrations/` (pg-delta), config.toml, seed.sql. 12 Edge Function: core `bridge`, `fulfill`, `notify`, `refresh-tokens`, `social`, `track-worker`; identity `admin-auth`, `bridge`, `delete-account`, `disburse`, `member-data`, `pii-export`. Tes: pgTAP 6 file (`db/core/supabase/tests` 4, `db/identity/supabase/tests` 2), unit test app/package (`pnpm test`, 38 file `*.test.ts(x)`), unit test Deno (29 file `*_test.ts` di `db/*/supabase/functions`), journey E2E lintas host `e2e/journey.cjs` (Playwright: web → accounts → app → undangan → brand), CI `.github/workflows/ci.yml` (job apps, functions, db per project). Diverifikasi di 7408318: `pnpm lint` ok, `pnpm typecheck` ok, `pnpm test` 197 tes lulus (campaign-builder 69, accounts 32, web 29, admin 24, brand 22, clipper 21), `pnpm build` 5 app ok, Deno fmt/lint/check ok + tes core 70 & identity 82, pgTAP core 727 & identity 107 (stub Postgres 16 dan `supabase test db`), `supabase db lint` (schema app) & `db advisors --type security` bersih, `pnpm e2e` 9/9 langkah 2× di build produksi. Node yang filenya ada punya kolom Path; bukti edge = `file:line` (dicek `check_graph.py`). Bukti yang masih rujukan PRD v0.3.1 = belum ada satu baris kode yang menyebut target, atau kodenya ada di folder route group `(account)`, `(auth)`, `(console)`: regex checker tidak menerima tanda kurung, jadi baris kodenya ditulis `kode baris N` (dicek manual). `(belum di kode)` = edge PRD yang tidak dibangun begitu. Edge `reads` page → table = dependency data logis; di kode jalannya lewat view/fungsi schema `api` (`policy:core.api-only`). Rujukan lintas DB (`table → table` antar project) tidak punya foreign key.
 
@@ -622,8 +622,8 @@ Arah: `A --tipe--> B` = A bergantung pada B. `?` = belum terverifikasi.
 | `page:app/tasks` | reads | `table:market.claims` | apps/clipper/src/app/tasks/page.tsx:45 |
 | `page:app/tasks` | reads | `table:tracking.submissions` | apps/clipper/src/app/tasks/page.tsx:47 |
 | `page:app/tasks` | reads | `table:tracking.view_snapshots` | PRD v0.3.1 §14 kg.yaml features.F-C07 (belum di kode: views dari submissions.counted_views/last_snapshot_at, page.tsx baris 48) |
-| `page:app/tasks` | routes-to | `api:GET app/api/oauth/[platform]/start` | apps/clipper/src/app/tasks/page.tsx:234 (sambung ulang akun) |
-| `page:app/tasks` | routes-to | `page:app/wallet` | apps/clipper/src/app/tasks/page.tsx:272 |
+| `page:app/tasks` | routes-to | `api:GET app/api/oauth/[platform]/start` | apps/clipper/src/app/tasks/page.tsx:222 (sambung ulang akun) |
+| `page:app/tasks` | routes-to | `page:app/wallet` | apps/clipper/src/app/tasks/page.tsx:260 |
 | `page:app/tasks` | wrapped-by | `layout:clipper` | apps/clipper/src/app/layout.tsx:31 |
 | `page:app/wallet` | calls | `api:rpc core.my_clip_terms` | apps/clipper/src/features/lib/server.ts:34 (myClipTerms → rpc my_clip_terms: hold per platform untuk tanggal Tersedia) |
 | `page:app/wallet` | reads | `table:finance.ledger_accounts` | PRD v0.3.1 §14 kg.yaml features.F-C08; kode: view api.wallet_balances (features/wallet/data.ts baris 21) |
@@ -759,17 +759,17 @@ Arah: `A --tipe--> B` = A bergantung pada B. `?` = belum terverifikasi.
 | `layout:clipper` | calls | `mod:db-identity` | apps/clipper/package.json:16 |
 | `layout:clipper` | configured-by | `config:host.app` | packages/auth/src/index.ts:8 |
 | `layout:clipper` | renders | `mod:ui` | apps/clipper/src/app/layout.tsx:6 |
-| `layout:clipper` | routes-to | `ext:ai-clip` | apps/clipper/src/features/shell/account-menu.tsx:61 |
-| `layout:clipper` | routes-to | `ext:community` | apps/clipper/src/features/shell/account-menu.tsx:55 |
-| `layout:clipper` | routes-to | `page:accounts/` | apps/clipper/src/features/shell/account-menu.tsx:23 |
+| `layout:clipper` | routes-to | `ext:ai-clip` | apps/clipper/src/features/shell/account-menu.tsx:62 |
+| `layout:clipper` | routes-to | `ext:community` | apps/clipper/src/features/shell/account-menu.tsx:56 |
+| `layout:clipper` | routes-to | `page:accounts/` | apps/clipper/src/features/shell/account-menu.tsx:24 |
 | `layout:clipper` | routes-to | `page:app/campaigns` | apps/clipper/src/features/shell/app-chrome.tsx:33 |
-| `layout:clipper` | routes-to | `page:app/leaderboard` | apps/clipper/src/features/shell/account-menu.tsx:45 |
+| `layout:clipper` | routes-to | `page:app/leaderboard` | apps/clipper/src/features/shell/account-menu.tsx:46 |
 | `layout:clipper` | routes-to | `page:app/login` | packages/auth/src/proxy.ts:84 |
 | `layout:clipper` | routes-to | `page:app/notifications` | apps/clipper/src/features/shell/app-chrome.tsx:54 |
 | `layout:clipper` | routes-to | `page:app/offline` | apps/clipper/public/sw.js:36 (fallback service worker, didaftarkan layout.tsx baris 41) |
-| `layout:clipper` | routes-to | `page:app/profile` | apps/clipper/src/features/shell/account-menu.tsx:42 |
-| `layout:clipper` | routes-to | `page:app/referral` | apps/clipper/src/features/shell/account-menu.tsx:48 |
-| `layout:clipper` | routes-to | `page:app/settings` | apps/clipper/src/features/shell/account-menu.tsx:51 |
+| `layout:clipper` | routes-to | `page:app/profile` | apps/clipper/src/features/shell/account-menu.tsx:43 |
+| `layout:clipper` | routes-to | `page:app/referral` | apps/clipper/src/features/shell/account-menu.tsx:49 |
+| `layout:clipper` | routes-to | `page:app/settings` | apps/clipper/src/features/shell/account-menu.tsx:52 |
 | `layout:clipper` | routes-to | `page:app/social` | apps/clipper/src/features/shell/app-chrome.tsx:36 |
 | `layout:clipper` | routes-to | `page:app/tasks` | apps/clipper/src/features/shell/app-chrome.tsx:34 |
 | `layout:clipper` | routes-to | `page:app/wallet` | apps/clipper/src/features/shell/app-chrome.tsx:35 |
@@ -782,10 +782,10 @@ Arah: `A --tipe--> B` = A bergantung pada B. `?` = belum terverifikasi.
 | `layout:mobile` | calls | `mod:clipper-lib` | apps/mobile/src/data.ts:4 |
 | `layout:mobile` | renders | `mod:native-tokens` | apps/mobile/src/theme.tsx:4 |
 | `layout:mobile` | renders | `mod:mobile-widget` | apps/mobile/index.ts:7 (registerWidgetTaskHandler, Android) |
-| `layout:mobile` | calls | `api:rpc core.list_campaigns` | apps/mobile/src/data.ts:93 |
-| `layout:mobile` | calls | `api:rpc core.claim_campaign` | apps/mobile/src/data.ts:167 |
-| `layout:mobile` | calls | `api:fn core/social` | apps/mobile/src/data.ts:185 (list_videos; submit baris 206) |
-| `layout:mobile` | reads | `table:finance.ledger_accounts` | kode: view api.wallet_balances (apps/mobile src/data.ts baris 255) |
+| `layout:mobile` | calls | `api:rpc core.list_campaigns` | apps/mobile/src/data.ts:94 |
+| `layout:mobile` | calls | `api:rpc core.claim_campaign` | apps/mobile/src/data.ts:168 |
+| `layout:mobile` | calls | `api:fn core/social` | apps/mobile/src/data.ts:186 (list_videos; submit baris 207) |
+| `layout:mobile` | reads | `table:finance.ledger_accounts` | kode: view api.wallet_balances (apps/mobile src/data.ts baris 259) |
 | `layout:mobile` | calls | `api:rpc identity.save_expo_push_token` | apps/mobile/src/push.ts:49 |
 | `layout:mobile` | calls | `ext:expo-push` | apps/mobile/src/push.ts:26 (token perangkat dari Expo) |
 | `layout:mobile` | configured-by | `config:eas` | apps/mobile/app.config.ts:62 (extra.eas.projectId) |
@@ -793,7 +793,7 @@ Arah: `A --tipe--> B` = A bergantung pada B. `?` = belum terverifikasi.
 | `layout:mobile` | routes-to | `page:accounts/kyc` | kode: app/(tabs)/index.tsx baris 92 (fix kyc_required) |
 | `layout:mobile` | routes-to | `page:app/social` | kode: app/(tabs)/social.tsx baris 27 (OAuth resmi platform di browser) |
 | `layout:mobile` | routes-to | `page:app/wallet/withdraw` | kode: app/(tabs)/wallet.tsx baris 55 |
-| `mod:mobile-widget` | reads | `table:finance.ledger_accounts` | kode: wallet() → view api.wallet_balances (apps/mobile src/widget.tsx baris 9, src/data.ts baris 255) |
+| `mod:mobile-widget` | reads | `table:finance.ledger_accounts` | kode: wallet() → view api.wallet_balances (apps/mobile src/widget.tsx baris 9, src/data.ts baris 259) |
 | `mod:native-tokens` | reads | `mod:ui` | packages/ui/scripts/gen-native-tokens.mjs:67 |
 | `layout:clipper` | calls | `mod:clipper-lib` | apps/clipper/package.json:16 |
 | `layout:web` | calls | `mod:db-core` | apps/web/src/lib/core.ts:2 (client anon app web) |
@@ -929,9 +929,9 @@ Arah: `A --tipe--> B` = A bergantung pada B. `?` = belum terverifikasi.
 | `api:fn identity/bridge` | calls | `ext:web-push` | db/identity/supabase/functions/bridge/index.ts:29 |
 | `api:fn identity/bridge` | configured-by | `env:BRIDGE_SECRET_CORE_TO_IDENTITY` | db/identity/supabase/functions/bridge/index.ts:21 |
 | `api:fn identity/bridge` | configured-by | `env:RESEND_API_KEY` | db/identity/supabase/functions/bridge/index.ts:28 |
-| `api:fn identity/bridge` | configured-by | `env:VAPID_PRIVATE_KEY` | db/identity/supabase/functions/_shared/push.ts:102 |
-| `api:fn identity/bridge` | calls | `ext:expo-push` | db/identity/supabase/functions/_shared/push.ts:64 (send_push: token kind expo dikirim batch 100) |
-| `api:fn identity/bridge` | configured-by | `env:EXPO_ACCESS_TOKEN` | db/identity/supabase/functions/_shared/push.ts:69 |
+| `api:fn identity/bridge` | configured-by | `env:VAPID_PRIVATE_KEY` | db/identity/supabase/functions/_shared/push.ts:125 |
+| `api:fn identity/bridge` | calls | `ext:expo-push` | db/identity/supabase/functions/_shared/push.ts:72 (send_push: token kind expo dikirim batch 100; receipt ticket sebelumnya dicek dulu, getReceipts) |
+| `api:fn identity/bridge` | configured-by | `env:EXPO_ACCESS_TOKEN` | db/identity/supabase/functions/_shared/push.ts:92 |
 | `api:fn identity/bridge` | guarded-by | `policy:bridge-hmac` | db/identity/supabase/functions/bridge/handler.ts:200 |
 | `api:fn identity/bridge` | reads | `table:auth.users` | db/identity/supabase/functions/bridge/handler.ts:69 |
 | `api:fn identity/bridge` | calls | `api:fn core/bridge` | db/identity/supabase/functions/_shared/disburse.ts:264 (aksi disburse: get_payout, lalu mark_instant) |
@@ -947,8 +947,8 @@ Arah: `A --tipe--> B` = A bergantung pada B. `?` = belum terverifikasi.
 | `api:fn identity/delete-account` | writes | `table:auth.users` | db/identity/supabase/functions/delete-account/handler.ts:67 |
 | `api:fn identity/delete-account` | writes | `table:bucket.kyc-docs` | db/identity/supabase/functions/delete-account/handler.ts:66 |
 | `api:fn identity/delete-account` | writes | `table:member.consents` | db/identity/supabase/functions/delete-account/handler.ts:7 (deleteUser baris 67 → FK on delete cascade) |
-| `api:fn identity/delete-account` | writes | `table:member.kyc_records` | db/identity/supabase/schemas/api/svc.sql:163 (rpc svc_close_member: tombstone) |
-| `api:fn identity/delete-account` | writes | `table:member.payout_methods` | db/identity/supabase/schemas/api/svc.sql:183 (rpc svc_close_member) |
+| `api:fn identity/delete-account` | writes | `table:member.kyc_records` | db/identity/supabase/schemas/api/svc.sql:164 (rpc svc_close_member: tombstone) |
+| `api:fn identity/delete-account` | writes | `table:member.payout_methods` | db/identity/supabase/schemas/api/svc.sql:184 (rpc svc_close_member) |
 | `api:fn identity/delete-account` | writes | `table:member.recipient_details` | PRD v0.3.1 §15.5 alur 7 hapus PII (kecuali wajib pajak); kode: auth.admin.deleteUser (delete-account/handler.ts baris 67) → FK on delete cascade (member/recipient_details.sql baris 4) |
 | `api:fn identity/disburse` | calls | `api:fn core/bridge` | db/identity/supabase/functions/disburse/index.ts:14 (callback → core mark_instant) |
 | `api:fn identity/disburse` | calls | `ext:disbursement` | PRD v0.3.1 Lampiran A.3 identity/disburse (belum di kode: fungsi ini hanya menerima callback penyedia; panggilan ke penyedia = identity/bridge aksi disburse → _shared/disburse.ts runDisburse) |
@@ -983,7 +983,7 @@ Arah: `A --tipe--> B` = A bergantung pada B. `?` = belum terverifikasi.
 | `api:fn identity/pii-export` | reads | `table:member.recipient_details` | db/identity/supabase/schemas/api/svc.sql:62 (rpc svc_recipients) |
 | `api:fn identity/pii-export` | writes | `table:bucket.payout-proofs` | db/identity/supabase/functions/pii-export/handler.ts:231 |
 | `api:fn identity/pii-export` | writes | `table:bucket.pii-exports` | db/identity/supabase/functions/pii-export/handler.ts:46 |
-| `api:fn identity/pii-export` | writes | `table:member.audit_logs` | db/identity/supabase/schemas/api/svc.sql:206 (rpc svc_audit, handler.ts baris 42) |
+| `api:fn identity/pii-export` | writes | `table:member.audit_logs` | db/identity/supabase/schemas/api/svc.sql:207 (rpc svc_audit, handler.ts baris 42) |
 | `api:rpc core.accept_org_invite` | reads | `table:market.org_invites` | db/core/supabase/schemas/api/org.sql:231 |
 | `api:rpc core.accept_org_invite` | writes | `table:market.org_invites` | db/core/supabase/schemas/api/org.sql:249 |
 | `api:rpc core.accept_org_invite` | writes | `table:market.org_members` | db/core/supabase/schemas/api/org.sql:248 |
@@ -1167,10 +1167,10 @@ Arah: `A --tipe--> B` = A bergantung pada B. `?` = belum terverifikasi.
 | `api:rpc identity.record_consent` | guarded-by | `policy:identity.rls-self` | PRD v0.3.1 §15.4 data sendiri; kode: uid = auth.uid() (api/record_consent.sql baris 10) |
 | `api:rpc identity.record_consent` | reads | `table:member.legal_versions` | db/identity/supabase/schemas/api/record_consent.sql:22 |
 | `api:rpc identity.record_consent` | writes | `table:member.consents` | db/identity/supabase/schemas/api/record_consent.sql:29 |
-| `api:rpc identity.save_expo_push_token` | guarded-by | `policy:identity.rls-self` | kode: uid = auth.uid() (member/push_subscriptions.sql baris 52), execute hanya authenticated baris 65 |
-| `api:rpc identity.save_expo_push_token` | writes | `table:member.push_subscriptions` | db/identity/supabase/schemas/member/push_subscriptions.sql:58 |
+| `api:rpc identity.save_expo_push_token` | guarded-by | `policy:identity.rls-self` | kode: uid = auth.uid() (member/push_subscriptions.sql baris 54), execute hanya authenticated baris 67 |
+| `api:rpc identity.save_expo_push_token` | writes | `table:member.push_subscriptions` | db/identity/supabase/schemas/member/push_subscriptions.sql:60 |
 | `api:rpc identity.save_push_subscription` | guarded-by | `policy:identity.rls-self` | PRD v0.3.1 Lampiran A.2 save_push_subscription; kode: uid = auth.uid() (member/push_subscriptions.sql baris 26) |
-| `api:rpc identity.save_push_subscription` | writes | `table:member.push_subscriptions` | db/identity/supabase/schemas/member/push_subscriptions.sql:38 |
+| `api:rpc identity.save_push_subscription` | writes | `table:member.push_subscriptions` | db/identity/supabase/schemas/member/push_subscriptions.sql:40 |
 | `api:rpc identity.shared_device_groups` | reads | `table:auth.sessions` | db/identity/supabase/schemas/api/shared_device_groups.sql:6 |
 | `api:rpc identity.store_kyc` | guarded-by | `policy:identity.unique-identity` | db/identity/supabase/schemas/api/member_data.sql:10 |
 | `api:rpc identity.store_kyc` | writes | `table:member.audit_logs` | db/identity/supabase/schemas/api/member_data.sql:23 |
@@ -1397,7 +1397,7 @@ Arah: `A --tipe--> B` = A bergantung pada B. `?` = belum terverifikasi.
 | `table:member.platform_roles` | guarded-by | `policy:identity.admin-aal2` | db/identity/supabase/schemas/member/platform_roles.sql:13 |
 | `table:member.platform_roles` | guarded-by | `policy:identity.auth-hook` | db/identity/supabase/schemas/member/platform_roles.sql:12 |
 | `table:member.platform_roles` | typed-by | `table:auth.users` | db/identity/supabase/schemas/member/platform_roles.sql:3 |
-| `table:member.push_subscriptions` | guarded-by | `policy:identity.rls-self` | db/identity/supabase/schemas/member/push_subscriptions.sql:24 |
+| `table:member.push_subscriptions` | guarded-by | `policy:identity.rls-self` | db/identity/supabase/schemas/member/push_subscriptions.sql:26 |
 | `table:member.push_subscriptions` | typed-by | `table:auth.users` | db/identity/supabase/schemas/member/push_subscriptions.sql:5 |
 | `table:member.recipient_details` | guarded-by | `policy:identity.rls-self` | db/identity/supabase/schemas/member/recipient_details.sql:13 |
 | `table:member.recipient_details` | typed-by | `table:auth.users` | db/identity/supabase/schemas/member/recipient_details.sql:4 |
@@ -1508,8 +1508,8 @@ Arah: `A --tipe--> B` = A bergantung pada B. `?` = belum terverifikasi.
 | `test:e2e.cross-host` | tests | `page:brand/` | e2e/journey.cjs:128 |
 | `test:e2e.cross-host` | tests | `page:www/` | e2e/journey.cjs:44 |
 | `test:e2e.cross-host` | tests | `page:www/c/[slug]` | e2e/journey.cjs:49 |
-| `test:e2e.mobile` | tests | `layout:mobile` | e2e/mobile.cjs:11 |
-| `test:e2e.mobile` | tests | `page:accounts/onboarding` | e2e/mobile.cjs:75 |
+| `test:e2e.mobile` | tests | `layout:mobile` | e2e/mobile.cjs:12 |
+| `test:e2e.mobile` | tests | `page:accounts/onboarding` | e2e/mobile.cjs:76 |
 | `test:member-data.integrity` | tests | `api:fn identity/member-data` | db/identity/supabase/tests/identity_access.test.sql:69 (SQL di balik member-data; handler dites Deno member-data/handler_test.ts) |
 | `test:member-data.integrity` | tests | `api:rpc identity.store_kyc` | db/identity/supabase/tests/identity_access.test.sql:72 |
 | `test:member-data.integrity` | tests | `fn:custom_access_token_hook` | db/identity/supabase/tests/identity_access.test.sql:46 |
@@ -2398,6 +2398,7 @@ Masalah sistem yang ditemukan saat menyusun PRD v0.2 dan saat dicek ulang (v0.2.
 | 2026-10-21 | `doc:deploy/deploy.sh` | Review Claudex R47: PUBLIC_IP menggantikan (bukan menambah) IP interface → server NAT dengan split DNS ke IP privatnya gagal palsu (direproduksi: HEAD rc 1) | diperbaiki: himpunan IP server = PUBLIC_IP + hostname -I (diuji: split DNS lolos, record server lama tetap gagal, record publik = PUBLIC_IP lolos) |
 | 2026-10-21 | `page:www/` | Keluhan user ("websitenya gajelas", "apps mobile kan ada di desainnya"), dicek ke DS: (1) hero landing hanya teks + kartu biru, tanpa visual — Clipper Hero DS 16–18 meminta split/layered hero dengan media, kartu kaca melayang, mockup HP; (2) DS Android/iOS v2 hanya halaman 01 Brand Overview berisi momen native (share sheet kirim clip, notif approve dengan tombol, widget saldo, Live Activity) sedangkan PRD §3 menulis native app = non-goal (cukup PWA, F-C14); PWA belum punya share target, tombol aksi notifikasi, maupun badge; tidak ada jalur Play Store | hero: mockup HP berisi CampaignCard asli (campaign live teratas, stream di Suspense supaya LCP tetap teks), kartu kaca contoh cuan + rate tertinggi dari data live (tanpa angka sosial palsu seperti "25K+ kreator"), blob token, HP: kartu jadi grid di bawah mockup; PWA: share_target → /share → detail ?submit=1&url (sheet Submit terisi), push submission.approved membawa aksi Lihat saldo / Kirim clip lagi, sw.js aksi + setAppBadge; Android: assetlinks.json dari env + Bubblewrap (project TWA ter-generate: SEND intent, autoVerify, asset_statements). Diuji: e2e 10/10 (langkah share baru), tes sw.js di vm gagal di versi lama, templates_test, light/dark 390/1440 tanpa overflow. Tidak dibuat: widget home screen, Live Activity, Dynamic Island, Share Extension iOS (butuh app native Kotlin/SwiftUI; iOS butuh Mac + Xcode) |
 | 2026-10-21 | `layout:mobile` | User minta app mobile native ("lanjutlah bikin") walau PRD §3 menulis native app = non-goal; DS Android/iOS v2 hanya punya halaman 01 (momen native: share sheet, notif dengan tombol, widget saldo, Live Activity). Saat membangun ketemu: (1) modul murni app clipper diimport app lain → melanggar check-arch "app tidak boleh import app lain"; (2) bridge send_push hanya web push; (3) `@clipper/i18n` index memakai dynamic import yang tidak didukung Metro; (4) lockfile memuat apps/mobile sedangkan image app tidak | app Expo satu kode Android/iOS di atas RPC/view/Edge Function yang sama; modul murni dipindah ke `packages/clipper-lib` (git mv, tes ikut); push native = `member.push_subscriptions` kind expo (CHECK bentuk) + `api.save_expo_push_token` + bridge kirim lewat Expo Push API (DeviceNotRegistered → token dihapus); `i18n/core`, `ui/format`, `ui/platform-paths`, `ui/campaign-labels`, `auth/otp` dipisah supaya bisa dipakai RN; token DS dibangkitkan dari styles.css (drift dicek `pnpm lint`); widget saldo Android; share sheet Android SEND + iOS Share Extension (expo prebuild terverifikasi); `apps/mobile` di .dockerignore + install frozen tanpa mobile disimulasikan. Diuji: e2e:mobile 9/9, pgTAP identity 128, deno push 6 (3 baru gagal di kode lama), vitest. Tidak dibuat: Live Activity/Dynamic Island & widget iOS (butuh target Swift/WidgetKit), build APK/IPA (butuh akun EAS, Android SDK/Xcode di luar sandbox) |
+| 2026-10-21 | `api:fn identity/bridge` | Review Codex R50 atas app native: (1) logout tidak melepas langganan push perangkat (native **dan** PWA web — bug lama web) → HP/browser bersama tetap menerima notifikasi akun sebelumnya; (2) Tugas native menjumlah earning lintas pool (Rp + poin jadi "Rp10.050"); (3) label views Tugas tanpa angka; (4) notifikasi ber-href relatif (/profile) gagal dibuka; (5) receipt Expo tidak pernah dicek, padahal DeviceNotRegistered umumnya datang di receipt | (1) logout native `disablePush` lalu signOut; web account-menu `deletePush` + `unsubscribe` lalu signOut; (2) `earningsBySubmission` di `packages/clipper-lib` (dipakai web tasks + native, per unit); (3) label + angka, plus "Dihitung untuk earning" seperti web; (4) `webHref` → app.{domain}; (5) kolom `push_subscriptions.expo_ticket`, `svc_touch_push(endpoint, ticket)`, bridge cek getReceipts ticket sebelumnya sebelum kirim (tanpa cron; jeda bersih = satu notifikasi, receipt Expo ±24 jam). Diuji: deno identity 97 (2 tes receipt gagal di kode lama), pgTAP identity 129, vitest clipper-lib 28 + mobile 3, e2e 10/10 + e2e:mobile 10/10 (langkah keluar baru). Tidak dibuat: alih token otomatis saat akun lain login tanpa logout (butuh fungsi definer pelepas token milik akun lain; kasusnya sesi mati tanpa logout) |
 
 ## Keputusan
 

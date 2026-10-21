@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { budgetUsedRatio, cardRates, isPlatform, maxViews, num, type RateRule } from '@clipper/clipper-lib/pure';
 import { parseDetail, type CampaignDetail } from '@clipper/clipper-lib/detail';
 import { toRpcFilters, type CampaignFilters } from '@clipper/clipper-lib/filters';
+import { earningsBySubmission, type EarningRow } from '@clipper/clipper-lib/units';
 import type { Platform } from '@clipper/ui/platform-paths';
 import { core, invoke, publicUrl } from './supabase';
 
@@ -228,11 +229,13 @@ export async function tasks(uid: string) {
   const ids = [...new Set([...list.map((s) => s.campaign_id!), ...open.map((c) => c.campaign_id!)])].filter(Boolean);
   const [campaigns, earnings] = await Promise.all([
     ids.length ? core.from('campaigns').select('id,title').in('id', ids) : Promise.resolve({ data: [] as { id: string | null; title: string | null }[] }),
-    list.length ? core.from('clip_earnings').select('submission_id,amount,released_at').in('submission_id', list.map((s) => s.id!)) : Promise.resolve({ data: [] as { submission_id: string | null; amount: number | string | null; released_at: string | null }[] }),
+    list.length ? core.from('clip_earnings').select('submission_id,pool_id,amount,released_at').in('submission_id', list.map((s) => s.id!)) : Promise.resolve({ data: [] as EarningRow[] }),
   ]);
   const title = new Map((campaigns.data ?? []).map((c) => [c.id, c.title ?? '']));
-  const earned = new Map<string, number>();
-  for (const e of earnings.data ?? []) earned.set(e.submission_id ?? '', (earned.get(e.submission_id ?? '') ?? 0) + num(e.amount));
+  const poolIds = [...new Set((earnings.data ?? []).map((e) => e.pool_id))].filter((x): x is string => !!x);
+  const pools = poolIds.length ? must(await core.from('reward_pools').select('id,reward_type_id').in('id', poolIds)) ?? [] : [];
+  const units = await rewardTypes(pools.map((p) => p.reward_type_id));
+  const earned = earningsBySubmission(earnings.data ?? [], new Map(pools.map((p) => [p.id, units.get(p.reward_type_id ?? '')])));
   return {
     claims: open.map((c) => ({ id: c.id!, campaignId: c.campaign_id!, expiresAt: c.expires_at!, title: title.get(c.campaign_id) ?? '' })),
     submissions: list.map((s) => ({
@@ -242,9 +245,10 @@ export async function tasks(uid: string) {
       platform: (isPlatform(s.platform) ? s.platform : null) as Platform | null,
       url: s.url ?? '',
       status: s.status ?? '',
-      views: num(s.counted_views ?? s.last_views),
+      views: num(s.last_views ?? s.counted_views),
+      counted: s.last_views != null && num(s.last_views) !== num(s.counted_views) ? num(s.counted_views) : null,
       updatedAt: s.last_snapshot_at ?? s.created_at ?? null,
-      earned: earned.get(s.id!) ?? 0,
+      earned: earned(s.id!),
     })),
   };
 }
