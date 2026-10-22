@@ -17,10 +17,26 @@ const WEB = env('E2E_WEB', 'http://clipper.localhost:3000'), ACC = env('E2E_ACC'
   APP = env('E2E_APP', 'http://app.clipper.localhost:3002'), BRAND = env('E2E_BRAND', 'http://brand.clipper.localhost:3003'),
   ADMIN = env('E2E_ADMIN', 'http://admin.clipper.localhost:3004');
 const CORE_DB = env('E2E_CORE_DB', 'postgresql://postgres:postgres@127.0.0.1:55322/postgres');
+const BRAND_DB = env('E2E_BRAND_DB', 'postgresql://postgres:postgres@127.0.0.1:57322/postgres');
 const ID_DB = env('E2E_IDENTITY_DB', 'postgresql://postgres:postgres@127.0.0.1:54322/postgres');
 const MAILPIT = env('E2E_MAILPIT', 'http://127.0.0.1:54324');
 const psql = (db, q) => execFileSync('psql', [db, '-X', '-v', 'ON_ERROR_STOP=1', '-tAqc', q], { encoding: 'utf8' }).trim();
 const core = (q) => psql(CORE_DB, q);
+const brandDb = (q) => psql(BRAND_DB, q);
+const CREATOR_DB = env('E2E_CREATOR_DB', 'postgresql://postgres:postgres@127.0.0.1:56322/postgres');
+/** Bus antar DB tidak macet: tidak ada event gagal yang belum terkirim di outbox ketiga project. */
+const busStuck = () =>
+  [['admin', CORE_DB], ['brand', BRAND_DB], ['creator', CREATOR_DB]]
+    .map(([n, db]) => [n, psql(db, `select coalesce(string_agg(target || ': ' || left(last_error, 80), '; '), '') from bus.outbox where sent_at is null and last_error is not null`)])
+    .filter(([, e]) => e)
+    .map(([n, e]) => `${n} → ${e}`)
+    .join(' | ');
+/** Replika lewat bus (relay tiap detik): tunggu sampai query admin menghasilkan nilai yang sama dengan pemilik data. */
+const replicated = async (q, want, ms = 20000, db = CORE_DB) => {
+  let got = '';
+  for (const end = Date.now() + ms; Date.now() < end; await new Promise((r) => setTimeout(r, 500))) if ((got = psql(db, q)) === want) break;
+  return got;
+};
 const ident = (q) => psql(ID_DB, q);
 const lit = (s) => `'${String(s).replace(/'/g, "''")}'`;
 const log = (...a) => console.log('✓', ...a);
@@ -137,10 +153,12 @@ step('brand-create-org', ['brand'], async ({ brand }) => {
   await shot(brand, 'brand-new-org');
   await brand.getByRole('button', { name: 'Buat organisasi' }).click();
   await brand.waitForURL((u) => u.href.startsWith(BRAND + '/') && !u.pathname.startsWith('/new'), { timeout: 30000 });
-  const row = core(`select o.id || '|' || o.status || '|' || m.role from market.organizations o join market.org_members m on m.org_id = o.id
-                    where o.name = ${lit(S.orgName)} and m.user_id = '${S.brandId}'`);
+  const orgQ = `select o.id || '|' || o.status || '|' || m.role from market.organizations o join market.org_members m on m.org_id = o.id
+                where o.name = ${lit(S.orgName)} and m.user_id = '${S.brandId}'`;
+  const row = brandDb(orgQ);
   const [orgId, status, role] = row.split('|');
-  check(status === 'pending_verification' && role === 'brand_owner', 'org pending + brand_owner: ' + row);
+  check(status === 'pending_verification' && role === 'brand_owner', 'org pending + brand_owner (DB brand): ' + row);
+  check((await replicated(orgQ, row)) === row, 'org + pemilik tereplika ke admin');
   S.orgId = orgId;
   S.orgSlug = new URL(brand.url()).pathname.split('/')[1];
   await brand.getByText(/Menunggu verifikasi/i).first().waitFor({ timeout: 15000 });
@@ -208,8 +226,15 @@ step('admin-verify-org', ['admin', 'brand'], async ({ admin, brand }) => {
   await shot(admin, 'admin-verify-org-dialog');
   await dlg.getByRole('button', { name: 'Verifikasi' }).click();
   await dlg.waitFor({ state: 'detached', timeout: 20000 });
-  const st = core(`select status from market.organizations where id = '${S.orgId}'`);
-  check(st === 'verified', 'org verified: ' + st);
+  const st = brandDb(`select status from market.organizations where id = '${S.orgId}'`);
+  check(st === 'verified', 'org verified (DB brand): ' + st);
+  const rep = await replicated(`select o.status || '|' || (select count(*) from trust.review_decisions d where d.target_type = 'org' and d.target_id = o.id)
+                                  from market.organizations o where o.id = '${S.orgId}'`, 'verified|1');
+  check(rep === 'verified|1', 'status + keputusan review tereplika ke admin: ' + rep);
+  const creatorOrg = await replicated(`select status from market.organizations where id = '${S.orgId}'`, 'verified', 20000, CREATOR_DB);
+  check(creatorOrg === 'verified', 'replika org di creator: ' + creatorOrg);
+  const stuck = busStuck();
+  check(!stuck, 'bus antar DB tidak macet: ' + stuck);
   await shot(admin, 'admin-org-verified');
   await brand.goto(`${BRAND}/${S.orgSlug}/campaigns`);
   await brand.waitForLoadState('networkidle');

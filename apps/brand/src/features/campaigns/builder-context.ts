@@ -9,7 +9,10 @@ export async function builderContext(
   { core, org }: Pick<OrgContext, 'core' | 'org'>,
   campaignFeeRuleId: string | null = null,
 ): Promise<BuilderContext> {
-  const ruleIds = [campaignFeeRuleId, org.fee_rule_id].filter((x): x is string => !!x);
+  // fee org milik admin (kolom admin di replika org core), bukan data org di project brand
+  const { data: feeOrg } = await core.from('organizations').select('fee_rule_id').eq('id', org.id).maybeSingle();
+  const orgRule = feeOrg?.fee_rule_id ?? null;
+  const ruleIds = [campaignFeeRuleId, orgRule].filter((x): x is string => !!x);
   const [{ data: categories }, { data: rewardTypes }, { data: rules }, settings] = await Promise.all([
     core.from('categories').select('id, name_id, name_en, sort').eq('active', true).order('sort'),
     core
@@ -25,7 +28,7 @@ export async function builderContext(
   ]);
   const flags = (settings['public.flags.platforms'] ?? {}) as Partial<Record<Platform, boolean>>;
   const byId = (id: string | null | undefined) => (id ? (rules ?? []).find((r) => r.id === id) : undefined);
-  const fee = byId(campaignFeeRuleId) ?? byId(org.fee_rule_id) ?? (rules ?? []).find((r) => r.scope === 'global');
+  const fee = byId(campaignFeeRuleId) ?? byId(orgRule) ?? (rules ?? []).find((r) => r.scope === 'global');
   return {
     mode: 'brand',
     org: { id: org.id, name: org.name, status: org.status ?? 'pending_verification' },

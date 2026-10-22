@@ -1,6 +1,6 @@
 'use server';
 
-import { coreServer, getAuth, invokeFunction, requireAdmin } from '@clipper/auth/server';
+import { brandServer, coreServer, getAuth, invokeFunction, requireAdmin } from '@clipper/auth/server';
 import { identityApi } from '@clipper/db-identity';
 import { settle, settleFn, text, optText, type ActionResult } from '@/lib/action';
 import { dbError } from '@/lib/errors';
@@ -81,10 +81,10 @@ export async function unbanUser(userId: string, fd: FormData): Promise<ActionRes
   return settle(error, '/users');
 }
 
-/** A2.2: verify | reject | suspend lewat manage_org saja (record_review target org memakai logika yang sama → notifikasi ganda). */
+/** A2.2: verify | reject | suspend lewat manage_org project brand (pemilik data org; keputusan & notifikasi dikirim ke admin). */
 export async function orgDecision(orgId: string, action: 'verify' | 'reject' | 'suspend', fd: FormData): Promise<ActionResult> {
   await requireAdmin('admin_ops');
-  const db = await coreServer('admin');
+  const db = await brandServer('admin');
   const { error } = await db.rpc('manage_org', {
     p_org: orgId,
     p_action: action,
@@ -105,7 +105,7 @@ export async function orgSetFee(orgId: string, fd: FormData): Promise<ActionResu
 }
 
 async function addMember(orgId: string, userId: string, role: string) {
-  const db = await coreServer('admin');
+  const db = await brandServer('admin');
   return db.rpc('manage_org', { p_org: orgId, p_action: 'add_member', p_params: { user_id: userId, role } });
 }
 

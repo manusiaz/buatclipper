@@ -2,7 +2,7 @@ import type { Metadata } from 'next';
 import Link from 'next/link';
 import { getLocale, getTranslations } from 'next-intl/server';
 import { hasRole, type Claims } from '@clipper/auth';
-import { coreServer, getAuth, requireAdmin } from '@clipper/auth/server';
+import { brandServer, coreServer, getAuth, requireAdmin } from '@clipper/auth/server';
 import { identityApi } from '@clipper/db-identity';
 import {
   Alert,
@@ -52,7 +52,7 @@ export default async function UsersPage({ searchParams }: { searchParams: Promis
   const raw = param(sp, 'tab');
   const tab = raw === 'org' || (raw === 'admin' && isSuper) || (raw === 'kyc' && isMod) ? raw : 'clipper';
   const q = param(sp, 'q');
-  const pending = await db.from('organizations').select('id', { count: 'exact', head: true }).eq('status', 'pending_verification');
+  const pending = await (await brandServer('admin')).from('organizations').select('id', { count: 'exact', head: true }).eq('status', 'pending_verification');
 
   return (
     <>
@@ -195,7 +195,7 @@ async function KycTab({ status, user, loc, claims }: { status: string; user: str
 }
 
 async function OrgTab({ q, status, org, loc, claims }: { q: string; status: string; org: string; loc: UiLocale; claims: Claims }) {
-  const [t, db] = await Promise.all([getTranslations('admin'), coreServer('admin')]);
+  const [t, db] = await Promise.all([getTranslations('admin'), brandServer('admin')]);
   const st = status === 'all' ? null : ORG_STATUSES.includes(status as never) ? status : 'pending_verification';
   let query = db.from('organizations').select('id, name, org_type, status, created_at').order('created_at').limit(50);
   if (st) query = query.eq('status', st as (typeof ORG_STATUSES)[number]);

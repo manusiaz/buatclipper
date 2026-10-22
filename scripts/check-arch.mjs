@@ -59,9 +59,10 @@ for (const p of ['creator', 'brand']) {
 
 // SQL bersama sama di semua project: protokol bus (pengirim & penerima sepakat), helper error/sesi, dan aturan akses
 // (iss identity, admin aal2, role org) — satu definisi untuk semua database.
-for (const f of ['bus/bus.sql', 'ops/_base.sql', 'ops/_auth.sql']) {
+for (const [f, projects] of [['bus/bus.sql', ['creator', 'brand']], ['ops/_base.sql', ['creator', 'brand']],
+                             ['ops/_auth.sql', ['creator', 'brand']], ['market/_org_helpers.sql', ['brand']]]) {
   const src = readFileSync(join(root, 'db/core/supabase/schemas', f), 'utf8');
-  for (const p of ['creator', 'brand']) {
+  for (const p of projects) {
     let copy = null;
     try {
       copy = readFileSync(join(root, `db/${p}/supabase/schemas`, f), 'utf8');

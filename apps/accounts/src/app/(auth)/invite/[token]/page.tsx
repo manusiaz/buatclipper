@@ -2,7 +2,7 @@ import type { Metadata } from 'next';
 import Link from 'next/link';
 import { getTranslations } from 'next-intl/server';
 import { isAdmin } from '@clipper/auth';
-import { coreServer, getAuth } from '@clipper/auth/server';
+import { brandServer, getAuth } from '@clipper/auth/server';
 import { Alert, AuthShell, Button, Icon } from '@clipper/ui';
 import { AcceptInvite } from '@/features/invite/accept-invite';
 import { switchAccount } from '@/features/invite/actions';
@@ -16,10 +16,10 @@ export async function generateMetadata(): Promise<Metadata> {
 /** Publik (proxy membuka /invite). api.invite_preview: token = kapabilitas, jadi nama org & peran tampil sebelum login. */
 export default async function InvitePage({ params }: { params: Promise<{ token: string }> }) {
   const { token } = await params;
-  const [{ claims }, t, tAll, core] = await Promise.all([getAuth('sso'), getTranslations('accounts.invite'), getTranslations(), coreServer()]);
+  const [{ claims }, t, tAll, brand] = await Promise.all([getAuth('sso'), getTranslations('accounts.invite'), getTranslations(), brandServer()]);
   const signedIn = !!claims && !isAdmin(claims);
   const here = `/invite/${encodeURIComponent(token)}`;
-  const { data: preview } = await core.rpc('invite_preview', { p_token: token }).maybeSingle();
+  const { data: preview } = await brand.rpc('invite_preview', { p_token: token }).maybeSingle();
   // Sudah dipakai tapi user login: accept_org_invite idempoten untuk anggota org, jadi biarkan AcceptInvite yang memutuskan.
   const dead = !preview ? 'not_found:invite' : preview.expired ? 'invite_expired' : preview.used && !signedIn ? 'invite_used' : null;
   const deadText = dead ? tAll(errorKeys(dead).keys.find((k) => tAll.has(k)) ?? 'errors.generic') : null;

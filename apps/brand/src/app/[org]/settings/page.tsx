@@ -15,15 +15,15 @@ const linkState = (l: { approved_at: string | null; revoked_at: string | null })
 
 export default async function SettingsPage({ params }: { params: Promise<{ org: string }> }) {
   const { org: orgId } = await params;
-  const { core, org, role, direct, claims } = await getOrgContext(orgId);
+  const { core, brand, org, role, direct, claims } = await getOrgContext(orgId);
   const [t, locale, { data: links }, { data: decision }, { data: requests }, { data: orgs }] = await Promise.all([
     getTranslations('brand'),
     getLocale(),
-    core.from('org_links').select('agency_org_id, client_org_id, approved_at, revoked_at, created_at').or(`agency_org_id.eq.${orgId},client_org_id.eq.${orgId}`),
+    brand.from('org_links').select('agency_org_id, client_org_id, approved_at, revoked_at, created_at').or(`agency_org_id.eq.${orgId},client_org_id.eq.${orgId}`),
     core.from('review_decisions').select('decision, reason_code, message, created_at').eq('target_type', 'org').eq('target_id', orgId).order('created_at', { ascending: false }).limit(1).maybeSingle(),
     // Nama agency peminta tidak terbuka lewat RLS organizations untuk klien; payload notifikasi agency.link_requested membawanya.
     core.from('notifications').select('payload').eq('user_id', claims.sub).eq('event', 'agency.link_requested').order('created_at', { ascending: false }).limit(50),
-    core.from('organizations').select('id, name'),
+    brand.from('organizations').select('id, name'),
   ]);
   const loc = locale === 'en' ? 'en' : 'id';
   const names = new Map<string, string>((orgs ?? []).flatMap((o) => (o.id && o.name ? [[o.id, o.name] as [string, string]] : [])));

@@ -1,7 +1,7 @@
 import Link from 'next/link';
 import type { Metadata } from 'next';
 import { getTranslations } from 'next-intl/server';
-import { coreServer, requireBrand } from '@clipper/auth/server';
+import { brandServer, requireBrand } from '@clipper/auth/server';
 import { Avatar, Badge, Button, Card, EmptyState, Icon, PageHeader, StatusBadge } from '@clipper/ui';
 import { PlainShell } from '@/features/shell/plain-shell';
 import { myName } from '@/features/shell/me';
@@ -12,12 +12,12 @@ export async function generateMetadata(): Promise<Metadata> {
 
 export default async function OrgPickerPage() {
   const { claims } = await requireBrand();
-  const core = await coreServer();
+  const brand = await brandServer();
   const [t, name, { data: orgs }, { data: mine }] = await Promise.all([
     getTranslations('brand'),
     myName(claims.email),
-    core.from('organizations').select('id, name, status, is_agency, org_type').order('name'),
-    core.from('org_members').select('org_id, role').eq('user_id', claims.sub),
+    brand.from('organizations').select('id, name, status, is_agency, org_type').order('name'),
+    brand.from('org_members').select('org_id, role').eq('user_id', claims.sub),
   ]);
   const roles = new Map((mine ?? []).map((m) => [m.org_id, m.role]));
   const list = (orgs ?? []).filter((o) => o.id && o.name);

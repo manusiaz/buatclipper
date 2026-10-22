@@ -89,6 +89,9 @@ importers:
       '@clipper/auth':
         specifier: workspace:*
         version: link:../../packages/auth
+      '@clipper/db-brand':
+        specifier: workspace:*
+        version: link:../../packages/db-brand
       '@clipper/db-core':
         specifier: workspace:*
         version: link:../../packages/db-core
@@ -150,6 +153,9 @@ importers:
       '@clipper/campaign-builder':
         specifier: workspace:*
         version: link:../../packages/campaign-builder
+      '@clipper/db-brand':
+        specifier: workspace:*
+        version: link:../../packages/db-brand
       '@clipper/db-core':
         specifier: workspace:*
         version: link:../../packages/db-core
@@ -217,6 +223,9 @@ importers:
       '@clipper/campaign-builder':
         specifier: workspace:*
         version: link:../../packages/campaign-builder
+      '@clipper/db-brand':
+        specifier: workspace:*
+        version: link:../../packages/db-brand
       '@clipper/db-core':
         specifier: workspace:*
         version: link:../../packages/db-core
@@ -563,6 +572,9 @@ importers:
 
   packages/auth:
     dependencies:
+      '@clipper/db-brand':
+        specifier: workspace:*
+        version: link:../db-brand
       '@clipper/db-core':
         specifier: workspace:*
         version: link:../db-core
@@ -674,6 +686,28 @@ importers:
       next:
         specifier: 'catalog:'
         version: 16.4.2(@types/node@24.19.2)(babel-plugin-react-compiler@1.0.0)(react-dom@19.3.1(react@19.3.1))(react@19.3.1)
+
+  packages/db-brand:
+    dependencies:
+      '@supabase/supabase-js':
+        specifier: 'catalog:'
+        version: 2.118.0
+    devDependencies:
+      '@clipper/config':
+        specifier: workspace:*
+        version: link:../config
+      '@types/node':
+        specifier: 'catalog:'
+        version: 24.19.2
+      '@types/react':
+        specifier: 'catalog:'
+        version: 19.3.0
+      typescript:
+        specifier: 'catalog:'
+        version: 5.9.3
+      vitest:
+        specifier: 'catalog:'
+        version: 5.0.5(@types/node@24.19.2)(vite@8.3.4(@types/node@24.19.2)(jiti@2.7.0)(terser@5.51.2)(yaml@2.9.1))
 
   packages/db-core:
     dependencies:

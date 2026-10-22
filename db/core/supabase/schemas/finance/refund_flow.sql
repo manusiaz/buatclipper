@@ -107,7 +107,7 @@ begin
     raise exception 'auth:mfa_required' using errcode = '42501';
   end if;
   select * into o from market.organizations x where x.id = r.org_id;
-  -- baris anggota dikunci (FOR SHARE) sebelum baris refund: urutan sama dengan hapus owner → trigger on_owner_lost (R26-2)
+  -- baris anggota dikunci (FOR SHARE) sebelum baris refund: urutan sama dengan owner hilang → bus_in.org_owner_lost (R26-2)
   if o.org_type <> 'badan' and not market.is_direct_member(r.org_id, uid, 'brand_owner') then
     raise exception 'auth:forbidden' using errcode = '42501', detail = 'org perorangan: rekening refund milik pemilik org';
   end if;

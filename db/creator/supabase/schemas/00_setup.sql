@@ -11,4 +11,5 @@ alter default privileges for role postgres revoke execute on functions from publ
 
 create type market.platform as enum ('tiktok', 'instagram', 'youtube', 'threads', 'facebook', 'x');
 create type market.org_role as enum ('brand_owner', 'brand_manager', 'brand_finance', 'brand_viewer');
+create type market.org_status as enum ('pending_verification', 'verified', 'suspended');
 create type market.profile_status as enum ('active', 'suspended', 'banned', 'closed');

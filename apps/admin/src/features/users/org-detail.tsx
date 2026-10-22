@@ -1,7 +1,7 @@
 import Link from 'next/link';
 import { getTranslations } from 'next-intl/server';
 import { hasRole, type Claims } from '@clipper/auth';
-import { coreServer, getAuth } from '@clipper/auth/server';
+import { brandServer, coreServer, getAuth } from '@clipper/auth/server';
 import { identityApi } from '@clipper/db-identity';
 import { Alert, Badge, Card, formatDateTime, Icon, RelativeTime, StatusBadge, type UiLocale } from '@clipper/ui';
 import { must, rows, uniq } from '@/lib/data';
@@ -13,11 +13,11 @@ const ORG_ROLES = ['brand_owner', 'brand_manager', 'brand_finance', 'brand_viewe
 
 /** A2.2 detail org: badan → nama legal, NPWP, alamat; perorangan → status KYC pemilik (identity admin_read). */
 export async function OrgDetail({ orgId, claims, loc }: { orgId: string; claims: Claims; loc: UiLocale }) {
-  const [t, db] = await Promise.all([getTranslations('admin'), coreServer('admin')]);
+  const [t, db, brand] = await Promise.all([getTranslations('admin'), coreServer('admin'), brandServer('admin')]);
   const canAct = hasRole(claims, 'admin_ops');
   const [orgRes, memRes, decRes] = await Promise.all([
-    db.from('organizations').select('id, name, org_type, legal_name, npwp, address, is_agency, status, verified_at, created_at, updated_at').eq('id', orgId).maybeSingle(),
-    db.from('org_members').select('user_id, role, created_at').eq('org_id', orgId),
+    brand.from('organizations').select('id, name, org_type, legal_name, npwp, address, is_agency, status, verified_at, created_at, updated_at').eq('id', orgId).maybeSingle(),
+    brand.from('org_members').select('user_id, role, created_at').eq('org_id', orgId),
     db.from('review_decisions').select('id, decision, reason_code, message, created_at').eq('target_type', 'org').eq('target_id', orgId).order('created_at', { ascending: false }).limit(10),
   ]);
   const o = must(orgRes);

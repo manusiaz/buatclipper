@@ -70,6 +70,9 @@ Lintas DB:
 - **Tulis lintas domain = event** lewat transactional outbox (`bus.outbox` ditulis di transaksi yang sama dengan datanya) → relay pg_cron + pg_net → Edge Function `bus` penerima (HMAC, pola `policy:bridge-hmac`) → `bus.apply` idempoten (`bus.inbox` dedupe per event id, urut per aggregate). Tidak ada transaksi terdistribusi.
 - **Baca lintas domain** = replika read-model di DB yang butuh (mis. katalog campaign di creator untuk claim_check; ekonomi campaign di admin untuk accrual; statistik views/spend di brand untuk dashboard), atau app membaca langsung view `api` DB pemilik dengan JWT user (semua DB percaya issuer identity yang sama).
 - **Aksi admin** pada data domain lain = RPC bridge sinkron ke DB pemilik (HMAC) + audit log di admin.
+- **Aksi admin pada org** dipanggil app admin langsung ke `api:rpc brand.manage_org` dengan JWT admin (DB brand percaya issuer identity yang sama, `ops.has_admin` aal2); hanya fee (`set_fee`) di admin.
+- Replika baris: pemilik memasang `bus.replicate('<target>:<kolom milik sendiri>', …)`; penerima upsert parsial (kolom milik penerima tidak tersentuh), hook `bus_in.<schema>_<tabel>_applied`. Relay tiap 1 detik.
+- Progres: **4DB-3 langkah 1 selesai** — org, anggota, undangan, tautan agency milik DB brand (`table:brand/market.*`); admin & creator memegang replika; efek ke admin lewat event `audit.log`, `review.decision`, `notify.user`, `profile.ensure`, `org.owner_lost` (`fn:bus_in.admin`). App accounts/brand/admin membaca & menulis org lewat `mod:db-brand`. Berikutnya: campaign (isi milik brand, status/ekonomi milik admin), lalu domain creator (4DB-4), deploy 4 server + rename core→admin (4DB-5).
 
 ## Invarian pemisahan
 
@@ -83,7 +86,7 @@ Wajib tetap benar setiap perubahan (dicek otomatis saat graph ini dibuat; cek ul
 6. `env:PII_ENC_KEY` dan `env:PII_HMAC_KEY` hanya dibaca Edge Functions identity, tidak pernah oleh fungsi SQL: kunci tidak berada di database yang sama dengan ciphertext.
 7. Setiap page bisa dicapai dari entry point lewat `routes-to` (menu + journey §6), dan tidak ada edge navigasi bertanda `?`.
 8. Setiap tabel di SQL punya node dengan Path ke file pembuatnya, dan setiap edge `guarded-by` tabel → policy menunjuk baris `create policy` yang bertanda `-- policy:<id>` (dibangkitkan dari katalog DB uji).
-9. Di database (dites pgTAP): RLS aktif di semua tabel kedua project, semua view `api` security_invoker, `anon` tidak bisa EXECUTE fungsi `api` identity apa pun dan di core hanya `invite_preview`, `list_campaigns` (landing) & `report_by_token`; di core setiap FK ber-index dan setiap tabel punya policy restrictive iss; semua fungsi yang dipanggil job pg_cron ada.
+9. Di database (dites pgTAP): RLS aktif di semua tabel kedua project, semua view `api` security_invoker, `anon` tidak bisa EXECUTE fungsi `api` identity apa pun dan di core hanya `list_campaigns` (landing) & `report_by_token`, di brand hanya `invite_preview`; di core setiap FK ber-index dan setiap tabel punya policy restrictive iss; semua fungsi yang dipanggil job pg_cron ada.
 10. Fitur → URL → folder → tabel untuk 45 fitur (+ 2 kelompok lintas fitur §4/§16) ada di `spec/structure.yaml`; setiap page di graph milik minimal satu fitur/kelompok, dan setiap page di structure.yaml ada di graph.
 
 ## Nodes
@@ -176,7 +179,7 @@ Wajib tetap benar setiap perubahan (dicek otomatis saat graph ini dibuat; cek ul
 | `api:fn identity/disburse` | api | db/identity/supabase/functions/disburse/index.ts | Callback penyedia disbursement (POST /disburse/callback, header x-callback-token) → core mark_instant. Pengiriman instant withdraw dimulai core lewat identity/bridge aksi disburse (_shared/disburse.ts: cek pemilik & nama rekening, dekripsi, kirim ke Xendit) |  |
 | `api:fn identity/member-data` | api | db/identity/supabase/functions/member-data/index.ts | Tulis PII milik sendiri: KYC (NIK), rekening, data penerima. Verifikasi JWT, HMAC + enkripsi di fungsi, simpan lewat SQL khusus service role; NIK/rekening milik akun lain → ditolak + fraud flag FR-04 |  |
 | `api:fn identity/pii-export` | api | db/identity/supabase/functions/pii-export/index.ts | CSV ber-PII: payout (rekening) & reward fisik (alur 3); unduh ulang berkas yang sudah diserahkan (payout_csv batch exported, recipients_resign); rekening refund org perorangan (refund_destination) |  |
-| `api:rpc core.accept_org_invite` | api | db/core/supabase/schemas/api/org.sql | Terima undangan → org_members (alur 5) |  |
+| `api:rpc brand.accept_org_invite` | api | db/brand/supabase/schemas/api/org.sql | Terima undangan → org_members (alur 5) |  |
 | `api:rpc core.appeal_submission` | api | db/core/supabase/schemas/api/review.sql | hanya dari rejected, 1× (unique index), S-03 rejected → appealed |  |
 | `api:rpc core.approve_payout_batch` | api | db/core/supabase/schemas/finance/payout_flow.sql | approved_by ≠ created_by (constraint) |  |
 | `api:rpc core.buy_pin` | api | db/core/supabase/schemas/api/campaigns.sql | invoice kind pinned + pin_until; pinned_until diset saat lunas |  |
@@ -191,19 +194,19 @@ Wajib tetap benar setiap perubahan (dicek otomatis saat graph ini dibuat; cek ul
 | `api:rpc core.set_bank_ref` | api | db/core/supabase/schemas/finance/bank_lines.sql | Referensi mutasi bank pada refund (sebelum bukti) / koreksi payout & invoice (catatan, audit) |  |
 | `api:rpc core.bank_issues` | api | db/core/supabase/schemas/finance/bank_lines.sql | Selisih rekonsiliasi bank terkini (baca saja) untuk tab Mutasi bank |  |
 | `api:rpc core.control_campaign` | api | db/core/supabase/schemas/api/campaigns.sql | pause/resume/extend/raise_rate/topup/end_early; raise_rate = tutup rule lama + rule baru; topup = invoice kind topup |  |
-| `api:rpc core.create_org` | api | db/core/supabase/schemas/api/org.sql | status pending_verification, pembuat = brand_owner; badan usaha wajib nama legal, NPWP, alamat |  |
-| `api:rpc core.manage_team` | api | db/core/supabase/schemas/api/org.sql | brand_owner langsung: ubah role, keluarkan anggota, cabut undangan belum dipakai; org dikunci, ≥ 1 brand_owner (last_owner) |  |
-| `api:rpc core.update_org` | api | db/core/supabase/schemas/api/org.sql | brand_owner langsung ubah data org; nama legal/NPWP/alamat berubah pada org verified → pending_verification; updated_at = tanda diajukan ulang |  |
-| `api:rpc core.create_org_invite` | api | db/core/supabase/schemas/api/org.sql | Token undangan org tanpa email (alur 5) |  |
+| `api:rpc brand.create_org` | api | db/brand/supabase/schemas/api/org.sql | status pending_verification, pembuat = brand_owner; badan usaha wajib nama legal, NPWP, alamat |  |
+| `api:rpc brand.manage_team` | api | db/brand/supabase/schemas/api/org.sql | brand_owner langsung: ubah role, keluarkan anggota, cabut undangan belum dipakai; org dikunci, ≥ 1 brand_owner (last_owner) |  |
+| `api:rpc brand.update_org` | api | db/brand/supabase/schemas/api/org.sql | brand_owner langsung ubah data org; nama legal/NPWP/alamat berubah pada org verified → pending_verification; updated_at = tanda diajukan ulang |  |
+| `api:rpc brand.create_org_invite` | api | db/brand/supabase/schemas/api/org.sql | Token undangan org tanpa email (alur 5) |  |
 | `api:rpc core.create_payout_batch` | api | db/core/supabase/schemas/finance/payout_flow.sql | Buat batch payout mingguan (F-A08) |  |
 | `api:rpc core.create_report_link` | api | db/core/supabase/schemas/api/report_links.sql | Buat link laporan read-only (token sekali tampil, simpan sha256) — brand_owner/manager |  |
 | `api:rpc core.duplicate_campaign` | api | db/core/supabase/schemas/api/campaigns.sql | salinan selalu draft |  |
 | `api:rpc core.ensure_profile` | api | db/core/supabase/schemas/api/ensure_profile.sql | Buat/ambil profil E-01 dari JWT identity, idempoten (alur 1) |  |
-| `api:rpc core.invite_preview` | api | db/core/supabase/schemas/api/org.sql | Preview undangan org dari token (nama org, agency, role, kedaluwarsa, terpakai); token = kapabilitas, anon & authenticated |  |
+| `api:rpc brand.invite_preview` | api | db/brand/supabase/schemas/api/org.sql | Preview undangan org dari token (nama org, agency, role, kedaluwarsa, terpakai); token = kapabilitas, anon & authenticated |  |
 | `api:rpc core.invite_to_campaign` | api | db/core/supabase/schemas/api/campaigns.sql | notifikasi campaign.invited |  |
-| `api:rpc core.link_agency` | api | db/core/supabase/schemas/api/org.sql | approved_by = brand_owner klien |  |
+| `api:rpc brand.link_agency` | api | db/brand/supabase/schemas/api/org.sql | approved_by = brand_owner klien |  |
 | `api:rpc core.list_campaigns` | api | db/core/supabase/schemas/api/campaigns.sql | CTA per user: bisa claim / sudah claim belum submit / slot penuh / budget habis / deadline lewat / tidak eligible + alasan |  |
-| `api:rpc core.manage_org` | api | db/core/supabase/schemas/api/org.sql | Admin buat/verifikasi org, fee custom, tambah anggota + stub profil (paket managed F-A03, F-A07) |  |
+| `api:rpc core.manage_org` | api | db/core/supabase/schemas/api/org.sql | Admin fee custom org (set_fee, F-A07); aksi org lain di `api:rpc brand.manage_org` |  |
 | `api:rpc core.manage_user` | api | db/core/supabase/schemas/trust/manage_user.sql | Admin atas clipper: override Trust Score, suspend/unsuspend + audit log (F-A07) |  |
 | `api:rpc core.reset_social_account` | api | db/core/supabase/schemas/trust/manage_user.sql | admin_support/admin_moderator reset koneksi akun sosmed (§4): token dicabut, tracking di-pause, clipper diminta sambung ulang |  |
 | `api:rpc core.mark_batch_paid` | api | db/core/supabase/schemas/finance/payout_flow.sql | Tandai batch paid/gagal + jurnal (F-A08) |  |
@@ -299,10 +302,20 @@ Wajib tetap benar setiap perubahan (dicek otomatis saat graph ini dibuat; cek ul
 | `table:market.claims` | table | db/core/supabase/schemas/market/claims.sql | E-11 claim 48 jam |  |
 | `table:market.leaderboard_campaign` | table | db/core/supabase/schemas/market/leaderboard.sql | Leaderboard (leaderboard_campaign), materialized view |  |
 | `table:market.leaderboard_weekly` | table | db/core/supabase/schemas/market/leaderboard.sql | Leaderboard (leaderboard_weekly), materialized view |  |
-| `table:market.org_invites` | table | db/core/supabase/schemas/market/org_invites.sql | E-30 token undangan tanpa email |  |
-| `table:market.org_links` | table | db/core/supabase/schemas/market/org_links.sql | E-38 org_links |  |
-| `table:market.org_members` | table | db/core/supabase/schemas/market/org_members.sql | E-03 anggota org + role |  |
-| `table:market.organizations` | table | db/core/supabase/schemas/market/organizations.sql | E-02 org brand |  |
+| `table:brand/market.organizations` | table | db/brand/supabase/schemas/market/organizations.sql | E-02 org brand (pemilik data): replika ke admin (data badan untuk faktur) & creator (nama, status) | `db/brand` |
+| `table:brand/market.org_members` | table | db/brand/supabase/schemas/market/org_members.sql | E-03 anggota org + role (pemilik); ≥ 1 brand_owner; owner hilang → event org.owner_lost | `db/brand` |
+| `table:brand/market.org_links` | table | db/brand/supabase/schemas/market/org_links.sql | E-38 tautan agency (pemilik) | `db/brand` |
+| `table:brand/market.profiles` | table | db/brand/supabase/schemas/market/profiles.sql | Replika profil publik dari admin (nama anggota tim, status aktif) | `db/brand` |
+| `table:brand/ops.audit_logs` | table | db/brand/supabase/schemas/ops/audit_logs.sql | Audit lokal brand, diteruskan ke pusat audit admin (event audit.log) | `db/brand` |
+| `table:creator/market.organizations` | table | db/creator/supabase/schemas/market/orgs.sql | Replika org/anggota/tautan agency di creator (katalog, aturan claim) | `db/creator` |
+| `api:rpc brand.manage_org` | api | db/brand/supabase/schemas/api/org.sql | Admin (admin_ops aal2) verifikasi/tolak/suspend org, tambah anggota paket managed; keputusan → event review.decision | `db/brand` |
+| `fn:bus_in.admin` | fn | db/core/supabase/schemas/bus/inbound.sql | Handler event masuk admin: audit.log, review.decision, notify.user, profile.ensure, org.owner_lost (reset refund) |  |
+| `mod:db-brand` | module | packages/db-brand/src/index.ts | Client Data API DB brand (createBrandClient) + types | accounts, brand, admin |
+| `env:NEXT_PUBLIC_BRAND_DB_URL` | env | .env.example | URL Data API DB brand (publik) | accounts, brand, admin |
+| `table:brand/market.org_invites` | table | db/brand/supabase/schemas/market/org_invites.sql | E-30 token undangan tanpa email (DB brand; dulu core) | `db/brand` |
+| `table:market.org_links` | table | db/core/supabase/schemas/market/org_links.sql | E-38 org_links — replika dari DB brand (RLS campaign agency) |  |
+| `table:market.org_members` | table | db/core/supabase/schemas/market/org_members.sql | E-03 anggota org + role — replika dari DB brand (RLS org di admin) |  |
+| `table:market.organizations` | table | db/core/supabase/schemas/market/organizations.sql | E-02 org brand — replika dari DB brand; kolom milik admin: fee_rule_id |  |
 | `table:market.profiles` | table | db/core/supabase/schemas/market/profiles.sql | E-01 profil publik + trust score, tanpa PII |  |
 | `table:market.rate_rules` | table | db/core/supabase/schemas/market/rate_rules.sql | E-08 rate rule |  |
 | `table:market.referrals` | table | db/core/supabase/schemas/market/referrals.sql | E-39 referrals |  |
@@ -475,8 +488,8 @@ Arah: `A --tipe--> B` = A bergantung pada B. `?` = belum terverifikasi.
 | `page:accounts/` | routes-to | `page:app/campaigns` | PRD v0.3.1 §6 C2.3; kode baris 96 (safeNext → app/campaigns) |
 | `page:accounts/` | routes-to | `page:brand/` | PRD v0.3.1 §6 C2.3; kode baris 92 |
 | `page:accounts/` | wrapped-by | `layout:accounts` | apps/accounts/src/app/layout.tsx:20 |
-| `page:accounts/invite/[token]` | calls | `api:rpc core.accept_org_invite` | apps/accounts/src/features/invite/actions.ts:11 |
-| `page:accounts/invite/[token]` | calls | `api:rpc core.invite_preview` | kode: (auth)/invite/[token]/page.tsx baris 22 (path ber-kurung) |
+| `page:accounts/invite/[token]` | calls | `api:rpc brand.accept_org_invite` | apps/accounts/src/features/invite/actions.ts:8 |
+| `page:accounts/invite/[token]` | calls | `api:rpc brand.invite_preview` | kode: (auth)/invite/[token]/page.tsx baris 22 (path ber-kurung) |
 | `page:accounts/invite/[token]` | routes-to | `page:accounts/login` | apps/accounts/src/features/invite/actions.ts:20 (ganti akun → /login) |
 | `page:accounts/invite/[token]` | routes-to | `page:brand/` | apps/accounts/src/features/invite/actions.ts:13 |
 | `page:accounts/invite/[token]` | wrapped-by | `layout:accounts` | apps/accounts/src/app/layout.tsx:20 |
@@ -589,7 +602,8 @@ Arah: `A --tipe--> B` = A bergantung pada B. `?` = belum terverifikasi.
 | `page:admin/review` | reads | `table:tracking.submissions` | PRD v0.3.1 §14 kg.yaml features.F-A05; kode baris 25 |
 | `page:admin/review` | wrapped-by | `layout:admin` | apps/admin/src/app/layout.tsx:20 |
 | `page:admin/users` | calls | `api:fn identity/admin-auth` | apps/admin/src/features/users/actions.ts:126 |
-| `page:admin/users` | calls | `api:rpc core.manage_org` | apps/admin/src/features/users/actions.ts:88 |
+| `page:admin/users` | calls | `api:rpc core.manage_org` | apps/admin/src/features/users/actions.ts:103 (fee) |
+| `page:admin/users` | calls | `api:rpc brand.manage_org` | apps/admin/src/features/users/actions.ts:88 (verify/reject/suspend; add_member baris 109) |
 | `page:admin/users` | calls | `api:rpc core.record_review` | apps/admin/src/features/users/actions.ts:19 |
 | `page:admin/users` | calls | `api:rpc core.record_sanction_appeal` | apps/admin/src/features/fraud/actions.ts:31 (user-detail.tsx baris 190, Catat banding) |
 | `page:admin/users` | reads | `table:trust.sanctions` | apps/admin/src/features/users/user-detail.tsx:27 (view api.sanctions, riwayat sanksi) |
@@ -612,7 +626,7 @@ Arah: `A --tipe--> B` = A bergantung pada B. `?` = belum terverifikasi.
 | `page:app/campaigns` | reads | `table:market.reward_types` | apps/clipper/src/features/lib/server.ts:70 (rewardTypes, features/campaigns/cards.ts baris 77) |
 | `page:app/campaigns` | reads | `table:tracking.social_accounts` | apps/clipper/src/app/campaigns/page.tsx:28 |
 | `page:app/campaigns` | routes-to | `page:app/campaigns/[id]` | apps/clipper/src/features/campaigns/feed.tsx:51 |
-| `page:app/campaigns` | routes-to | `page:app/login` | packages/auth/src/server.ts:70 (requireClipper) |
+| `page:app/campaigns` | routes-to | `page:app/login` | packages/auth/src/server.ts:77 (requireClipper) |
 | `page:app/campaigns` | routes-to | `page:app/social` | apps/clipper/src/app/campaigns/page.tsx:39 |
 | `page:app/campaigns` | wrapped-by | `layout:clipper` | apps/clipper/src/app/layout.tsx:31 |
 | `page:app/campaigns/[id]` | calls | `api:fn core/social` | apps/clipper/src/features/submit/actions.ts:24 |
@@ -633,7 +647,7 @@ Arah: `A --tipe--> B` = A bergantung pada B. `?` = belum terverifikasi.
 | `page:app/leaderboard` | wrapped-by | `layout:clipper` | apps/clipper/src/app/layout.tsx:31 |
 | `page:app/login` | calls | `mod:auth` | apps/clipper/src/app/login/page.tsx:7 |
 | `page:app/login` | routes-to | `api:GET app/auth/callback` | packages/auth/src/actions.ts:52 (googleSignIn redirectTo origin app) |
-| `page:app/login` | routes-to | `page:accounts/onboarding` | packages/auth/src/server.ts:72 (requireClipper: belum consent → onboarding) |
+| `page:app/login` | routes-to | `page:accounts/onboarding` | packages/auth/src/server.ts:79 (requireClipper: belum consent → onboarding) |
 | `page:app/login` | routes-to | `page:app/campaigns` | apps/clipper/src/app/login/page.tsx:17 |
 | `page:app/login` | wrapped-by | `layout:clipper` | apps/clipper/src/app/layout.tsx:31 |
 | `page:app/notifications` | reads | `table:ops.notifications` | apps/clipper/src/app/notifications/page.tsx:21 |
@@ -696,7 +710,7 @@ Arah: `A --tipe--> B` = A bergantung pada B. `?` = belum terverifikasi.
 | `page:app/wallet/withdraw` | routes-to | `page:app/wallet` | apps/clipper/src/app/wallet/withdraw/page.tsx:190 |
 | `page:app/wallet/withdraw` | typed-by | `fn:custom_access_token_hook` | PRD v0.3.1 §6.1 C1.11 checklist KYC dari claim kyc; kode baris 55 (claim kyc) |
 | `page:app/wallet/withdraw` | wrapped-by | `layout:clipper` | apps/clipper/src/app/layout.tsx:31 |
-| `page:brand/` | reads | `table:market.org_members` | apps/brand/src/app/page.tsx:20 |
+| `page:brand/` | reads | `table:brand/market.org_members` | apps/brand/src/app/page.tsx:20 |
 | `page:brand/` | wrapped-by | `layout:brand` | apps/brand/src/app/layout.tsx:20 |
 | `page:brand/[org]/billing` | reads | `table:bucket.invoice-docs` | apps/brand/src/app/[org]/billing/page.tsx:85 (signed URL faktur) |
 | `page:brand/[org]/billing` | calls | `api:rpc core.set_refund_dest` | apps/brand/src/features/billing/actions.ts:43 (RefundDestDialog, LeftoverPanel) |
@@ -738,18 +752,18 @@ Arah: `A --tipe--> B` = A bergantung pada B. `?` = belum terverifikasi.
 | `page:brand/[org]/reward-types` | calls | `api:rpc core.save_reward_type` | apps/brand/src/features/reward-types/actions.ts:47 |
 | `page:brand/[org]/reward-types` | calls | `api:rpc core.upload_reward_codes` | apps/brand/src/features/reward-types/actions.ts:59 |
 | `page:brand/[org]/reward-types` | wrapped-by | `layout:brand` | apps/brand/src/app/layout.tsx:20 |
-| `page:brand/[org]/settings` | calls | `api:rpc core.link_agency` | apps/brand/src/features/org/actions.ts:52 |
-| `page:brand/[org]/settings` | calls | `api:rpc core.update_org` | apps/brand/src/features/org/actions.ts:62 (EditOrgDialog) |
-| `page:brand/[org]/settings` | reads | `table:market.org_links` | apps/brand/src/app/[org]/settings/page.tsx:22 |
-| `page:brand/[org]/settings` | reads | `table:market.organizations` | apps/brand/src/app/[org]/settings/page.tsx:26 |
+| `page:brand/[org]/settings` | calls | `api:rpc brand.link_agency` | apps/brand/src/features/org/actions.ts:52 |
+| `page:brand/[org]/settings` | calls | `api:rpc brand.update_org` | apps/brand/src/features/org/actions.ts:62 (EditOrgDialog) |
+| `page:brand/[org]/settings` | reads | `table:brand/market.org_links` | apps/brand/src/app/[org]/settings/page.tsx:22 |
+| `page:brand/[org]/settings` | reads | `table:brand/market.organizations` | apps/brand/src/app/[org]/settings/page.tsx:26 |
 | `page:brand/[org]/settings` | routes-to | `page:brand/` | PRD v0.3.1 §6 B2.3 (belum di kode: halaman ini tanpa link ke pemilih org; lewat menu avatar layout:brand) |
 | `page:brand/[org]/settings` | wrapped-by | `layout:brand` | apps/brand/src/app/layout.tsx:20 |
-| `page:brand/[org]/team` | calls | `api:rpc core.create_org_invite` | apps/brand/src/features/org/actions.ts:42 |
-| `page:brand/[org]/team` | calls | `api:rpc core.manage_team` | apps/brand/src/features/org/actions.ts:77 (MemberActions, RevokeInvite) |
-| `page:brand/[org]/team` | reads | `table:market.org_members` | apps/brand/src/app/[org]/team/page.tsx:19 |
-| `page:brand/[org]/team` | reads | `table:market.organizations` | apps/brand/src/lib/org.ts:48 (getOrgContext) |
+| `page:brand/[org]/team` | calls | `api:rpc brand.create_org_invite` | apps/brand/src/features/org/actions.ts:42 |
+| `page:brand/[org]/team` | calls | `api:rpc brand.manage_team` | apps/brand/src/features/org/actions.ts:77 (MemberActions, RevokeInvite) |
+| `page:brand/[org]/team` | reads | `table:brand/market.org_members` | apps/brand/src/app/[org]/team/page.tsx:19 |
+| `page:brand/[org]/team` | reads | `table:brand/market.organizations` | apps/brand/src/lib/org.ts:48 (getOrgContext) |
 | `page:brand/[org]/team` | wrapped-by | `layout:brand` | apps/brand/src/app/layout.tsx:20 |
-| `page:brand/new` | calls | `api:rpc core.create_org` | apps/brand/src/features/org/actions.ts:27 |
+| `page:brand/new` | calls | `api:rpc brand.create_org` | apps/brand/src/features/org/actions.ts:27 |
 | `page:brand/new` | calls | `mod:auth` | apps/brand/src/app/new/page.tsx:4 |
 | `page:brand/new` | routes-to | `page:accounts/kyc` | apps/brand/src/features/org/actions.ts:35 |
 | `page:brand/new` | routes-to | `page:brand/[org]/campaigns` | apps/brand/src/features/org/actions.ts:36 |
@@ -790,7 +804,7 @@ Arah: `A --tipe--> B` = A bergantung pada B. `?` = belum terverifikasi.
 | `layout:admin` | routes-to | `page:admin/finance` | apps/admin/src/features/shell/nav.ts:17 |
 | `layout:admin` | routes-to | `page:admin/fraud` | apps/admin/src/features/shell/nav.ts:15 |
 | `layout:admin` | routes-to | `page:admin/fulfillment` | apps/admin/src/features/shell/nav.ts:18 |
-| `layout:admin` | routes-to | `page:admin/login` | packages/auth/src/server.ts:100 (requireAdmin, (console)/layout.tsx baris 6) |
+| `layout:admin` | routes-to | `page:admin/login` | packages/auth/src/server.ts:107 (requireAdmin, (console)/layout.tsx baris 6) |
 | `layout:admin` | routes-to | `page:admin/pinned` | apps/admin/src/features/shell/nav.ts:13 |
 | `layout:admin` | routes-to | `page:admin/review` | apps/admin/src/features/shell/nav.ts:14 |
 | `layout:admin` | routes-to | `page:admin/users` | apps/admin/src/features/shell/nav.ts:16 |
@@ -857,12 +871,12 @@ Arah: `A --tipe--> B` = A bergantung pada B. `?` = belum terverifikasi.
 | `layout:web` | routes-to | `page:app/campaigns` | apps/web/src/lib/session.ts:11 (clipperHref, components/site-shell.tsx baris 33) |
 | `layout:web` | routes-to | `page:www/legal/[doc]` | apps/web/src/components/site-shell.tsx:65 |
 | `comp:CampaignBuilder` | calls | `api:rpc core.save_campaign` | packages/campaign-builder/src/types.ts:62 (BuilderActions.save; host: apps/brand/src/features/campaigns/actions.ts baris 25) |
-| `comp:CampaignBuilder` | reads | `table:finance.fee_rules` | apps/brand/src/features/campaigns/builder-context.ts:21 (BuilderContext dari host) |
-| `comp:CampaignBuilder` | reads | `table:market.reward_types` | apps/brand/src/features/campaigns/builder-context.ts:16 (BuilderContext dari host) |
+| `comp:CampaignBuilder` | reads | `table:finance.fee_rules` | apps/brand/src/features/campaigns/builder-context.ts:24 (BuilderContext dari host) |
+| `comp:CampaignBuilder` | reads | `table:market.reward_types` | apps/brand/src/features/campaigns/builder-context.ts:19 (BuilderContext dari host) |
 | `comp:CampaignBuilder` | renders | `mod:ui` | packages/campaign-builder/src/builder.tsx:4 |
 | `comp:CampaignBuilder` | writes | `table:bucket.campaign-assets` | packages/campaign-builder/src/types.ts:64 |
 | `comp:CampaignBuilder` | writes | `table:bucket.campaign-covers` | packages/campaign-builder/src/types.ts:64 |
-| `mod:auth` | calls | `ext:supabase-identity` | packages/auth/src/server.ts:15 |
+| `mod:auth` | calls | `ext:supabase-identity` | packages/auth/src/server.ts:16 |
 | `mod:auth` | calls | `ext:turnstile` | packages/auth/src/components.tsx:95 |
 | `mod:auth` | configured-by | `env:ADMIN_COOKIE_NAME` | PRD v0.3.1 §15.6 cookie admin host-only; kode: packages/auth/src/cookies.ts baris 13 (nama tetap clipper-admin-auth, bukan env) |
 | `mod:auth` | configured-by | `env:COOKIE_DOMAIN` | packages/auth/src/cookies.ts:14 |
@@ -1037,17 +1051,17 @@ Arah: `A --tipe--> B` = A bergantung pada B. `?` = belum terverifikasi.
 | `api:fn identity/pii-export` | writes | `table:bucket.payout-proofs` | db/identity/supabase/functions/pii-export/handler.ts:231 |
 | `api:fn identity/pii-export` | writes | `table:bucket.pii-exports` | db/identity/supabase/functions/pii-export/handler.ts:46 |
 | `api:fn identity/pii-export` | writes | `table:member.audit_logs` | db/identity/supabase/schemas/api/svc.sql:280 (rpc svc_audit, handler.ts baris 42) |
-| `api:rpc core.accept_org_invite` | reads | `table:market.org_invites` | db/core/supabase/schemas/api/org.sql:231 |
-| `api:rpc core.accept_org_invite` | writes | `table:market.org_invites` | db/core/supabase/schemas/api/org.sql:249 |
-| `api:rpc core.accept_org_invite` | writes | `table:market.org_members` | db/core/supabase/schemas/api/org.sql:248 |
-| `api:rpc core.accept_org_invite` | writes | `table:market.profiles` | db/core/supabase/schemas/api/org.sql:20 (market.ensure_member_profile) |
+| `api:rpc brand.accept_org_invite` | reads | `table:brand/market.org_invites` | db/brand/supabase/schemas/api/org.sql:222 |
+| `api:rpc brand.accept_org_invite` | writes | `table:brand/market.org_invites` | db/brand/supabase/schemas/api/org.sql:240 |
+| `api:rpc brand.accept_org_invite` | writes | `table:brand/market.org_members` | db/brand/supabase/schemas/api/org.sql:239 |
+| `api:rpc brand.accept_org_invite` | calls | `fn:bus_in.admin` | db/brand/supabase/schemas/api/org.sql:9 (accept_org_invite → market.ensure_member_profile → event profile.ensure) |
 | `api:rpc core.appeal_submission` | writes | `table:tracking.submissions` | db/core/supabase/schemas/api/review.sql:45 |
 | `api:rpc core.appeal_submission` | writes | `table:trust.review_decisions` | db/core/supabase/schemas/api/review.sql:40 |
 | `api:rpc core.approve_payout_batch` | writes | `table:finance.payout_batches` | db/core/supabase/schemas/finance/payout_flow.sql:215 |
 | `api:rpc core.buy_pin` | writes | `table:finance.invoices` | db/core/supabase/schemas/api/campaigns.sql:692 (finance.issue_invoice) |
 | `api:rpc core.my_clip_terms` | reads | `table:market.profiles` | db/core/supabase/schemas/api/read_models.sql:153 (trust_score dari market.profiles) |
 | `api:rpc core.claim_campaign` | reads | `table:market.campaigns` | db/core/supabase/schemas/api/campaigns.sql:136 |
-| `api:rpc core.claim_campaign` | reads | `table:market.profiles` | db/core/supabase/schemas/api/_helpers.sql:185 (market.claim_check) |
+| `api:rpc core.claim_campaign` | reads | `table:market.profiles` | db/core/supabase/schemas/api/_helpers.sql:147 (market.claim_check) |
 | `api:rpc core.claim_campaign` | writes | `table:market.claims` | db/core/supabase/schemas/api/campaigns.sql:150 |
 | `api:rpc core.confirm_invoice_payment` | guarded-by | `policy:core.admin-aal2` | db/core/supabase/schemas/finance/invoice_confirm.sql:114 |
 | `api:rpc core.confirm_invoice_payment` | writes | `table:finance.invoices` | db/core/supabase/schemas/finance/invoice_confirm.sql:142 |
@@ -1058,20 +1072,20 @@ Arah: `A --tipe--> B` = A bergantung pada B. `?` = belum terverifikasi.
 | `api:rpc core.control_campaign` | writes | `table:finance.invoices` | db/core/supabase/schemas/api/campaigns.sql:572 (topup → finance.issue_invoice) |
 | `api:rpc core.control_campaign` | writes | `table:market.campaigns` | db/core/supabase/schemas/api/campaigns.sql:503 |
 | `api:rpc core.control_campaign` | writes | `table:market.rate_rules` | db/core/supabase/schemas/api/campaigns.sql:547 |
-| `api:rpc core.create_org` | writes | `table:market.org_members` | db/core/supabase/schemas/api/org.sql:97 |
-| `api:rpc core.create_org` | writes | `table:market.organizations` | db/core/supabase/schemas/api/org.sql:93 |
-| `api:rpc core.manage_team` | guarded-by | `policy:core.org-role` | db/core/supabase/schemas/api/org.sql:187 |
-| `api:rpc core.manage_team` | writes | `table:market.org_invites` | db/core/supabase/schemas/api/org.sql:191 |
-| `api:rpc core.manage_team` | writes | `table:market.org_members` | db/core/supabase/schemas/api/org.sql:211 |
-| `api:rpc core.manage_team` | writes | `table:ops.audit_logs` | db/core/supabase/schemas/api/org.sql:218 |
+| `api:rpc brand.create_org` | writes | `table:brand/market.org_members` | db/brand/supabase/schemas/api/org.sql:88 |
+| `api:rpc brand.create_org` | writes | `table:brand/market.organizations` | db/brand/supabase/schemas/api/org.sql:84 |
+| `api:rpc brand.manage_team` | guarded-by | `policy:core.org-role` | db/brand/supabase/schemas/api/org.sql:178 |
+| `api:rpc brand.manage_team` | writes | `table:brand/market.org_invites` | db/brand/supabase/schemas/api/org.sql:182 |
+| `api:rpc brand.manage_team` | writes | `table:brand/market.org_members` | db/brand/supabase/schemas/api/org.sql:202 |
+| `api:rpc brand.manage_team` | writes | `table:brand/ops.audit_logs` | db/brand/supabase/schemas/api/org.sql:209 |
 | `api:rpc core.set_refund_dest` | guarded-by | `policy:core.org-role` | db/core/supabase/schemas/finance/refund_flow.sql:103 |
 | `api:rpc core.set_refund_dest` | writes | `table:finance.org_refunds` | db/core/supabase/schemas/finance/refund_flow.sql:132 |
 | `api:rpc core.set_refund_dest` | writes | `table:ops.audit_logs` | db/core/supabase/schemas/finance/refund_flow.sql:141 |
-| `api:rpc core.update_org` | guarded-by | `policy:core.org-role` | db/core/supabase/schemas/api/org.sql:475 |
-| `api:rpc core.update_org` | writes | `table:market.organizations` | db/core/supabase/schemas/api/org.sql:496 |
-| `api:rpc core.update_org` | writes | `table:ops.audit_logs` | db/core/supabase/schemas/api/org.sql:503 |
-| `api:rpc core.create_org_invite` | guarded-by | `policy:core.org-role` | db/core/supabase/schemas/api/org.sql:165 |
-| `api:rpc core.create_org_invite` | writes | `table:market.org_invites` | db/core/supabase/schemas/api/org.sql:172 |
+| `api:rpc brand.update_org` | guarded-by | `policy:core.org-role` | db/brand/supabase/schemas/api/org.sql:320 |
+| `api:rpc brand.update_org` | writes | `table:brand/market.organizations` | db/brand/supabase/schemas/api/org.sql:341 |
+| `api:rpc brand.update_org` | writes | `table:brand/ops.audit_logs` | db/brand/supabase/schemas/api/org.sql:348 |
+| `api:rpc brand.create_org_invite` | guarded-by | `policy:core.org-role` | db/brand/supabase/schemas/api/org.sql:156 |
+| `api:rpc brand.create_org_invite` | writes | `table:brand/market.org_invites` | db/brand/supabase/schemas/api/org.sql:163 |
 | `api:rpc core.create_payout_batch` | guarded-by | `policy:core.admin-aal2` | db/core/supabase/schemas/finance/payout_flow.sql:178 |
 | `api:rpc core.create_payout_batch` | reads | `table:finance.payouts` | db/core/supabase/schemas/finance/payout_flow.sql:190 |
 | `api:rpc core.create_payout_batch` | writes | `table:finance.payout_batches` | db/core/supabase/schemas/finance/payout_flow.sql:188 |
@@ -1085,20 +1099,41 @@ Arah: `A --tipe--> B` = A bergantung pada B. `?` = belum terverifikasi.
 | `api:rpc core.duplicate_campaign` | writes | `table:market.rate_rules` | db/core/supabase/schemas/api/campaigns.sql:620 |
 | `api:rpc core.ensure_profile` | writes | `table:market.profiles` | db/core/supabase/schemas/api/ensure_profile.sql:21 |
 | `api:rpc core.ensure_profile` | writes | `table:market.referrals` | db/core/supabase/schemas/api/ensure_profile.sql:35 |
-| `api:rpc core.invite_preview` | reads | `table:market.org_invites` | db/core/supabase/schemas/api/org.sql:259 |
-| `api:rpc core.invite_preview` | reads | `table:market.organizations` | db/core/supabase/schemas/api/org.sql:259 |
+| `api:rpc brand.invite_preview` | reads | `table:brand/market.org_invites` | db/brand/supabase/schemas/api/org.sql:250 |
+| `api:rpc brand.invite_preview` | reads | `table:brand/market.organizations` | db/brand/supabase/schemas/api/org.sql:250 |
 | `api:rpc core.invite_to_campaign` | writes | `table:market.campaign_invites` | db/core/supabase/schemas/api/campaigns.sql:654 |
-| `api:rpc core.link_agency` | writes | `table:market.org_links` | db/core/supabase/schemas/api/org.sql:123 |
+| `api:rpc brand.link_agency` | writes | `table:brand/market.org_links` | db/brand/supabase/schemas/api/org.sql:114 |
 | `api:rpc core.list_campaigns` | reads | `table:finance.reward_pools` | db/core/supabase/schemas/api/campaigns.sql:82 |
 | `api:rpc core.list_campaigns` | reads | `table:market.campaigns` | db/core/supabase/schemas/api/campaigns.sql:90 |
-| `api:rpc core.list_campaigns` | reads | `table:market.claims` | db/core/supabase/schemas/api/_helpers.sql:166 (market.claim_check) |
-| `api:rpc core.list_campaigns` | reads | `table:market.profiles` | db/core/supabase/schemas/api/_helpers.sql:185 (market.claim_check) |
-| `api:rpc core.list_campaigns` | reads | `table:tracking.social_accounts` | db/core/supabase/schemas/api/_helpers.sql:209 (market.claim_check) |
-| `api:rpc core.manage_org` | guarded-by | `policy:core.admin-aal2` | db/core/supabase/schemas/api/org.sql:279 |
-| `api:rpc core.manage_org` | writes | `table:market.org_members` | db/core/supabase/schemas/api/org.sql:318 |
-| `api:rpc core.manage_org` | writes | `table:market.organizations` | db/core/supabase/schemas/api/org.sql:294 |
-| `api:rpc core.manage_org` | writes | `table:market.profiles` | db/core/supabase/schemas/api/org.sql:20 (add_member → market.ensure_member_profile) |
-| `api:rpc core.manage_org` | writes | `table:ops.audit_logs` | db/core/supabase/schemas/api/org.sql:296 |
+| `api:rpc core.list_campaigns` | reads | `table:market.claims` | db/core/supabase/schemas/api/_helpers.sql:128 (market.claim_check) |
+| `api:rpc core.list_campaigns` | reads | `table:market.profiles` | db/core/supabase/schemas/api/_helpers.sql:147 (market.claim_check) |
+| `api:rpc core.list_campaigns` | reads | `table:tracking.social_accounts` | db/core/supabase/schemas/api/_helpers.sql:171 (market.claim_check) |
+| `api:rpc brand.manage_org` | writes | `table:brand/market.organizations` | db/brand/supabase/schemas/api/org.sql:283 |
+| `api:rpc brand.manage_org` | writes | `table:brand/market.org_members` | db/brand/supabase/schemas/api/org.sql:296 |
+| `api:rpc brand.manage_org` | guarded-by | `policy:core.admin-aal2` | db/brand/supabase/schemas/api/org.sql:268 |
+| `api:rpc brand.manage_org` | calls | `fn:bus_in.admin` | db/brand/supabase/schemas/api/org.sql:35 (event review.decision ke admin) |
+| `table:brand/market.organizations` | replicates-to | `table:market.organizations` | db/brand/supabase/schemas/market/organizations.sql:30 (bus.replicate kolom admin:…) |
+| `table:brand/market.organizations` | replicates-to | `table:creator/market.organizations` | db/brand/supabase/schemas/market/organizations.sql:32 (nama, agency, status) |
+| `table:brand/market.org_members` | replicates-to | `table:market.org_members` | db/brand/supabase/schemas/market/org_members.sql:48 |
+| `table:brand/market.org_members` | calls | `fn:bus_in.admin` | db/brand/supabase/schemas/market/org_members.sql:33 (owner hilang → reset refund di admin) |
+| `table:brand/market.org_links` | replicates-to | `table:market.org_links` | db/brand/supabase/schemas/market/org_links.sql:24 |
+| `table:market.profiles` | replicates-to | `table:brand/market.profiles` | db/core/supabase/schemas/market/profiles.sql:21 (profiles_replicate) |
+| `table:brand/ops.audit_logs` | calls | `fn:bus_in.admin` | db/brand/supabase/schemas/ops/audit_logs.sql:24 (ops.forward_audit) |
+| `api:rpc core.bus_receive` | calls | `fn:bus_in.admin` | db/core/supabase/schemas/bus/bus.sql:130 |
+| `fn:bus_in.admin` | writes | `table:ops.audit_logs` | db/core/supabase/schemas/bus/inbound.sql:7 |
+| `fn:bus_in.admin` | writes | `table:trust.review_decisions` | db/core/supabase/schemas/bus/inbound.sql:14 |
+| `fn:bus_in.admin` | writes | `table:market.profiles` | db/core/supabase/schemas/bus/inbound.sql:31 (ensure_member_profile) |
+| `fn:bus_in.admin` | writes | `table:finance.org_refunds` | db/core/supabase/schemas/bus/inbound.sql:45 |
+| `mod:auth` | calls | `mod:db-brand` | packages/auth/src/server.ts:6 (brandServer) |
+| `mod:db-brand` | configured-by | `env:NEXT_PUBLIC_BRAND_DB_URL` | packages/db-brand/src/index.ts:10 |
+| `layout:brand` | calls | `mod:db-brand` | apps/brand/src/lib/org.ts:5 |
+| `layout:accounts` | calls | `mod:db-brand` | apps/accounts/package.json:16 |
+| `layout:admin` | calls | `mod:db-brand` | apps/admin/package.json:16 |
+| `page:brand/[org]/team` | reads | `table:brand/market.org_invites` | apps/brand/src/app/[org]/team/page.tsx:20 |
+| `page:brand/[org]/team` | reads | `table:brand/market.profiles` | apps/brand/src/app/[org]/team/page.tsx:26 |
+| `api:rpc core.manage_org` | guarded-by | `policy:core.admin-aal2` | db/core/supabase/schemas/api/org.sql:34 |
+| `api:rpc core.manage_org` | writes | `table:market.organizations` | db/core/supabase/schemas/api/org.sql:49 (fee_rule_id saja) |
+| `api:rpc core.manage_org` | writes | `table:ops.audit_logs` | db/core/supabase/schemas/api/org.sql:50 |
 | `api:rpc core.manage_user` | calls | `fn:enqueue_notification` | db/core/supabase/schemas/trust/manage_user.sql:54 |
 | `api:rpc core.manage_user` | guarded-by | `policy:core.admin-aal2` | db/core/supabase/schemas/trust/manage_user.sql:15 |
 | `api:rpc core.manage_user` | writes | `table:market.claims` | db/core/supabase/schemas/trust/manage_user.sql:52 |
@@ -1117,8 +1152,8 @@ Arah: `A --tipe--> B` = A bergantung pada B. `?` = belum terverifikasi.
 | `api:rpc core.mark_fulfillment_delivered` | writes | `table:ops.audit_logs` | db/core/supabase/schemas/finance/fulfillment_admin.sql:40 |
 | `api:rpc core.cancel_payout` | writes | `table:finance.payouts` | db/core/supabase/schemas/finance/payout_flow.sql:379 |
 | `api:rpc core.cancel_fulfillment` | writes | `table:finance.fulfillments` | db/core/supabase/schemas/finance/payout_flow.sql:430 |
-| `api:view core.fulfillment_exports` | reads | `table:finance.fulfillments` | db/core/supabase/schemas/api/views.sql:100 |
-| `api:view core.admin_ledger` | reads | `table:finance.ledger_entries` | db/core/supabase/schemas/api/views.sql:86 |
+| `api:view core.fulfillment_exports` | reads | `table:finance.fulfillments` | db/core/supabase/schemas/api/views.sql:98 |
+| `api:view core.admin_ledger` | reads | `table:finance.ledger_entries` | db/core/supabase/schemas/api/views.sql:84 |
 | `api:rpc core.missing_brief_tags` | guarded-by | `policy:core.public-read` | db/core/supabase/schemas/api/brief.sql:4 (security invoker lewat api.campaigns) |
 | `api:rpc core.missing_brief_tags` | guarded-by | `policy:core.rls-org` | db/core/supabase/schemas/api/brief.sql:4 (security invoker lewat api.campaigns) |
 | `api:rpc core.missing_brief_tags` | reads | `table:market.campaigns` | db/core/supabase/schemas/api/brief.sql:15 |
@@ -1178,8 +1213,8 @@ Arah: `A --tipe--> B` = A bergantung pada B. `?` = belum terverifikasi.
 | `api:rpc core.save_campaign` | writes | `table:market.campaign_assets` | db/core/supabase/schemas/api/campaigns.sql:390 |
 | `api:rpc core.save_campaign` | writes | `table:market.campaigns` | db/core/supabase/schemas/api/campaigns.sql:286 |
 | `api:rpc core.save_campaign` | writes | `table:market.rate_rules` | db/core/supabase/schemas/api/campaigns.sql:370 |
-| `api:rpc core.save_reward_type` | guarded-by | `policy:core.org-role` | db/core/supabase/schemas/api/org.sql:366 |
-| `api:rpc core.save_reward_type` | writes | `table:market.reward_types` | db/core/supabase/schemas/api/org.sql:395 |
+| `api:rpc core.save_reward_type` | guarded-by | `policy:core.org-role` | db/core/supabase/schemas/api/org.sql:94 |
+| `api:rpc core.save_reward_type` | writes | `table:market.reward_types` | db/core/supabase/schemas/api/org.sql:123 |
 | `api:rpc core.send_broadcast` | writes | `table:ops.broadcasts` | db/core/supabase/schemas/api/config.sql:168 |
 | `api:rpc core.store_social_token` | guarded-by | `policy:core.definer-only` | db/core/supabase/schemas/tracking/vault.sql:4 (security definer; EXECUTE hanya service_role, baris 23) |
 | `api:rpc core.store_social_token` | writes | `table:tracking.social_accounts` | db/core/supabase/schemas/tracking/vault.sql:20 |
@@ -1190,7 +1225,7 @@ Arah: `A --tipe--> B` = A bergantung pada B. `?` = belum terverifikasi.
 | `api:rpc core.update_config` | writes | `table:market.categories` | db/core/supabase/schemas/api/config.sql:36 |
 | `api:rpc core.update_config` | writes | `table:ops.audit_logs` | db/core/supabase/schemas/api/config.sql:118 |
 | `api:rpc core.update_config` | writes | `table:ops.settings` | db/core/supabase/schemas/api/config.sql:113 |
-| `api:rpc core.upload_reward_codes` | writes | `table:finance.reward_codes` | db/core/supabase/schemas/api/org.sql:452 |
+| `api:rpc core.upload_reward_codes` | writes | `table:finance.reward_codes` | db/core/supabase/schemas/api/org.sql:180 |
 | `api:view core.admin_profiles` | guarded-by | `policy:core.admin-aal2` | db/core/supabase/schemas/api/views.sql:42 |
 | `api:view core.admin_profiles` | reads | `table:market.profiles` | db/core/supabase/schemas/api/views.sql:42 |
 | `api:rpc identity.admin_kyc_decision` | guarded-by | `policy:identity.admin-aal2` | db/identity/supabase/schemas/api/admin_kyc_decision.sql:11 |
@@ -1255,8 +1290,8 @@ Arah: `A --tipe--> B` = A bergantung pada B. `?` = belum terverifikasi.
 | `job:broadcast-dispatch` | calls | `fn:enqueue_notification` | db/core/supabase/schemas/ops/broadcast_dispatch.sql:40 |
 | `job:broadcast-dispatch` | writes | `table:ops.broadcasts` | db/core/supabase/schemas/ops/broadcast_dispatch.sql:46 |
 | `job:broadcast-dispatch` | writes | `table:ops.notifications` | db/core/supabase/schemas/ops/broadcast_dispatch.sql:40 (ops.enqueue_notification) |
-| `job:budget-alerts` | calls | `fn:enqueue_notification` | db/core/supabase/schemas/api/_helpers.sql:45 (market.notify_org, dipanggil market/jobs.sql baris 92) |
-| `job:budget-alerts` | writes | `table:ops.notifications` | db/core/supabase/schemas/api/_helpers.sql:45 (market.notify_org → ops.enqueue_notification) |
+| `job:budget-alerts` | calls | `fn:enqueue_notification` | db/core/supabase/schemas/market/_org_helpers.sql:35 (market.notify_org, dipanggil market/jobs.sql baris 92) |
+| `job:budget-alerts` | writes | `table:ops.notifications` | db/core/supabase/schemas/market/_org_helpers.sql:35 (market.notify_org → ops.enqueue_notification) |
 | `job:claim-expiry` | calls | `fn:enqueue_notification` | db/core/supabase/schemas/market/claims.sql:37 |
 | `job:claim-expiry` | writes | `table:market.claims` | db/core/supabase/schemas/market/claims.sql:41 |
 | `job:earning-release` | calls | `fn:enqueue_notification` | db/core/supabase/schemas/finance/earnings.sql:507 |
@@ -1393,29 +1428,28 @@ Arah: `A --tipe--> B` = A bergantung pada B. `?` = belum terverifikasi.
 | `table:market.claims` | typed-by | `doc:spec/kg.yaml` | db/core/supabase/schemas/ops/state_triggers.sql:1 |
 | `table:market.claims` | typed-by | `table:market.campaigns` | db/core/supabase/schemas/market/claims.sql:5 |
 | `table:market.claims` | typed-by | `table:market.profiles` | db/core/supabase/schemas/market/claims.sql:6 |
-| `table:market.leaderboard_campaign` | guarded-by | `policy:core.api-only` | db/core/supabase/schemas/api/views.sql:126 |
+| `table:market.leaderboard_campaign` | guarded-by | `policy:core.api-only` | db/core/supabase/schemas/api/views.sql:124 |
 | `table:market.leaderboard_campaign` | reads | `table:tracking.submissions` | db/core/supabase/schemas/market/leaderboard.sql:16 |
-| `table:market.leaderboard_weekly` | guarded-by | `policy:core.api-only` | db/core/supabase/schemas/api/views.sql:126 |
+| `table:market.leaderboard_weekly` | guarded-by | `policy:core.api-only` | db/core/supabase/schemas/api/views.sql:124 |
 | `table:market.leaderboard_weekly` | reads | `table:tracking.submissions` | db/core/supabase/schemas/market/leaderboard.sql:8 |
-| `table:market.org_invites` | guarded-by | `policy:core.iss-identity` | db/core/supabase/schemas/market/org_invites.sql:21 |
-| `table:market.org_invites` | guarded-by | `policy:core.org-role` | db/core/supabase/schemas/market/org_invites.sql:23 |
-| `table:market.org_invites` | typed-by | `table:market.organizations` | db/core/supabase/schemas/market/org_invites.sql:4 |
-| `table:market.org_invites` | typed-by | `table:market.profiles` | db/core/supabase/schemas/market/org_invites.sql:8 |
+| `table:brand/market.org_invites` | guarded-by | `policy:core.iss-identity` | db/brand/supabase/schemas/market/org_invites.sql:21 |
+| `table:brand/market.org_invites` | guarded-by | `policy:core.org-role` | db/brand/supabase/schemas/market/org_invites.sql:23 |
+| `table:brand/market.org_invites` | typed-by | `table:brand/market.organizations` | db/brand/supabase/schemas/market/org_invites.sql:4 |
 | `table:market.org_links` | guarded-by | `policy:core.admin-aal2` | db/core/supabase/schemas/market/org_links.sql:21 |
 | `table:market.org_links` | guarded-by | `policy:core.iss-identity` | db/core/supabase/schemas/market/org_links.sql:17 |
 | `table:market.org_links` | guarded-by | `policy:core.org-role` | db/core/supabase/schemas/market/org_links.sql:19 |
 | `table:market.org_links` | typed-by | `table:market.organizations` | db/core/supabase/schemas/market/org_links.sql:4 |
-| `table:market.org_members` | guarded-by | `policy:core.admin-aal2` | db/core/supabase/schemas/market/org_members.sql:53 |
-| `table:market.org_members` | guarded-by | `policy:core.iss-identity` | db/core/supabase/schemas/market/org_members.sql:50 |
-| `table:market.org_members` | guarded-by | `policy:core.rls-org` | db/core/supabase/schemas/market/org_members.sql:52 |
+| `table:market.org_members` | guarded-by | `policy:core.admin-aal2` | db/core/supabase/schemas/market/org_members.sql:16 |
+| `table:market.org_members` | guarded-by | `policy:core.iss-identity` | db/core/supabase/schemas/market/org_members.sql:13 |
+| `table:market.org_members` | guarded-by | `policy:core.rls-org` | db/core/supabase/schemas/market/org_members.sql:15 |
 | `table:market.org_members` | typed-by | `table:market.organizations` | db/core/supabase/schemas/market/org_members.sql:3 |
 | `table:market.org_members` | typed-by | `table:market.profiles` | db/core/supabase/schemas/market/org_members.sql:4 |
 | `table:market.organizations` | guarded-by | `policy:core.admin-aal2` | db/core/supabase/schemas/market/organizations.sql:27 |
 | `table:market.organizations` | guarded-by | `policy:core.iss-identity` | db/core/supabase/schemas/market/organizations.sql:24 |
 | `table:market.organizations` | guarded-by | `policy:core.rls-org` | db/core/supabase/schemas/market/organizations.sql:26 |
 | `table:market.organizations` | typed-by | `table:finance.fee_rules` | db/core/supabase/schemas/market/organizations.sql:11 |
-| `table:market.profiles` | guarded-by | `policy:core.iss-identity` | db/core/supabase/schemas/market/profiles.sql:20 |
-| `table:market.profiles` | guarded-by | `policy:core.public-read` | db/core/supabase/schemas/market/profiles.sql:22 |
+| `table:market.profiles` | guarded-by | `policy:core.iss-identity` | db/core/supabase/schemas/market/profiles.sql:24 |
+| `table:market.profiles` | guarded-by | `policy:core.public-read` | db/core/supabase/schemas/market/profiles.sql:26 |
 | `table:market.profiles` | typed-by | `table:auth.users` | db/core/supabase/schemas/market/profiles.sql:1 |
 | `table:market.rate_rules` | guarded-by | `policy:core.inherit-parent` | db/core/supabase/schemas/market/rate_rules.sql:30 |
 | `table:market.rate_rules` | guarded-by | `policy:core.iss-identity` | db/core/supabase/schemas/market/rate_rules.sql:28 |
@@ -1527,8 +1561,8 @@ Arah: `A --tipe--> B` = A bergantung pada B. `?` = belum terverifikasi.
 | `config:supabase.identity` | configured-by | `env:RESEND_SMTP_KEY` | PRD v0.3.1 §15.7 + §15.10 SMTP custom (belum di kode: SMTP Auth diatur di Dashboard/Management API, config.toml baris 1–2) |
 | `config:supabase.identity` | configured-by | `env:TURNSTILE_SECRET` | PRD v0.3.1 §15.6 + §15.7 CAPTCHA (belum di kode: CAPTCHA Auth diatur di Dashboard/Management API, config.toml baris 1–2) |
 | `config:ci` | calls | `config:eslint.imports` | kode: .github/workflows/ci.yml baris 29 (pnpm lint = scripts/check-arch.mjs) |
-| `config:ci` | tests | `config:supabase.core` | .github/workflows/ci.yml:63 |
-| `config:ci` | tests | `config:supabase.identity` | .github/workflows/ci.yml:63 |
+| `config:ci` | tests | `config:supabase.core` | .github/workflows/ci.yml:65 |
+| `config:ci` | tests | `config:supabase.identity` | .github/workflows/ci.yml:65 |
 | `config:tpa-oidc-identity` | calls | `api:GET identity/.well-known/openid-configuration` | PRD v0.3.1 §15.6; kode supabase/auth api.go baris 207 (route tanpa syarat OAuth Server) |
 | `ext:disbursement` | calls | `api:fn identity/disburse` | db/identity/supabase/functions/disburse/index.ts:1 (callback penyedia, POST /disburse/callback) |
 | `ext:google` | configured-by | `config:host.app` | PRD v0.3.1 §15.2 redirect URI per host |
@@ -1562,15 +1596,15 @@ Arah: `A --tipe--> B` = A bergantung pada B. `?` = belum terverifikasi.
 | `test:e2e.bus` | calls | `api:fn creator/bridge` | e2e/bus.sh:3 |
 | `test:e2e.bus` | calls | `api:fn brand/bridge` | e2e/bus.sh:3 |
 | `test:e2e.cross-host` | configured-by | `doc:deploy/deploy.sh` | e2e/journey.cjs:2 (E2E_* menimpa host & DB untuk stack self-hosted) |
-| `test:e2e.cross-host` | tests | `page:accounts/invite/[token]` | e2e/journey.cjs:114 |
-| `test:e2e.cross-host` | tests | `page:accounts/login` | e2e/journey.cjs:55 |
-| `test:e2e.cross-host` | tests | `page:accounts/onboarding` | e2e/journey.cjs:62 |
-| `test:e2e.cross-host` | tests | `page:app/campaigns` | e2e/journey.cjs:75 |
-| `test:e2e.cross-host` | tests | `page:app/campaigns/[id]` | e2e/journey.cjs:86 |
-| `test:e2e.cross-host` | tests | `page:app/tasks` | e2e/journey.cjs:94 |
-| `test:e2e.cross-host` | tests | `page:brand/` | e2e/journey.cjs:128 |
-| `test:e2e.cross-host` | tests | `page:www/` | e2e/journey.cjs:44 |
-| `test:e2e.cross-host` | tests | `page:www/c/[slug]` | e2e/journey.cjs:49 |
+| `test:e2e.cross-host` | tests | `page:accounts/invite/[token]` | e2e/journey.cjs:115 |
+| `test:e2e.cross-host` | tests | `page:accounts/login` | e2e/journey.cjs:56 |
+| `test:e2e.cross-host` | tests | `page:accounts/onboarding` | e2e/journey.cjs:63 |
+| `test:e2e.cross-host` | tests | `page:app/campaigns` | e2e/journey.cjs:76 |
+| `test:e2e.cross-host` | tests | `page:app/campaigns/[id]` | e2e/journey.cjs:87 |
+| `test:e2e.cross-host` | tests | `page:app/tasks` | e2e/journey.cjs:95 |
+| `test:e2e.cross-host` | tests | `page:brand/` | e2e/journey.cjs:129 |
+| `test:e2e.cross-host` | tests | `page:www/` | e2e/journey.cjs:45 |
+| `test:e2e.cross-host` | tests | `page:www/c/[slug]` | e2e/journey.cjs:50 |
 | `test:e2e.mobile` | tests | `layout:mobile` | e2e/mobile.cjs:13 |
 | `test:e2e.mobile` | tests | `page:accounts/onboarding` | e2e/mobile.cjs:77 |
 | `test:member-data.integrity` | tests | `api:fn identity/member-data` | db/identity/supabase/tests/identity_access.test.sql:69 (SQL di balik member-data; handler dites Deno member-data/handler_test.ts) |
@@ -1580,17 +1614,17 @@ Arah: `A --tipe--> B` = A bergantung pada B. `?` = belum terverifikasi.
 | `test:member-data.integrity` | tests | `table:member.push_subscriptions` | db/identity/supabase/tests/identity_access.test.sql:177 |
 | `test:pwa.ios-login` | tests | `mod:auth` | PRD v0.3.1 R-17 sesi diset dari server |
 | `test:pwa.ios-login` | tests | `page:app/login` | PRD v0.3.1 R-17 |
-| `test:rls.access-matrix` | tests | `job:broadcast-dispatch` | db/core/supabase/tests/core_access.test.sql:290 |
-| `test:rls.access-matrix` | tests | `job:budget-alerts` | db/core/supabase/tests/core_access.test.sql:290 (job terdaftar; perilaku dites core_contracts_market.test.sql) |
-| `test:rls.access-matrix` | tests | `job:earning-release` | db/core/supabase/tests/core_access.test.sql:290 |
-| `test:rls.access-matrix` | tests | `job:lifecycle` | db/core/supabase/tests/core_access.test.sql:290 |
-| `test:rls.access-matrix` | tests | `job:referral-bonus` | db/core/supabase/tests/core_access.test.sql:290 (job terdaftar; perilaku dites core_contracts_finance.test.sql) |
-| `test:rls.access-matrix` | tests | `job:trust-score` | db/core/supabase/tests/core_access.test.sql:290 (job terdaftar; perilaku dites core_contracts_market.test.sql) |
-| `test:rls.access-matrix` | tests | `policy:core.admin-aal2` | db/core/supabase/tests/core_access.test.sql:222 |
-| `test:rls.access-matrix` | tests | `policy:core.iss-identity` | db/core/supabase/tests/core_access.test.sql:183 |
-| `test:rls.access-matrix` | tests | `policy:core.org-role` | db/core/supabase/tests/core_access.test.sql:213 |
-| `test:rls.access-matrix` | tests | `policy:core.rls-org` | db/core/supabase/tests/core_access.test.sql:208 |
-| `test:rls.access-matrix` | tests | `policy:core.rls-self` | db/core/supabase/tests/core_access.test.sql:185 |
+| `test:rls.access-matrix` | tests | `job:broadcast-dispatch` | db/core/supabase/tests/core_access.test.sql:288 |
+| `test:rls.access-matrix` | tests | `job:budget-alerts` | db/core/supabase/tests/core_access.test.sql:288 (job terdaftar; perilaku dites core_contracts_market.test.sql) |
+| `test:rls.access-matrix` | tests | `job:earning-release` | db/core/supabase/tests/core_access.test.sql:288 |
+| `test:rls.access-matrix` | tests | `job:lifecycle` | db/core/supabase/tests/core_access.test.sql:288 |
+| `test:rls.access-matrix` | tests | `job:referral-bonus` | db/core/supabase/tests/core_access.test.sql:288 (job terdaftar; perilaku dites core_contracts_finance.test.sql) |
+| `test:rls.access-matrix` | tests | `job:trust-score` | db/core/supabase/tests/core_access.test.sql:288 (job terdaftar; perilaku dites core_contracts_market.test.sql) |
+| `test:rls.access-matrix` | tests | `policy:core.admin-aal2` | db/core/supabase/tests/core_access.test.sql:220 |
+| `test:rls.access-matrix` | tests | `policy:core.iss-identity` | db/core/supabase/tests/core_access.test.sql:181 |
+| `test:rls.access-matrix` | tests | `policy:core.org-role` | db/core/supabase/tests/core_access.test.sql:211 |
+| `test:rls.access-matrix` | tests | `policy:core.rls-org` | db/core/supabase/tests/core_access.test.sql:206 |
+| `test:rls.access-matrix` | tests | `policy:core.rls-self` | db/core/supabase/tests/core_access.test.sql:183 |
 | `test:rls.access-matrix` | tests | `policy:identity.admin-aal2` | db/identity/supabase/tests/identity_access.test.sql:120 |
 | `test:rls.access-matrix` | tests | `policy:identity.rls-self` | db/identity/supabase/tests/identity_access.test.sql:90 |
 | `test:rls.access-matrix` | tests | `table:finance.ledger_entries` | db/core/supabase/tests/core_access.test.sql:151 |
@@ -1626,19 +1660,19 @@ Arah: `A --tipe--> B` = A bergantung pada B. `?` = belum terverifikasi.
 | `doc:spec/contracts.yaml` | documents | `api:fn identity/disburse` | spec/contracts.yaml:52 |
 | `doc:spec/contracts.yaml` | documents | `api:fn identity/member-data` | spec/contracts.yaml:47 |
 | `doc:spec/contracts.yaml` | documents | `api:fn identity/pii-export` | spec/contracts.yaml:48 |
-| `doc:spec/contracts.yaml` | documents | `api:rpc core.accept_org_invite` | spec/contracts.yaml:17 |
+| `doc:spec/contracts.yaml` | documents | `api:rpc brand.accept_org_invite` | spec/contracts.yaml:17 |
 | `doc:spec/contracts.yaml` | documents | `api:rpc core.appeal_submission` | spec/contracts.yaml:7 |
 | `doc:spec/contracts.yaml` | documents | `api:rpc core.approve_payout_batch` | spec/contracts.yaml:25 |
 | `doc:spec/contracts.yaml` | documents | `api:rpc core.buy_pin` | spec/contracts.yaml:22 |
 | `doc:spec/contracts.yaml` | documents | `api:rpc core.claim_campaign` | spec/contracts.yaml:6 |
 | `doc:spec/contracts.yaml` | documents | `api:rpc core.confirm_invoice_payment` | spec/contracts.yaml:23 |
 | `doc:spec/contracts.yaml` | documents | `api:rpc core.control_campaign` | spec/contracts.yaml:11 |
-| `doc:spec/contracts.yaml` | documents | `api:rpc core.create_org` | spec/contracts.yaml:14 |
-| `doc:spec/contracts.yaml` | documents | `api:rpc core.create_org_invite` | spec/contracts.yaml:16 |
+| `doc:spec/contracts.yaml` | documents | `api:rpc brand.create_org` | spec/contracts.yaml:14 |
+| `doc:spec/contracts.yaml` | documents | `api:rpc brand.create_org_invite` | spec/contracts.yaml:16 |
 | `doc:spec/contracts.yaml` | documents | `api:rpc core.create_payout_batch` | spec/contracts.yaml:24 |
 | `doc:spec/contracts.yaml` | documents | `api:rpc core.duplicate_campaign` | spec/contracts.yaml:12 |
 | `doc:spec/contracts.yaml` | documents | `api:rpc core.invite_to_campaign` | spec/contracts.yaml:13 |
-| `doc:spec/contracts.yaml` | documents | `api:rpc core.link_agency` | spec/contracts.yaml:15 |
+| `doc:spec/contracts.yaml` | documents | `api:rpc brand.link_agency` | spec/contracts.yaml:15 |
 | `doc:spec/contracts.yaml` | documents | `api:rpc core.list_campaigns` | spec/contracts.yaml:5 |
 | `doc:spec/contracts.yaml` | documents | `api:rpc core.manage_org` | spec/contracts.yaml:18 |
 | `doc:spec/contracts.yaml` | documents | `api:rpc core.mark_batch_paid` | spec/contracts.yaml:26 |
@@ -1708,7 +1742,7 @@ Arah: `A --tipe--> B` = A bergantung pada B. `?` = belum terverifikasi.
 | `doc:spec/kg.yaml` | documents | `table:market.campaigns` | spec/kg.yaml:14 |
 | `doc:spec/kg.yaml` | documents | `table:market.categories` | spec/kg.yaml:40 |
 | `doc:spec/kg.yaml` | documents | `table:market.claims` | spec/kg.yaml:19 |
-| `doc:spec/kg.yaml` | documents | `table:market.org_invites` | spec/kg.yaml:38 |
+| `doc:spec/kg.yaml` | documents | `table:brand/market.org_invites` | spec/kg.yaml:38 |
 | `doc:spec/kg.yaml` | documents | `table:market.org_links` | spec/kg.yaml:46 |
 | `doc:spec/kg.yaml` | documents | `table:market.org_members` | spec/kg.yaml:11 |
 | `doc:spec/kg.yaml` | documents | `table:market.organizations` | spec/kg.yaml:10 |
@@ -2145,8 +2179,8 @@ flowchart TD
 | B1.1 Untuk brand | `page:www/` | {domain}/#brand | Lihat: Cara kerja untuk brand, fee 15% + 5% di atas budget creator, contoh laporan, tombol Daftar sebagai brand dan Pakai paket managed. Lakukan: Tap Daftar sebagai brand. | Tidak ada.  | accounts.{domain}/login?next=https://brand.{domain}/new. Cabang: Pakai paket managed → login & buat org seperti biasa, lalu di builder pilih Dibantu tim: isi brief mentah + unggah berkas brief (audience internal, folder internal/, tidak terlihat clipper) → draft service_mode managed antre di builder admin (J-A7); tim melengkapi, brand menyetujui di B1.7 lalu membayar (invoice managed_service). |
 | B1.2 Login | `page:accounts/login` | accounts.{domain}/login?next=… | Lihat: Sama dengan login clipper: email kantor → kode OTP, atau Google. Lakukan: Masuk. | Auth identity (C1.2). Akun yang sudah ada (mis. juga clipper) dipakai ulang. `mod:auth`, `ext:supabase-identity` | accounts.{domain}/onboarding?role=brand&next=… |
 | B1.3 Onboarding brand | `page:accounts/onboarding` | accounts.{domain}/onboarding?role=brand&next=… | Lihat: Nama tampilan, username (diisi otomatis, bisa diubah), centang ToS brand + kebijakan privasi. Lakukan: Simpan. | ensure_profile → record_consent(tos_brand, privacy) → refreshSession → consent_ok.brand = true. `api:rpc core.ensure_profile`, `api:rpc identity.record_consent`, `fn:custom_access_token_hook` | brand.{domain}/new. Cabang: Diundang ke org (J-B2) → langsung ke org itu, tanpa buat organisasi. |
-| B1.4 Buat organisasi | `page:brand/new` | brand.{domain}/new | Lihat: Nama brand, jenis (badan usaha / perorangan), centang agency; badan usaha: nama legal, NPWP 15/16 digit, alamat. Lakukan: Buat organisasi. | api.create_org → E-02 status pending_verification + E-03 brand_owner. Perorangan: NPWP = NIK dan alamat pribadi tidak disimpan di core (constraint organizations_perorangan_no_pii); datanya dari KYC pemilik. `api:rpc core.create_org`, `table:market.organizations`, `table:market.org_members` | brand.{domain}/[org]/campaigns dengan banner Menunggu verifikasi. Cabang: Perorangan → accounts.{domain}/kyc?next=https://brand.{domain}/[org]/campaigns (wajib sebelum invoice berfaktur). |
-| B1.5 Verifikasi org | `page:admin/users` | admin.{domain}/users (tab Org brand, J-A2) | Lihat: Brand melihat banner Menunggu verifikasi; boleh menyusun draft. Lakukan: Tim memeriksa NPWP (badan) atau KYC pemilik (perorangan). | api.manage_org verify → verified (verified_by, verified_at) → notifikasi org.verified; ditolak → alasan + perbaiki. `api:rpc core.manage_org`, `fn:enqueue_notification` | Banner hilang; tombol Ajukan aktif. Cabang: Ditolak → brand_owner memperbaiki data di brand.{domain}/[org]/settings (Ubah data → api.update_org); banner berganti Perbaikan terkirim, admin melihat Diubah brand. Org verified mengubah nama legal/NPWP/alamat → kembali Menunggu verifikasi (campaign baru tidak bisa diajukan; yang berjalan tetap). `api:rpc core.update_org` |
+| B1.4 Buat organisasi | `page:brand/new` | brand.{domain}/new | Lihat: Nama brand, jenis (badan usaha / perorangan), centang agency; badan usaha: nama legal, NPWP 15/16 digit, alamat. Lakukan: Buat organisasi. | api.create_org → E-02 status pending_verification + E-03 brand_owner. Perorangan: NPWP = NIK dan alamat pribadi tidak disimpan di core (constraint organizations_perorangan_no_pii); datanya dari KYC pemilik. `api:rpc brand.create_org`, `table:market.organizations`, `table:market.org_members` | brand.{domain}/[org]/campaigns dengan banner Menunggu verifikasi. Cabang: Perorangan → accounts.{domain}/kyc?next=https://brand.{domain}/[org]/campaigns (wajib sebelum invoice berfaktur). |
+| B1.5 Verifikasi org | `page:admin/users` | admin.{domain}/users (tab Org brand, J-A2) | Lihat: Brand melihat banner Menunggu verifikasi; boleh menyusun draft. Lakukan: Tim memeriksa NPWP (badan) atau KYC pemilik (perorangan). | api.manage_org verify → verified (verified_by, verified_at) → notifikasi org.verified; ditolak → alasan + perbaiki. `api:rpc core.manage_org`, `fn:enqueue_notification` | Banner hilang; tombol Ajukan aktif. Cabang: Ditolak → brand_owner memperbaiki data di brand.{domain}/[org]/settings (Ubah data → api.update_org); banner berganti Perbaikan terkirim, admin melihat Diubah brand. Org verified mengubah nama legal/NPWP/alamat → kembali Menunggu verifikasi (campaign baru tidak bisa diajukan; yang berjalan tetap). `api:rpc brand.update_org` |
 | B1.6 Susun campaign | `page:brand/[org]/campaigns/new` | brand.{domain}/[org]/campaigns/new | Lihat: Builder 7 langkah (F-B02), bisa mulai dari template atau duplikat; simpan draft kapan saja. Langkah 2 Brief: teks brief, do/don't, contoh konten (link), hashtag/mention/link wajib, durasi min–maks, label konten bersponsor, FAQ, aset (file/link); tombol Dibantu tim. Lakukan: Isi langkah 1–7. | save_campaign (draft) → E-06 dengan kolom brief terstruktur, rate rule E-08, pool E-09, aset E-10 ke bucket campaign-covers / campaign-assets (berkas brief mentah di folder internal/: hanya anggota org + admin). `comp:CampaignBuilder`, `api:rpc core.save_campaign`, `table:market.campaigns`, `table:market.campaign_assets`, `table:bucket.campaign-assets` | Langkah terakhir: ringkasan biaya. Cabang: Dibantu tim → service_mode managed, draft antre di J-A7; brand tetap bisa mengisi sendiri kapan saja. |
 | B1.7 Ringkasan & ajukan | `page:brand/[org]/campaigns/new` | brand.{domain}/[org]/campaigns/new (ringkasan) | Lihat: Budget creator + management fee 15% + admin fee 5% + pajak = total; jadwal; mode review. Lakukan: Ajukan. | save_campaign (submit): org harus verified → campaign in_review + invoice E-22 (kind campaign) → notifikasi Invoice terbit. Review isi oleh admin jalan paralel dengan pembayaran. Sejak diajukan brief terkunci (trigger campaigns_brief_frozen); yang masih bisa ditambah hanya FAQ. `api:rpc core.save_campaign`, `table:finance.invoices`, `fn:enqueue_notification` | brand.{domain}/[org]/billing. Cabang: Org belum verified → tombol Ajukan nonaktif + alasan. |
 | B1.8 Bayar invoice | `page:brand/[org]/billing` | brand.{domain}/[org]/billing | Lihat: Invoice: rincian, QRIS (≤ Rp10 juta) atau rekening transfer + nomor referensi wajib; status Belum dibayar; unduh faktur setelah lunas. Lakukan: Bayar dari m-banking. | Finance mencocokkan mutasi (J-A3) → confirm_invoice_payment → jurnal bank → pool → notifikasi Pembayaran diterima. `table:finance.invoices`, `ext:bank`, `api:rpc core.confirm_invoice_payment` | Invoice Lunas. Cabang: Nominal tidak cocok → finance menghubungi brand. Nomor referensi sama → ditolak sistem. |
@@ -2177,9 +2211,9 @@ flowchart TD
 
 | Langkah | Layar | URL | User lihat → lakukan | Sistem | Lanjut ke · cabang |
 |---|---|---|---|---|---|
-| B2.1 Buat link undangan | `page:brand/[org]/team` | brand.{domain}/[org]/team | Lihat: Daftar anggota + role; tombol Buat link undangan (pilih role). Lakukan: Buat link, bagikan sendiri lewat WhatsApp/email. | create_org_invite → E-30 (token_hash, kedaluwarsa). Tanpa email dari sistem. `api:rpc core.create_org_invite`, `table:market.org_invites` | Penerima membuka accounts.{domain}/invite/[token]. Cabang: Hanya brand_owner yang bisa membuat undangan. Owner mengubah role / mengeluarkan anggota / mencabut link belum dipakai (api.manage_team); owner terakhir tidak bisa turun/keluar. `api:rpc core.manage_team` |
-| B2.2 Terima undangan | `page:accounts/invite/[token]` | accounts.{domain}/invite/[token] | Lihat: Nama org + role yang ditawarkan; kalau belum login, login dulu. Lakukan: Tap Terima. | accept_org_invite: profil E-01 dibuat dulu kalau belum ada, lalu E-03 (alur 5). `api:rpc core.accept_org_invite`, `table:market.org_members` | brand.{domain}/. Cabang: Token kedaluwarsa atau sudah dipakai → minta link baru. |
-| B2.3 Tautkan agency | `page:brand/[org]/settings` | brand.{domain}/[org]/settings (Agency) | Lihat: Agency: kirim permintaan ke org klien. Klien (brand_owner): daftar permintaan + Setujui/Cabut. Lakukan: Setujui tautan. | api.link_agency → E-38 disetujui brand_owner klien; anggota agency memegang role yang sama di org klien (ops.org_role); dicabut = revoked_at. `api:rpc core.link_agency`, `table:market.org_links` | Org klien muncul di pemilih org agency. Cabang: Dicabut → akses agency ke org klien hilang seketika (RLS). |
+| B2.1 Buat link undangan | `page:brand/[org]/team` | brand.{domain}/[org]/team | Lihat: Daftar anggota + role; tombol Buat link undangan (pilih role). Lakukan: Buat link, bagikan sendiri lewat WhatsApp/email. | create_org_invite → E-30 (token_hash, kedaluwarsa). Tanpa email dari sistem. `api:rpc brand.create_org_invite`, `table:brand/market.org_invites` | Penerima membuka accounts.{domain}/invite/[token]. Cabang: Hanya brand_owner yang bisa membuat undangan. Owner mengubah role / mengeluarkan anggota / mencabut link belum dipakai (api.manage_team); owner terakhir tidak bisa turun/keluar. `api:rpc brand.manage_team` |
+| B2.2 Terima undangan | `page:accounts/invite/[token]` | accounts.{domain}/invite/[token] | Lihat: Nama org + role yang ditawarkan; kalau belum login, login dulu. Lakukan: Tap Terima. | accept_org_invite: profil E-01 dibuat dulu kalau belum ada, lalu E-03 (alur 5). `api:rpc brand.accept_org_invite`, `table:market.org_members` | brand.{domain}/. Cabang: Token kedaluwarsa atau sudah dipakai → minta link baru. |
+| B2.3 Tautkan agency | `page:brand/[org]/settings` | brand.{domain}/[org]/settings (Agency) | Lihat: Agency: kirim permintaan ke org klien. Klien (brand_owner): daftar permintaan + Setujui/Cabut. Lakukan: Setujui tautan. | api.link_agency → E-38 disetujui brand_owner klien; anggota agency memegang role yang sama di org klien (ops.org_role); dicabut = revoked_at. `api:rpc brand.link_agency`, `table:market.org_links` | Org klien muncul di pemilih org agency. Cabang: Dicabut → akses agency ke org klien hilang seketika (RLS). |
 
 ```mermaid
 flowchart TD
@@ -2346,7 +2380,7 @@ Masalah sistem yang ditemukan saat menyusun PRD v0.2 dan saat dicek ulang (v0.2.
 | 2026-10-15 | `table:member.kyc_records` | Hanya simpan nik_hash, padahal bukti potong PPh 21 butuh NIK asli | diperbaiki: tambah nik_enc |
 | 2026-10-15 | `table:finance.payouts` | proof_url & file_url batch berisi nomor rekening (PII) di DB core | diperbaiki: proof_ref/file_ref ke bucket identity |
 | 2026-10-15 | `table:member.payout_methods` | E-16 lama tidak punya id padahal dirujuk E-17.method_id | diperbaiki: tambah id + account_no_hash |
-| 2026-10-15 | `table:market.org_invites` | F-B01 "undang member" tanpa entitas undangan | diperbaiki: E-30 tanpa email |
+| 2026-10-15 | `table:brand/market.org_invites` | F-B01 "undang member" tanpa entitas undangan | diperbaiki: E-30 tanpa email |
 | 2026-10-15 | `page:www/` | Menu nav & CTA lintas host belum didesain (edge routes-to bertanda ?) | diperbaiki v0.2.3: journey per layar + menu (§6), 0 edge navigasi bertanda ? |
 | 2026-10-15 | `page:accounts/kyc` | Journey: KYC dikirim tanpa kabar keputusan (F-X01 tidak punya event KYC) | diperbaiki v0.2.3: record_review mencatat keputusan KYC + notifikasi KYC disetujui/ditolak |
 | 2026-10-15 | `page:brand/[org]/billing` | Journey: brand tidak dikabari invoice terbit (F-X01) | diperbaiki v0.2.3: event Invoice terbit |
@@ -2479,9 +2513,9 @@ Masalah sistem yang ditemukan saat menyusun PRD v0.2 dan saat dicek ulang (v0.2.
 | 2026-10-20 | `page:brand/[org]/team` | Audit PRD ulang (brand AB-5, E-03 "owner kelola member"): owner tidak bisa mengubah role, mengeluarkan anggota (mis. karyawan keluar tetap pegang akses billing), atau mencabut link undangan — halaman menyuruh lewat tim Clipper | diperbaiki: api.manage_team (set_role/remove/revoke_invite, brand_owner langsung, org dikunci, last_owner) + kontrol per baris di halaman Tim; tercatat org.team.* di audit |
 | 2026-10-20 | `api:rpc core.pay_invoice_with_credit` | Review Claudex R22: (1) melepas kredit setelah fee rollover dibebaskan membiarkan fee tetap terhapus (invoice bisa dilunasi transfer dengan diskon tanpa rollover); (2) jumlah default UI = total sebelum bebas fee → insufficient_credit, bayar penuh pakai kredit selalu gagal | diperbaiki: fee_gross menyimpan fee awal, bebas fee dihitung ulang tiap cadangan berubah (lepas → fee penuh kembali, rollover milik invoice itu tetap tersedia untuknya); permintaan ≥ total dengan kredit cukup = bayar penuh |
 | 2026-10-20 | `page:brand/[org]/billing` | Audit PRD ulang (brand AB-4, B1.8 "unduh faktur setelah lunas"): faktur_no tidak pernah diisi siapa pun, tombol Unduh faktur selalu nonaktif | diperbaiki: bucket invoice-docs + api.attach_faktur (admin_finance, invoice lunas, nomor unik, berkas wajib ada); tab Pembayaran masuk admin menampilkan invoice ber-PPN yang menunggu faktur + unggah; brand billing mengunduh lewat signed URL |
-| 2026-10-20 | `api:rpc core.manage_team` | Review Claudex R23: owner B yang sedang dikeluarkan owner A lolos cek owner sebelum hapus A commit lalu mempromosikan anggota lain jadi owner (dibuktikan 2 sesi psql: kode lama C=brand_owner); link undangan yang dibuat owner lama tetap bisa dipakai kembali | diperbaiki di akar: market.is_direct_member membaca baris anggota FOR SHARE (menunggu hapus/ubah role yang belum commit lalu ditolak), manage_team & update_org mengunci org sebelum cek (tanpa deadlock), undangan pending milik owner yang dikeluarkan/diturunkan ikut dicabut |
+| 2026-10-20 | `api:rpc brand.manage_team` | Review Claudex R23: owner B yang sedang dikeluarkan owner A lolos cek owner sebelum hapus A commit lalu mempromosikan anggota lain jadi owner (dibuktikan 2 sesi psql: kode lama C=brand_owner); link undangan yang dibuat owner lama tetap bisa dipakai kembali | diperbaiki di akar: market.is_direct_member membaca baris anggota FOR SHARE (menunggu hapus/ubah role yang belum commit lalu ditolak), manage_team & update_org mengunci org sebelum cek (tanpa deadlock), undangan pending milik owner yang dikeluarkan/diturunkan ikut dicabut |
 | 2026-10-20 | `page:admin/finance` | Audit PRD ulang (brand AB-6, B3.7/A3.6): refund brand tidak punya rekening tujuan sama sekali (email bilang "ke rekening organisasi", finance tidak tahu harus transfer ke mana), termasuk refund otomatis saat campaign dibatalkan | diperbaiki: api.set_refund_dest (status requested, aal2; badan = rekening a.n. nama legal org, perorangan = rekening bank pribadi pemilik di identity tanpa menyalin PII ke core/brand — invarian 1), approve_refund menolak refund_dest_missing, bridge_get_refund + identity svc_user_payout_methods + pii-export refund_destination (dicek seperti payout: KYC & nama, diaudit); UI brand (form refund + Isi rekening) dan admin (rekening badan / Lihat rekening perorangan) |
-| 2026-10-20 | `api:rpc core.manage_team` | Review Claudex R24: (1) org dikunci FOR UPDATE bentrok dengan KEY SHARE cek FK insert undangan → deadlock, penghapusan owner jadi korban (dibuktikan 2 sesi psql); (2) owner yang diturunkan admin lewat manage_org add_member tetap bisa kembali lewat link undangannya; (3) PDF faktur yang ditolak/diganti tertinggal tanpa jalan hapus | diperbaiki: kunci org FOR NO KEY UPDATE (manage_team, update_org; terbukti tanpa deadlock), pencabutan undangan pindah ke trigger org_members_revoke_owner_invites (semua jalur demosi/hapus), policy invoice_docs_delete (admin_finance) + attachFaktur memvalidasi nomor dulu dan menghapus berkas yang ditolak/diganti |
+| 2026-10-20 | `api:rpc brand.manage_team` | Review Claudex R24: (1) org dikunci FOR UPDATE bentrok dengan KEY SHARE cek FK insert undangan → deadlock, penghapusan owner jadi korban (dibuktikan 2 sesi psql); (2) owner yang diturunkan admin lewat manage_org add_member tetap bisa kembali lewat link undangannya; (3) PDF faktur yang ditolak/diganti tertinggal tanpa jalan hapus | diperbaiki: kunci org FOR NO KEY UPDATE (manage_team, update_org; terbukti tanpa deadlock), pencabutan undangan pindah ke trigger org_members_revoke_owner_invites (semua jalur demosi/hapus), policy invoice_docs_delete (admin_finance) + attachFaktur memvalidasi nomor dulu dan menghapus berkas yang ditolak/diganti |
 | 2026-10-20 | `page:admin/finance` | Audit PRD ulang (AB-7/AA-14, §5.4 "reward non-tunai tetap punya nilai Rupiah, tetap tercatat untuk pajak"): rekap PPh 21 hanya menjumlah payout tunai; reward non-tunai terkirim tidak tercatat | diperbaiki: bridge_pph21 = payout tunai dibayar + fulfillment delivered × idr_value_per_unit per orang (kolom cash/noncash/gross), CSV pii-export ikut; tarif tetap dihitung tim pajak (keputusan sebelumnya) |
 | 2026-10-20 | `api:fn identity/member-data` | Audit PRD ulang (AA-2, FR-04 "Blok withdraw + review", A2.1 "NIK atau rekening ganda → tolak + tandai fraud"): NIK/rekening yang sudah dipakai akun lain hanya ditolak, tanpa sinyal fraud untuk direview | diperbaiki: member-data mengangkat fraud flag FR-04 pada profil pencoba lewat bridge raise_fraud_flag (pemegang dari identity svc_hash_holder di payload tanpa PII; NIK akun ter-ban = skor 100; duplikat milik sendiri bukan sinyal; gagal tidak mengubah respons) → payout_block fraud_flag + bonus referral batal |
 | 2026-10-20 | `api:rpc core.set_refund_dest` | Review Claudex R25: (1) rekening pribadi refund org perorangan tetap milik owner yang sudah dikeluarkan/diturunkan → dana org ke orang luar; (2) owner badan mengubah nama legal (belum diverifikasi) jadi nama pribadinya lalu mengisi rekening pribadi | diperbaiki: trigger org_members_owner_lost (pengganti revoke_owner_invites) juga mengosongkan rekening pribadi refund belum dibayar milik owner itu + membatalkan persetujuan (audit refund.dest_reset); rekening perusahaan hanya diterima saat org terverifikasi (org_unverified) |
@@ -2580,6 +2614,7 @@ Keputusan yang sudah diambil — jangan dibahas ulang tanpa alasan baru.
 | 2026-10-20 | Nilai awal tier Trust Score: skor ≥ 80 → cap 120% & hold 3 hari, ≥ 60 → cap 100% & hold 5 hari; TikTok cap 80% & hold minimal 10 hari | PRD tidak memberi angka; nilai konservatif, bisa diubah admin (ops.settings) | `fn:accrue_earnings`, `job:earning-release`, `page:app/profile` |
 | 2026-10-15 | D-12: DB dipisah jadi identity (login + PII) dan core (campaign, tracking, uang) | Permintaan owner: database member terpisah; core bocor tidak membuka PII | `ext:supabase-identity`, `ext:supabase-core`, semua `table:member.*` |
 | 2026-10-22 | DIGANTI owner: core dipecah jadi 3 database fisik — creator, brand, admin (identity tetap) | Permintaan owner (data admin, creator, brand harus terpisah fisik). Syarat §10.5 #4 tetap: ledger + aturan bayar + pool + accrual di satu DB (admin); domain lain bertukar event lewat outbox (lihat Arsitektur 4 database) | semua `table:*` core, `fn:accrue_earnings`, `api:fn */bus` |
+| 2026-10-22 | Org/tim/undangan/agency ditulis di DB brand; admin & creator hanya replika. Fee org tetap kolom milik admin di replika | Pemilik data = tempat ditulis; fee = aturan uang (admin). Verifikasi org oleh admin memanggil DB brand langsung (JWT admin), keputusan + notifikasi + audit dikirim ke admin sebagai event | `table:brand/market.organizations`, `api:rpc brand.manage_org`, `api:rpc core.manage_org`, `fn:bus_in.admin` |
 | 2026-10-15 | (diganti 2026-10-22) Core tidak dipecah per fitur; pemisahan di core per schema | accrue_earnings wajib satu transaksi (§10.5 #4) | `fn:accrue_earnings`, `table:finance.*` |
 | 2026-10-15 | D-13: subdomain per kelompok user (5 app), bukan per fitur | 45 fitur di satu trust level; scope PWA satu origin; redirect URI TikTok maks 10 | `config:host.*`, `layout:*` |
 | 2026-10-15 | Satu monorepo, folder per fitur, 1 project Vercel per app | Kode bersama tanpa disalin; deploy & env terpisah | `mod:*`, `comp:CampaignBuilder` |

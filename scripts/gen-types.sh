@@ -8,4 +8,6 @@ for p in core identity; do
   supabase gen types typescript --db-url "postgresql://postgres@127.0.0.1:5432/t_types_$p" --schema api 2>/dev/null \
     > "packages/db-$p/src/types.gen.ts"
 done
-echo "types: packages/db-core/src/types.gen.ts, packages/db-identity/src/types.gen.ts"
+# Project brand: dari stack lokal yang jalan (scripts/dev-stack.sh).
+supabase gen types typescript --local --schema api --workdir db/brand > packages/db-brand/src/types.gen.ts
+echo "types: packages/db-{core,identity,brand}/src/types.gen.ts"

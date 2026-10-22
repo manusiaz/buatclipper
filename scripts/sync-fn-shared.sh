@@ -8,5 +8,6 @@ for p in creator brand; do
   mkdir -p "db/$p/supabase/functions/_shared"
   for f in $FILES; do cp "db/core/supabase/functions/_shared/$f" "db/$p/supabase/functions/_shared/$f"; done
   for f in bus/bus.sql ops/_base.sql ops/_auth.sql; do cp "db/core/supabase/schemas/$f" "db/$p/supabase/schemas/$f"; done
+  [ "$p" = brand ] && cp db/core/supabase/schemas/market/_org_helpers.sql db/brand/supabase/schemas/market/_org_helpers.sql
   cp db/core/supabase/functions/deno.json db/core/supabase/functions/import_map.json "db/$p/supabase/functions/"
 done

@@ -78,7 +78,7 @@ for p in identity core creator brand; do
 done
 
 status() { supabase status --workdir "db/$1" -o env 2>/dev/null | grep "^$2=" | cut -d= -f2- | tr -d '"'; }
-ID_PUB=$(status identity PUBLISHABLE_KEY); CORE_PUB=$(status core PUBLISHABLE_KEY)
+ID_PUB=$(status identity PUBLISHABLE_KEY); CORE_PUB=$(status core PUBLISHABLE_KEY); BRAND_PUB=$(status brand PUBLISHABLE_KEY)
 # Kunci cron = nilai yang dilihat Edge Function sendiri (SUPABASE_SERVICE_ROLE_KEY di container berbeda dengan yang
 # dicetak `supabase status`). Produksi: isi Vault dengan secret key yang sama dengan env fungsi (Fase 0).
 fnkey() { docker exec "supabase_edge_runtime_clipper-$1" printenv SUPABASE_SERVICE_ROLE_KEY; }
@@ -111,6 +111,7 @@ for a in web accounts clipper brand admin; do
   {
     echo "NEXT_PUBLIC_CORE_URL=http://127.0.0.1:55321"
     echo "NEXT_PUBLIC_CORE_PUBLISHABLE_KEY=$CORE_PUB"
+    case $a in accounts|brand|admin) echo "NEXT_PUBLIC_BRAND_DB_URL=http://127.0.0.1:57321"; echo "NEXT_PUBLIC_BRAND_DB_PUBLISHABLE_KEY=$BRAND_PUB";; esac
     [ "$a" != web ] && echo "NEXT_PUBLIC_IDENTITY_URL=http://127.0.0.1:54321" && echo "NEXT_PUBLIC_IDENTITY_PUBLISHABLE_KEY=$ID_PUB"
     echo "NEXT_PUBLIC_COOKIE_DOMAIN=.$DOMAIN"
     echo "NEXT_PUBLIC_WEB_URL=$WEB"; echo "NEXT_PUBLIC_ACCOUNTS_URL=$ACC"; echo "NEXT_PUBLIC_APP_URL=$APP"

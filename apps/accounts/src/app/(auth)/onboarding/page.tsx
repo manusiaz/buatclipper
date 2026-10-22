@@ -2,7 +2,7 @@ import type { Metadata } from 'next';
 import { redirect } from 'next/navigation';
 import { getTranslations } from 'next-intl/server';
 import { hosts, safeNext } from '@clipper/auth';
-import { coreServer, requireAccount } from '@clipper/auth/server';
+import { brandServer, coreServer, requireAccount } from '@clipper/auth/server';
 import { Alert, AuthShell } from '@clipper/ui';
 import { OnboardingForm } from '@/features/onboarding/onboarding-form';
 import { initialUsername, latestLegal, roleOf } from '@/features/onboarding/rules';
@@ -19,11 +19,11 @@ export default async function OnboardingPage({ searchParams }: { searchParams: S
   const sp = await searchParams;
   const next = one(sp.next);
   const role = roleOf(one(sp.role), next, hosts.brand);
-  const [core, id, t] = await Promise.all([coreServer(), identityDb(), getTranslations('accounts.onboarding')]);
+  const [core, brand, id, t] = await Promise.all([coreServer(), brandServer(), identityDb(), getTranslations('accounts.onboarding')]);
   const [profile, legal, membership] = await Promise.all([
     core.from('my_profile').select('username, display_name').maybeSingle(),
     id.from('legal_versions').select('kind, version, url, published_at').in('kind', [role === 'brand' ? 'tos_brand' : 'tos_clipper', 'privacy']),
-    role === 'brand' ? core.from('org_members').select('org_id').eq('user_id', claims.sub).limit(1) : null,
+    role === 'brand' ? brand.from('org_members').select('org_id').eq('user_id', claims.sub).limit(1) : null,
   ]);
   if (legal.error) throw new Error(legal.error.message);
 

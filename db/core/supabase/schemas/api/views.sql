@@ -44,8 +44,6 @@ create view api.organizations with (security_invoker = true) as
   select id, name, org_type, legal_name, npwp, address, is_agency, fee_rule_id, status, verified_at, created_at, updated_at from market.organizations;
 create view api.org_members with (security_invoker = true) as
   select org_id, user_id, role, created_at from market.org_members;
-create view api.org_invites with (security_invoker = true) as
-  select id, org_id, role, expires_at, accepted_by, accepted_at, created_by, created_at from market.org_invites;
 create view api.claims with (security_invoker = true) as
   select id, campaign_id, user_id, status, expires_at, created_at from market.claims;
 create view api.social_accounts with (security_invoker = true) as
@@ -131,7 +129,7 @@ create view api.leaderboard with (security_invoker = true) as
   from market.leaderboard_campaign c join market.profiles p on p.id = c.user_id
   where exists (select 1 from market.campaigns k where k.id = c.campaign_id);
 
-grant select on api.my_profile, api.admin_profiles, api.managed_briefs, api.organizations, api.org_members, api.org_invites, api.claims, api.social_accounts,
+grant select on api.my_profile, api.admin_profiles, api.managed_briefs, api.organizations, api.org_members, api.claims, api.social_accounts,
                 api.submissions, api.view_snapshots, api.review_decisions, api.fraud_flags, api.notifications,
                 api.notification_prefs, api.audit_logs, api.report_links, api.fee_rules, api.wallet_balances,
                 api.wallet_entries, api.admin_ledger, api.payouts, api.fulfillments, api.fulfillment_exports, api.invoices, api.org_refunds, api.payout_batches,

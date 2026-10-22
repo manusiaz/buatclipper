@@ -12,7 +12,8 @@ const WEB = env('E2E_WEB', 'http://clipper.localhost:3000'), ACC = env('E2E_ACC'
   APP = env('E2E_APP', 'http://app.clipper.localhost:3002'), BRAND = env('E2E_BRAND', 'http://brand.clipper.localhost:3003');
 const CORE_DB = env('E2E_CORE_DB', 'postgresql://postgres:postgres@127.0.0.1:55322/postgres');
 const MAILPIT = env('E2E_MAILPIT', 'http://127.0.0.1:54324');
-const sql = (q) => execFileSync('psql', [CORE_DB, '-X', '-tAqc', q], { encoding: 'utf8' }).trim();
+const BRAND_DB = env('E2E_BRAND_DB', 'postgresql://postgres:postgres@127.0.0.1:57322/postgres');
+const sql = (q, db = CORE_DB) => execFileSync('psql', [db, '-X', '-tAqc', q], { encoding: 'utf8' }).trim();
 const email = `e2e-${Date.now()}@clipper.localhost`;
 const username = `e2e_${Date.now().toString(36)}`;
 const SUBMIT_BRAND = 'Simpan & lanjut';
@@ -110,7 +111,7 @@ async function otp(addr, since) {
     const tok = 'e2eTok' + Date.now().toString(36) + 'xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx';
     sql(`insert into market.org_invites (org_id, role, token_hash, expires_at, created_by)
          values ('e2e00000-0000-0000-0000-0000000000a0', 'brand_viewer', sha256(convert_to('${tok}', 'UTF8')), now() + interval '7 days',
-                 'e2e00000-0000-0000-0000-0000000000b0')`);
+                 'e2e00000-0000-0000-0000-0000000000b0')`, BRAND_DB);
     await page.goto(`${ACC}/invite/${tok}`);
     await page.getByText('E2E Studio').first().waitFor();
     log('accounts: preview undangan menampilkan org');

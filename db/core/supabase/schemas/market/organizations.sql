@@ -1,5 +1,5 @@
--- E-02 org brand. Badan usaha: nama legal, NPWP, alamat = data badan. Perorangan: NPWP = NIK pemilik dan nama/alamat
--- pribadi = PII, jadi kolomnya wajib kosong di core; datanya diambil dari KYC pemilik (E-05) di identity.
+-- E-02 org brand: replika dari project brand (pemilik data); kolom milik admin: fee_rule_id. Badan usaha: nama legal, NPWP, alamat
+-- = data badan. Perorangan: NPWP = NIK pemilik dan nama/alamat pribadi = PII, jadi kolomnya wajib kosong; datanya dari KYC (E-05).
 create table market.organizations (
   id uuid primary key default gen_random_uuid(),
   name text not null check (char_length(name) between 2 and 100),

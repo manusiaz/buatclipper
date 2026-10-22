@@ -1772,7 +1772,11 @@ set local role authenticated;
 select pg_temp.jwt('33333333-0000-0000-0000-0000000000f1', '{"app_roles":["admin_finance"],"aal":"aal2"}');
 select api.approve_refund((select id from t_pay where k = 'ref_p'));
 reset role;
-delete from market.org_members where org_id = '44444444-0000-0000-0000-0000000000e7' and user_id = '22222222-0000-0000-0000-0000000000a1';
+select api.bus_receive('brand', jsonb_build_array(  -- brand: owner dikeluarkan → event owner_lost lalu replika hapus anggota
+  jsonb_build_object('id', gen_random_uuid(), 'topic', 'org.owner_lost', 'payload',
+                     '{"org_id":"44444444-0000-0000-0000-0000000000e7","user_id":"22222222-0000-0000-0000-0000000000a1"}'::jsonb),
+  jsonb_build_object('id', gen_random_uuid(), 'topic', 'rep.row', 'payload', '{"op":"delete","table":"market.org_members","row":null,
+                     "key":{"org_id":"44444444-0000-0000-0000-0000000000e7","user_id":"22222222-0000-0000-0000-0000000000a1"}}'::jsonb)));
 select is((select status || ':' || coalesce(dest_set_by::text, '-') || ':' || coalesce(approved_by::text, '-') from finance.org_refunds
             where id = (select id from t_pay where k = 'ref_p')), 'requested:-:-',
           'regresi R25-1: owner dikeluarkan → rekening pribadinya lepas dari refund, persetujuan batal');
@@ -1790,7 +1794,11 @@ select throws_ok($$ select api.bridge_refund_revealed((select id from t_pay wher
 select lives_ok($$ select api.bridge_refund_revealed((select id from t_pay where k = 'ref_p'), '22222222-0000-0000-0000-0000000000c1') $$,
                 'identity mencatat transfer dimulai sebelum menampilkan rekening');
 insert into market.org_members (org_id, user_id, role) values ('44444444-0000-0000-0000-0000000000e7', '22222222-0000-0000-0000-0000000000a1', 'brand_owner');
-delete from market.org_members where org_id = '44444444-0000-0000-0000-0000000000e7' and user_id = '22222222-0000-0000-0000-0000000000c1';
+select api.bus_receive('brand', jsonb_build_array(  -- brand: owner dikeluarkan → event owner_lost lalu replika hapus anggota
+  jsonb_build_object('id', gen_random_uuid(), 'topic', 'org.owner_lost', 'payload',
+                     '{"org_id":"44444444-0000-0000-0000-0000000000e7","user_id":"22222222-0000-0000-0000-0000000000c1"}'::jsonb),
+  jsonb_build_object('id', gen_random_uuid(), 'topic', 'rep.row', 'payload', '{"op":"delete","table":"market.org_members","row":null,
+                     "key":{"org_id":"44444444-0000-0000-0000-0000000000e7","user_id":"22222222-0000-0000-0000-0000000000c1"}}'::jsonb)));
 select is((select status || ':' || coalesce(dest_set_by::text, '-') from finance.org_refunds where id = (select id from t_pay where k = 'ref_p')),
           'approved:22222222-0000-0000-0000-0000000000c1',
           'regresi R26-1: transfer yang sudah dimulai diselesaikan dengan bukti, tidak di-reset jadi refund baru');

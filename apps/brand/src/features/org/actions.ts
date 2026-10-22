@@ -3,7 +3,7 @@
 import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
 import { hosts, kycUrl } from '@clipper/auth';
-import { coreServer, requireBrand } from '@clipper/auth/server';
+import { brandServer, requireBrand } from '@clipper/auth/server';
 import { getOrgContext, isUuid, type OrgRole } from '@/lib/org';
 import { fail, type Result } from '@/lib/result';
 
@@ -23,8 +23,8 @@ export async function createOrg(_prev: CreateOrgState, form: FormData): Promise<
     if (!/^\d{15,16}$/.test(npwp)) return { error: 'invalid:npwp', field: 'npwp' };
     if (!text(form, 'address')) return { error: 'invalid:address', field: 'address' };
   }
-  const core = await coreServer();
-  const { data: id, error } = await core.rpc('create_org', {
+  const brand = await brandServer();
+  const { data: id, error } = await brand.rpc('create_org', {
     p_name: name,
     p_org_type: type,
     p_is_agency: form.get('is_agency') === 'on',
@@ -38,8 +38,8 @@ export async function createOrg(_prev: CreateOrgState, form: FormData): Promise<
 
 /** B2.1 link undangan anggota; token hanya tampil sekali. */
 export async function createInvite(orgId: string, role: OrgRole): Promise<Result<{ url: string }>> {
-  const { core } = await getOrgContext(orgId);
-  const { data, error } = await core.rpc('create_org_invite', { p_org: orgId, p_role: role });
+  const { brand } = await getOrgContext(orgId);
+  const { data, error } = await brand.rpc('create_org_invite', { p_org: orgId, p_role: role });
   if (error || !data) return fail(error);
   revalidatePath(`/${orgId}/team`);
   return { ok: true, url: `${hosts.accounts}/invite/${data}` };
@@ -47,9 +47,9 @@ export async function createInvite(orgId: string, role: OrgRole): Promise<Result
 
 /** B2.3 tautan agency. Dari sisi agency: request/revoke; dari sisi klien: approve/reject/revoke. */
 export async function linkAgency(orgId: string, agency: string, client: string, action: 'request' | 'approve' | 'reject' | 'revoke'): Promise<Result> {
-  const { core } = await getOrgContext(orgId);
+  const { brand } = await getOrgContext(orgId);
   if (!isUuid(agency) || !isUuid(client)) return { ok: false, error: 'not_found:org' };
-  const { error } = await core.rpc('link_agency', { p_agency: agency, p_client: client, p_action: action });
+  const { error } = await brand.rpc('link_agency', { p_agency: agency, p_client: client, p_action: action });
   if (error) return fail(error);
   revalidatePath(`/${orgId}/settings`);
   revalidatePath('/');
@@ -58,8 +58,8 @@ export async function linkAgency(orgId: string, agency: string, client: string, 
 
 /** B1.5/F-B01 api.update_org: data legal org verified berubah → verifikasi ulang (dicek ulang di DB). */
 export async function updateOrg(orgId: string, input: { name: string; legal_name: string; npwp: string; address: string }): Promise<Result> {
-  const { core, org } = await getOrgContext(orgId);
-  const { error } = await core.rpc('update_org', {
+  const { brand, org } = await getOrgContext(orgId);
+  const { error } = await brand.rpc('update_org', {
     p_org: orgId,
     p_name: input.name.trim(),
     ...(org.org_type === 'badan' ? { p_legal_name: input.legal_name.trim(), p_npwp: input.npwp.replace(/\D/g, ''), p_address: input.address.trim() } : {}),
@@ -72,9 +72,9 @@ export async function updateOrg(orgId: string, input: { name: string; legal_name
 
 /** B2 owner kelola anggota: ubah role, keluarkan, cabut undangan (≥ 1 brand_owner dijaga di DB). */
 export async function manageTeam(orgId: string, action: 'set_role' | 'remove' | 'revoke_invite', target: string, role?: OrgRole): Promise<Result> {
-  const { core } = await getOrgContext(orgId);
+  const { brand } = await getOrgContext(orgId);
   if (!isUuid(target)) return { ok: false, error: 'not_found:member' };
-  const { error } = await core.rpc('manage_team', { p_org: orgId, p_action: action, p_target: target, p_role: role });
+  const { error } = await brand.rpc('manage_team', { p_org: orgId, p_action: action, p_target: target, p_role: role });
   if (error) return fail(error);
   revalidatePath(`/${orgId}/team`);
   return { ok: true };

@@ -20,7 +20,8 @@
     "@supabase/supabase-js": "catalog:",
     "@clipper/ui": "workspace:*",
     "@clipper/i18n": "workspace:*",
-    "@clipper/db-core": "workspace:*"
+    "@clipper/db-core": "workspace:*",
+    "@clipper/db-brand": "workspace:*"
   },
   "peerDependencies": {
     "next": "catalog:",

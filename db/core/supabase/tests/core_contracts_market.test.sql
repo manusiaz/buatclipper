@@ -190,222 +190,101 @@ grant all on t_json to anon, authenticated;
 select is((select array_agg(p.proname::text order by p.proname) from pg_proc p
             where p.pronamespace = 'api'::regnamespace
               and p.proname in ('list_campaigns', 'claim_campaign', 'appeal_submission', 'save_campaign', 'control_campaign',
-                                'duplicate_campaign', 'invite_to_campaign', 'create_org', 'link_agency', 'create_org_invite',
-                                'accept_org_invite', 'invite_preview', 'manage_org', 'save_reward_type', 'upload_reward_codes', 'buy_pin',
+                                'duplicate_campaign', 'invite_to_campaign', 'manage_org', 'save_reward_type', 'upload_reward_codes', 'buy_pin',
                                 'record_review', 'update_config', 'send_broadcast', 'campaign_detail', 'campaign_stats', 'my_stats')
               and not (p.prosecdef and p.proconfig @> array['search_path=""'])), null,
           'semua fungsi kontrak marketplace: security definer + search_path kosong');
 select is((select array_agg(p.oid::regprocedure::text order by 1) from pg_proc p
             where p.proname in ('fail', 'session_uid', 'notify_org', 'campaign_visible', 'claim_check', 'campaign_budget', 'issue_invoice',
                                 'next_invoice_number', 'apply_submission_decision', 'auto_approve_overdue', 'recalc_scores',
-                                'run_budget_alerts', 'dispatch_broadcasts', 'campaign_report', 'campaign_projection', 'decide_org',
+                                'run_budget_alerts', 'dispatch_broadcasts', 'campaign_report', 'campaign_projection',
                                 'ensure_member_profile', 'create_fee_rule')
               and p.pronamespace in ('market'::regnamespace, 'finance'::regnamespace, 'trust'::regnamespace, 'ops'::regnamespace)
               and (has_function_privilege('authenticated', p.oid, 'execute') or has_function_privilege('anon', p.oid, 'execute'))),
           null, 'helper internal (invoice, keputusan, job) tidak bisa dipanggil browser');
 
--- ---------- org & tim (F-B01, F-B12, F-A07) ----------
-set local role authenticated;
-select pg_temp.jwt('22222222-0000-0000-0000-0000000000a2', p_extra => '{"consent_ok":{"clipper":true,"brand":false}}');
-select throws_ok($$ select api.create_org('Brand Baru', 'perorangan') $$, 'P0001', 'consent_required:brand',
-                 'create_org butuh consent_ok.brand');
-select pg_temp.jwt('22222222-0000-0000-0000-0000000000a2');
-select throws_ok($$ select api.create_org('PT Baru', 'badan', 'PT Baru Jaya', '123', 'Jakarta') $$, 'P0001', 'invalid:npwp',
-                 'badan usaha wajib NPWP 15/16 digit');
-select throws_ok($$ select api.create_org('Toko Tiga', 'perorangan', null, '3171012345670001') $$, 'P0001', 'invalid:perorangan_pii',
-                 'org perorangan tidak menyimpan NIK/alamat di core');
-select throws_ok($$ select api.create_org('PT Tanpa Alamat', 'badan', 'PT Tanpa Alamat', '012345678901234') $$, 'P0001', 'invalid:address',
-                 'regresi AB-12: badan usaha wajib alamat (dipakai di faktur)');
-insert into t_ids (k, id) select 'org_new', api.create_org('PT Baru', 'badan', 'PT Baru Jaya', '01.234.567.8-901.234', 'Jakarta');
-reset role;
-select is((select status::text || ':' || npwp from market.organizations where id = (select id from t_ids where k = 'org_new')),
-          'pending_verification:012345678901234', 'org baru pending_verification, NPWP dinormalisasi angka');
-select is((select role::text from market.org_members where org_id = (select id from t_ids where k = 'org_new')
-             and user_id = '22222222-0000-0000-0000-0000000000a2'), 'brand_owner', 'pembuat org = brand_owner');
+-- ---------- org & tim: replika dari brand (fungsinya diuji di db/brand tests/brand_org.test.sql) ----------
+-- Keadaan akhir alur org di brand, sebagai replika: org baru pending, anggota managed, owner f3 diturunkan, f2 dikeluarkan.
+insert into market.profiles (id, username, display_name) values
+  ('11111111-0000-0000-0000-0000000000f1', 'pic_toko', 'Anggota brand'),
+  ('11111111-0000-0000-0000-0000000000f2', 'm_111111110000', 'Anggota brand'),
+  ('11111111-0000-0000-0000-0000000000f3', 'own_f3', 'Anggota brand');
+insert into t_ids (k, id) values ('org_new', gen_random_uuid());
+insert into market.organizations (id, name, org_type, legal_name, npwp, address, created_by)
+select id, 'PT Baru Jaya', 'badan', 'PT Baru Jaya Abadi', '0123456789012345', 'Jl. Thamrin 2, Jakarta', '22222222-0000-0000-0000-0000000000a2'
+  from t_ids where k = 'org_new';
+insert into market.org_members (org_id, user_id, role)
+select id, '22222222-0000-0000-0000-0000000000a2', 'brand_owner' from t_ids where k = 'org_new';
+insert into market.org_members (org_id, user_id, role) values
+  ('44444444-0000-0000-0000-000000000002', '11111111-0000-0000-0000-0000000000f1', 'brand_manager'),
+  ('44444444-0000-0000-0000-000000000001', '11111111-0000-0000-0000-0000000000f3', 'brand_viewer');
+update market.organizations set status = 'verified', verified_by = '33333333-0000-0000-0000-0000000000ad', verified_at = now()
+ where id = '44444444-0000-0000-0000-000000000002';
+select is((select count(*)::int from bus.outbox where target = 'brand' and topic = 'rep.row' and payload ->> 'table' = 'market.profiles'
+             and payload #>> '{key,id}' = '11111111-0000-0000-0000-0000000000f1'), 1, 'profil baru direplika ke brand');
+select ok(not exists (select 1 from bus.outbox where target = 'brand' and payload ? 'row' and payload -> 'row' ? 'trust_score'),
+          'replika profil ke brand tanpa trust_score/referral');
 
--- manage_org: admin_ops aal1 ditolak; aal2 verify → verified + review + notifikasi + audit
+-- set_fee (F-A07): satu-satunya aksi manage_org di admin
 set local role authenticated;
 select pg_temp.jwt('33333333-0000-0000-0000-0000000000ad', '{admin_ops}', 'aal1');
-select throws_ok($$ select api.manage_org('44444444-0000-0000-0000-000000000002', 'verify') $$, '42501', 'auth:forbidden',
-                 'manage_org menolak admin tanpa aal2');
+select throws_ok($$ select api.manage_org('44444444-0000-0000-0000-000000000002', 'set_fee', '{"mgmt_fee_pct": 10}') $$, '42501',
+                 'auth:forbidden', 'manage_org menolak admin tanpa aal2');
 select pg_temp.jwt('22222222-0000-0000-0000-0000000000a1');
-select throws_ok($$ select api.manage_org('44444444-0000-0000-0000-000000000002', 'verify') $$, '42501', 'auth:forbidden',
-                 'manage_org menolak brand_owner');
+select throws_ok($$ select api.manage_org('44444444-0000-0000-0000-000000000002', 'set_fee', '{"mgmt_fee_pct": 10}') $$, '42501',
+                 'auth:forbidden', 'manage_org menolak brand_owner');
 select pg_temp.jwt('33333333-0000-0000-0000-0000000000ad', '{admin_ops}', 'aal2');
-select throws_ok($$ select api.manage_org('44444444-0000-0000-0000-000000000002', 'reject') $$, 'P0001', 'invalid:reason',
-                 'tolak org wajib alasan');
-select lives_ok($$ select api.manage_org((select id from t_ids where k = 'org_new'), 'reject',
-                                         '{"reason":"npwp_invalid","message":"NPWP tidak cocok"}') $$, 'admin_ops menolak org');
-select pg_temp.jwt('22222222-0000-0000-0000-0000000000a1');
-select throws_ok($$ select api.update_org((select id from t_ids where k = 'org_new'), 'PT Baru', 'PT Baru Jaya', '0123456789012345', 'Jakarta') $$,
-                 '42501', 'auth:forbidden', 'hanya brand_owner org itu yang bisa mengubah data org');
-select pg_temp.jwt('22222222-0000-0000-0000-0000000000a2');
-select lives_ok($$ select api.update_org((select id from t_ids where k = 'org_new'), 'PT Baru', 'PT Baru Jaya Abadi', '0123456789012345',
-                                         'Jl. Sudirman 1, Jakarta') $$,
-                'regresi AB-1: org ditolak diperbaiki brand_owner sendiri (tetap pending = diajukan ulang ke antrean admin)');
-select pg_temp.jwt('33333333-0000-0000-0000-0000000000ad', '{admin_ops}', 'aal2');
-select lives_ok($$ select api.manage_org((select id from t_ids where k = 'org_new'), 'verify') $$, 'admin memverifikasi data perbaikan');
-select pg_temp.jwt('22222222-0000-0000-0000-0000000000a2');
-select api.update_org((select id from t_ids where k = 'org_new'), 'PT Baru Jaya', 'PT Baru Jaya Abadi', '0123456789012345', 'Jl. Sudirman 1, Jakarta');
-reset role;
-select is((select status::text from market.organizations where id = (select id from t_ids where k = 'org_new')), 'verified',
-          'ganti nama tampilan saja tidak perlu verifikasi ulang');
-set local role authenticated;
-select pg_temp.jwt('22222222-0000-0000-0000-0000000000a2');
-select api.update_org((select id from t_ids where k = 'org_new'), 'PT Baru Jaya', 'PT Baru Jaya Abadi', '0123456789012345', 'Jl. Thamrin 2, Jakarta');
-reset role;
-select is((select status::text || ':' || (verified_at is null)::text from market.organizations where id = (select id from t_ids where k = 'org_new')),
-          'pending_verification:true', 'regresi AB-1: ubah alamat/NPWP/nama legal org verified → verifikasi ulang');
-select ok(exists (select 1 from ops.audit_logs where action = 'org.update' and target = 'org:' || (select id from t_ids where k = 'org_new')),
-          'perubahan data org tercatat di audit');
-select ok((select updated_at is not null from market.organizations where id = (select id from t_ids where k = 'org_new')),
-          'updated_at = tanda diajukan ulang (banner brand + detail admin)');
-set local role authenticated;
-select pg_temp.jwt('33333333-0000-0000-0000-0000000000ad', '{admin_ops}', 'aal2');
-select lives_ok($$ select api.manage_org('44444444-0000-0000-0000-000000000002', 'verify') $$, 'admin_ops aal2 memverifikasi org');
+select throws_ok($$ select api.manage_org('44444444-0000-0000-0000-000000000002', 'verify') $$, 'P0001', 'invalid:action',
+                 'verifikasi org bukan di admin (api.manage_org project brand)');
 select lives_ok($$ select api.manage_org('44444444-0000-0000-0000-000000000002', 'set_fee', '{"mgmt_fee_pct": 10}') $$,
                 'admin_ops memasang fee custom org');
-select lives_ok($$ select api.manage_org('44444444-0000-0000-0000-000000000002', 'add_member',
-                   '{"user_id":"11111111-0000-0000-0000-0000000000f1","role":"brand_manager","username":"pic_toko"}') $$,
-                'admin menambah anggota paket managed (profil dibuat)');
 reset role;
-select is((select status::text from market.organizations where id = '44444444-0000-0000-0000-000000000002'), 'verified',
-          'org2 verified (verified_by, verified_at)');
-select is((select count(*)::int from ops.notifications where event = 'org.verified' and user_id = '22222222-0000-0000-0000-0000000000a2'
-             and payload ->> 'org_id' = '44444444-0000-0000-0000-000000000002'), 1,
-          'notifikasi org.verified ke brand_owner');
-select is((select payload - 'reason' - 'message' from ops.notifications where event = 'org.verified'
-             and user_id = '22222222-0000-0000-0000-0000000000a2' and payload ->> 'org_id' = '44444444-0000-0000-0000-000000000002'),
-          '{"org_id":"44444444-0000-0000-0000-000000000002","org_name":"Toko Dua"}'::jsonb, 'payload org.*: org_id + org_name');
-select is((select count(*)::int from ops.notifications where event = 'org.rejected' and user_id = '22222222-0000-0000-0000-0000000000a2'
-             and payload ->> 'reason' = 'npwp_invalid'), 1, 'notifikasi org.rejected + alasan');
 select is((select array_agg(action order by id) from ops.audit_logs where target = 'org:44444444-0000-0000-0000-000000000002'),
-          array['org.verify', 'org.set_fee', 'org.add_member'], 'aksi manage_org tercatat di audit log');
+          array['org.set_fee'], 'set_fee tercatat di audit log');
 select is((select f.mgmt_fee_pct from market.organizations o join finance.fee_rules f on f.id = o.fee_rule_id
             where o.id = '44444444-0000-0000-0000-000000000002'), 10.00::numeric, 'fee rule org baru (scope org) terpasang');
-select is((select p.username || ':' || m.role from market.profiles p join market.org_members m on m.user_id = p.id
-            where p.id = '11111111-0000-0000-0000-0000000000f1'), 'pic_toko:brand_manager', 'add_member membuat profil + anggota');
-select is((select count(*)::int from trust.review_decisions where target_type = 'org'), 3, 'keputusan org tercatat di E-19');
+select ok(not exists (select 1 from bus.outbox where payload ->> 'table' = 'market.organizations'),
+          'org = replika dari brand: perubahan fee di admin tidak dikirim balik');
 
--- Undangan anggota (token sekali tampil, hanya hash)
-set local role authenticated;
-select pg_temp.jwt('22222222-0000-0000-0000-0000000000b1');
-select throws_ok($$ select api.create_org_invite('44444444-0000-0000-0000-000000000001', 'brand_viewer') $$, '42501', 'auth:forbidden',
-                 'brand_manager tidak bisa membuat undangan');
-select pg_temp.jwt('22222222-0000-0000-0000-0000000000a1');
-insert into t_ids (k, tok) select 'invite', api.create_org_invite('44444444-0000-0000-0000-000000000001', 'brand_viewer');
-reset role;
-select ok((select tok ~ '^[A-Za-z0-9_-]{43}$' from t_ids where k = 'invite'), 'token undangan 32 byte base64url');
-select is((select count(*)::int from market.org_invites where token_hash = sha256(convert_to((select tok from t_ids where k = 'invite'), 'UTF8'))),
-          1, 'yang disimpan hanya sha256 token');
-set local role authenticated;
-select pg_temp.jwt('11111111-0000-0000-0000-0000000000f2');
-select throws_ok($$ select api.accept_org_invite('salah') $$, 'P0002', 'not_found:invite', 'token tidak dikenal ditolak');
-select is((select count(*)::int from api.invite_preview('salah')), 0, 'preview token tidak dikenal kosong');
-select is((select row(role, expired, used)::text from api.invite_preview((select tok from t_ids where k = 'invite'))),
-          '(brand_viewer,f,f)', 'preview undangan: role, belum kedaluwarsa, belum dipakai');
-select is(api.accept_org_invite((select tok from t_ids where k = 'invite')), '44444444-0000-0000-0000-000000000001'::uuid,
-          'penerima tanpa profil menerima undangan');
-select pg_temp.jwt('11111111-0000-0000-0000-0000000000f3');
-select throws_ok($$ select api.accept_org_invite((select tok from t_ids where k = 'invite')) $$, 'P0001', 'invite_used',
-                 'token yang sudah dipakai ditolak');
-select is((select used from api.invite_preview((select tok from t_ids where k = 'invite'))), true, 'preview: sudah dipakai');
-reset role;
-select is((select m.role::text from market.org_members m join market.profiles p on p.id = m.user_id
-            where m.user_id = '11111111-0000-0000-0000-0000000000f2' and p.username = 'm_111111110000'), 'brand_viewer',
-          'profil dibuat dulu (username sementara) lalu anggota dengan role undangan');
-update market.org_invites set accepted_by = null, accepted_at = null, created_at = now() - interval '8 days',
-       expires_at = now() - interval '1 day';
-set local role authenticated;
-select pg_temp.jwt('11111111-0000-0000-0000-0000000000f3');
-select throws_ok($$ select api.accept_org_invite((select tok from t_ids where k = 'invite')) $$, 'P0001', 'invite_expired',
-                 'token kedaluwarsa ditolak');
-set local role anon;
-select is((select expired from api.invite_preview((select tok from t_ids where k = 'invite'))), true, 'anon: preview kedaluwarsa');
-set local role authenticated;
-reset role;
+-- Event dari brand (bus_in.*): keputusan review, notifikasi, audit, profil anggota, owner hilang
+select api.bus_receive('brand', jsonb_build_array(
+  jsonb_build_object('id', gen_random_uuid(), 'topic', 'review.decision', 'payload', jsonb_build_object('target_type', 'org',
+    'target_id', '44444444-0000-0000-0000-000000000002', 'actor_id', '33333333-0000-0000-0000-0000000000ad', 'decision', 'approve')),
+  jsonb_build_object('id', gen_random_uuid(), 'topic', 'notify.user', 'payload', jsonb_build_object('user_id', '22222222-0000-0000-0000-0000000000a2',
+    'event', 'org.verified', 'payload', jsonb_build_object('org_id', '44444444-0000-0000-0000-000000000002', 'org_name', 'Toko Dua'), 'email', true)),
+  jsonb_build_object('id', gen_random_uuid(), 'topic', 'audit.log', 'payload', jsonb_build_object('actor_id', '33333333-0000-0000-0000-0000000000ad',
+    'action', 'org.verify', 'target', 'org:44444444-0000-0000-0000-000000000002', 'before', '{"status":"pending_verification"}'::jsonb,
+    'after', '{"status":"verified"}'::jsonb, 'at', '2026-01-02T03:04:05+00:00')),
+  jsonb_build_object('id', gen_random_uuid(), 'topic', 'profile.ensure', 'payload', jsonb_build_object('user_id', '11111111-0000-0000-0000-0000000000f4',
+    'username', 'pic_baru'))));
+select is((select count(*)::int from trust.review_decisions where target_type = 'org'), 1, 'keputusan org dari brand tercatat di E-19');
+select is((select count(*)::int from ops.notifications where event = 'org.verified' and user_id = '22222222-0000-0000-0000-0000000000a2'
+             and payload ->> 'org_id' = '44444444-0000-0000-0000-000000000002'), 1, 'notifikasi dari brand masuk inbox admin');
+select is((select at from ops.audit_logs where action = 'org.verify'), '2026-01-02T03:04:05+00:00'::timestamptz,
+          'audit dari brand masuk pusat audit dengan waktu asli');
+select is((select username from market.profiles where id = '11111111-0000-0000-0000-0000000000f4'), 'pic_baru',
+          'profile.ensure membuat profil anggota (sebelum replika anggotanya)');
+delete from market.profiles where id = '11111111-0000-0000-0000-0000000000f4';
 
--- AB-5: brand_owner kelola anggota (ubah role, keluarkan, cabut undangan); org selalu punya ≥ 1 brand_owner
+-- Agency (replika org_links): draft klien terlihat hanya selama tautan disetujui & belum dicabut
+insert into market.org_links (agency_org_id, client_org_id) values ('44444444-0000-0000-0000-0000000000a9', '44444444-0000-0000-0000-000000000001');
 set local role authenticated;
-select pg_temp.jwt('22222222-0000-0000-0000-0000000000b1');
-select throws_ok($$ select api.manage_team('44444444-0000-0000-0000-000000000001', 'remove', '11111111-0000-0000-0000-0000000000f2') $$,
-                 '42501', 'auth:forbidden', 'brand_manager tidak bisa mengelola anggota');
-select pg_temp.jwt('22222222-0000-0000-0000-0000000000a1');
-select lives_ok($$ select api.manage_team('44444444-0000-0000-0000-000000000001', 'set_role', '11111111-0000-0000-0000-0000000000f2',
-                                          'brand_finance') $$, 'regresi AB-5: owner mengubah role anggota');
-select throws_ok($$ select api.manage_team('44444444-0000-0000-0000-000000000001', 'set_role', '22222222-0000-0000-0000-0000000000a1',
-                                           'brand_manager') $$, 'P0001', 'last_owner', 'owner terakhir tidak bisa turun role');
-select throws_ok($$ select api.manage_team('44444444-0000-0000-0000-000000000001', 'remove', '22222222-0000-0000-0000-0000000000a1') $$,
-                 'P0001', 'last_owner', 'owner terakhir tidak bisa dikeluarkan');
-insert into t_ids (k, tok) select 'invite2', api.create_org_invite('44444444-0000-0000-0000-000000000001', 'brand_viewer');
-reset role;
-insert into t_ids (k, id) select 'invite2_id', id from market.org_invites
- where token_hash = sha256(convert_to((select tok from t_ids where k = 'invite2'), 'UTF8'));
-set local role authenticated;
-select pg_temp.jwt('22222222-0000-0000-0000-0000000000a1');
-select lives_ok($$ select api.manage_team('44444444-0000-0000-0000-000000000001', 'revoke_invite', (select id from t_ids where k = 'invite2_id')) $$,
-                'regresi AB-5: owner mencabut undangan yang belum dipakai');
-select pg_temp.jwt('11111111-0000-0000-0000-0000000000f3');
-select throws_ok($$ select api.accept_org_invite((select tok from t_ids where k = 'invite2')) $$, 'P0002', 'not_found:invite',
-                 'link undangan yang dicabut tidak bisa dipakai');
-select pg_temp.jwt('22222222-0000-0000-0000-0000000000a1');
-select lives_ok($$ select api.manage_team('44444444-0000-0000-0000-000000000001', 'set_role', '11111111-0000-0000-0000-0000000000f2',
-                                          'brand_owner') $$, 'owner menambah owner kedua');
-select pg_temp.jwt('11111111-0000-0000-0000-0000000000f2');
-insert into t_ids (k, tok) select 'invite_f2', api.create_org_invite('44444444-0000-0000-0000-000000000001', 'brand_owner');
-select pg_temp.jwt('22222222-0000-0000-0000-0000000000a1');
-select lives_ok($$ select api.manage_team('44444444-0000-0000-0000-000000000001', 'remove', '11111111-0000-0000-0000-0000000000f2') $$,
-                'regresi AB-5: owner mengeluarkan anggota');
-select pg_temp.jwt('11111111-0000-0000-0000-0000000000f3');
-select throws_ok($$ select api.accept_org_invite((select tok from t_ids where k = 'invite_f2')) $$, 'P0002', 'not_found:invite',
-                 'regresi R23-1: link undangan owner yang dikeluarkan ikut dicabut (bukan jalan kembali)');
-select pg_temp.jwt('11111111-0000-0000-0000-0000000000f2');
-select is((select count(*)::int from api.organizations where id = '44444444-0000-0000-0000-000000000001'), 0,
-          'anggota yang dikeluarkan langsung kehilangan akses org');
-reset role;
-select is((select array_agg(action order by id) from ops.audit_logs where action like 'org.team.%'),
-          array['org.team.set_role', 'org.team.revoke_invite', 'org.team.set_role', 'org.team.remove'], 'kelola anggota tercatat di audit');
--- R24-2: demosi owner lewat jalur admin (manage_org add_member) juga mencabut link undangan yang ia buat
-set local role authenticated;
-select pg_temp.jwt('33333333-0000-0000-0000-0000000000ad', '{admin_ops}', 'aal2');
-select api.manage_org('44444444-0000-0000-0000-000000000001', 'add_member',
-                      '{"user_id":"11111111-0000-0000-0000-0000000000f3","role":"brand_owner","username":"own_f3"}');
-select pg_temp.jwt('11111111-0000-0000-0000-0000000000f3');
-insert into t_ids (k, tok) select 'invite_f3', api.create_org_invite('44444444-0000-0000-0000-000000000001', 'brand_owner');
-select pg_temp.jwt('33333333-0000-0000-0000-0000000000ad', '{admin_ops}', 'aal2');
-select api.manage_org('44444444-0000-0000-0000-000000000001', 'add_member', '{"user_id":"11111111-0000-0000-0000-0000000000f3","role":"brand_viewer"}');
-select pg_temp.jwt('11111111-0000-0000-0000-0000000000f2');
-select throws_ok($$ select api.accept_org_invite((select tok from t_ids where k = 'invite_f3')) $$, 'P0002', 'not_found:invite',
-                 'regresi R24-2: owner yang diturunkan admin tidak bisa kembali lewat link undangannya');
-reset role;
-
--- Agency: request → approve (brand_owner klien) → akses → revoke
-set local role authenticated;
-select pg_temp.jwt('22222222-0000-0000-0000-0000000000a1');
-select throws_ok($$ select api.link_agency('44444444-0000-0000-0000-000000000001', '44444444-0000-0000-0000-000000000002', 'request') $$,
-                 'P0001', 'not_agency', 'org biasa tidak bisa meminta tautan agency');
 select pg_temp.jwt('22222222-0000-0000-0000-0000000000e1');
-select lives_ok($$ select api.link_agency('44444444-0000-0000-0000-0000000000a9', '44444444-0000-0000-0000-000000000001', 'request') $$,
-                'agency meminta tautan ke klien');
 select is((select count(*)::int from api.campaigns where org_id = '44444444-0000-0000-0000-000000000001' and status = 'draft'), 0,
           'sebelum disetujui agency tidak melihat draft klien');
-select pg_temp.jwt('22222222-0000-0000-0000-0000000000b1');
-select throws_ok($$ select api.link_agency('44444444-0000-0000-0000-0000000000a9', '44444444-0000-0000-0000-000000000001', 'approve') $$,
-                 '42501', 'auth:forbidden', 'brand_manager klien tidak bisa menyetujui tautan');
-select pg_temp.jwt('22222222-0000-0000-0000-0000000000a1');
-select lives_ok($$ select api.link_agency('44444444-0000-0000-0000-0000000000a9', '44444444-0000-0000-0000-000000000001', 'approve') $$,
-                'brand_owner klien menyetujui');
+reset role;
+update market.org_links set approved_by = '22222222-0000-0000-0000-0000000000a1', approved_at = now();
+set local role authenticated;
 select pg_temp.jwt('22222222-0000-0000-0000-0000000000e1');
 select is((select count(*)::int from api.campaigns where org_id = '44444444-0000-0000-0000-000000000001' and status = 'draft'), 2,
           'agency tertaut melihat draft & template klien');
-select pg_temp.jwt('22222222-0000-0000-0000-0000000000a1');
-select lives_ok($$ select api.link_agency('44444444-0000-0000-0000-0000000000a9', '44444444-0000-0000-0000-000000000001', 'revoke') $$,
-                'brand_owner klien mencabut');
+reset role;
+update market.org_links set revoked_at = now();
+set local role authenticated;
 select pg_temp.jwt('22222222-0000-0000-0000-0000000000e1');
 select is((select count(*)::int from api.campaigns where org_id = '44444444-0000-0000-0000-000000000001' and status = 'draft'), 0,
           'tautan dicabut → akses hilang');
 reset role;
-select is((select approved_by from market.org_links), '22222222-0000-0000-0000-0000000000a1'::uuid, 'approved_by = brand_owner klien');
 
 -- ---------- reward type & kode voucher (F-B03) ----------
 set local role authenticated;
@@ -1086,29 +965,18 @@ select ok((select qualified_at is not null and bonus_until > now() + interval '8
             where referred_id = '11111111-0000-0000-0000-00000000000b'),
           'regresi R8: referral berlaku sejak KYC disetujui (earning sebelum withdraw pertama ikut bonus)');
 set local role authenticated;
-select pg_temp.jwt('33333333-0000-0000-0000-0000000000ad', '{admin_moderator}', 'aal2');
-select throws_ok($$ select api.record_review('org', (select id from t_ids where k = 'org_new'), 'approve') $$, '42501', 'auth:forbidden',
-                 'verifikasi org = admin_ops');
 select pg_temp.jwt('33333333-0000-0000-0000-0000000000ad', '{admin_ops}', 'aal2');
-select lives_ok($$ select api.record_review('org', (select id from t_ids where k = 'org_new'), 'approve') $$,
-                'record_review target org = manage_org verify');
+select throws_ok($$ select api.record_review('org', (select id from t_ids where k = 'org_new'), 'approve') $$, 'P0001', 'invalid:target_type',
+                 'verifikasi org bukan lewat record_review admin (api.manage_org project brand)');
 reset role;
 select is((select count(*)::int from ops.notifications where event = 'kyc.approved' and user_id = '11111111-0000-0000-0000-00000000000b'), 1,
           'notifikasi KYC disetujui');
-select is((select status::text from market.organizations where id = (select id from t_ids where k = 'org_new')), 'verified',
-          'org diverifikasi lewat record_review');
+update market.organizations set status = 'suspended' where id = (select id from t_ids where k = 'org_new');  -- replika suspend dari brand
 set local role authenticated;
-select pg_temp.jwt('33333333-0000-0000-0000-0000000000ad', '{admin_ops}', 'aal2');
-select throws_ok($$ select api.manage_org((select id from t_ids where k = 'org_new'), 'suspend') $$, 'P0001', 'invalid:reason',
-                 'suspend org wajib alasan');
-select lives_ok($$ select api.manage_org((select id from t_ids where k = 'org_new'), 'suspend', '{"reason":"chargeback"}') $$,
-                'admin_ops suspend org');
 select pg_temp.jwt('22222222-0000-0000-0000-0000000000a2');
 select throws_ok($$ select api.save_campaign(jsonb_build_object('org_id', (select id from t_ids where k = 'org_new'), 'title', 'Setelah Suspend',
                     'type', 'ugc', 'platforms', '["tiktok"]'::jsonb)) $$, 'P0001', 'org_suspended', 'org disuspend tidak bisa membuat campaign');
 reset role;
-select is((select count(*)::int from ops.notifications where event = 'org.suspended' and user_id = '22222222-0000-0000-0000-0000000000a2'), 1,
-          'notifikasi org.suspended');
 
 -- ---------- dashboard brand (F-B05, F-B08) & profil clipper (F-C12) ----------
 set local role authenticated;

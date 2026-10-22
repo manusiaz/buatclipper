@@ -12,12 +12,12 @@ import { can, getOrgContext } from '@/lib/org';
 
 export default async function OrgLayout({ children, params }: { children: ReactNode; params: Promise<{ org: string }> }) {
   const { org: orgId } = await params;
-  const { claims, core, org, role } = await getOrgContext(orgId);
+  const { claims, core, brand, org, role } = await getOrgContext(orgId);
   const [t, name, { data: orgs }, { data: mine }, reviewCount] = await Promise.all([
     getTranslations('brand'),
     myName(claims.email),
-    core.from('organizations').select('id, name, status').order('name'),
-    core.from('org_members').select('org_id').eq('user_id', claims.sub),
+    brand.from('organizations').select('id, name, status').order('name'),
+    brand.from('org_members').select('org_id').eq('user_id', claims.sub),
     can(role, 'review') ? pendingReviewCount(core, orgId) : Promise.resolve(0),
   ]);
   const direct = new Set((mine ?? []).map((m) => m.org_id));

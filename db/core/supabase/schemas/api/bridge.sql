@@ -199,7 +199,7 @@ begin
   if not found then
     raise exception 'not_found:refund' using errcode = 'P0002';
   end if;
-  -- anggota dikunci sebelum refund (urutan sama dengan hapus owner → trigger on_owner_lost): tanpa deadlock
+  -- anggota dikunci sebelum refund (urutan sama dengan owner hilang → bus_in.org_owner_lost): tanpa deadlock
   if not market.is_direct_member(r.org_id, p_dest_set_by, 'brand_owner') then
     raise exception 'refund_dest_invalid' using errcode = 'P0001', detail = 'pemilik rekening bukan owner org lagi';
   end if;

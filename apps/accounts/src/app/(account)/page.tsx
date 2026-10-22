@@ -4,7 +4,7 @@ import Link from 'next/link';
 import { getTranslations } from 'next-intl/server';
 import { hosts, onboardingUrl, safeNext } from '@clipper/auth';
 import { mfaStatus, signOut } from '@clipper/auth/actions';
-import { coreServer, requireAccount } from '@clipper/auth/server';
+import { brandServer, coreServer, requireAccount } from '@clipper/auth/server';
 import { Alert, Avatar, Badge, Button, Card, Icon, PageHeader, StatusBadge, type IconName } from '@clipper/ui';
 import { consentSummary } from '@/features/privacy/consents';
 import { identityDb } from '@/lib/identity';
@@ -17,13 +17,13 @@ export async function generateMetadata(): Promise<Metadata> {
 export default async function HubPage({ searchParams }: { searchParams: SearchParams }) {
   const { claims } = await requireAccount();
   const next = one((await searchParams).next);
-  const [t, id, core, mfa] = await Promise.all([getTranslations('accounts'), identityDb(), coreServer(), mfaStatus('sso')]);
+  const [t, id, core, brand, mfa] = await Promise.all([getTranslations('accounts'), identityDb(), coreServer(), brandServer(), mfaStatus('sso')]);
   const [kyc, methods, consents, profile, membership] = await Promise.all([
     id.from('my_kyc').select('status, reject_reason, legal_name, nik_last4').maybeSingle(),
     id.rpc('my_payout_methods'),
     id.from('my_consents').select('kind, version, granted_at, revoked_at'),
     core.from('my_profile').select('username, display_name, avatar_path').maybeSingle(),
-    core.from('org_members').select('org_id').eq('user_id', claims.sub).limit(1),
+    brand.from('org_members').select('org_id').eq('user_id', claims.sub).limit(1),
   ]);
   for (const r of [kyc, methods, consents]) if (r.error) throw new Error(r.error.message);
 

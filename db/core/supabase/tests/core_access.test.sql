@@ -44,8 +44,8 @@ insert into market.campaigns (id, org_id, slug, title, type, category_id, platfo
 select is((select count(*)::int from pg_class c where c.relnamespace = 'api'::regnamespace and c.relkind = 'v'
             and not coalesce(c.reloptions @> array['security_invoker=true'], false)), 0, 'semua view api security_invoker');
 select is((select array_agg(p.proname::text order by p.proname) from pg_proc p where p.pronamespace = 'api'::regnamespace
-            and has_function_privilege('anon', p.oid, 'execute')), array['invite_preview', 'list_campaigns', 'report_by_token'],
-          'anon hanya bisa EXECUTE invite_preview, list_campaigns (landing) & report_by_token');
+            and has_function_privilege('anon', p.oid, 'execute')), array['list_campaigns', 'report_by_token'],
+          'anon hanya bisa EXECUTE list_campaigns (landing) & report_by_token (undangan org di brand)');
 select is((select count(*)::int from pg_class c where c.relnamespace in ('market'::regnamespace, 'tracking'::regnamespace,
             'finance'::regnamespace, 'trust'::regnamespace, 'ops'::regnamespace) and c.relkind = 'r' and not c.relrowsecurity),
           0, 'RLS aktif di semua tabel core');
@@ -166,8 +166,6 @@ select throws_ok($$ insert into finance.invoices (number, org_id, campaign_id, s
                  'nomor referensi pembayaran yang sama ditolak');
 select throws_ok($$ insert into market.organizations (name, org_type, npwp, created_by) values ('Budi Shop', 'perorangan', '3171012345670001',
                     '33333333-0000-0000-0000-0000000000ad') $$, '23514', null, 'org perorangan tidak boleh menyimpan NPWP/NIK di core');
-select throws_ok($$ delete from market.org_members where user_id = '22222222-0000-0000-0000-0000000000a2' $$, '23514', null,
-                 'brand_owner terakhir tidak bisa dihapus');
 
 -- ---------- RLS per role ----------
 set local role anon;
@@ -288,7 +286,7 @@ select market.run_claim_expiry();
 select is((select status::text from market.claims where id = '88888888-0000-0000-0000-000000000003'), 'expired',
           'claim lewat 48 jam jadi expired');
 select is((select count(*)::int from cron.job), 16, '16 job pg_cron core terdaftar (termasuk bus-relay)');
-select ok(exists (select 1 from cron.job where jobname = 'bus-relay' and schedule = '5 seconds'), 'relay bus tiap 5 detik');
+select ok(exists (select 1 from cron.job where jobname = 'bus-relay' and schedule = '1 seconds'), 'relay bus tiap detik (lag replika)');
 select is(array(select distinct m[1] from cron.job, regexp_matches(command, '([a-z_]+\.[a-z_]+)\(', 'g') m
                 where to_regproc(m[1]) is null order by 1),
           '{}'::text[], 'semua fungsi yang dipanggil job pg_cron sudah ada');

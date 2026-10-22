@@ -11,6 +11,8 @@ jobs:
     env:
       NEXT_PUBLIC_CORE_URL: https://core.example.supabase.co
       NEXT_PUBLIC_CORE_PUBLISHABLE_KEY: sb_publishable_ci
+      NEXT_PUBLIC_BRAND_DB_URL: https://brand-db.example.supabase.co
+      NEXT_PUBLIC_BRAND_DB_PUBLISHABLE_KEY: sb_publishable_ci
       NEXT_PUBLIC_IDENTITY_URL: https://identity.example.supabase.co
       NEXT_PUBLIC_IDENTITY_PUBLISHABLE_KEY: sb_publishable_ci
       NEXT_PUBLIC_COOKIE_DOMAIN: .clipper.example

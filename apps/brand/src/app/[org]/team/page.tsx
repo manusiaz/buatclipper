@@ -11,19 +11,19 @@ export async function generateMetadata(): Promise<Metadata> {
 
 export default async function TeamPage({ params }: { params: Promise<{ org: string }> }) {
   const { org: orgId } = await params;
-  const { core, role, direct, claims } = await getOrgContext(orgId);
+  const { brand, role, direct, claims } = await getOrgContext(orgId);
   const owner = role === 'brand_owner' && direct;
   const [t, locale, { data: members }, invitesRes] = await Promise.all([
     getTranslations('brand'),
     getLocale(),
-    core.from('org_members').select('user_id, role, created_at').eq('org_id', orgId).order('created_at'),
-    owner ? core.from('org_invites').select('id, role, expires_at, accepted_by, accepted_at, created_at').eq('org_id', orgId).order('created_at', { ascending: false }).limit(50) : null,
+    brand.from('org_members').select('user_id, role, created_at').eq('org_id', orgId).order('created_at'),
+    owner ? brand.from('org_invites').select('id, role, expires_at, accepted_by, accepted_at, created_at').eq('org_id', orgId).order('created_at', { ascending: false }).limit(50) : null,
   ]);
   const loc = locale === 'en' ? 'en' : 'id';
   const ids = (members ?? []).map((m) => m.user_id).filter((x): x is string => !!x);
   const acceptedIds = (invitesRes?.data ?? []).map((i) => i.accepted_by).filter((x): x is string => !!x);
   const all = [...new Set([...ids, ...acceptedIds])];
-  const { data: profiles } = all.length ? await core.from('profiles').select('id, username, display_name, avatar_path').in('id', all) : { data: [] };
+  const { data: profiles } = all.length ? await brand.from('profiles').select('id, username, display_name, avatar_path').in('id', all) : { data: [] };
   const prof = new Map((profiles ?? []).map((p) => [p.id, p]));
   const now = Date.now();
 

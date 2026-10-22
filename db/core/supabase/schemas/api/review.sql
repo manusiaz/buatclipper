@@ -48,7 +48,7 @@ end $$;
 -- Keputusan review. campaign (admin_ops): approve hanya kalau invoice campaign lunas → scheduled; reject → rejected.
 -- submission: admin_moderator, atau brand_owner/brand_manager untuk campaign review_mode brand (submisi in_review saja);
 -- banding (appealed) hanya admin. kyc (admin_moderator): catat keputusan identity tanpa PII + notifikasi kyc.*.
--- org (admin_ops): sama dengan manage_org verify/reject. Aksi admin tercatat di ops.audit_logs.
+-- org: diputuskan di api.manage_org project brand (masuk ke sini lewat event review.decision). Aksi admin tercatat di ops.audit_logs.
 create function api.record_review(p_target_type text, p_target_id uuid, p_decision text, p_reason text default null,
                                   p_message text default null, p_note text default null) returns void
 language plpgsql security definer set search_path = '' as $$
@@ -145,14 +145,6 @@ begin
     insert into ops.audit_logs (actor_id, action, target, before, after)
     values (uid, 'review.kyc.' || p_decision, 'profile:' || p_target_id, null, jsonb_build_object('reason', p_reason));
 
-  elsif p_target_type = 'org' then
-    if not ops.has_admin('admin_ops') then
-      perform market.fail('auth:forbidden', 'butuh admin_ops aal2', '42501');
-    end if;
-    if p_decision not in ('approve', 'reject') then
-      perform market.fail('invalid:decision', coalesce(p_decision, 'null'));
-    end if;
-    perform market.decide_org(p_target_id, p_decision, uid, p_reason, p_message, p_note);
   else
     perform market.fail('invalid:target_type', coalesce(p_target_type, 'null'));
   end if;
