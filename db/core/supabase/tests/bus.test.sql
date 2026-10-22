@@ -28,6 +28,8 @@ select throws_ok($$ select api.bus_receive('creator', '[]') $$, '42501', null, '
 reset role;
 
 -- ===== pengirim =====
+delete from vault.secrets where name in ('bus_url_brand', 'bus_secret_brand');  -- mandiri dari isi Vault dev-stack (di-rollback)
+delete from bus.outbox where target = 'brand';
 select bus.emit('brand', 'test.ping', '{"v":"x1"}');
 select bus.emit('brand', 'test.ping', '{"v":"x2"}');
 select bus.relay();
