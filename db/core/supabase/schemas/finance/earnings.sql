@@ -229,7 +229,13 @@ begin
     select * into p from finance.reward_pools fp where fp.id = r.pool_id;
     amt := trunc(least(raw, p.max_per_clip * cap_pct / 100 - coalesce((select sum(x.amount + x.demand) from finance.clip_earnings x
                                                         where x.submission_id = s.id and x.pool_id = p.id), 0)), 10);
-    continue when amt <= 0;
+    if amt <= 0 then  -- pool habis / cap per klip: views rule ini belum dibayar, kursornya dipaku (dibayar bila pool di-top-up) (R81)
+      if view_based and ce.submission_id is null then
+        insert into finance.clip_earnings (submission_id, rule_id, pool_id, views_from, views_to)
+        values (s.id, r.id, r.pool_id, rbase, rbase) on conflict do nothing;
+      end if;
+      continue;
+    end if;
     -- Sisa pool = total − allocated, dibatasi saldo ledger pool (dana yang sudah di-refund/rollover tidak membiayai earning).
     remaining := least(p.total - p.allocated,
                        greatest(finance.balance(finance.account('campaign_pool', p.id, p.reward_type_id)), 0));
@@ -250,7 +256,13 @@ begin
     end if;
 
     amt := least(amt, remaining);
-    continue when amt <= 0;
+    if amt <= 0 then  -- pool habis / cap per klip: views rule ini belum dibayar, kursornya dipaku (dibayar bila pool di-top-up) (R81)
+      if view_based and ce.submission_id is null then
+        insert into finance.clip_earnings (submission_id, rule_id, pool_id, views_from, views_to)
+        values (s.id, r.id, r.pool_id, rbase, rbase) on conflict do nothing;
+      end if;
+      continue;
+    end if;
     entries := entries || jsonb_build_array(
       finance.e(finance.account('campaign_pool', p.id, p.reward_type_id), -amt, 'accrual', snap.id || ':' || r.id),
       finance.e(finance.account('user_wallet', s.user_id, p.reward_type_id), amt, 'accrual', snap.id || ':' || r.id, 'pending'));

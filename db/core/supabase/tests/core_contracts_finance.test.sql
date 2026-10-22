@@ -316,6 +316,24 @@ select finance.finalize_settlements();                                      -- s
 select pg_temp.snap((select v::uuid from t_ids where k = 's80x'), 1500, null, true);  -- final turun ke 1.500
 select is((select sum(amount + demand) from finance.clip_earnings where submission_id = (select v::uuid from t_ids where k = 's80x')), 1500::numeric,
           'R80: final 1.500 < counted_views 2.000 tetap membayar 1.000–1.500 yang tertunda (tidak hilang saat lock)');
+-- R81: pool kosong saat accrual pertama submisi → kursor rule dipaku; setelah top-up views yang belum dibayar ikut dibayar.
+select pg_temp.mk_campaign('55555555-0000-0000-0000-0000000000dd', 'r81-empty-pool', 0);
+select pg_temp.mk_pool('55555555-0000-0000-0000-0000000000dd', '66666666-0000-0000-0000-0000000000dd', 1000, 10000000);
+select pg_temp.mk_pool('55555555-0000-0000-0000-0000000000dd', '66666666-0000-0000-0000-0000000000de', 1000, 100000, '77777777-0000-0000-0000-000000000002');
+select pg_temp.mk_rule('55555555-0000-0000-0000-0000000000dd', '66666666-0000-0000-0000-0000000000dd', 'per_1k_views', '{"rate":1000}');
+select pg_temp.mk_rule('55555555-0000-0000-0000-0000000000dd', '66666666-0000-0000-0000-0000000000de', 'per_1k_views', '{"rate":1}', p_rt => '77777777-0000-0000-0000-000000000002');
+insert into t_ids select 's81', pg_temp.mk_sub('55555555-0000-0000-0000-0000000000dd', '11111111-0000-0000-0000-000000000da1', 'v81');
+insert into t_ids select 's81q', pg_temp.mk_sub('55555555-0000-0000-0000-0000000000dd', '11111111-0000-0000-0000-000000000da2', 'v81q');
+select pg_temp.snap((select v::uuid from t_ids where k = 's81q'), 1000);  -- menghabiskan pool Rupiah (1.000) secara sah
+select pg_temp.snap((select v::uuid from t_ids where k = 's81'), 1000);
+update finance.reward_pools set total = total + 5000 where id = '66666666-0000-0000-0000-0000000000dd';  -- setara top-up lunas
+select finance.post(gen_random_uuid(), jsonb_build_array(
+  finance.e(finance.account('bank_clearing', null, finance.idr()), -5000, 'invoice_payment', 'fixture:r81'),
+  finance.e(finance.account('campaign_pool', '66666666-0000-0000-0000-0000000000dd', finance.idr()), 5000, 'invoice_payment', 'fixture:r81')));
+select pg_temp.snap((select v::uuid from t_ids where k = 's81'), 2000);
+select is((select amount from finance.clip_earnings where submission_id = (select v::uuid from t_ids where k = 's81')
+             and pool_id = '66666666-0000-0000-0000-0000000000dd'), 2000::numeric,
+          'R81: views selama pool kosong (sebelum accrual pertama) dibayar setelah top-up, sama seperti submisi yang sudah punya kursor');
 update tracking.social_accounts set status = 'disconnected' where user_id in ('11111111-0000-0000-0000-000000000da1', '11111111-0000-0000-0000-000000000da2');
 
 -- K5: raise_rate — rule lama ditutup, rule baru berlaku untuk snapshot sesudahnya
