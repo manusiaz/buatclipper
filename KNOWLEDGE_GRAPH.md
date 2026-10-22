@@ -1662,9 +1662,9 @@ Arah: `A --tipe--> B` = A bergantung pada B. `?` = belum terverifikasi.
 | `test:spike.oidc-cross-project` | tests | `config:tpa-oidc-identity` | PRD v0.3.1 R-14 |
 | `test:spike.oidc-cross-project` | tests | `policy:core.iss-identity` | PRD v0.3.1 R-14 + §15.6 |
 | `test:spike.oidc-cross-project` | tests | `policy:fn-verify-jwt` | PRD v0.3.1 §15.6 |
-| `doc:scripts/dev-stack.sh` | documents | `config:supabase.core` | scripts/dev-stack.sh:63 |
-| `doc:scripts/dev-stack.sh` | documents | `config:supabase.identity` | scripts/dev-stack.sh:63 |
-| `doc:scripts/dev-stack.sh` | documents | `env:BRIDGE_SECRET_CORE_TO_IDENTITY` | scripts/dev-stack.sh:17 |
+| `doc:scripts/dev-stack.sh` | documents | `config:supabase.core` | scripts/dev-stack.sh:64 |
+| `doc:scripts/dev-stack.sh` | documents | `config:supabase.identity` | scripts/dev-stack.sh:64 |
+| `doc:scripts/dev-stack.sh` | documents | `env:BRIDGE_SECRET_CORE_TO_IDENTITY` | scripts/dev-stack.sh:18 |
 | `doc:deploy/deploy.sh` | documents | `env:BRIDGE_SECRET_CORE_TO_IDENTITY` | deploy/keys.mjs:58 |
 | `doc:deploy/deploy.sh` | documents | `env:BRIDGE_SECRET_IDENTITY_TO_CORE` | deploy/keys.mjs:59 |
 | `doc:deploy/deploy.sh` | documents | `env:PII_HMAC_KEY` | deploy/keys.mjs:60 |
@@ -1672,11 +1672,11 @@ Arah: `A --tipe--> B` = A bergantung pada B. `?` = belum terverifikasi.
 | `doc:deploy/deploy.sh` | documents | `env:VAPID_PRIVATE_KEY` | deploy/keys.mjs:66 |
 | `doc:deploy/deploy.sh` | documents | `env:IDENTITY_ISSUER` | deploy/deploy.sh:205 |
 | `doc:deploy/deploy.sh` | documents | `fn:custom_access_token_hook` | deploy/supabase/identity.yml:17 (GOTRUE_HOOK_CUSTOM_ACCESS_TOKEN_URI) |
-| `doc:scripts/dev-stack.sh` | documents | `env:BRIDGE_SECRET_IDENTITY_TO_CORE` | scripts/dev-stack.sh:18 |
-| `doc:scripts/dev-stack.sh` | documents | `env:IDENTITY_ISSUER` | scripts/dev-stack.sh:43 |
-| `doc:scripts/dev-stack.sh` | documents | `env:PII_ENC_KEY` | scripts/dev-stack.sh:20 |
-| `doc:scripts/dev-stack.sh` | documents | `env:PII_HMAC_KEY` | scripts/dev-stack.sh:19 |
-| `doc:scripts/dev-stack.sh` | documents | `env:VAPID_PRIVATE_KEY` | scripts/dev-stack.sh:25 |
+| `doc:scripts/dev-stack.sh` | documents | `env:BRIDGE_SECRET_IDENTITY_TO_CORE` | scripts/dev-stack.sh:19 |
+| `doc:scripts/dev-stack.sh` | documents | `env:IDENTITY_ISSUER` | scripts/dev-stack.sh:44 |
+| `doc:scripts/dev-stack.sh` | documents | `env:PII_ENC_KEY` | scripts/dev-stack.sh:21 |
+| `doc:scripts/dev-stack.sh` | documents | `env:PII_HMAC_KEY` | scripts/dev-stack.sh:20 |
+| `doc:scripts/dev-stack.sh` | documents | `env:VAPID_PRIVATE_KEY` | scripts/dev-stack.sh:26 |
 | `doc:spec/contracts.yaml` | documents | `api:fn core/bridge` | spec/contracts.yaml:45 |
 | `doc:spec/contracts.yaml` | documents | `api:fn core/fulfill` | spec/contracts.yaml:46 |
 | `doc:spec/contracts.yaml` | documents | `api:fn core/notify` | spec/contracts.yaml:44 |
