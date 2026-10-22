@@ -1,8 +1,9 @@
 import createNextIntlPlugin from 'next-intl/plugin';
 import { clipperNextConfig } from '@clipper/config/next';
 
-const core = new URL(process.env.NEXT_PUBLIC_CORE_URL ?? 'http://127.0.0.1:55321');
-const local = ['127.0.0.1', 'localhost'].includes(core.hostname);
+// Cover campaign = storage publik project brand.
+const brand = new URL(process.env.NEXT_PUBLIC_BRAND_DB_URL ?? 'http://127.0.0.1:57321');
+const local = ['127.0.0.1', 'localhost'].includes(brand.hostname);
 
 export default createNextIntlPlugin('./src/i18n/request.ts')(
   clipperNextConfig({
@@ -11,9 +12,9 @@ export default createNextIntlPlugin('./src/i18n/request.ts')(
       images: {
         remotePatterns: [
           {
-            protocol: core.protocol === 'https:' ? 'https' : 'http',
-            hostname: core.hostname,
-            port: core.port,
+            protocol: brand.protocol === 'https:' ? 'https' : 'http',
+            hostname: brand.hostname,
+            port: brand.port,
             pathname: '/storage/v1/object/public/campaign-covers/**',
           },
         ],

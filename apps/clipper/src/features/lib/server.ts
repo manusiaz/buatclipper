@@ -42,10 +42,10 @@ export async function readSettings(keys: string[]): Promise<Record<string, unkno
   return Object.fromEntries((data ?? []).map((r) => [r.key, r.value]));
 }
 
-/** Bucket publik core (campaign-covers, avatars). */
+/** Bucket publik: campaign-covers (storage brand), avatars (storage admin). */
 export function publicUrl(bucket: 'campaign-covers' | 'avatars', path: string | null | undefined): string | null {
   if (!path) return null;
-  const base = process.env.NEXT_PUBLIC_CORE_URL;
+  const base = bucket === 'campaign-covers' ? process.env.NEXT_PUBLIC_BRAND_DB_URL : process.env.NEXT_PUBLIC_CORE_URL;
   return `${base}/storage/v1/object/public/${bucket}/${path.split('/').map(encodeURIComponent).join('/')}`;
 }
 

@@ -35,16 +35,6 @@ signing_keys_path = "./dev-keys/signing_keys.json"
 [auth.email]
 enable_signup = false
 
-[storage.buckets.campaign-covers]
-public = true
-file_size_limit = "2MiB"
-allowed_mime_types = ["image/jpeg", "image/png", "image/webp"]
-
-[storage.buckets.campaign-assets]
-public = false
-file_size_limit = "500MiB"
-allowed_mime_types = ["video/mp4", "video/quicktime", "image/jpeg", "image/png", "image/webp", "audio/mpeg", "audio/wav", "application/pdf"]
-
 [storage.buckets.avatars]
 public = true
 file_size_limit = "1MiB"

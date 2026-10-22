@@ -11,7 +11,7 @@ export async function SidePanel({ detail, loc }: { detail: Record<string, unknow
   // managed_brief = brief mentah brand (terpisah dari brief terstruktur); kosong → brief.
   const raw = c.managed_brief?.trim() ? c.managed_brief : c.brief;
   const files = ((detail.assets ?? []) as AssetRow[]).filter((a) => a.audience === 'internal');
-  const hrefs = await assetHrefs(db, files);
+  const hrefs = await assetHrefs(files);
   return (
     <div className="flex flex-col gap-4">
       {c.created_at ? <p className="text-caption text-muted">{t('campaigns.requested')} {formatDateTime(c.created_at, loc)}</p> : null}

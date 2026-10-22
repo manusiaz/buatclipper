@@ -16,9 +16,9 @@ create table market.profiles (
   constraint profiles_suspend_has_until check (status <> 'suspended' or suspended_until is not null)
 );
 
--- Replika profil publik ke brand (anggota tim, nama clipper di review). trust_score/referral tetap di admin.
+-- Replika profil publik ke brand (anggota tim, nama clipper di review, trust_score untuk visibilitas campaign level). Referral tetap di admin.
 create trigger profiles_replicate after insert or update or delete on market.profiles for each row
-  execute function bus.replicate('brand:username,display_name,avatar_path,status,suspended_until');
+  execute function bus.replicate('brand:username,display_name,avatar_path,status,suspended_until,trust_score');
 
 alter table market.profiles enable row level security;
 create policy profiles_iss on market.profiles as restrictive for all to authenticated  -- policy:core.iss-identity

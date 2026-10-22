@@ -107,11 +107,15 @@ for f in admin creator brand; do for t in admin creator brand; do
   vault "${DBP[$f]}" "bus_secret_$t" "${!sec}"
 done; done
 
+# Backfill replika milik admin ke brand (data lama sebelum replika ada; idempoten, dikirim relay bus).
+psql "postgresql://postgres:postgres@127.0.0.1:55322/postgres" -qtAX -v ON_ERROR_STOP=1 \
+  -c "select bus.resync('market.categories', 'brand'), bus.resync('market.profiles', 'brand')" >/dev/null
+
 for a in web accounts clipper brand admin; do
   {
     echo "NEXT_PUBLIC_CORE_URL=http://127.0.0.1:55321"
     echo "NEXT_PUBLIC_CORE_PUBLISHABLE_KEY=$CORE_PUB"
-    case $a in accounts|brand|admin) echo "NEXT_PUBLIC_BRAND_DB_URL=http://127.0.0.1:57321"; echo "NEXT_PUBLIC_BRAND_DB_PUBLISHABLE_KEY=$BRAND_PUB";; esac
+    echo "NEXT_PUBLIC_BRAND_DB_URL=http://127.0.0.1:57321"; echo "NEXT_PUBLIC_BRAND_DB_PUBLISHABLE_KEY=$BRAND_PUB"
     [ "$a" != web ] && echo "NEXT_PUBLIC_IDENTITY_URL=http://127.0.0.1:54321" && echo "NEXT_PUBLIC_IDENTITY_PUBLISHABLE_KEY=$ID_PUB"
     echo "NEXT_PUBLIC_COOKIE_DOMAIN=.$DOMAIN"
     echo "NEXT_PUBLIC_WEB_URL=$WEB"; echo "NEXT_PUBLIC_ACCOUNTS_URL=$ACC"; echo "NEXT_PUBLIC_APP_URL=$APP"
@@ -125,6 +129,7 @@ MH="${MOBILE_HOST:-127.0.0.1}"
 {
   echo "EXPO_PUBLIC_IDENTITY_URL=http://$MH:54321"; echo "EXPO_PUBLIC_IDENTITY_PUBLISHABLE_KEY=$ID_PUB"
   echo "EXPO_PUBLIC_CORE_URL=http://$MH:55321"; echo "EXPO_PUBLIC_CORE_PUBLISHABLE_KEY=$CORE_PUB"
+  echo "EXPO_PUBLIC_BRAND_DB_URL=http://$MH:57321"; echo "EXPO_PUBLIC_BRAND_DB_PUBLISHABLE_KEY=$BRAND_PUB"
   echo "EXPO_PUBLIC_APP_URL=$APP"; echo "EXPO_PUBLIC_ACCOUNTS_URL=$ACC"; echo "EXPO_PUBLIC_BRAND_URL=$BRAND"; echo "EXPO_PUBLIC_WEB_URL=$WEB"
 } > apps/mobile/.env.local
 echo "stack lokal siap: identity http://127.0.0.1:54321 (email: http://127.0.0.1:54324), admin(core) http://127.0.0.1:55321, creator http://127.0.0.1:56321, brand http://127.0.0.1:57321"

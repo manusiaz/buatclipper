@@ -112,12 +112,12 @@ export async function putToSignedUrl(
   }
 }
 
-/** Public URL of a cover in the public bucket campaign-covers (NEXT_PUBLIC_CORE_URL, same env as @clipper/db-core). */
+/** Public URL of a cover in the public bucket campaign-covers of the brand project (NEXT_PUBLIC_BRAND_DB_URL, same env as @clipper/db-brand). */
 export function coverPublicUrl(path: string | null | undefined): string | null {
   if (!path) return null;
   let base: string | undefined;
   try {
-    base = process.env.NEXT_PUBLIC_CORE_URL;
+    base = process.env.NEXT_PUBLIC_BRAND_DB_URL;
   } catch {
     base = undefined;
   }

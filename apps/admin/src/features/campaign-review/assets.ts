@@ -1,4 +1,4 @@
-import type { CoreClient } from '@clipper/db-core';
+import { brandServer } from '@clipper/auth/server';
 
 export interface AssetRow {
   id: string | null;
@@ -9,8 +9,9 @@ export interface AssetRow {
   audience?: string | null;
 }
 
-/** Aset campaign → URL yang bisa dibuka admin: link luar apa adanya, cover = URL publik, lainnya signed URL 10 menit. */
-export async function assetHrefs(db: CoreClient, assets: AssetRow[]): Promise<Map<string, string>> {
+/** Aset campaign (storage brand) → URL yang bisa dibuka admin: link luar apa adanya, cover = URL publik, lainnya signed URL 10 menit. */
+export async function assetHrefs(assets: AssetRow[]): Promise<Map<string, string>> {
+  const db = await brandServer('admin');
   const out = new Map<string, string>();
   const signed: AssetRow[] = [];
   for (const a of assets) {

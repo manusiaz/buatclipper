@@ -328,6 +328,12 @@ step('brand-builder', ['brand'], async ({ brand }) => {
   check(rm === 'brand' && plats === 'tiktok' && tags === S.hashtag, 'kolom campaign: ' + c);
   S.campaignId = cid;
   S.slug = slug;
+  // isi milik DB brand; admin mengajukan tepat versi isi yang tiba (gerbang content_version)
+  const own = brandDb(`select title || '|' || content_version || '|' || (select count(*) from market.campaign_assets a where a.campaign_id = c.id)
+                        from market.campaigns c where id = '${cid}'`);
+  const rep = core(`select title || '|' || submitted_version || '|' || (select count(*) from market.campaign_assets a where a.campaign_id = c.id)
+                    from market.campaigns c where id = '${cid}'`);
+  check(own !== '' && own === rep, 'isi campaign di DB brand = replika yang diajukan di admin: ' + own + ' vs ' + rep);
   const rules = core(`select string_agg(kind || ':' || params::text, ' ; ' order by kind) from market.rate_rules where campaign_id = '${cid}'`);
   check(/milestone_bonus/.test(rules) && /per_1k_views/.test(rules) && /10000/.test(rules), 'rate rules: ' + rules);
   const pool = core(`select total || '|' || max_per_clip from finance.reward_pools where campaign_id = '${cid}'`);

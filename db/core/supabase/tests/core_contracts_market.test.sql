@@ -16,6 +16,81 @@ returns void language sql as $$
     'iss', 'https://auth.contoh.id/auth/v1', 'app_roles', to_jsonb(p_roles), 'kyc', 'none',
     'consent_ok', jsonb_build_object('clipper', true, 'brand', true)) || p_extra)::text, true);
 $$;
+-- Builder dua project: isi + aset = project brand (disimulasikan sebagai replika lewat api.bus_receive, normalisasi sama dengan
+-- brand), sisanya (jadwal, pool, rule, fee, submit) = api.save_campaign admin dengan content_version replika. Fungsi isi brand
+-- sendiri diuji di db/brand tests/brand_campaigns.test.sql.
+create function pg_temp.save_campaign(p jsonb, p_submit boolean default false) returns uuid
+language plpgsql security definer set search_path = '' as $$
+declare
+  admin_keys constant text[] := array['start_at', 'submit_deadline', 'view_window_days', 'pools', 'rules', 'fee_rule', 'content_version'];
+  brand_cols constant text[] := array['org_id', 'slug', 'title', 'type', 'category_id', 'platforms', 'brief', 'managed_brief',
+    'required_hashtags', 'required_mentions', 'required_links', 'sponsored_label', 'min_duration_sec', 'max_duration_sec', 'dos',
+    'donts', 'example_urls', 'faq', 'service_mode', 'review_mode', 'min_followers', 'min_account_age_days', 'min_trust_score',
+    'kyc_required', 'min_views', 'max_clips_per_clipper', 'clipper_quota', 'allow_video_reuse', 'visibility', 'is_template',
+    'content_version', 'created_by', 'created_at'];
+  content jsonb := '{}';
+  econ jsonb := '{}';
+  k text;
+  cid uuid := coalesce((p ->> 'id')::uuid, gen_random_uuid());
+  cur jsonb;
+  r jsonb;
+  ev jsonb := '[]';
+  a jsonb;
+begin
+  for k in select jsonb_object_keys(p) loop
+    if k = any (admin_keys) then
+      econ := econ || jsonb_build_object(k, p -> k);
+    elsif k <> 'id' then
+      content := content || jsonb_build_object(k, p -> k);
+    end if;
+  end loop;
+  foreach k in array array['required_hashtags:hashtag', 'required_mentions:mention', 'required_links:link', 'example_urls:link',
+                           'dos:text', 'donts:text'] loop
+    if content ? split_part(k, ':', 1) then
+      content := content || jsonb_build_object(split_part(k, ':', 1),
+        to_jsonb(market.norm_list(content -> split_part(k, ':', 1), split_part(k, ':', 2), split_part(k, ':', 1))));
+    end if;
+  end loop;
+  select to_jsonb(c) into cur from market.campaigns c where c.id = cid;
+  if cur is null or content - 'assets' <> '{}' then
+    r := coalesce(cur, jsonb_build_object('id', cid, 'created_by', auth.uid(), 'created_at', now(), 'content_version', 0,
+      'slug', left(regexp_replace(lower(coalesce(content ->> 'title', 'campaign')), '[^a-z0-9]+', '-', 'g'), 60) || '-'
+              || substr(md5(cid::text), 1, 6))) || (content - 'assets');
+    r := r || jsonb_build_object('content_version', (r ->> 'content_version')::int
+                                 + case when cur is null or content - 'assets' - 'faq' <> '{}' then 1 else 0 end);
+    ev := ev || jsonb_build_object('id', gen_random_uuid(), 'topic', 'rep.row', 'payload', jsonb_build_object(
+      'table', 'market.campaigns', 'op', 'upsert', 'key', jsonb_build_object('id', cid),
+      'row', (select jsonb_object_agg(x, r -> x) from unnest(brand_cols || array['id']) x where r ? x)));
+  end if;
+  if content ? 'assets' then
+    for a in select to_jsonb(x) from market.campaign_assets x where x.campaign_id = cid loop
+      ev := ev || jsonb_build_object('id', gen_random_uuid(), 'topic', 'rep.row', 'payload', jsonb_build_object(
+        'table', 'market.campaign_assets', 'op', 'delete', 'key', jsonb_build_object('id', a -> 'id'), 'row', null));
+    end loop;
+    for a in select jsonb_array_elements(content -> 'assets') loop
+      ev := ev || jsonb_build_object('id', gen_random_uuid(), 'topic', 'rep.row', 'payload', jsonb_build_object(
+        'table', 'market.campaign_assets', 'op', 'upsert', 'key', jsonb_build_object('id', gen_random_uuid()),
+        'row', jsonb_build_object('campaign_id', cid, 'kind', a -> 'kind', 'storage_path', a -> 'storage_path',
+                                  'url', to_jsonb((market.norm_list(case when a ? 'url' then jsonb_build_array(a -> 'url') end, 'link', 'asset_url'))[1]),
+                                  'size_bytes', a -> 'size_bytes',
+                                  'audience', coalesce(a ->> 'audience', case when split_part(a ->> 'storage_path', '/', 3) = 'internal'
+                                                                         then 'internal' else 'clipper' end),
+                                  'created_at', now())));
+    end loop;
+    -- key di row: apply_row memasukkan kolom row; id aset diambil dari key
+    ev := (select jsonb_agg(case when e #>> '{payload,table}' = 'market.campaign_assets' and e #>> '{payload,op}' = 'upsert'
+                                 then jsonb_set(e, '{payload,row,id}', e #> '{payload,key,id}') else e end) from jsonb_array_elements(ev) e);
+  end if;
+  if jsonb_array_length(ev) > 0 then
+    perform api.bus_receive('brand', ev);
+  end if;
+  if econ - 'content_version' <> '{}' or p_submit then
+    perform api.save_campaign(jsonb_build_object('id', cid, 'content_version',
+                                                 (select c.content_version from market.campaigns c where c.id = cid)) || econ, p_submit);
+  end if;
+  return cid;
+end $$;
+grant execute on function pg_temp.save_campaign(jsonb, boolean) to authenticated;
 create function pg_temp.anon() returns void language sql as $$
   select set_config('request.jwt.claims', '{"role":"anon"}', true);
 $$;
@@ -190,7 +265,7 @@ grant all on t_json to anon, authenticated;
 select is((select array_agg(p.proname::text order by p.proname) from pg_proc p
             where p.pronamespace = 'api'::regnamespace
               and p.proname in ('list_campaigns', 'claim_campaign', 'appeal_submission', 'save_campaign', 'control_campaign',
-                                'duplicate_campaign', 'invite_to_campaign', 'manage_org', 'save_reward_type', 'upload_reward_codes', 'buy_pin',
+                                'copy_campaign_economics', 'manage_org', 'save_reward_type', 'upload_reward_codes', 'buy_pin',
                                 'record_review', 'update_config', 'send_broadcast', 'campaign_detail', 'campaign_stats', 'my_stats')
               and not (p.prosecdef and p.proconfig @> array['search_path=""'])), null,
           'semua fungsi kontrak marketplace: security definer + search_path kosong');
@@ -222,8 +297,8 @@ update market.organizations set status = 'verified', verified_by = '33333333-000
  where id = '44444444-0000-0000-0000-000000000002';
 select is((select count(*)::int from bus.outbox where target = 'brand' and topic = 'rep.row' and payload ->> 'table' = 'market.profiles'
              and payload #>> '{key,id}' = '11111111-0000-0000-0000-0000000000f1'), 1, 'profil baru direplika ke brand');
-select ok(not exists (select 1 from bus.outbox where target = 'brand' and payload ? 'row' and payload -> 'row' ? 'trust_score'),
-          'replika profil ke brand tanpa trust_score/referral');
+select ok(not exists (select 1 from bus.outbox where target = 'brand' and payload ->> 'table' = 'market.profiles' and payload -> 'row' ? 'referral_code'),
+          'replika profil ke brand tanpa kode referral');
 
 -- set_fee (F-A07): satu-satunya aksi manage_org di admin
 set local role authenticated;
@@ -331,23 +406,27 @@ select is((select s.decrypted_secret from market.reward_types r join vault.decry
 
 -- ---------- builder (F-B02, F-A03) + invoice (§5.2) + review campaign (F-A02) ----------
 set local role authenticated;
+-- Bagian admin builder (jadwal, pool, rule, fee, pengajuan): isi, aset, normalisasi, slug diuji di project brand.
 select pg_temp.jwt('11111111-0000-0000-0000-00000000000a');
-select throws_ok($$ select api.save_campaign('{"org_id":"44444444-0000-0000-0000-000000000001","title":"Coba","type":"clipping",
-                    "platforms":["tiktok"]}') $$, '42501', 'auth:forbidden', 'clipper tidak bisa membuat campaign');
+select throws_ok($$ select api.save_campaign('{"id":"55555555-0000-0000-0000-0000000000d1","view_window_days":20}') $$, '42501', 'auth:forbidden',
+                 'clipper tidak bisa mengubah campaign');
 select pg_temp.jwt('33333333-0000-0000-0000-0000000000ad', '{admin_ops}', 'aal1');
-select throws_ok($$ select api.save_campaign('{"org_id":"44444444-0000-0000-0000-000000000001","title":"Coba","type":"clipping",
-                    "platforms":["tiktok"]}') $$, '42501', 'auth:forbidden', 'builder admin butuh aal2');
+select throws_ok($$ select api.save_campaign('{"id":"55555555-0000-0000-0000-0000000000d1","view_window_days":20}') $$, '42501', 'auth:forbidden',
+                 'builder admin butuh aal2');
 select pg_temp.jwt('22222222-0000-0000-0000-0000000000b1');
-select throws_ok($$ select api.save_campaign('{"org_id":"44444444-0000-0000-0000-000000000001","title":"Coba","type":"clipping",
-                    "platforms":["tiktok"],"required_links":["http://studio.id"]}') $$, 'P0001', 'invalid:required_links',
-                 'link brief wajib https');
-select throws_ok($$ select api.save_campaign('{"org_id":"44444444-0000-0000-0000-000000000001","title":"Coba","type":"clipping",
-                    "platforms":["tiktok"],"status":"live"}') $$, 'P0001', 'invalid:unknown_key', 'status tidak bisa diisi dari builder');
-select throws_ok($$ select api.save_campaign('{"org_id":"44444444-0000-0000-0000-000000000001","title":"Coba","type":"clipping",
-                    "platforms":["tiktok"],"fee_rule":{"mgmt_fee_pct":1}}') $$, '42501', 'auth:forbidden', 'brand tidak bisa override fee');
-select throws_ok($$ select api.save_campaign('{"org_id":"44444444-0000-0000-0000-000000000001","title":"Coba","type":"clipping",
-                    "platforms":["tiktok"],"slug":"film-satu"}') $$, 'P0001', 'slug_taken', 'slug unik');
-insert into t_ids (k, id) select 'c_new', api.save_campaign($j${
+select throws_ok($$ select api.save_campaign('{"id":"55555555-0000-0000-0000-0000000000d1","status":"live"}') $$, 'P0001', 'invalid:unknown_key',
+                 'status tidak bisa diisi dari builder');
+select throws_ok($$ select api.save_campaign('{"id":"55555555-0000-0000-0000-0000000000d1","title":"Judul Baru"}') $$, 'P0001', 'invalid:unknown_key',
+                 'isi campaign disimpan di project brand, bukan admin');
+select throws_ok($$ select api.save_campaign('{"id":"55555555-0000-0000-0000-0000000000d1","fee_rule":{"mgmt_fee_pct":1}}') $$, '42501', 'auth:forbidden',
+                 'brand tidak bisa override fee');
+select throws_ok($$ select api.save_campaign(jsonb_build_object('id', gen_random_uuid(), 'view_window_days', 20)) $$, 'P0001',
+                 'retry:replica_lag', 'replika isi belum tiba dari brand → builder mengulang');
+select throws_ok($$ select api.save_campaign('{"id":"55555555-0000-0000-0000-0000000000d1","content_version":99,"view_window_days":20}') $$, 'P0001',
+                 'retry:replica_lag', 'versi isi yang dilihat builder lebih baru dari replika → mengulang');
+select throws_ok($$ select api.save_campaign('{"id":"55555555-0000-0000-0000-0000000000d1"}', true) $$, 'P0001', 'invalid:content_version',
+                 'pengajuan wajib menyebut versi isi');
+insert into t_ids (k, id) select 'c_new', pg_temp.save_campaign($j${
   "org_id":"44444444-0000-0000-0000-000000000001","title":"Film Baru Rilis","type":"clipping","category_id":"games",
   "platforms":["tiktok","instagram"],"brief":"Potong adegan terbaik.","required_hashtags":["#MPLID"," Clipper ","#mplid"],
   "required_mentions":["@StudioSatu"],"required_links":["studio.id/promo"],"dos":[" Pakai subtitle ",""],
@@ -359,22 +438,12 @@ insert into t_ids (k, id) select 'c_new', api.save_campaign($j${
 select throws_ok($$ select api.save_campaign(jsonb_build_object('id', (select id from t_ids where k = 'c_new'), 'rules',
                     '[{"kind":"per_1k_views","pool_id":"66666666-0000-0000-0000-000000000001","params":{"rate":0}}]'::jsonb)) $$,
                  'P0001', 'invalid:rule_params', 'parameter rate rule divalidasi per kind');
-select throws_ok($$ select api.save_campaign(jsonb_build_object('id', (select id from t_ids where k = 'c_new'), 'assets',
-                    '[{"kind":"video","storage_path":"44444444-0000-0000-0000-000000000001/lain/x.mp4"}]'::jsonb)) $$,
-                 'P0001', 'invalid:asset_path', 'file aset wajib di folder {org}/{campaign}/');
-select lives_ok($$ select api.save_campaign(jsonb_build_object('id', (select id from t_ids where k = 'c_new'), 'assets',
+select lives_ok($$ select pg_temp.save_campaign(jsonb_build_object('id', (select id from t_ids where k = 'c_new'), 'assets',
                    jsonb_build_array(
                      jsonb_build_object('kind', 'cover', 'storage_path', '44444444-0000-0000-0000-000000000001/' || (select id from t_ids where k = 'c_new') || '/cover.webp'),
                      jsonb_build_object('kind', 'document', 'storage_path', '44444444-0000-0000-0000-000000000001/' || (select id from t_ids where k = 'c_new') || '/internal/brief.pdf'),
                      jsonb_build_object('kind', 'link', 'url', 'drive.example/folder')))) $$, 'aset brief disimpan');
 reset role;
-select is((select array[array_to_string(required_hashtags, ','), array_to_string(required_mentions, ','), array_to_string(required_links, ','),
-                        array_to_string(dos, ','), status::text]
-             from market.campaigns where id = (select id from t_ids where k = 'c_new')),
-          array['mplid,clipper', 'studiosatu', 'https://studio.id/promo', 'Pakai subtitle', 'draft'],
-          'brief dinormalisasi: hashtag/mention huruf kecil tanpa #/@, link https, kosong & duplikat dibuang');
-select ok((select slug ~ '^film-baru-rilis-[0-9a-f]{6}$' from market.campaigns where id = (select id from t_ids where k = 'c_new')),
-          'slug dibuat dari judul');
 select is((select array_agg(r.platform::text || ':' || (r.params ->> 'rate') order by r.platform) from market.rate_rules r
             where r.campaign_id = (select id from t_ids where k = 'c_new')), array['tiktok:2000', 'instagram:2500'],
           'rate rule per platform menunjuk pool yang sama');
@@ -386,24 +455,24 @@ select is((select array_agg(kind || ':' || audience || ':' || coalesce(url, '-')
 -- Submit: org belum verified ditolak; org1 → in_review + invoice campaign (§5.2) + invoice.issued
 set local role authenticated;
 select pg_temp.jwt('22222222-0000-0000-0000-0000000000a2');
-select throws_ok($$ select api.save_campaign(jsonb_build_object('org_id', (select id from t_ids where k = 'org_new')) || $j${"title":"Belum Verified",
+select throws_ok($$ select pg_temp.save_campaign(jsonb_build_object('org_id', (select id from t_ids where k = 'org_new')) || $j${"title":"Belum Verified",
                     "type":"ugc","platforms":["tiktok"],"pools":[{"key":"p","reward_type_id":"77777777-0000-0000-0000-000000000001",
                     "total":1000000,"max_per_clip":10000}],"rules":[{"kind":"flat_per_post","pool":"p","params":{"amount":25000}}]}$j$::jsonb
                     || jsonb_build_object('start_at', now() + interval '1 day', 'submit_deadline', now() + interval '9 days'), true) $$,
                  'P0001', 'org_not_verified', 'org belum diverifikasi tidak bisa mengajukan');
-insert into t_ids (k, id) select 'c_org2', api.save_campaign($j${"org_id":"44444444-0000-0000-0000-000000000002","title":"Toko Dua Promo",
+insert into t_ids (k, id) select 'c_org2', pg_temp.save_campaign($j${"org_id":"44444444-0000-0000-0000-000000000002","title":"Toko Dua Promo",
   "type":"ugc","platforms":["tiktok"],"pools":[{"key":"p","reward_type_id":"77777777-0000-0000-0000-000000000001","total":2000000,
   "max_per_clip":10000}],"rules":[{"kind":"flat_per_post","pool":"p","params":{"amount":25000}}]}$j$::jsonb
   || jsonb_build_object('start_at', now() + interval '1 day', 'submit_deadline', now() + interval '9 days'), true);
 select pg_temp.jwt('22222222-0000-0000-0000-0000000000b1');
-select lives_ok($$ select api.save_campaign(jsonb_build_object('id', (select id from t_ids where k = 'c_new')), true) $$,
+select lives_ok($$ select pg_temp.save_campaign(jsonb_build_object('id', (select id from t_ids where k = 'c_new')), true) $$,
                 'brand_manager mengajukan campaign');
 select throws_ok($$ select api.save_campaign(jsonb_build_object('id', (select id from t_ids where k = 'c_new'),
-                    'required_hashtags', '["baru"]'::jsonb)) $$, 'P0001', 'campaign_locked', 'brief terkunci sejak in_review');
-select lives_ok($$ select api.save_campaign(jsonb_build_object('id', (select id from t_ids where k = 'c_new'),
+                    'view_window_days', 45)) $$, 'P0001', 'campaign_locked', 'jadwal, pool, rule terkunci sejak in_review');
+select lives_ok($$ select pg_temp.save_campaign(jsonb_build_object('id', (select id from t_ids where k = 'c_new'),
                    'faq', '[{"q":"Boleh musik?","a":"Bebas lisensi"},{"q":"Durasi?","a":"15-60 detik"}]'::jsonb)) $$,
                 'FAQ masih bisa ditambah sejak in_review');
-select throws_ok($$ select api.save_campaign('{"id":"55555555-0000-0000-0000-0000000000f1"}', true) $$, 'P0001', 'invalid:template',
+select throws_ok($$ select pg_temp.save_campaign('{"id":"55555555-0000-0000-0000-0000000000f1"}', true) $$, 'P0001', 'invalid:template',
                  'template tidak bisa diajukan');
 reset role;
 select is((select status::text || ':' || jsonb_array_length(faq) from market.campaigns where id = (select id from t_ids where k = 'c_new')),
@@ -462,9 +531,9 @@ select ok((select bool_and(payload ->> 'campaign_title' = 'Film Baru Rilis' and 
 select is((select count(*)::int from ops.audit_logs where action = 'review.campaign.approve'), 1, 'review campaign tercatat audit log');
 set local role authenticated;
 select pg_temp.jwt('22222222-0000-0000-0000-0000000000a2');
-select lives_ok($$ select api.save_campaign(jsonb_build_object('id', (select id from t_ids where k = 'c_org2'), 'title', 'Toko Dua Promo Revisi')) $$,
+select lives_ok($$ select pg_temp.save_campaign(jsonb_build_object('id', (select id from t_ids where k = 'c_org2'), 'title', 'Toko Dua Promo Revisi')) $$,
                 'campaign ditolak diperbaiki (kembali draft)');
-select lives_ok($$ select api.save_campaign(jsonb_build_object('id', (select id from t_ids where k = 'c_org2')), true) $$,
+select lives_ok($$ select pg_temp.save_campaign(jsonb_build_object('id', (select id from t_ids where k = 'c_org2')), true) $$,
                 'campaign diajukan ulang');
 reset role;
 select is((select array_agg(status order by issued_at, status) from finance.invoices where campaign_id = (select id from t_ids where k = 'c_org2')),
@@ -492,10 +561,10 @@ reset role;
 -- Paket managed (J-A7): brand minta dibantu → admin menyusun (override fee) → invoice managed_service + managed.draft_ready
 set local role authenticated;
 select pg_temp.jwt('22222222-0000-0000-0000-0000000000a1');
-insert into t_ids (k, id) select 'c_managed', api.save_campaign('{"org_id":"44444444-0000-0000-0000-000000000001","title":"Bantu Kami",
+insert into t_ids (k, id) select 'c_managed', pg_temp.save_campaign('{"org_id":"44444444-0000-0000-0000-000000000001","title":"Bantu Kami",
   "type":"ugc","platforms":["instagram"],"service_mode":"managed","brief":"Brief mentah: promo toko, gaya santai."}');
 select pg_temp.jwt('33333333-0000-0000-0000-0000000000ad', '{admin_ops}', 'aal2');
-select lives_ok($$ select api.save_campaign($j${"fee_rule":{"mgmt_fee_pct":12},"required_hashtags":["#Bantu"],
+select lives_ok($$ select pg_temp.save_campaign($j${"fee_rule":{"mgmt_fee_pct":12},"required_hashtags":["#Bantu"],
                    "pools":[{"key":"p","reward_type_id":"77777777-0000-0000-0000-000000000001","total":1000000,"max_per_clip":100000}],
                    "rules":[{"kind":"flat_per_post","pool":"p","params":{"amount":25000}}]}$j$::jsonb
                    || jsonb_build_object('id', (select id from t_ids where k = 'c_managed'), 'start_at', now() + interval '2 days',
@@ -512,7 +581,7 @@ select is((select count(*)::int from ops.notifications where event = 'managed.dr
           'managed.draft_ready ke brand_owner + brand_manager');
 set local role authenticated;
 select pg_temp.jwt('22222222-0000-0000-0000-0000000000a1');
-select lives_ok($$ select api.save_campaign(jsonb_build_object('id', (select id from t_ids where k = 'c_managed')), true) $$,
+select lives_ok($$ select pg_temp.save_campaign(jsonb_build_object('id', (select id from t_ids where k = 'c_managed')), true) $$,
                 'brand menyetujui ringkasan & mengajukan');
 reset role;
 select is((select array[mgmt_fee, admin_fee, tax, total] from finance.invoices
@@ -531,17 +600,22 @@ update finance.invoices set status = 'issued', payment_channel = null, payment_r
        confirmed_by = null
  where campaign_id = (select id from t_ids where k = 'c_managed') and kind = 'campaign';
 
--- Duplikat & template (F-B10)
+-- Duplikat & template (F-B10): isi disalin api.duplicate_campaign brand; admin menyalin pool & rule ke salinan yang sudah tiba
 set local role authenticated;
 select pg_temp.jwt('11111111-0000-0000-0000-00000000000a');
-select throws_ok($$ select api.duplicate_campaign('55555555-0000-0000-0000-000000000001', true) $$, '42501', 'auth:forbidden',
-                 'clipper tidak bisa menduplikat');
+select throws_ok($$ select api.copy_campaign_economics('55555555-0000-0000-0000-000000000001', gen_random_uuid()) $$, '42501',
+                 'auth:forbidden', 'clipper tidak bisa menduplikat');
 select pg_temp.jwt('22222222-0000-0000-0000-0000000000b1');
-insert into t_ids (k, id) select 'c_dup', api.duplicate_campaign('55555555-0000-0000-0000-000000000001', true);
+select throws_ok($$ select api.copy_campaign_economics('55555555-0000-0000-0000-000000000001', gen_random_uuid()) $$, 'P0001',
+                 'retry:replica_lag', 'salinan dari brand belum tiba → mengulang');
+insert into t_ids (k, id) select 'c_dup', pg_temp.save_campaign('{"org_id":"44444444-0000-0000-0000-000000000001","title":"Film Satu",
+  "type":"clipping","platforms":["tiktok"],"is_template":true}');
+select lives_ok($$ select api.copy_campaign_economics('55555555-0000-0000-0000-000000000001', (select id from t_ids where k = 'c_dup')) $$,
+                'pool & rule disalin ke salinan');
+select throws_ok($$ select api.copy_campaign_economics('55555555-0000-0000-0000-000000000001', (select id from t_ids where k = 'c_dup')) $$,
+                 'P0001', 'invalid:target', 'salinan yang sudah punya pool tidak disalin ulang');
 reset role;
-select is((select array[status::text, is_template::text, (start_at is null)::text, (slug <> 'film-satu')::text] from market.campaigns
-            where id = (select id from t_ids where k = 'c_dup')), array['draft', 'true', 'true', 'true'],
-          'duplikat = draft (template), tanpa jadwal, slug baru');
+select is((select status::text from market.campaigns where id = (select id from t_ids where k = 'c_dup')), 'draft', 'duplikat = draft');
 select is((select array[count(distinct p.id), count(r.id), sum(p.allocated)]::numeric[] from finance.reward_pools p
             join market.rate_rules r on r.pool_id = p.id where p.campaign_id = (select id from t_ids where k = 'c_dup')),
           array[1, 1, 0]::numeric[], 'pool & rule aktif ikut disalin, allocated 0');
@@ -617,14 +691,19 @@ select is((select array[(select status::text from market.campaigns where id = '5
 
 set local role authenticated;
 select pg_temp.jwt('11111111-0000-0000-0000-00000000000a');
-select throws_ok($$ select api.invite_to_campaign('55555555-0000-0000-0000-000000000008', array['andi']) $$, '42501', 'auth:forbidden',
-                 'clipper tidak bisa mengundang');
 select is((select count(*)::int from api.campaigns where id = '55555555-0000-0000-0000-000000000008'), 0,
           'campaign invite belum terlihat sebelum diundang');
-select pg_temp.jwt('22222222-0000-0000-0000-0000000000b1');
-select is(api.invite_to_campaign('55555555-0000-0000-0000-000000000008', array['@Andi', 'tidakada', 'andi']), 1,
-          'undangan: username dinormalisasi, yang tidak ada diabaikan');
-select is(api.invite_to_campaign('55555555-0000-0000-0000-000000000008', array['andi']), 0, 'undangan ulang tidak dihitung');
+reset role;
+-- undangan dibuat api.invite_to_campaign brand: tiba sebagai replika + notify.user (rate per 1.000 views dilengkapi admin)
+select api.bus_receive('brand', jsonb_build_array(
+  jsonb_build_object('id', gen_random_uuid(), 'topic', 'rep.row', 'payload', '{"table":"market.campaign_invites","op":"upsert",
+    "key":{"campaign_id":"55555555-0000-0000-0000-000000000008","user_id":"11111111-0000-0000-0000-00000000000a"},
+    "row":{"campaign_id":"55555555-0000-0000-0000-000000000008","user_id":"11111111-0000-0000-0000-00000000000a",
+           "invited_by":"22222222-0000-0000-0000-0000000000b1","created_at":"2026-01-01T00:00:00Z"}}'::jsonb),
+  jsonb_build_object('id', gen_random_uuid(), 'topic', 'notify.user', 'payload', '{"user_id":"11111111-0000-0000-0000-00000000000a",
+    "event":"campaign.invited","email":true,"payload":{"campaign_id":"55555555-0000-0000-0000-000000000008","campaign_title":"Khusus Undangan",
+    "campaign_slug":"undangan","org_id":"44444444-0000-0000-0000-000000000001","org_name":"Studio Satu"}}'::jsonb)));
+set local role authenticated;
 select pg_temp.jwt('11111111-0000-0000-0000-00000000000a');
 select is((select count(*)::int from api.campaigns where id = '55555555-0000-0000-0000-000000000008'), 1,
           'campaign privat terlihat setelah diundang');
@@ -639,7 +718,7 @@ select is((select count(*)::int from ops.notifications where event = 'campaign.i
 select is((select payload from ops.notifications where event = 'campaign.invited' and user_id = '11111111-0000-0000-0000-00000000000a'),
           '{"campaign_id":"55555555-0000-0000-0000-000000000008","campaign_title":"Khusus Undangan","campaign_slug":"undangan",
             "org_id":"44444444-0000-0000-0000-000000000001","org_name":"Studio Satu","rate_per_1k":2000}'::jsonb,
-          'payload campaign.invited (+ rate tertinggi per 1K views)');
+          'payload campaign.invited (+ rate tertinggi per 1K views dilengkapi admin)');
 select is((select array[subtotal, service_fee, tax, total] from finance.invoices where id = (select id from t_ids where k = 'inv_pin')),
           array[0, 1000000, 110000, 1110000]::numeric[], 'pin 10 hari = 2 minggu × Rp500.000 + PPN');
 select ok((select kind = 'pinned' and pin_until between now() + interval '10 days' - interval '1 minute' and now() + interval '10 days'
@@ -974,8 +1053,9 @@ select is((select count(*)::int from ops.notifications where event = 'kyc.approv
 update market.organizations set status = 'suspended' where id = (select id from t_ids where k = 'org_new');  -- replika suspend dari brand
 set local role authenticated;
 select pg_temp.jwt('22222222-0000-0000-0000-0000000000a2');
-select throws_ok($$ select api.save_campaign(jsonb_build_object('org_id', (select id from t_ids where k = 'org_new'), 'title', 'Setelah Suspend',
-                    'type', 'ugc', 'platforms', '["tiktok"]'::jsonb)) $$, 'P0001', 'org_suspended', 'org disuspend tidak bisa membuat campaign');
+select throws_ok($$ select pg_temp.save_campaign(jsonb_build_object('org_id', (select id from t_ids where k = 'org_new'), 'title', 'Setelah Suspend',
+                    'type', 'ugc', 'platforms', '["tiktok"]'::jsonb, 'view_window_days', 20)) $$, 'P0001', 'org_suspended',
+                 'org disuspend tidak bisa menyusun campaign');
 reset role;
 
 -- ---------- dashboard brand (F-B05, F-B08) & profil clipper (F-C12) ----------
@@ -1171,7 +1251,7 @@ select throws_ok($$ select market.check_rule_params('tiered_cpm', '{"tiers":[{"f
 -- Paket managed: brand mengajukan sendiri tanpa menunggu tim → invoice jasa managed tetap terbit (sekali).
 set local role authenticated;
 select pg_temp.jwt('22222222-0000-0000-0000-0000000000a1');
-insert into t_ids (k, id) select 'c_mgd', api.save_campaign($j${
+insert into t_ids (k, id) select 'c_mgd', pg_temp.save_campaign($j${
   "org_id":"44444444-0000-0000-0000-000000000001","title":"Managed Sendiri","type":"clipping","platforms":["tiktok"],
   "service_mode":"managed","managed_brief":"Tolong buatkan brief dari trailer kami.",
   "start_at":"2099-01-01T00:00:00Z","submit_deadline":"2099-01-20T00:00:00Z",
@@ -1191,9 +1271,30 @@ select is((select api.campaign_detail((select id from t_ids where k = 'c_mgd')) 
 select is((select managed_brief from api.managed_briefs where campaign_id = (select id from t_ids where k = 'c_mgd')),
           'Tolong buatkan brief dari trailer kami.', 'anggota org melihat brief mentah lewat api.managed_briefs');
 reset role;
--- Trigger brief beku memakai kode mesin (UI memetakan kode, bukan teks).
-select throws_ok($$ update market.campaigns set brief = 'ganti' where id = (select id from t_ids where k = 'c_mgd') $$,
-                 '23514', 'campaign_locked', 'trigger brief beku: pesan = kode campaign_locked');
+-- Balapan replika: isi brand berubah tepat setelah diajukan (sebelum status in_review tiba di brand) → kembali draft, invoice
+-- campaign yang belum lunas batal, brand diminta mengajukan ulang. FAQ saja tidak membuka kunci.
+set local role authenticated;
+select pg_temp.jwt('22222222-0000-0000-0000-0000000000a1');
+insert into t_ids (k, id) select 'c_race', pg_temp.save_campaign($j${
+  "org_id":"44444444-0000-0000-0000-000000000001","title":"Balapan Replika","type":"clipping","platforms":["tiktok"],
+  "start_at":"2099-01-01T00:00:00Z","submit_deadline":"2099-01-20T00:00:00Z",
+  "pools":[{"key":"idr","reward_type_id":"77777777-0000-0000-0000-000000000001","total":1000000,"max_per_clip":100000}],
+  "rules":[{"kind":"per_1k_views","pool":"idr","params":{"rate":2000}}]}$j$::jsonb, true);
+reset role;
+select pg_temp.save_campaign(jsonb_build_object('id', (select id from t_ids where k = 'c_race'), 'faq', '[{"q":"Musik?","a":"Bebas"}]'::jsonb));
+select is((select status::text from market.campaigns where id = (select id from t_ids where k = 'c_race')), 'in_review',
+          'FAQ dari brand setelah diajukan: tetap in_review');
+select pg_temp.save_campaign(jsonb_build_object('id', (select id from t_ids where k = 'c_race'), 'brief', 'Brief diubah setelah diajukan'));
+select is((select status::text || ':' || (content_version > submitted_version)::text from market.campaigns
+            where id = (select id from t_ids where k = 'c_race')), 'draft:true',
+          'isi baru setelah diajukan → kembali draft (ajukan ulang dengan versi baru)');
+select is((select string_agg(status, ',') from finance.invoices where campaign_id = (select id from t_ids where k = 'c_race') and kind = 'campaign'),
+          'void', 'invoice campaign yang belum lunas batal');
+select is((select count(*)::int from ops.notifications where event = 'campaign.rejected' and payload ->> 'reason' = 'content_changed'
+             and payload ->> 'campaign_id' = (select id from t_ids where k = 'c_race')::text), 2,
+          'brand_owner + brand_manager diminta mengajukan ulang');
+select ok(exists (select 1 from ops.audit_logs where action = 'campaign.resubmit_required'
+                    and target = 'campaign:' || (select id from t_ids where k = 'c_race')), 'tercatat audit');
 
 -- Keputusan owner 2026-10-19: batal sebelum live → jasa managed yang sudah dibayar ikut dikembalikan (refund E-35 + jurnal balik).
 insert into t_ids (k, id) select 'inv_mgd', id from finance.invoices

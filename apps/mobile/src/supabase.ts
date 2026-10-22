@@ -19,6 +19,8 @@ if (Platform.OS !== 'web') {
 export const accessToken = async (): Promise<string | null> => (await identity.auth.getSession()).data.session?.access_token ?? null;
 
 export const core = createClient<CoreDb, 'api'>(env.coreUrl, env.coreKey, { db: { schema: 'api' }, accessToken });
+// Storage project brand: aset brief campaign (signed URL, policy campaign_assets_read).
+export const brandStorage = createClient(env.brandDbUrl, env.brandDbKey, { accessToken }).storage;
 export const identityApi = identity.schema('api');
 
 export type FnResult<T> = { ok: true; data: T } | { ok: false; error: string; detail?: unknown; status: number };
@@ -48,8 +50,8 @@ export async function invoke<T = unknown>(project: 'core' | 'identity', name: st
   return { ok: true, data: json as T };
 }
 
-/** URL publik bucket core (campaign-covers, avatars) — sama dengan publicUrl app Next. */
+/** URL publik bucket: campaign-covers (storage brand), avatars (storage admin) — sama dengan publicUrl app Next. */
 export function publicUrl(bucket: 'campaign-covers' | 'avatars', path: string | null | undefined): string | null {
   if (!path) return null;
-  return `${env.coreUrl}/storage/v1/object/public/${bucket}/${path.split('/').map(encodeURIComponent).join('/')}`;
+  return `${bucket === 'campaign-covers' ? env.brandDbUrl : env.coreUrl}/storage/v1/object/public/${bucket}/${path.split('/').map(encodeURIComponent).join('/')}`;
 }

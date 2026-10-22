@@ -7,6 +7,9 @@ create table market.categories (
   active boolean not null default true
 );
 
+create trigger categories_replicate after insert or update or delete on market.categories for each row
+  execute function bus.replicate('brand:name_id,name_en,sort,active');
+
 alter table market.categories enable row level security;
 create policy categories_iss on market.categories as restrictive for all to authenticated  -- policy:core.iss-identity
   using ((select ops.iss_ok())) with check ((select ops.iss_ok()));

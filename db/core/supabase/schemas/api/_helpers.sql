@@ -54,13 +54,6 @@ language sql stable set search_path = '' as $$
    where x.rate > 0;
 $$;
 
--- Angka JSON (number atau string angka) → numeric; selain itu NULL.
-create function market.jnum(p jsonb) returns numeric
-language sql immutable set search_path = '' as $$
-  select case when jsonb_typeof(p) = 'number' then (p #>> '{}')::numeric
-              when jsonb_typeof(p) = 'string' and (p #>> '{}') ~ '^-?[0-9]+(\.[0-9]+)?$' then (p #>> '{}')::numeric end;
-$$;
-
 -- Ringkasan budget & rate satu campaign (card F-C03, detail F-C04, dashboard F-B05): pool + sisa + estimasi sisa views per
 -- platform (sisa pool × 1.000 ÷ jumlah rate per views rule aktif di pool itu; per platform diambil pool yang paling lama habis).
 create function market.campaign_budget(p_campaign uuid) returns jsonb
@@ -184,48 +177,6 @@ begin
   end if;
 end $$;
 
--- Normalisasi daftar brief (F-B02): hashtag/mention huruf kecil tanpa #/@, link https (tanpa skema → https://), teks di-trim;
--- kosong & duplikat dibuang. Format salah → invalid:<field>.
-create function market.norm_list(p jsonb, p_kind text, p_field text) returns text[]
-language plpgsql set search_path = '' as $$
-declare
-  res text[] := '{}';
-  x text;
-  v text;
-begin
-  if p is null or jsonb_typeof(p) = 'null' then
-    return res;
-  end if;
-  if jsonb_typeof(p) <> 'array' then
-    perform market.fail('invalid:' || p_field, 'harus array');
-  end if;
-  for x in select jsonb_array_elements_text(p) loop
-    v := btrim(x);
-    if p_kind = 'hashtag' then
-      v := lower(ltrim(v, '#'));
-      if v <> '' and v !~ '^[[:lower:][:digit:]_]+$' then
-        perform market.fail('invalid:' || p_field, format('hashtag "%s" hanya boleh huruf, angka, _', x));
-      end if;
-    elsif p_kind = 'mention' then
-      v := lower(ltrim(v, '@'));
-      if v <> '' and v !~ '^[[:lower:][:digit:]_.]+$' then
-        perform market.fail('invalid:' || p_field, format('mention "%s" hanya boleh huruf, angka, _ dan .', x));
-      end if;
-    elsif p_kind = 'link' and v <> '' then
-      if v !~* '^[a-z][a-z0-9+.-]*://' then
-        v := 'https://' || v;
-      end if;
-      if v !~ '^https://\S+$' then
-        perform market.fail('invalid:' || p_field, format('link "%s" wajib https', x));
-      end if;
-    end if;
-    if v <> '' and not (v = any (res)) then
-      res := res || v;
-    end if;
-  end loop;
-  return res;
-end $$;
-
 -- Validasi parameter rate rule per kind (§10.2), lebih rinci dari constraint rate_rules_params_per_kind.
 create function market.check_rule_params(p_kind text, p jsonb) returns void
 language plpgsql set search_path = '' as $$
@@ -275,5 +226,4 @@ end $$;
 
 revoke execute on function market.fail(text, text, text), market.session_uid(), market.is_direct_member(uuid, uuid, market.org_role[]),
   market.notify_org(uuid, market.org_role[], text, jsonb), market.campaign_visible(market.campaigns), market.rule_rate(text, jsonb),
-  market.rate_per_1k(uuid, text), market.jnum(jsonb), market.campaign_budget(uuid), market.claim_check(uuid), market.norm_list(jsonb, text, text),
-  market.check_rule_params(text, jsonb) from public;
+  market.rate_per_1k(uuid, text), market.campaign_budget(uuid), market.claim_check(uuid), market.check_rule_params(text, jsonb) from public;

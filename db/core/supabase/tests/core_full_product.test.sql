@@ -166,8 +166,16 @@ select is(api.missing_brief_tags('55555555-0000-0000-0000-000000000014', 'cuma #
           array['#clipper', '@studiosatu', 'https://studio.id/promo'], 'yang kurang disebut satu per satu');
 select is(api.missing_brief_tags('55555555-0000-0000-0000-000000000013', '#film'), null, 'campaign yang tidak terlihat: NULL');
 reset role;
-select throws_ok($$ update market.campaigns set required_hashtags = '{baru}' where id = '55555555-0000-0000-0000-000000000014' $$,
-                 '23514', null, 'brief terkunci setelah diajukan');
+-- Brief dikunci di project brand; isi baru yang tetap tiba setelah tayang tidak mengubah status, hanya tercatat (event tidak ditolak).
+update market.campaigns set submitted_version = content_version where id = '55555555-0000-0000-0000-000000000014';
+select lives_ok($$ select api.bus_receive('brand', jsonb_build_array(jsonb_build_object('id', gen_random_uuid(), 'topic', 'rep.row',
+                   'payload', jsonb_build_object('table', 'market.campaigns', 'op', 'upsert', 'key', '{"id":"55555555-0000-0000-0000-000000000014"}'::jsonb,
+                   'row', jsonb_build_object('id', '55555555-0000-0000-0000-000000000014', 'required_hashtags', array['baru'],
+                     'content_version', (select content_version + 1 from market.campaigns where id = '55555555-0000-0000-0000-000000000014')))))) $$,
+                'replika isi tiba walau campaign tayang (antrean bus tidak macet)');
+select is((select status::text from market.campaigns where id = '55555555-0000-0000-0000-000000000014'), 'live', 'status tetap');
+select ok(exists (select 1 from ops.audit_logs where action = 'campaign.content_drift' and target = 'campaign:55555555-0000-0000-0000-000000000014'),
+          'isi berubah setelah diajukan tercatat untuk admin');
 select lives_ok($$ update market.campaigns set faq = '[{"q":"Boleh pakai musik?","a":"Yang bebas lisensi"}]'
                    where id = '55555555-0000-0000-0000-000000000014' $$, 'FAQ tetap bisa ditambah saat tayang');
 select lives_ok($$ update market.campaigns set required_hashtags = '{film}' where id = '55555555-0000-0000-0000-000000000013' $$,
@@ -181,21 +189,13 @@ insert into market.campaign_assets (campaign_id, kind, storage_path, audience) v
    '44444444-0000-0000-0000-000000000001/55555555-0000-0000-0000-000000000014/aset.mp4', 'clipper'),
   ('55555555-0000-0000-0000-000000000014', 'document',
    '44444444-0000-0000-0000-000000000001/55555555-0000-0000-0000-000000000014/internal/brief-brand.pdf', 'internal');
-insert into storage.buckets (id, name, public) values ('campaign-assets', 'campaign-assets', false) on conflict (id) do nothing;
-insert into storage.objects (bucket_id, name) values
-  ('campaign-assets', '44444444-0000-0000-0000-000000000001/55555555-0000-0000-0000-000000000014/aset.mp4'),
-  ('campaign-assets', '44444444-0000-0000-0000-000000000001/55555555-0000-0000-0000-000000000014/internal/brief-brand.pdf');
 set local role authenticated;
 set local request.jwt.claims = '{"sub":"11111111-0000-0000-0000-00000000000a","role":"authenticated","aal":"aal1","iss":"https://auth.contoh.id/auth/v1"}';
 select is((select array_agg(audience) from api.campaign_assets where campaign_id = '55555555-0000-0000-0000-000000000014'),
           array['clipper'], 'clipper hanya melihat aset brief, bukan berkas internal brand');
-select is((select count(*)::int from storage.objects where bucket_id = 'campaign-assets'
-           and name like '%/55555555-0000-0000-0000-000000000014/%'), 1, 'file di folder internal/ tertutup untuk clipper');
 set local request.jwt.claims = '{"sub":"22222222-0000-0000-0000-0000000000a1","role":"authenticated","aal":"aal1","iss":"https://auth.contoh.id/auth/v1"}';
 select is((select count(*)::int from api.campaign_assets where campaign_id = '55555555-0000-0000-0000-000000000014'), 2,
           'anggota org melihat aset brief + berkas internal');
-select is((select count(*)::int from storage.objects where bucket_id = 'campaign-assets'
-           and name like '%/55555555-0000-0000-0000-000000000014/%'), 2, 'anggota org bisa membuka berkas internal');
 reset role;
 
 select * from finish();

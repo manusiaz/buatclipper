@@ -312,20 +312,6 @@ export type Database = {
                         Relationships: [
                     
                   ]
-                },"org_invites": {
-                  Row: {
-                    "accepted_at": string | null,"accepted_by": string | null,"created_at": string | null,"created_by": string | null,"expires_at": string | null,"id": string | null,"org_id": string | null,"role": "brand_owner"|"brand_manager"|"brand_finance"|"brand_viewer" | null
-                  }
-                  ComputedFields: never
-                  Insert: {
-                           "accepted_at"?: string | null,"accepted_by"?: string | null,"created_at"?: string | null,"created_by"?: string | null,"expires_at"?: string | null,"id"?: string | null,"org_id"?: string | null,"role"?: "brand_owner"|"brand_manager"|"brand_finance"|"brand_viewer" | null
-                         }
-                        Update: {
-                           "accepted_at"?: string | null,"accepted_by"?: string | null,"created_at"?: string | null,"created_by"?: string | null,"expires_at"?: string | null,"id"?: string | null,"org_id"?: string | null,"role"?: "brand_owner"|"brand_manager"|"brand_finance"|"brand_viewer" | null
-                         }
-                        Relationships: [
-                    
-                  ]
                 },"org_links": {
                   Row: {
                     "agency_org_id": string | null,"approved_at": string | null,"approved_by": string | null,"client_org_id": string | null,"created_at": string | null,"revoked_at": string | null
@@ -619,10 +605,7 @@ export type Database = {
                 }
           }
           Functions: {
-            "accept_org_invite":
-{ Args: { "p_token": string }; Returns: string
-                           },
-"admin_overview":
+            "admin_overview":
 { Args: Record<PropertyKey, never>; Returns: Json
                            },
 "appeal_sanction":
@@ -698,6 +681,9 @@ export type Database = {
 "bridge_report_orphans":
 { Args: { "p_missing": Json }; Returns: undefined
                            },
+"bus_receive":
+{ Args: { "p_events": Json,"p_source": string }; Returns: Json
+                           },
 "buy_pin":
 { Args: { "p_campaign": string,"p_days": number }; Returns: string
                            },
@@ -727,11 +713,8 @@ export type Database = {
 "control_campaign":
 { Args: { "p_action": string,"p_campaign": string,"p_params"?: Json }; Returns: undefined
                            },
-"create_org":
-{ Args: { "p_address"?: string,"p_is_agency"?: boolean,"p_legal_name"?: string,"p_name": string,"p_npwp"?: string,"p_org_type": string }; Returns: string
-                           },
-"create_org_invite":
-{ Args: { "p_org": string,"p_role": string }; Returns: string
+"copy_campaign_economics":
+{ Args: { "p_from": string,"p_to": string }; Returns: undefined
                            },
 "create_payout_batch":
 { Args: { "p_cutoff": string }; Returns: string
@@ -741,9 +724,6 @@ export type Database = {
                            },
 "decide_sanction_appeal":
 { Args: { "p_decision": string,"p_note": string,"p_sanction": string }; Returns: undefined
-                           },
-"duplicate_campaign":
-{ Args: { "p_as_template"?: boolean,"p_campaign": string }; Returns: string
                            },
 "ensure_profile":
 { Args: { "p_avatar_path"?: string,"p_display_name": string,"p_referral_code"?: string,"p_username": string }; Returns: {
@@ -756,17 +736,6 @@ export type Database = {
 "import_bank_lines":
 { Args: { "p_lines": Json }; Returns: Json
                            },
-"invite_preview":
-{ Args: { "p_token": string }; Returns: {
-              "expired": boolean,"is_agency": boolean,"org_name": string,"role": string,"used": boolean
-            }[]
-                           },
-"invite_to_campaign":
-{ Args: { "p_campaign": string,"p_usernames": (string)[] }; Returns: number
-                           },
-"link_agency":
-{ Args: { "p_action": string,"p_agency": string,"p_client": string }; Returns: undefined
-                           },
 "list_campaigns":
 { Args: { "p_cursor"?: string,"p_filters"?: Json }; Returns: {
               "brand_name": string,"brand_verified": boolean,"budget_idr": number,"category_id": string,"cover_path": string,"cta_reason": string,"cta_state": string,"est_remaining_views": Json,"id": string,"is_new": boolean,"is_pinned": boolean,"next_cursor": string,"pinned_rank": number,"platforms": ("tiktok"|"instagram"|"youtube"|"threads"|"facebook"|"x")[],"rates": Json,"remaining_idr": number,"slug": string,"start_at": string,"status": "draft"|"in_review"|"cancelled"|"scheduled"|"rejected"|"live"|"paused"|"tracking"|"exhausted"|"settling"|"settled","submit_deadline": string,"title": string,"type": string,"visibility": string
@@ -774,9 +743,6 @@ export type Database = {
                            },
 "manage_org":
 { Args: { "p_action": string,"p_org": string,"p_params"?: Json }; Returns: undefined
-                           },
-"manage_team":
-{ Args: { "p_action": string,"p_org": string,"p_role"?: string,"p_target": string }; Returns: undefined
                            },
 "manage_user":
 { Args: { "p_action": string,"p_params"?: Json,"p_user": string }; Returns: undefined
@@ -874,9 +840,6 @@ export type Database = {
                            },
 "update_config":
 { Args: { "p_key": string,"p_value": Json }; Returns: undefined
-                           },
-"update_org":
-{ Args: { "p_address"?: string,"p_legal_name"?: string,"p_name": string,"p_npwp"?: string,"p_org": string }; Returns: undefined
                            },
 "upload_reward_codes":
 { Args: { "p_codes": (string)[],"p_reward_type": string }; Returns: number

@@ -1,6 +1,6 @@
 import type { UploadKind } from '@clipper/campaign-builder';
 
-/** Batas bucket (db/core/supabase/config.toml): cover ≤ 2 MiB, aset ≤ 500 MiB. */
+/** Batas bucket (db/brand/supabase/config.toml): cover ≤ 2 MiB, aset ≤ 500 MiB. */
 export const MAX_BYTES: Record<UploadKind, number> = { cover: 2 * 1024 * 1024, asset: 500 * 1024 * 1024, internal: 500 * 1024 * 1024 };
 
 /**

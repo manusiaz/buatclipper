@@ -8,7 +8,7 @@ import { earningsBySubmission, type EarningRow } from '@clipper/clipper-lib/unit
 import type { Platform } from '@clipper/ui/platform-paths';
 import { readCache, writeCache } from './cache';
 import type { WidgetInput } from './widget-snapshot';
-import { core, identityApi, invoke, publicUrl } from './supabase';
+import { brandStorage, core, identityApi, invoke, publicUrl } from './supabase';
 
 export type Loaded<T> = {
   data: T | null;
@@ -199,7 +199,7 @@ export async function campaignDetail(uid: string, id: string): Promise<DetailDat
   const privatePaths = files.filter((a) => a.storage_path && a.bucket === 'campaign-assets').map((a) => a.storage_path!);
   const [social, signed, terms] = await Promise.all([
     core.from('social_accounts').select('id,platform,handle,status').eq('user_id', uid).in('platform', platforms).neq('status', 'disconnected'),
-    privatePaths.length ? core.storage.from('campaign-assets').createSignedUrls(privatePaths, 3600) : Promise.resolve({ data: [] as { path: string | null; signedUrl: string }[] }),
+    privatePaths.length ? brandStorage.from('campaign-assets').createSignedUrls(privatePaths, 3600) : Promise.resolve({ data: [] as { path: string | null; signedUrl: string }[] }),
     core.rpc('my_clip_terms'),
   ]);
   const cover = d.assets.find((a) => a.kind === 'cover' && a.storage_path);

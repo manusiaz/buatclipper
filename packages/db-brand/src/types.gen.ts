@@ -8,7 +8,77 @@ export type Database = {
             [_ in never]: never
           }
           Views: {
-            "org_invites": {
+            "campaign_assets": {
+                  Row: {
+                    "audience": string | null,"campaign_id": string | null,"created_at": string | null,"id": string | null,"kind": string | null,"size_bytes": number | null,"storage_path": string | null,"url": string | null
+                  }
+                  ComputedFields: never
+                  Insert: {
+                           "audience"?: string | null,"campaign_id"?: string | null,"created_at"?: string | null,"id"?: string | null,"kind"?: string | null,"size_bytes"?: number | null,"storage_path"?: string | null,"url"?: string | null
+                         }
+                        Update: {
+                           "audience"?: string | null,"campaign_id"?: string | null,"created_at"?: string | null,"id"?: string | null,"kind"?: string | null,"size_bytes"?: number | null,"storage_path"?: string | null,"url"?: string | null
+                         }
+                        Relationships: [
+                    
+                  ]
+                },"campaign_invites": {
+                  Row: {
+                    "campaign_id": string | null,"created_at": string | null,"invited_by": string | null,"user_id": string | null
+                  }
+                  ComputedFields: never
+                  Insert: {
+                           "campaign_id"?: string | null,"created_at"?: string | null,"invited_by"?: string | null,"user_id"?: string | null
+                         }
+                        Update: {
+                           "campaign_id"?: string | null,"created_at"?: string | null,"invited_by"?: string | null,"user_id"?: string | null
+                         }
+                        Relationships: [
+                    
+                  ]
+                },"campaigns": {
+                  Row: {
+                    "allow_video_reuse": boolean | null,"brief": string | null,"category_id": string | null,"clipper_quota": number | null,"content_version": number | null,"created_at": string | null,"created_by": string | null,"donts": (string)[] | null,"dos": (string)[] | null,"example_urls": (string)[] | null,"faq": Json | null,"id": string | null,"is_template": boolean | null,"kyc_required": boolean | null,"max_clips_per_clipper": number | null,"max_duration_sec": number | null,"min_account_age_days": number | null,"min_duration_sec": number | null,"min_followers": number | null,"min_trust_score": number | null,"min_views": number | null,"org_id": string | null,"pinned_until": string | null,"platforms": ("tiktok"|"instagram"|"youtube"|"threads"|"facebook"|"x")[] | null,"required_hashtags": (string)[] | null,"required_links": (string)[] | null,"required_mentions": (string)[] | null,"review_mode": string | null,"service_mode": string | null,"slug": string | null,"sponsored_label": boolean | null,"start_at": string | null,"status": "draft"|"in_review"|"cancelled"|"scheduled"|"rejected"|"live"|"paused"|"tracking"|"exhausted"|"settling"|"settled" | null,"submit_deadline": string | null,"title": string | null,"type": string | null,"view_window_days": number | null,"visibility": string | null
+                  }
+                  ComputedFields: never
+                  Insert: {
+                           "allow_video_reuse"?: boolean | null,"brief"?: string | null,"category_id"?: string | null,"clipper_quota"?: number | null,"content_version"?: number | null,"created_at"?: string | null,"created_by"?: string | null,"donts"?: (string)[] | null,"dos"?: (string)[] | null,"example_urls"?: (string)[] | null,"faq"?: Json | null,"id"?: string | null,"is_template"?: boolean | null,"kyc_required"?: boolean | null,"max_clips_per_clipper"?: number | null,"max_duration_sec"?: number | null,"min_account_age_days"?: number | null,"min_duration_sec"?: number | null,"min_followers"?: number | null,"min_trust_score"?: number | null,"min_views"?: number | null,"org_id"?: string | null,"pinned_until"?: string | null,"platforms"?: ("tiktok"|"instagram"|"youtube"|"threads"|"facebook"|"x")[] | null,"required_hashtags"?: (string)[] | null,"required_links"?: (string)[] | null,"required_mentions"?: (string)[] | null,"review_mode"?: string | null,"service_mode"?: string | null,"slug"?: string | null,"sponsored_label"?: boolean | null,"start_at"?: string | null,"status"?: "draft"|"in_review"|"cancelled"|"scheduled"|"rejected"|"live"|"paused"|"tracking"|"exhausted"|"settling"|"settled" | null,"submit_deadline"?: string | null,"title"?: string | null,"type"?: string | null,"view_window_days"?: number | null,"visibility"?: string | null
+                         }
+                        Update: {
+                           "allow_video_reuse"?: boolean | null,"brief"?: string | null,"category_id"?: string | null,"clipper_quota"?: number | null,"content_version"?: number | null,"created_at"?: string | null,"created_by"?: string | null,"donts"?: (string)[] | null,"dos"?: (string)[] | null,"example_urls"?: (string)[] | null,"faq"?: Json | null,"id"?: string | null,"is_template"?: boolean | null,"kyc_required"?: boolean | null,"max_clips_per_clipper"?: number | null,"max_duration_sec"?: number | null,"min_account_age_days"?: number | null,"min_duration_sec"?: number | null,"min_followers"?: number | null,"min_trust_score"?: number | null,"min_views"?: number | null,"org_id"?: string | null,"pinned_until"?: string | null,"platforms"?: ("tiktok"|"instagram"|"youtube"|"threads"|"facebook"|"x")[] | null,"required_hashtags"?: (string)[] | null,"required_links"?: (string)[] | null,"required_mentions"?: (string)[] | null,"review_mode"?: string | null,"service_mode"?: string | null,"slug"?: string | null,"sponsored_label"?: boolean | null,"start_at"?: string | null,"status"?: "draft"|"in_review"|"cancelled"|"scheduled"|"rejected"|"live"|"paused"|"tracking"|"exhausted"|"settling"|"settled" | null,"submit_deadline"?: string | null,"title"?: string | null,"type"?: string | null,"view_window_days"?: number | null,"visibility"?: string | null
+                         }
+                        Relationships: [
+                    
+                  ]
+                },"categories": {
+                  Row: {
+                    "active": boolean | null,"id": string | null,"name_en": string | null,"name_id": string | null,"sort": number | null
+                  }
+                  ComputedFields: never
+                  Insert: {
+                           "active"?: boolean | null,"id"?: string | null,"name_en"?: string | null,"name_id"?: string | null,"sort"?: number | null
+                         }
+                        Update: {
+                           "active"?: boolean | null,"id"?: string | null,"name_en"?: string | null,"name_id"?: string | null,"sort"?: number | null
+                         }
+                        Relationships: [
+                    
+                  ]
+                },"managed_briefs": {
+                  Row: {
+                    "campaign_id": string | null,"managed_brief": string | null
+                  }
+                  ComputedFields: never
+                  Insert: {
+                           "campaign_id"?: string | null,"managed_brief"?: string | null
+                         }
+                        Update: {
+                           "campaign_id"?: string | null,"managed_brief"?: string | null
+                         }
+                        Relationships: [
+                    
+                  ]
+                },"org_invites": {
                   Row: {
                     "accepted_at": string | null,"accepted_by": string | null,"created_at": string | null,"created_by": string | null,"expires_at": string | null,"id": string | null,"org_id": string | null,"role": "brand_owner"|"brand_manager"|"brand_finance"|"brand_viewer" | null
                   }
@@ -93,10 +163,16 @@ export type Database = {
 "create_org_invite":
 { Args: { "p_org": string,"p_role": string }; Returns: string
                            },
+"duplicate_campaign":
+{ Args: { "p_as_template"?: boolean,"p_campaign": string }; Returns: string
+                           },
 "invite_preview":
 { Args: { "p_token": string }; Returns: {
               "expired": boolean,"is_agency": boolean,"org_name": string,"role": string,"used": boolean
             }[]
+                           },
+"invite_to_campaign":
+{ Args: { "p_campaign": string,"p_usernames": (string)[] }; Returns: number
                            },
 "link_agency":
 { Args: { "p_action": string,"p_agency": string,"p_client": string }; Returns: undefined
@@ -106,6 +182,9 @@ export type Database = {
                            },
 "manage_team":
 { Args: { "p_action": string,"p_org": string,"p_role"?: string,"p_target": string }; Returns: undefined
+                           },
+"save_campaign":
+{ Args: { "p_campaign": Json }; Returns: Json
                            },
 "update_org":
 { Args: { "p_address"?: string,"p_legal_name"?: string,"p_name": string,"p_npwp"?: string,"p_org": string }; Returns: undefined

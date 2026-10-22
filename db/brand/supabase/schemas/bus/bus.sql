@@ -192,6 +192,7 @@ declare
   pk text[] := bus.pk_columns(t);
   cols text[];
   upd text;
+  n int := 0;
   h regprocedure;
 begin
   perform set_config('bus.applying', 'on', true);
@@ -201,12 +202,27 @@ begin
       using p -> 'key';
   else
     select array_agg(k) into cols from jsonb_object_keys(p -> 'row') k;
-    select string_agg(format('%1$I = excluded.%1$I', c), ', ') into upd from unnest(cols) c where not c = any (pk);
-    execute format('insert into %1$s (%2$s) select %2$s from jsonb_populate_record(null::%1$s, $1) on conflict (%3$s) do %4$s',
-                   t, (select string_agg(format('%I', c), ', ') from unnest(cols) c),
-                   (select string_agg(format('%I', c), ', ') from unnest(pk) c),
-                   case when upd is null then 'nothing' else 'update set ' || upd end)
-      using p -> 'row';
+    select string_agg(format('%1$I = r.%1$I', c), ', ') into upd from unnest(cols) c where not c = any (pk);
+    -- update dulu: baris dengan kolom milik sebagian (mis. status dari admin) tidak bisa lewat INSERT … ON CONFLICT (NOT NULL
+    -- kolom lain dicek sebelum konflik). Baris belum ada → insert; kolom wajib lain tidak dikirim = baris milik project lain
+    -- yang belum/tidak ada di sini → dilewati.
+    if upd is not null then
+      execute format('update %1$s x set %2$s from jsonb_populate_record(null::%1$s, $1) r where %3$s', t, upd,
+                     (select string_agg(format('x.%1$I = r.%1$I', c), ' and ') from unnest(pk) c))
+        using p -> 'row';
+      get diagnostics n = row_count;
+    end if;
+    if n = 0 then
+      begin
+        execute format('insert into %1$s (%2$s) select %2$s from jsonb_populate_record(null::%1$s, $1) on conflict (%3$s) do nothing',
+                       t, (select string_agg(format('%I', c), ', ') from unnest(cols) c),
+                       (select string_agg(format('%I', c), ', ') from unnest(pk) c))
+          using p -> 'row';
+      exception when not_null_violation then
+        perform set_config('bus.applying', 'off', true);
+        return;
+      end;
+    end if;
   end if;
   perform set_config('bus.applying', 'off', true);
   h := to_regprocedure(format('bus_in.%s_%s_applied(text, jsonb)', split_part(p ->> 'table', '.', 1), split_part(p ->> 'table', '.', 2)));
@@ -215,7 +231,33 @@ begin
   end if;
 end $$;
 
+-- Backfill replika (tabel replika baru, data lama): kirim ulang semua baris tabel pemilik ke satu target memakai kolom dari
+-- trigger bus.replicate tabel itu. Penerima upsert idempoten. Dipanggil operator (service role / psql).
+create function bus.resync(p_table regclass, p_target text) returns int
+language plpgsql security definer set search_path = '' as $$
+declare
+  cols text[];
+  pk text[] := bus.pk_columns(p_table);
+  r jsonb;
+  n int := 0;
+begin
+  select string_to_array(split_part(a, ':', 2), ',') into cols
+    from pg_trigger tg
+   cross join lateral unnest(array_remove(string_to_array(encode(tg.tgargs, 'escape'), '\000'), '')) a
+   where tg.tgrelid = p_table and tg.tgfoid = 'bus.replicate()'::regprocedure and split_part(a, ':', 1) = p_target;
+  if cols is null then
+    raise exception 'bus_no_replica:%:%', p_table, p_target using errcode = 'P0001';
+  end if;
+  for r in execute format('select to_jsonb(t) from %s t', p_table) loop
+    perform bus.emit(p_target, 'rep.row', jsonb_build_object('table', p_table::text, 'op', 'upsert',
+      'key', (select jsonb_object_agg(k, r -> k) from unnest(pk) k),
+      'row', (select jsonb_object_agg(c, r -> c) from unnest(cols || pk) c)));
+    n := n + 1;
+  end loop;
+  return n;
+end $$;
+
 revoke all on bus.outbox, bus.inbox from anon, authenticated;
 revoke execute on function bus.emit(text, text, jsonb), bus.relay(), bus.stuck(), api.bus_receive(text, jsonb), bus.pk_columns(regclass),
-  bus.replicate(), bus.apply_row(jsonb) from public;
+  bus.replicate(), bus.apply_row(jsonb), bus.resync(regclass, text) from public;
 grant execute on function api.bus_receive(text, jsonb) to service_role;

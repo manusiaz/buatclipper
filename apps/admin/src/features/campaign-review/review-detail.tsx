@@ -32,7 +32,7 @@ export async function ReviewDetail({ id, loc }: { id: string; loc: UiLocale }) {
   const [org, invoices, hrefs] = await Promise.all([
     db.from('organizations').select('id, name, status, org_type').eq('id', c.org_id).maybeSingle(),
     db.from('invoices').select('id, number, status, total, credit_applied, amount_due, kind').eq('campaign_id', id).in('kind', ['campaign', 'managed_service']).neq('status', 'void'),
-    assetHrefs(db, d.assets),
+    assetHrefs(d.assets),
   ]);
   const o = must(org);
   const inv = rows(invoices);

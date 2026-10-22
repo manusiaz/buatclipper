@@ -5,6 +5,7 @@
 export { CampaignBuilder } from './builder';
 export { draftFromDetail } from './detail';
 export { toSavePayload, cleanFaq, ruleParamsPayload, assetsPayload, payloadHasPools } from './payload';
+export { persistCampaign, splitSavePayload, untilReplicated, ADMIN_KEYS, type PersistClients } from './persist';
 export { costSummary, estimatePoolViews, capInViews, type CostSummary, type CostContext, type PoolCost, type PoolEstimate } from './cost';
 export {
   campaignDraftSchema,

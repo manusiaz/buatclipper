@@ -16,12 +16,16 @@ language sql set search_path = '' as $$
     from jsonb_populate_record(null::trust.review_decisions, p) r;
 $$;
 
--- Inbox & pengiriman email/push satu pintu di admin.
+-- Inbox & pengiriman email/push satu pintu di admin. Undangan campaign dilengkapi rate per 1.000 views (rule milik admin).
 create function bus_in.notify_user(p jsonb) returns void
 language plpgsql set search_path = '' as $$
+declare
+  body jsonb := coalesce(p -> 'payload', '{}');
 begin
-  perform ops.enqueue_notification((p ->> 'user_id')::uuid, p ->> 'event', coalesce(p -> 'payload', '{}'),
-                                   coalesce((p ->> 'email')::boolean, true));
+  if p ->> 'event' = 'campaign.invited' and body ? 'campaign_id' then
+    body := body || jsonb_build_object('rate_per_1k', market.rate_per_1k((body ->> 'campaign_id')::uuid));
+  end if;
+  perform ops.enqueue_notification((p ->> 'user_id')::uuid, p ->> 'event', body, coalesce((p ->> 'email')::boolean, true));
 end $$;
 
 -- Profil minimal anggota brand yang belum onboarding; dikirim brand sebelum replika anggotanya (FK org_members → profiles).

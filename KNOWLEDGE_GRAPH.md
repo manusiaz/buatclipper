@@ -63,7 +63,7 @@ Pemilik data = tempat data ditulis. Uang hanya bergerak di **admin** (satu ledge
 |---|---|---|---|
 | identity | `db/identity` | akun & PII | tetap (`member.*`, `auth.*`) |
 | creator | `db/creator` | clipper | `market.profiles`, `market.referrals`, `tracking.social_accounts`, `market.claims`, `tracking.submissions`, `tracking.view_snapshots`, inbox notifikasi clipper |
-| brand | `db/brand` | brand & agency | `market.organizations`, `org_members`, `org_invites`, `org_links`, `campaigns` (isi: brief, aset, jadwal, syarat, status), `campaign_assets`, `campaign_invites`, `report_links`, `budget_alerts`, inbox notifikasi brand |
+| brand | `db/brand` | brand & agency | `market.organizations`, `org_members`, `org_invites`, `org_links`, `campaigns` (isi: judul, brief, syarat, eligibility, review mode, visibilitas; status/jadwal/pin = replika admin), `campaign_assets` + storage cover/aset, `campaign_invites`; replika `profiles`, `categories` |
 | admin | `db/admin` (= core lama) | platform & uang | `finance.*` (ledger, clip_earnings, pool_settlements, invoices, payouts, batches, bank_lines, fulfillments, refunds, fee_rules, **reward_pools, reward_codes**), `market.rate_rules`, `market.reward_types`, `trust.*`, `ops.settings/alerts/audit_logs/broadcasts`, `market.categories`, replika ringkas campaign (status, jadwal, window, min_views) untuk accrual. Definisi uang authoritative di sini (brand mengubah lewat RPC ke admin) supaya accrual/raise_rate tidak pernah memakai rate basi |
 
 Lintas DB:
@@ -72,7 +72,8 @@ Lintas DB:
 - **Aksi admin** pada data domain lain = RPC bridge sinkron ke DB pemilik (HMAC) + audit log di admin.
 - **Aksi admin pada org** dipanggil app admin langsung ke `api:rpc brand.manage_org` dengan JWT admin (DB brand percaya issuer identity yang sama, `ops.has_admin` aal2); hanya fee (`set_fee`) di admin.
 - Replika baris: pemilik memasang `bus.replicate('<target>:<kolom milik sendiri>', …)`; penerima upsert parsial (kolom milik penerima tidak tersentuh), hook `bus_in.<schema>_<tabel>_applied`. Relay tiap 1 detik.
-- Progres: **4DB-3 langkah 1 selesai** — org, anggota, undangan, tautan agency milik DB brand (`table:brand/market.*`); admin & creator memegang replika; efek ke admin lewat event `audit.log`, `review.decision`, `notify.user`, `profile.ensure`, `org.owner_lost` (`fn:bus_in.admin`). App accounts/brand/admin membaca & menulis org lewat `mod:db-brand`. Berikutnya: campaign (isi milik brand, status/ekonomi milik admin), lalu domain creator (4DB-4), deploy 4 server + rename core→admin (4DB-5).
+- Campaign: builder menyimpan isi + aset ke `api:rpc brand.save_campaign` (mengembalikan `content_version`), lalu selalu `api:rpc core.save_campaign` dengan versi itu (jadwal, pool, rule, fee, pengajuan): admin menjawab `retry:replica_lag` sampai replika isi versi itu tiba (`persistCampaign`, packages/campaign-builder/src/persist.ts) — read-your-writes untuk builder & pengajuan memvalidasi tepat isi yang dilihat. Brand mengunci brief dari status replika; balapan ≤ 1 detik ditutup `fn:bus_in.market_campaigns_applied` (in_review + isi lebih baru → kembali draft, invoice belum lunas batal). Report link & budget alert tetap di admin (angka uang/views).
+- Progres: **4DB-3 langkah 1 & 2 selesai** — org, anggota, undangan, tautan agency milik DB brand (`table:brand/market.*`); admin & creator memegang replika; efek ke admin lewat event `audit.log`, `review.decision`, `notify.user`, `profile.ensure`, `org.owner_lost` (`fn:bus_in.admin`). App accounts/brand/admin membaca & menulis org lewat `mod:db-brand`. Berikutnya: domain creator (4DB-4: profil, sosmed, claim, submisi, snapshot + katalog campaign replika di creator), deploy 4 server + rename core→admin (4DB-5).
 
 ## Invarian pemisahan
 
@@ -200,10 +201,12 @@ Wajib tetap benar setiap perubahan (dicek otomatis saat graph ini dibuat; cek ul
 | `api:rpc brand.create_org_invite` | api | db/brand/supabase/schemas/api/org.sql | Token undangan org tanpa email (alur 5) |  |
 | `api:rpc core.create_payout_batch` | api | db/core/supabase/schemas/finance/payout_flow.sql | Buat batch payout mingguan (F-A08) |  |
 | `api:rpc core.create_report_link` | api | db/core/supabase/schemas/api/report_links.sql | Buat link laporan read-only (token sekali tampil, simpan sha256) — brand_owner/manager |  |
-| `api:rpc core.duplicate_campaign` | api | db/core/supabase/schemas/api/campaigns.sql | salinan selalu draft |  |
+| `api:rpc brand.duplicate_campaign` | api | db/brand/supabase/schemas/api/campaigns.sql | Salinan isi selalu draft (tanpa jadwal, pin, aset); pool & rule disalin `api:rpc core.copy_campaign_economics` | `db/brand` |
+| `api:rpc core.copy_campaign_economics` | api | db/core/supabase/schemas/api/campaigns.sql | Pool & rule aktif + fee campaign ke salinan dari brand (retry:replica_lag sampai salinan tiba) |  |
+| `api:rpc brand.save_campaign` | api | db/brand/supabase/schemas/api/campaigns.sql | Isi + aset campaign dari builder (F-B02/F-A03); brief terkunci sejak status replika ≠ draft/rejected; kembalikan content_version | `db/brand` |
 | `api:rpc core.ensure_profile` | api | db/core/supabase/schemas/api/ensure_profile.sql | Buat/ambil profil E-01 dari JWT identity, idempoten (alur 1) |  |
 | `api:rpc brand.invite_preview` | api | db/brand/supabase/schemas/api/org.sql | Preview undangan org dari token (nama org, agency, role, kedaluwarsa, terpakai); token = kapabilitas, anon & authenticated |  |
-| `api:rpc core.invite_to_campaign` | api | db/core/supabase/schemas/api/campaigns.sql | notifikasi campaign.invited |  |
+| `api:rpc brand.invite_to_campaign` | api | db/brand/supabase/schemas/api/campaigns.sql | Undangan campaign privat; notifikasi campaign.invited lewat admin (rate dilengkapi admin) | `db/brand` |
 | `api:rpc brand.link_agency` | api | db/brand/supabase/schemas/api/org.sql | approved_by = brand_owner klien |  |
 | `api:rpc core.list_campaigns` | api | db/core/supabase/schemas/api/campaigns.sql | CTA per user: bisa claim / sudah claim belum submit / slot penuh / budget habis / deadline lewat / tidak eligible + alasan |  |
 | `api:rpc core.manage_org` | api | db/core/supabase/schemas/api/org.sql | Admin fee custom org (set_fee, F-A07); aksi org lain di `api:rpc brand.manage_org` |  |
@@ -229,7 +232,7 @@ Wajib tetap benar setiap perubahan (dicek otomatis saat graph ini dibuat; cek ul
 | `api:rpc core.record_sanction_appeal` | api | db/core/supabase/schemas/trust/sanctions.sql | admin_support/admin_moderator mencatat banding atas nama clipper yang login-nya diblokir (R30-1); sekali per sanksi |  |
 | `api:rpc core.resolve_fraud_flag` | api | db/core/supabase/schemas/trust/fraud_resolve.sql | Tahan/reverse/suspend dari fraud queue (F-A06) |  |
 | `api:rpc core.revoke_report_link` | api | db/core/supabase/schemas/api/report_links.sql | Cabut link laporan read-only |  |
-| `api:rpc core.save_campaign` | api | db/core/supabase/schemas/api/campaigns.sql | Simpan campaign + rule + pool dari builder (F-B02/F-A03) |  |
+| `api:rpc core.save_campaign` | api | db/core/supabase/schemas/api/campaigns.sql | Bagian admin builder: jadwal, pool, rule, fee, pengajuan + invoice; gerbang content_version replika isi (retry:replica_lag) |  |
 | `api:rpc core.save_reward_type` | api | db/core/supabase/schemas/api/org.sql | Brand simpan reward type custom (F-B03) |  |
 | `api:rpc core.send_broadcast` | api | db/core/supabase/schemas/api/config.sql | dikirim job broadcast-dispatch |  |
 | `api:rpc core.store_social_token` | api | db/core/supabase/schemas/tracking/vault.sql | Simpan/perbarui token OAuth sosmed di Vault core; hanya service role (core/social, refresh-tokens) |  |
@@ -279,8 +282,8 @@ Wajib tetap benar setiap perubahan (dicek otomatis saat graph ini dibuat; cek ul
 | `table:auth.users` | table |  | Akun login Supabase Auth: email, HP, Google | identity (bawaan Supabase) |
 | `table:bucket.avatars` | table | db/core/supabase/schemas/market/storage.sql | Storage core publik: foto profil (F-C01), folder {user_id}/ |  |
 | `table:bucket.invoice-docs` | table | db/core/supabase/schemas/market/storage.sql | Storage core privat: PDF faktur pajak {org_id}/{invoice_id}/; admin_finance unggah, brand_owner/brand_finance unduh |  |
-| `table:bucket.campaign-assets` | table | db/core/supabase/schemas/market/storage.sql | Storage core privat: aset brief |  |
-| `table:bucket.campaign-covers` | table | db/core/supabase/schemas/market/storage.sql | Storage core publik: cover campaign (card & OG) |  |
+| `table:bucket.campaign-assets` | table | db/brand/supabase/schemas/market/storage.sql | Storage brand privat: aset brief | `db/brand` |
+| `table:bucket.campaign-covers` | table | db/brand/supabase/schemas/market/storage.sql | Storage brand publik: cover campaign (card & OG) | `db/brand` |
 | `table:bucket.kyc-docs` | table | db/identity/supabase/schemas/member/storage.sql | Storage identity: foto KTP |  |
 | `table:bucket.payout-proofs` | table | db/identity/supabase/schemas/member/storage.sql | Storage identity: bukti transfer (berisi nomor rekening) |  |
 | `table:bucket.pii-exports` | table | db/identity/supabase/schemas/member/storage.sql | Storage identity: CSV rekening & penerima |  |
@@ -295,10 +298,10 @@ Wajib tetap benar setiap perubahan (dicek otomatis saat graph ini dibuat; cek ul
 | `table:finance.payouts` | table | db/core/supabase/schemas/finance/payouts.sql | E-17 payout |  |
 | `table:finance.reward_codes` | table | db/core/supabase/schemas/finance/reward_codes.sql | E-41 reward_codes |  |
 | `table:finance.reward_pools` | table | db/core/supabase/schemas/finance/reward_pools.sql | E-09 pool (allocated = cache ledger) |  |
-| `table:market.campaign_assets` | table | db/core/supabase/schemas/market/campaign_assets.sql | E-10 metadata aset campaign |  |
-| `table:market.campaign_invites` | table | db/core/supabase/schemas/market/campaigns.sql | E-37 campaign_invites |  |
-| `table:market.campaigns` | table | db/core/supabase/schemas/market/campaigns.sql | E-06 campaign |  |
-| `table:market.categories` | table | db/core/supabase/schemas/market/categories.sql | E-32 categories |  |
+| `table:market.campaign_assets` | table | db/core/supabase/schemas/market/campaign_assets.sql | E-10 metadata aset campaign — replika dari DB brand |  |
+| `table:market.campaign_invites` | table | db/core/supabase/schemas/market/campaigns.sql | E-37 campaign_invites — replika dari DB brand (cek claim, RLS invite) |  |
+| `table:market.campaigns` | table | db/core/supabase/schemas/market/campaigns.sql | E-06 campaign: isi = replika DB brand; milik admin: status, jadwal, fee, pin, submitted_version |  |
+| `table:market.categories` | table | db/core/supabase/schemas/market/categories.sql | E-32 categories (pemilik admin; direplika ke brand) |  |
 | `table:market.claims` | table | db/core/supabase/schemas/market/claims.sql | E-11 claim 48 jam |  |
 | `table:market.leaderboard_campaign` | table | db/core/supabase/schemas/market/leaderboard.sql | Leaderboard (leaderboard_campaign), materialized view |  |
 | `table:market.leaderboard_weekly` | table | db/core/supabase/schemas/market/leaderboard.sql | Leaderboard (leaderboard_weekly), materialized view |  |
@@ -312,6 +315,12 @@ Wajib tetap benar setiap perubahan (dicek otomatis saat graph ini dibuat; cek ul
 | `fn:bus_in.admin` | fn | db/core/supabase/schemas/bus/inbound.sql | Handler event masuk admin: audit.log, review.decision, notify.user, profile.ensure, org.owner_lost (reset refund) |  |
 | `mod:db-brand` | module | packages/db-brand/src/index.ts | Client Data API DB brand (createBrandClient) + types | accounts, brand, admin |
 | `env:NEXT_PUBLIC_BRAND_DB_URL` | env | .env.example | URL Data API DB brand (publik) | accounts, brand, admin |
+| `table:brand/market.campaigns` | table | db/brand/supabase/schemas/market/campaigns.sql | E-06 isi campaign (pemilik); status/jadwal/pin = replika admin; content_version | `db/brand` |
+| `table:brand/market.campaign_assets` | table | db/brand/supabase/schemas/market/campaign_assets.sql | E-10 aset campaign (pemilik) | `db/brand` |
+| `table:brand/market.campaign_invites` | table | db/brand/supabase/schemas/market/campaigns.sql | E-37 undangan campaign (pemilik) | `db/brand` |
+| `table:brand/market.categories` | table | db/brand/supabase/schemas/market/categories.sql | Replika kategori dari admin | `db/brand` |
+| `fn:bus_in.market_campaigns_applied` | fn | db/core/supabase/schemas/market/campaigns.sql | Isi campaign tiba setelah diajukan → kembali draft (invoice belum lunas batal) / tercatat; tidak pernah menolak event |  |
+| `test:brand.campaigns` | test | db/brand/supabase/tests/brand_campaigns.test.sql | pgTAP isi campaign brand: normalisasi, slug, aset, kunci brief, versi isi, duplikat, undangan, visibilitas, storage | `db/brand` |
 | `table:brand/market.org_invites` | table | db/brand/supabase/schemas/market/org_invites.sql | E-30 token undangan tanpa email (DB brand; dulu core) | `db/brand` |
 | `table:market.org_links` | table | db/core/supabase/schemas/market/org_links.sql | E-38 org_links — replika dari DB brand (RLS campaign agency) |  |
 | `table:market.org_members` | table | db/core/supabase/schemas/market/org_members.sql | E-03 anggota org + role — replika dari DB brand (RLS org di admin) |  |
@@ -722,7 +731,7 @@ Arah: `A --tipe--> B` = A bergantung pada B. `?` = belum terverifikasi.
 | `page:brand/[org]/billing` | routes-to | `page:accounts/security` | apps/brand/src/app/[org]/billing/page.tsx:131 |
 | `page:brand/[org]/billing` | routes-to | `page:brand/[org]/campaigns` | PRD v0.3.1 §6 B1.8 (belum di kode: halaman billing tanpa link ke daftar campaign; lewat sidebar layout:brand) |
 | `page:brand/[org]/billing` | wrapped-by | `layout:brand` | apps/brand/src/app/layout.tsx:20 |
-| `page:brand/[org]/campaigns` | calls | `api:rpc core.duplicate_campaign` | apps/brand/src/features/campaigns/actions.ts:12 |
+| `page:brand/[org]/campaigns` | calls | `api:rpc brand.duplicate_campaign` | apps/brand/src/features/campaigns/actions.ts:12 |
 | `page:brand/[org]/campaigns` | reads | `table:market.campaigns` | apps/brand/src/app/[org]/campaigns/page.tsx:49 |
 | `page:brand/[org]/campaigns` | routes-to | `page:brand/[org]/campaigns/[id]` | apps/brand/src/app/[org]/campaigns/page.tsx:62 (base; href = base/id baris 117) |
 | `page:brand/[org]/campaigns` | routes-to | `page:brand/[org]/campaigns/new` | apps/brand/src/app/[org]/campaigns/page.tsx:70 |
@@ -730,7 +739,7 @@ Arah: `A --tipe--> B` = A bergantung pada B. `?` = belum terverifikasi.
 | `page:brand/[org]/campaigns/[id]` | calls | `api:rpc core.buy_pin` | apps/brand/src/features/controls/actions.ts:27 |
 | `page:brand/[org]/campaigns/[id]` | calls | `api:rpc core.control_campaign` | apps/brand/src/features/controls/actions.ts:17 |
 | `page:brand/[org]/campaigns/[id]` | calls | `api:rpc core.create_report_link` | apps/brand/src/features/reports/actions.ts:11 |
-| `page:brand/[org]/campaigns/[id]` | calls | `api:rpc core.invite_to_campaign` | apps/brand/src/features/invites/actions.ts:13 |
+| `page:brand/[org]/campaigns/[id]` | calls | `api:rpc brand.invite_to_campaign` | apps/brand/src/features/invites/actions.ts:13 |
 | `page:brand/[org]/campaigns/[id]` | calls | `api:rpc core.revoke_report_link` | apps/brand/src/features/reports/actions.ts:20 |
 | `page:brand/[org]/campaigns/[id]` | reads | `table:finance.ledger_entries` | PRD v0.3.1 §14 kg.yaml features.F-B05; kode baris 59 (rpc campaign_stats) |
 | `page:brand/[org]/campaigns/[id]` | reads | `table:finance.reward_pools` | PRD v0.3.1 Lampiran B (finance.reward_pools); kode baris 59 (rpc campaign_stats) |
@@ -1058,10 +1067,10 @@ Arah: `A --tipe--> B` = A bergantung pada B. `?` = belum terverifikasi.
 | `api:rpc core.appeal_submission` | writes | `table:tracking.submissions` | db/core/supabase/schemas/api/review.sql:45 |
 | `api:rpc core.appeal_submission` | writes | `table:trust.review_decisions` | db/core/supabase/schemas/api/review.sql:40 |
 | `api:rpc core.approve_payout_batch` | writes | `table:finance.payout_batches` | db/core/supabase/schemas/finance/payout_flow.sql:215 |
-| `api:rpc core.buy_pin` | writes | `table:finance.invoices` | db/core/supabase/schemas/api/campaigns.sql:692 (finance.issue_invoice) |
+| `api:rpc core.buy_pin` | writes | `table:finance.invoices` | db/core/supabase/schemas/api/campaigns.sql:568 (finance.issue_invoice) |
 | `api:rpc core.my_clip_terms` | reads | `table:market.profiles` | db/core/supabase/schemas/api/read_models.sql:153 (trust_score dari market.profiles) |
 | `api:rpc core.claim_campaign` | reads | `table:market.campaigns` | db/core/supabase/schemas/api/campaigns.sql:136 |
-| `api:rpc core.claim_campaign` | reads | `table:market.profiles` | db/core/supabase/schemas/api/_helpers.sql:147 (market.claim_check) |
+| `api:rpc core.claim_campaign` | reads | `table:market.profiles` | db/core/supabase/schemas/api/_helpers.sql:140 (market.claim_check) |
 | `api:rpc core.claim_campaign` | writes | `table:market.claims` | db/core/supabase/schemas/api/campaigns.sql:150 |
 | `api:rpc core.confirm_invoice_payment` | guarded-by | `policy:core.admin-aal2` | db/core/supabase/schemas/finance/invoice_confirm.sql:114 |
 | `api:rpc core.confirm_invoice_payment` | writes | `table:finance.invoices` | db/core/supabase/schemas/finance/invoice_confirm.sql:142 |
@@ -1069,9 +1078,9 @@ Arah: `A --tipe--> B` = A bergantung pada B. `?` = belum terverifikasi.
 | `api:rpc core.confirm_invoice_payment` | writes | `table:finance.ledger_entries` | db/core/supabase/schemas/finance/invoice_confirm.sql:145 (finance.settle_invoice → finance.post) |
 | `api:rpc core.confirm_invoice_payment` | writes | `table:finance.reward_pools` | db/core/supabase/schemas/finance/invoice_confirm.sql:55 (finance.settle_invoice) |
 | `api:rpc core.confirm_invoice_payment` | writes | `table:ops.audit_logs` | db/core/supabase/schemas/finance/invoice_confirm.sql:147 |
-| `api:rpc core.control_campaign` | writes | `table:finance.invoices` | db/core/supabase/schemas/api/campaigns.sql:572 (topup → finance.issue_invoice) |
-| `api:rpc core.control_campaign` | writes | `table:market.campaigns` | db/core/supabase/schemas/api/campaigns.sql:503 |
-| `api:rpc core.control_campaign` | writes | `table:market.rate_rules` | db/core/supabase/schemas/api/campaigns.sql:547 |
+| `api:rpc core.control_campaign` | writes | `table:finance.invoices` | db/core/supabase/schemas/api/campaigns.sql:493 (topup → finance.issue_invoice) |
+| `api:rpc core.control_campaign` | writes | `table:market.campaigns` | db/core/supabase/schemas/api/campaigns.sql:424 |
+| `api:rpc core.control_campaign` | writes | `table:market.rate_rules` | db/core/supabase/schemas/api/campaigns.sql:468 |
 | `api:rpc brand.create_org` | writes | `table:brand/market.org_members` | db/brand/supabase/schemas/api/org.sql:88 |
 | `api:rpc brand.create_org` | writes | `table:brand/market.organizations` | db/brand/supabase/schemas/api/org.sql:84 |
 | `api:rpc brand.manage_team` | guarded-by | `policy:core.org-role` | db/brand/supabase/schemas/api/org.sql:178 |
@@ -1094,20 +1103,18 @@ Arah: `A --tipe--> B` = A bergantung pada B. `?` = belum terverifikasi.
 | `api:rpc core.create_report_link` | guarded-by | `policy:core.org-role` | db/core/supabase/schemas/api/report_links.sql:13 |
 | `api:rpc core.create_report_link` | reads | `table:market.campaigns` | db/core/supabase/schemas/api/report_links.sql:12 |
 | `api:rpc core.create_report_link` | writes | `table:market.report_links` | db/core/supabase/schemas/api/report_links.sql:17 |
-| `api:rpc core.duplicate_campaign` | writes | `table:finance.reward_pools` | db/core/supabase/schemas/api/campaigns.sql:617 |
-| `api:rpc core.duplicate_campaign` | writes | `table:market.campaigns` | db/core/supabase/schemas/api/campaigns.sql:605 |
-| `api:rpc core.duplicate_campaign` | writes | `table:market.rate_rules` | db/core/supabase/schemas/api/campaigns.sql:620 |
+| `api:rpc brand.duplicate_campaign` | writes | `table:brand/market.campaigns` | db/brand/supabase/schemas/api/campaigns.sql:175 |
 | `api:rpc core.ensure_profile` | writes | `table:market.profiles` | db/core/supabase/schemas/api/ensure_profile.sql:21 |
 | `api:rpc core.ensure_profile` | writes | `table:market.referrals` | db/core/supabase/schemas/api/ensure_profile.sql:35 |
 | `api:rpc brand.invite_preview` | reads | `table:brand/market.org_invites` | db/brand/supabase/schemas/api/org.sql:250 |
 | `api:rpc brand.invite_preview` | reads | `table:brand/market.organizations` | db/brand/supabase/schemas/api/org.sql:250 |
-| `api:rpc core.invite_to_campaign` | writes | `table:market.campaign_invites` | db/core/supabase/schemas/api/campaigns.sql:654 |
+| `api:rpc brand.invite_to_campaign` | writes | `table:brand/market.campaign_invites` | db/brand/supabase/schemas/api/campaigns.sql:214 |
 | `api:rpc brand.link_agency` | writes | `table:brand/market.org_links` | db/brand/supabase/schemas/api/org.sql:114 |
 | `api:rpc core.list_campaigns` | reads | `table:finance.reward_pools` | db/core/supabase/schemas/api/campaigns.sql:82 |
 | `api:rpc core.list_campaigns` | reads | `table:market.campaigns` | db/core/supabase/schemas/api/campaigns.sql:90 |
-| `api:rpc core.list_campaigns` | reads | `table:market.claims` | db/core/supabase/schemas/api/_helpers.sql:128 (market.claim_check) |
-| `api:rpc core.list_campaigns` | reads | `table:market.profiles` | db/core/supabase/schemas/api/_helpers.sql:147 (market.claim_check) |
-| `api:rpc core.list_campaigns` | reads | `table:tracking.social_accounts` | db/core/supabase/schemas/api/_helpers.sql:171 (market.claim_check) |
+| `api:rpc core.list_campaigns` | reads | `table:market.claims` | db/core/supabase/schemas/api/_helpers.sql:121 (market.claim_check) |
+| `api:rpc core.list_campaigns` | reads | `table:market.profiles` | db/core/supabase/schemas/api/_helpers.sql:140 (market.claim_check) |
+| `api:rpc core.list_campaigns` | reads | `table:tracking.social_accounts` | db/core/supabase/schemas/api/_helpers.sql:164 (market.claim_check) |
 | `api:rpc brand.manage_org` | writes | `table:brand/market.organizations` | db/brand/supabase/schemas/api/org.sql:283 |
 | `api:rpc brand.manage_org` | writes | `table:brand/market.org_members` | db/brand/supabase/schemas/api/org.sql:296 |
 | `api:rpc brand.manage_org` | guarded-by | `policy:core.admin-aal2` | db/brand/supabase/schemas/api/org.sql:268 |
@@ -1122,8 +1129,8 @@ Arah: `A --tipe--> B` = A bergantung pada B. `?` = belum terverifikasi.
 | `api:rpc core.bus_receive` | calls | `fn:bus_in.admin` | db/core/supabase/schemas/bus/bus.sql:130 |
 | `fn:bus_in.admin` | writes | `table:ops.audit_logs` | db/core/supabase/schemas/bus/inbound.sql:7 |
 | `fn:bus_in.admin` | writes | `table:trust.review_decisions` | db/core/supabase/schemas/bus/inbound.sql:14 |
-| `fn:bus_in.admin` | writes | `table:market.profiles` | db/core/supabase/schemas/bus/inbound.sql:31 (ensure_member_profile) |
-| `fn:bus_in.admin` | writes | `table:finance.org_refunds` | db/core/supabase/schemas/bus/inbound.sql:45 |
+| `fn:bus_in.admin` | writes | `table:market.profiles` | db/core/supabase/schemas/bus/inbound.sql:35 (ensure_member_profile) |
+| `fn:bus_in.admin` | writes | `table:finance.org_refunds` | db/core/supabase/schemas/bus/inbound.sql:49 |
 | `mod:auth` | calls | `mod:db-brand` | packages/auth/src/server.ts:6 (brandServer) |
 | `mod:db-brand` | configured-by | `env:NEXT_PUBLIC_BRAND_DB_URL` | packages/db-brand/src/index.ts:10 |
 | `layout:brand` | calls | `mod:db-brand` | apps/brand/src/lib/org.ts:5 |
@@ -1131,6 +1138,27 @@ Arah: `A --tipe--> B` = A bergantung pada B. `?` = belum terverifikasi.
 | `layout:admin` | calls | `mod:db-brand` | apps/admin/package.json:16 |
 | `page:brand/[org]/team` | reads | `table:brand/market.org_invites` | apps/brand/src/app/[org]/team/page.tsx:20 |
 | `page:brand/[org]/team` | reads | `table:brand/market.profiles` | apps/brand/src/app/[org]/team/page.tsx:26 |
+| `table:brand/market.campaigns` | replicates-to | `table:market.campaigns` | db/brand/supabase/schemas/market/campaigns.sql:81 (isi) |
+| `table:market.campaigns` | replicates-to | `table:brand/market.campaigns` | db/core/supabase/schemas/market/campaigns.sql:90 (status, jadwal, pin) |
+| `table:brand/market.campaign_assets` | replicates-to | `table:market.campaign_assets` | db/brand/supabase/schemas/market/campaign_assets.sql:20 |
+| `table:brand/market.campaign_invites` | replicates-to | `table:market.campaign_invites` | db/brand/supabase/schemas/market/campaigns.sql:93 |
+| `table:market.categories` | replicates-to | `table:brand/market.categories` | db/core/supabase/schemas/market/categories.sql:10 |
+| `table:brand/market.campaigns` | typed-by | `table:brand/market.categories` | db/brand/supabase/schemas/market/campaigns.sql:10 |
+| `table:brand/market.campaigns` | typed-by | `table:brand/market.organizations` | db/brand/supabase/schemas/market/campaigns.sql:6 |
+| `table:brand/market.campaign_assets` | typed-by | `table:brand/market.campaigns` | db/brand/supabase/schemas/market/campaign_assets.sql:6 |
+| `table:brand/market.campaign_assets` | typed-by | `table:bucket.campaign-assets` | db/brand/supabase/schemas/market/campaign_assets.sql:1 |
+| `api:rpc brand.save_campaign` | writes | `table:brand/market.campaigns` | db/brand/supabase/schemas/api/campaigns.sql:117 |
+| `api:rpc brand.save_campaign` | guarded-by | `policy:core.org-role` | db/brand/supabase/schemas/api/campaigns.sql:52 |
+| `api:rpc brand.invite_to_campaign` | calls | `fn:bus_in.admin` | db/brand/supabase/schemas/ops/notify.sql:7 (ops.enqueue_notification brand → notify.user ke admin; dipanggil api/campaigns.sql invite_to_campaign) |
+| `api:rpc core.copy_campaign_economics` | writes | `table:finance.reward_pools` | db/core/supabase/schemas/api/campaigns.sql:535 |
+| `api:rpc core.copy_campaign_economics` | writes | `table:market.rate_rules` | db/core/supabase/schemas/api/campaigns.sql:538 |
+| `api:rpc core.save_campaign` | reads | `table:market.campaigns` | db/core/supabase/schemas/api/campaigns.sql:206 (gerbang content_version replika) |
+| `api:rpc core.bus_receive` | calls | `fn:bus_in.market_campaigns_applied` | db/core/supabase/schemas/bus/bus.sql:228 |
+| `fn:bus_in.market_campaigns_applied` | writes | `table:market.campaigns` | db/core/supabase/schemas/market/campaigns.sql:109 |
+| `fn:bus_in.market_campaigns_applied` | writes | `table:finance.invoices` | db/core/supabase/schemas/market/campaigns.sql:113 |
+| `comp:CampaignBuilder` | calls | `api:rpc brand.save_campaign` | packages/campaign-builder/src/persist.ts:47 (persistCampaign) |
+| `page:brand/[org]/campaigns` | calls | `api:rpc core.copy_campaign_economics` | apps/brand/src/features/campaigns/actions.ts:14 |
+| `page:app/campaigns/[id]` | reads | `table:bucket.campaign-covers` | apps/clipper/src/features/lib/server.ts:48 (publicUrl cover) |
 | `api:rpc core.manage_org` | guarded-by | `policy:core.admin-aal2` | db/core/supabase/schemas/api/org.sql:34 |
 | `api:rpc core.manage_org` | writes | `table:market.organizations` | db/core/supabase/schemas/api/org.sql:49 (fee_rule_id saja) |
 | `api:rpc core.manage_org` | writes | `table:ops.audit_logs` | db/core/supabase/schemas/api/org.sql:50 |
@@ -1204,15 +1232,15 @@ Arah: `A --tipe--> B` = A bergantung pada B. `?` = belum terverifikasi.
 | `api:rpc core.resolve_fraud_flag` | calls | `api:fn core/bridge` | db/core/supabase/schemas/trust/fraud_resolve.sql:162 (ban → bridge ban_user) |
 | `api:rpc core.revoke_report_link` | guarded-by | `policy:core.org-role` | db/core/supabase/schemas/api/report_links.sql:32 |
 | `api:rpc core.revoke_report_link` | writes | `table:market.report_links` | db/core/supabase/schemas/api/report_links.sql:29 |
-| `api:rpc core.save_campaign` | guarded-by | `policy:core.admin-aal2` | db/core/supabase/schemas/api/campaigns.sql:170 |
-| `api:rpc core.save_campaign` | guarded-by | `policy:core.org-role` | db/core/supabase/schemas/api/campaigns.sql:224 |
-| `api:rpc core.save_campaign` | reads | `table:finance.fee_rules` | db/core/supabase/schemas/api/campaigns.sql:403 (finance.effective_fee_rule) |
-| `api:rpc core.save_campaign` | writes | `table:finance.invoices` | db/core/supabase/schemas/api/campaigns.sql:463 (finance.issue_invoice) |
+| `api:rpc core.save_campaign` | guarded-by | `policy:core.admin-aal2` | db/core/supabase/schemas/api/campaigns.sql:172 |
+| `api:rpc core.save_campaign` | guarded-by | `policy:core.org-role` | db/core/supabase/schemas/api/campaigns.sql:214 |
+| `api:rpc core.save_campaign` | reads | `table:finance.fee_rules` | db/core/supabase/schemas/api/campaigns.sql:318 (finance.effective_fee_rule) |
+| `api:rpc core.save_campaign` | writes | `table:finance.invoices` | db/core/supabase/schemas/api/campaigns.sql:384 (finance.issue_invoice) |
 | `api:rpc core.save_campaign` | writes | `table:finance.ledger_accounts` | PRD v0.3.1 §14 kg.yaml E-14 akun campaign_pool (belum di kode: akun campaign_pool dibuat finance.settle_invoice saat invoice lunas, finance/invoice_confirm.sql baris 39) |
-| `api:rpc core.save_campaign` | writes | `table:finance.reward_pools` | db/core/supabase/schemas/api/campaigns.sql:330 |
-| `api:rpc core.save_campaign` | writes | `table:market.campaign_assets` | db/core/supabase/schemas/api/campaigns.sql:390 |
-| `api:rpc core.save_campaign` | writes | `table:market.campaigns` | db/core/supabase/schemas/api/campaigns.sql:286 |
-| `api:rpc core.save_campaign` | writes | `table:market.rate_rules` | db/core/supabase/schemas/api/campaigns.sql:370 |
+| `api:rpc core.save_campaign` | writes | `table:finance.reward_pools` | db/core/supabase/schemas/api/campaigns.sql:270 |
+| `api:rpc brand.save_campaign` | writes | `table:brand/market.campaign_assets` | db/brand/supabase/schemas/api/campaigns.sql:141 |
+| `api:rpc core.save_campaign` | writes | `table:market.campaigns` | db/core/supabase/schemas/api/campaigns.sql:381 (status, jadwal, fee) |
+| `api:rpc core.save_campaign` | writes | `table:market.rate_rules` | db/core/supabase/schemas/api/campaigns.sql:310 |
 | `api:rpc core.save_reward_type` | guarded-by | `policy:core.org-role` | db/core/supabase/schemas/api/org.sql:94 |
 | `api:rpc core.save_reward_type` | writes | `table:market.reward_types` | db/core/supabase/schemas/api/org.sql:123 |
 | `api:rpc core.send_broadcast` | writes | `table:ops.broadcasts` | db/core/supabase/schemas/api/config.sql:168 |
@@ -1331,20 +1359,20 @@ Arah: `A --tipe--> B` = A bergantung pada B. `?` = belum terverifikasi.
 | `job:trust-score` | writes | `table:market.profiles` | db/core/supabase/schemas/trust/decisions.sql:110 |
 | `table:auth.sessions` | guarded-by | `policy:identity.api-only` | PRD v0.3.1 §15.4 kolom Akses |
 | `table:auth.users` | guarded-by | `policy:identity.api-only` | PRD v0.3.1 §15.4 kolom Akses |
-| `table:bucket.avatars` | guarded-by | `policy:core.public-read` | db/core/supabase/config.toml:49 |
-| `table:bucket.avatars` | guarded-by | `policy:core.rls-self` | db/core/supabase/schemas/market/storage.sql:18 |
-| `table:bucket.invoice-docs` | guarded-by | `policy:core.admin-aal2` | db/core/supabase/schemas/market/storage.sql:20 |
-| `table:bucket.invoice-docs` | guarded-by | `policy:core.org-role` | db/core/supabase/schemas/market/storage.sql:24 |
-| `table:bucket.invoice-docs` | guarded-by | `policy:core.storage-private` | db/core/supabase/config.toml:53 (public = false baris 54) |
+| `table:bucket.avatars` | guarded-by | `policy:core.public-read` | db/core/supabase/config.toml:39 |
+| `table:bucket.avatars` | guarded-by | `policy:core.rls-self` | db/core/supabase/schemas/market/storage.sql:7 |
+| `table:bucket.invoice-docs` | guarded-by | `policy:core.admin-aal2` | db/core/supabase/schemas/market/storage.sql:9 |
+| `table:bucket.invoice-docs` | guarded-by | `policy:core.org-role` | db/core/supabase/schemas/market/storage.sql:13 |
+| `table:bucket.invoice-docs` | guarded-by | `policy:core.storage-private` | db/core/supabase/config.toml:43 (public = false baris 44) |
 | `api:rpc core.attach_faktur` | guarded-by | `policy:core.admin-aal2` | db/core/supabase/schemas/finance/invoice_confirm.sql:293 |
 | `api:rpc core.attach_faktur` | reads | `table:bucket.invoice-docs` | db/core/supabase/schemas/finance/invoice_confirm.sql:310 |
 | `api:rpc core.attach_faktur` | writes | `table:finance.invoices` | db/core/supabase/schemas/finance/invoice_confirm.sql:313 |
 | `api:rpc core.attach_faktur` | writes | `table:ops.audit_logs` | db/core/supabase/schemas/finance/invoice_confirm.sql:314 |
-| `table:bucket.campaign-assets` | guarded-by | `policy:core.inherit-parent` | db/core/supabase/schemas/market/storage.sql:11 |
-| `table:bucket.campaign-assets` | guarded-by | `policy:core.org-role` | db/core/supabase/schemas/market/storage.sql:7 |
-| `table:bucket.campaign-assets` | guarded-by | `policy:core.storage-private` | db/core/supabase/config.toml:43 (public = false baris 44) |
-| `table:bucket.campaign-covers` | guarded-by | `policy:core.org-role` | db/core/supabase/schemas/market/storage.sql:7 |
-| `table:bucket.campaign-covers` | guarded-by | `policy:core.public-read` | db/core/supabase/config.toml:39 |
+| `table:bucket.campaign-assets` | guarded-by | `policy:core.inherit-parent` | db/brand/supabase/schemas/market/storage.sql:9 |
+| `table:bucket.campaign-assets` | guarded-by | `policy:core.org-role` | db/brand/supabase/schemas/market/storage.sql:5 |
+| `table:bucket.campaign-assets` | guarded-by | `policy:core.storage-private` | db/brand/supabase/config.toml:41 (public = false) |
+| `table:bucket.campaign-covers` | guarded-by | `policy:core.org-role` | db/brand/supabase/schemas/market/storage.sql:5 |
+| `table:bucket.campaign-covers` | guarded-by | `policy:core.public-read` | db/brand/supabase/config.toml:37 |
 | `table:bucket.kyc-docs` | guarded-by | `policy:identity.admin-aal2` | db/identity/supabase/schemas/member/storage.sql:10 |
 | `table:bucket.kyc-docs` | guarded-by | `policy:identity.rls-self` | db/identity/supabase/schemas/member/storage.sql:6 |
 | `table:bucket.kyc-docs` | guarded-by | `policy:identity.storage-private` | db/identity/supabase/config.toml:43 (public = false) |
@@ -1404,23 +1432,23 @@ Arah: `A --tipe--> B` = A bergantung pada B. `?` = belum terverifikasi.
 | `table:market.campaign_assets` | typed-by | `table:bucket.campaign-assets` | db/core/supabase/schemas/market/campaign_assets.sql:1 |
 | `table:market.campaign_assets` | typed-by | `table:bucket.campaign-covers` | db/core/supabase/schemas/market/campaign_assets.sql:1 |
 | `table:market.campaign_assets` | typed-by | `table:market.campaigns` | db/core/supabase/schemas/market/campaign_assets.sql:7 |
-| `table:market.campaign_invites` | guarded-by | `policy:core.admin-aal2` | db/core/supabase/schemas/market/campaigns.sql:104 |
-| `table:market.campaign_invites` | guarded-by | `policy:core.iss-identity` | db/core/supabase/schemas/market/campaigns.sql:101 |
-| `table:market.campaign_invites` | guarded-by | `policy:core.rls-org` | db/core/supabase/schemas/market/campaigns.sql:136 |
-| `table:market.campaign_invites` | guarded-by | `policy:core.rls-self` | db/core/supabase/schemas/market/campaigns.sql:103 |
-| `table:market.campaign_invites` | typed-by | `table:market.campaigns` | db/core/supabase/schemas/market/campaigns.sql:92 |
-| `table:market.campaign_invites` | typed-by | `table:market.profiles` | db/core/supabase/schemas/market/campaigns.sql:93 |
-| `table:market.campaigns` | guarded-by | `policy:core.admin-aal2` | db/core/supabase/schemas/market/campaigns.sql:132 |
-| `table:market.campaigns` | guarded-by | `policy:core.iss-identity` | db/core/supabase/schemas/market/campaigns.sql:118 |
-| `table:market.campaigns` | guarded-by | `policy:core.public-read` | db/core/supabase/schemas/market/campaigns.sql:123 |
-| `table:market.campaigns` | guarded-by | `policy:core.rls-org` | db/core/supabase/schemas/market/campaigns.sql:131 |
+| `table:market.campaign_invites` | guarded-by | `policy:core.admin-aal2` | db/core/supabase/schemas/market/campaigns.sql:141 |
+| `table:market.campaign_invites` | guarded-by | `policy:core.iss-identity` | db/core/supabase/schemas/market/campaigns.sql:138 |
+| `table:market.campaign_invites` | guarded-by | `policy:core.rls-org` | db/core/supabase/schemas/market/campaigns.sql:173 |
+| `table:market.campaign_invites` | guarded-by | `policy:core.rls-self` | db/core/supabase/schemas/market/campaigns.sql:140 |
+| `table:market.campaign_invites` | typed-by | `table:market.campaigns` | db/core/supabase/schemas/market/campaigns.sql:129 |
+| `table:market.campaign_invites` | typed-by | `table:market.profiles` | db/core/supabase/schemas/market/campaigns.sql:130 |
+| `table:market.campaigns` | guarded-by | `policy:core.admin-aal2` | db/core/supabase/schemas/market/campaigns.sql:169 |
+| `table:market.campaigns` | guarded-by | `policy:core.iss-identity` | db/core/supabase/schemas/market/campaigns.sql:155 |
+| `table:market.campaigns` | guarded-by | `policy:core.public-read` | db/core/supabase/schemas/market/campaigns.sql:160 |
+| `table:market.campaigns` | guarded-by | `policy:core.rls-org` | db/core/supabase/schemas/market/campaigns.sql:168 |
 | `table:market.campaigns` | typed-by | `doc:spec/kg.yaml` | db/core/supabase/schemas/ops/state_triggers.sql:1 |
-| `table:market.campaigns` | typed-by | `table:finance.fee_rules` | db/core/supabase/schemas/market/campaigns.sql:43 |
-| `table:market.campaigns` | typed-by | `table:market.categories` | db/core/supabase/schemas/market/campaigns.sql:9 |
-| `table:market.campaigns` | typed-by | `table:market.organizations` | db/core/supabase/schemas/market/campaigns.sql:5 |
-| `table:market.categories` | guarded-by | `policy:core.admin-aal2` | db/core/supabase/schemas/market/categories.sql:14 |
-| `table:market.categories` | guarded-by | `policy:core.iss-identity` | db/core/supabase/schemas/market/categories.sql:11 |
-| `table:market.categories` | guarded-by | `policy:core.public-read` | db/core/supabase/schemas/market/categories.sql:13 |
+| `table:market.campaigns` | typed-by | `table:finance.fee_rules` | db/core/supabase/schemas/market/campaigns.sql:45 |
+| `table:market.campaigns` | typed-by | `table:market.categories` | db/core/supabase/schemas/market/campaigns.sql:11 |
+| `table:market.campaigns` | typed-by | `table:market.organizations` | db/core/supabase/schemas/market/campaigns.sql:7 |
+| `table:market.categories` | guarded-by | `policy:core.admin-aal2` | db/core/supabase/schemas/market/categories.sql:17 |
+| `table:market.categories` | guarded-by | `policy:core.iss-identity` | db/core/supabase/schemas/market/categories.sql:14 |
+| `table:market.categories` | guarded-by | `policy:core.public-read` | db/core/supabase/schemas/market/categories.sql:16 |
 | `table:market.claims` | guarded-by | `policy:core.admin-aal2` | db/core/supabase/schemas/market/claims.sql:25 |
 | `table:market.claims` | guarded-by | `policy:core.iss-identity` | db/core/supabase/schemas/market/claims.sql:20 |
 | `table:market.claims` | guarded-by | `policy:core.rls-org` | db/core/supabase/schemas/market/claims.sql:23 |
@@ -1583,9 +1611,9 @@ Arah: `A --tipe--> B` = A bergantung pada B. `?` = belum terverifikasi.
 | `ext:tiktok` | configured-by | `config:host.app` | PRD v0.3.1 §15.2 redirect URI per host |
 | `test:accrue.idempotent` | tests | `fn:accrue_earnings` | db/core/supabase/tests/core_contracts_finance.test.sql:163 |
 | `test:core.full-product` | tests | `api:rpc core.missing_brief_tags` | db/core/supabase/tests/core_full_product.test.sql:163 |
-| `test:core.full-product` | tests | `table:bucket.campaign-assets` | db/core/supabase/tests/core_full_product.test.sql:184 |
+| `test:brand.campaigns` | tests | `table:bucket.campaign-assets` | db/brand/supabase/tests/brand_campaigns.test.sql:199 |
 | `test:core.full-product` | tests | `table:finance.reward_codes` | db/core/supabase/tests/core_full_product.test.sql:120 |
-| `test:core.full-product` | tests | `table:market.campaign_assets` | db/core/supabase/tests/core_full_product.test.sql:190 |
+| `test:core.full-product` | tests | `table:market.campaign_assets` | db/core/supabase/tests/core_full_product.test.sql:194 |
 | `test:core.full-product` | tests | `table:market.campaign_invites` | db/core/supabase/tests/core_full_product.test.sql:36 |
 | `test:core.full-product` | tests | `table:market.leaderboard_campaign` | db/core/supabase/tests/core_full_product.test.sql:103 |
 | `test:core.full-product` | tests | `table:market.org_links` | db/core/supabase/tests/core_full_product.test.sql:59 |
@@ -1614,12 +1642,12 @@ Arah: `A --tipe--> B` = A bergantung pada B. `?` = belum terverifikasi.
 | `test:member-data.integrity` | tests | `table:member.push_subscriptions` | db/identity/supabase/tests/identity_access.test.sql:177 |
 | `test:pwa.ios-login` | tests | `mod:auth` | PRD v0.3.1 R-17 sesi diset dari server |
 | `test:pwa.ios-login` | tests | `page:app/login` | PRD v0.3.1 R-17 |
-| `test:rls.access-matrix` | tests | `job:broadcast-dispatch` | db/core/supabase/tests/core_access.test.sql:288 |
-| `test:rls.access-matrix` | tests | `job:budget-alerts` | db/core/supabase/tests/core_access.test.sql:288 (job terdaftar; perilaku dites core_contracts_market.test.sql) |
-| `test:rls.access-matrix` | tests | `job:earning-release` | db/core/supabase/tests/core_access.test.sql:288 |
-| `test:rls.access-matrix` | tests | `job:lifecycle` | db/core/supabase/tests/core_access.test.sql:288 |
-| `test:rls.access-matrix` | tests | `job:referral-bonus` | db/core/supabase/tests/core_access.test.sql:288 (job terdaftar; perilaku dites core_contracts_finance.test.sql) |
-| `test:rls.access-matrix` | tests | `job:trust-score` | db/core/supabase/tests/core_access.test.sql:288 (job terdaftar; perilaku dites core_contracts_market.test.sql) |
+| `test:rls.access-matrix` | tests | `job:broadcast-dispatch` | db/core/supabase/tests/core_access.test.sql:285 |
+| `test:rls.access-matrix` | tests | `job:budget-alerts` | db/core/supabase/tests/core_access.test.sql:285 (job terdaftar; perilaku dites core_contracts_market.test.sql) |
+| `test:rls.access-matrix` | tests | `job:earning-release` | db/core/supabase/tests/core_access.test.sql:285 |
+| `test:rls.access-matrix` | tests | `job:lifecycle` | db/core/supabase/tests/core_access.test.sql:285 |
+| `test:rls.access-matrix` | tests | `job:referral-bonus` | db/core/supabase/tests/core_access.test.sql:285 (job terdaftar; perilaku dites core_contracts_finance.test.sql) |
+| `test:rls.access-matrix` | tests | `job:trust-score` | db/core/supabase/tests/core_access.test.sql:285 (job terdaftar; perilaku dites core_contracts_market.test.sql) |
 | `test:rls.access-matrix` | tests | `policy:core.admin-aal2` | db/core/supabase/tests/core_access.test.sql:220 |
 | `test:rls.access-matrix` | tests | `policy:core.iss-identity` | db/core/supabase/tests/core_access.test.sql:181 |
 | `test:rls.access-matrix` | tests | `policy:core.org-role` | db/core/supabase/tests/core_access.test.sql:211 |
@@ -1670,8 +1698,8 @@ Arah: `A --tipe--> B` = A bergantung pada B. `?` = belum terverifikasi.
 | `doc:spec/contracts.yaml` | documents | `api:rpc brand.create_org` | spec/contracts.yaml:14 |
 | `doc:spec/contracts.yaml` | documents | `api:rpc brand.create_org_invite` | spec/contracts.yaml:16 |
 | `doc:spec/contracts.yaml` | documents | `api:rpc core.create_payout_batch` | spec/contracts.yaml:24 |
-| `doc:spec/contracts.yaml` | documents | `api:rpc core.duplicate_campaign` | spec/contracts.yaml:12 |
-| `doc:spec/contracts.yaml` | documents | `api:rpc core.invite_to_campaign` | spec/contracts.yaml:13 |
+| `doc:spec/contracts.yaml` | documents | `api:rpc brand.duplicate_campaign` | spec/contracts.yaml:12 |
+| `doc:spec/contracts.yaml` | documents | `api:rpc brand.invite_to_campaign` | spec/contracts.yaml:13 |
 | `doc:spec/contracts.yaml` | documents | `api:rpc brand.link_agency` | spec/contracts.yaml:15 |
 | `doc:spec/contracts.yaml` | documents | `api:rpc core.list_campaigns` | spec/contracts.yaml:5 |
 | `doc:spec/contracts.yaml` | documents | `api:rpc core.manage_org` | spec/contracts.yaml:18 |
@@ -2231,11 +2259,11 @@ flowchart TD
 | B3.1 Dashboard | `page:brand/[org]/campaigns/[id]` | brand.{domain}/[org]/campaigns/[id] | Lihat: Views valid, spend, sisa per pool, eCPM, jumlah klip & clipper, split platform, kurva harian, top klip, proyeksi budget habis vs deadline. Lakukan: Pantau. | Baca core lewat schema api (RLS anggota org); proyeksi dari snapshot & pool. `table:tracking.submissions`, `table:tracking.view_snapshots`, `table:finance.reward_pools` | Review, kontrol, laporan. Cabang: Proyeksi < 50% → saran: naikkan rate, perpanjang, undang clipper, pin. |
 | B3.2 Review klip | `page:brand/[org]/review` | brand.{domain}/[org]/review | Lihat: Antrean klip campaign mode review brand, embed, alasan standar. Lakukan: Approve/reject massal. | record_review oleh brand_owner/brand_manager; tidak direview 72 jam → auto-approve (job lifecycle). `api:rpc core.record_review`, `job:lifecycle` | Clipper dikabari. |
 | B3.3 Kontrol campaign | `page:brand/[org]/campaigns/[id]` | brand.{domain}/[org]/campaigns/[id] (Kontrol) | Lihat: Pause/resume, perpanjang deadline, naikkan rate, top-up budget, akhiri lebih awal. Lakukan: Pilih aksi. | api.control_campaign: naikkan rate = rule lama ditutup (effective_to) + rule baru berlaku untuk views sesudahnya; top-up = invoice kind topup → bayar → pool bertambah; transisi status mengikuti S-01. `api:rpc core.control_campaign`, `table:market.rate_rules`, `table:finance.invoices` | Top-up → billing. Cabang: Transisi tidak sah (mis. settled → live) → ditolak trigger state machine. |
-| B3.4 Undang clipper | `page:brand/[org]/campaigns/[id]` | brand.{domain}/[org]/campaigns/[id] (Undangan) | Lihat: Campaign privat: cari username, daftar undangan. Lakukan: Undang. | api.invite_to_campaign → E-37 → notifikasi campaign.invited; campaign tampil hanya untuk yang diundang (RLS). `api:rpc core.invite_to_campaign`, `table:market.campaign_invites` | — Cabang: Visibilitas level → otomatis terbuka untuk Trust Score ≥ ambang. |
+| B3.4 Undang clipper | `page:brand/[org]/campaigns/[id]` | brand.{domain}/[org]/campaigns/[id] (Undangan) | Lihat: Campaign privat: cari username, daftar undangan. Lakukan: Undang. | api.invite_to_campaign → E-37 → notifikasi campaign.invited; campaign tampil hanya untuk yang diundang (RLS). `api:rpc brand.invite_to_campaign`, `table:market.campaign_invites` | — Cabang: Visibilitas level → otomatis terbuka untuk Trust Score ≥ ambang. |
 | B3.5 Pin campaign | `page:brand/[org]/campaigns/[id]` | brand.{domain}/[org]/campaigns/[id] (Pin) | Lihat: Pilih durasi pin, harga per minggu (REV-4). Lakukan: Pin. | api.buy_pin → invoice kind pinned (pin_until) → lunas → pinned_until diset → tampil di atas list clipper. `api:rpc core.buy_pin`, `table:finance.invoices` | Billing. |
 | B3.6 Laporan | `page:brand/[org]/campaigns/[id]` | brand.{domain}/[org]/campaigns/[id] (Laporan) | Lihat: Unduh CSV; Buat link read-only (berlaku 90 hari) + Cabut. Lakukan: Buat link, kirim ke atasan. | api.create_report_link → token sekali tampil, yang disimpan sha256-nya (E-33); atasan membuka {domain}/r/[token] tanpa login; PDF = cetak halaman itu. `api:rpc core.create_report_link`, `table:market.report_links`, `page:www/r/[token]` | {domain}/r/[token]. Cabang: Link dicabut/kedaluwarsa → halaman Link tidak berlaku. |
 | B3.7 Selesai & sisa budget | `page:brand/[org]/billing` | brand.{domain}/[org]/billing (Sisa budget) | Lihat: Notifikasi Campaign selesai & laporan siap; sisa budget creator; pilih Rollover (kredit org tanpa fee baru) atau Refund (dikurangi biaya transfer). Lakukan: Pilih, konfirmasi dengan TOTP. | Butuh aal2. api.request_refund: rollover = jurnal ke akun org_credit; refund = E-35 requested → admin_finance lain approve & transfer (J-A3). `api:rpc core.request_refund`, `table:finance.org_refunds`, `page:accounts/security` | Status refund di billing. Cabang: Belum punya TOTP → accounts.{domain}/security?next=… lalu kembali. |
-| B3.8 Template & duplikat | `page:brand/[org]/campaigns` | brand.{domain}/[org]/campaigns (Template) | Lihat: Simpan sebagai template, Duplikat campaign lama. Lakukan: Pilih template → buka builder terisi. | api.duplicate_campaign → campaign baru draft (template tetap draft, constraint campaigns_template_stays_draft). `api:rpc core.duplicate_campaign`, `table:market.campaigns` | Builder. |
+| B3.8 Template & duplikat | `page:brand/[org]/campaigns` | brand.{domain}/[org]/campaigns (Template) | Lihat: Simpan sebagai template, Duplikat campaign lama. Lakukan: Pilih template → buka builder terisi. | api.duplicate_campaign → campaign baru draft (template tetap draft, constraint campaigns_template_stays_draft). `api:rpc brand.duplicate_campaign`, `table:market.campaigns` | Builder. |
 
 ```mermaid
 flowchart TD
@@ -2614,6 +2642,7 @@ Keputusan yang sudah diambil — jangan dibahas ulang tanpa alasan baru.
 | 2026-10-20 | Nilai awal tier Trust Score: skor ≥ 80 → cap 120% & hold 3 hari, ≥ 60 → cap 100% & hold 5 hari; TikTok cap 80% & hold minimal 10 hari | PRD tidak memberi angka; nilai konservatif, bisa diubah admin (ops.settings) | `fn:accrue_earnings`, `job:earning-release`, `page:app/profile` |
 | 2026-10-15 | D-12: DB dipisah jadi identity (login + PII) dan core (campaign, tracking, uang) | Permintaan owner: database member terpisah; core bocor tidak membuka PII | `ext:supabase-identity`, `ext:supabase-core`, semua `table:member.*` |
 | 2026-10-22 | DIGANTI owner: core dipecah jadi 3 database fisik — creator, brand, admin (identity tetap) | Permintaan owner (data admin, creator, brand harus terpisah fisik). Syarat §10.5 #4 tetap: ledger + aturan bayar + pool + accrual di satu DB (admin); domain lain bertukar event lewat outbox (lihat Arsitektur 4 database) | semua `table:*` core, `fn:accrue_earnings`, `api:fn */bus` |
+| 2026-10-22 | Campaign dibelah per kolom: isi + aset + undangan milik brand; status, jadwal (start, deadline, window), fee, pin, pool, rule, invoice milik admin. Report link & budget alert tetap admin | Jadwal ikut lifecycle (perpanjang deadline vs job tracking harus satu transaksi di admin); isi beku sejak diajukan sehingga replika satu arah cukup; report/alert dihitung dari uang & views | `table:brand/market.campaigns`, `api:rpc brand.save_campaign`, `api:rpc core.save_campaign`, `fn:bus_in.market_campaigns_applied` |
 | 2026-10-22 | Org/tim/undangan/agency ditulis di DB brand; admin & creator hanya replika. Fee org tetap kolom milik admin di replika | Pemilik data = tempat ditulis; fee = aturan uang (admin). Verifikasi org oleh admin memanggil DB brand langsung (JWT admin), keputusan + notifikasi + audit dikirim ke admin sebagai event | `table:brand/market.organizations`, `api:rpc brand.manage_org`, `api:rpc core.manage_org`, `fn:bus_in.admin` |
 | 2026-10-15 | (diganti 2026-10-22) Core tidak dipecah per fitur; pemisahan di core per schema | accrue_earnings wajib satu transaksi (§10.5 #4) | `fn:accrue_earnings`, `table:finance.*` |
 | 2026-10-15 | D-13: subdomain per kelompok user (5 app), bukan per fitur | 45 fitur di satu trust level; scope PWA satu origin; redirect URI TikTok maks 10 | `config:host.*`, `layout:*` |

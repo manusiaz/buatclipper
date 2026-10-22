@@ -241,17 +241,14 @@ set local role anon;
 select is(api.report_by_token((select tok from t_tok)), null, 'link yang dicabut tidak bisa dibuka lagi');
 reset role;
 
--- ---------- storage core ----------
+-- ---------- storage admin (cover & aset campaign di storage project brand) ----------
 insert into storage.buckets (id, name, public) values ('campaign-covers', 'campaign-covers', true), ('avatars', 'avatars', true) on conflict (id) do nothing;
 set local role authenticated;
 set local request.jwt.claims = '{"sub":"22222222-0000-0000-0000-0000000000b1","role":"authenticated","aal":"aal1","iss":"https://auth.contoh.id/auth/v1"}';
-select lives_ok($$ insert into storage.objects (bucket_id, name) values ('campaign-covers',
-                   '44444444-0000-0000-0000-000000000001/55555555-0000-0000-0000-000000000001/cover.webp') $$,
-                'brand_manager unggah cover ke folder org-nya');
-set local request.jwt.claims = '{"sub":"22222222-0000-0000-0000-0000000000a2","role":"authenticated","aal":"aal1","iss":"https://auth.contoh.id/auth/v1"}';
 select throws_ok($$ insert into storage.objects (bucket_id, name) values ('campaign-covers',
-                    '44444444-0000-0000-0000-000000000001/55555555-0000-0000-0000-000000000001/x.webp') $$, '42501', null,
-                 'org lain tidak bisa unggah ke folder org1');
+                    '44444444-0000-0000-0000-000000000001/55555555-0000-0000-0000-000000000001/cover.webp') $$, '42501', null,
+                 'storage admin tidak menerima cover campaign (rumahnya storage brand)');
+set local request.jwt.claims = '{"sub":"22222222-0000-0000-0000-0000000000a2","role":"authenticated","aal":"aal1","iss":"https://auth.contoh.id/auth/v1"}';
 select lives_ok($$ insert into storage.objects (bucket_id, name) values ('avatars', '22222222-0000-0000-0000-0000000000a2/a.webp') $$,
                 'user unggah avatar ke foldernya');
 select throws_ok($$ insert into storage.objects (bucket_id, name) values ('avatars', '11111111-0000-0000-0000-00000000000a/a.webp') $$,

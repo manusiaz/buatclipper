@@ -96,5 +96,24 @@ select api.bus_receive('creator', '[{"id":"00000000-0000-0000-0000-0000000000c3"
 select ok(not exists (select 1 from public.rep_dst where id = 7), 'delete replika');
 select is(current_setting('bus.applying', true), 'off', 'flag penerapan dimatikan lagi setelah apply');
 
+-- kolom milik sebagian (pemilik baris project lain): baris ada → update kolom itu saja; baris belum ada → dilewati tanpa error
+create table public.rep_part (id int primary key, owner_col text not null, status text not null default 'draft');
+insert into public.rep_part values (1, 'milik-pemilik-baris', 'draft');
+select lives_ok($$ select api.bus_receive('creator', '[{"id":"00000000-0000-0000-0000-0000000000c4","topic":"rep.row","payload":{"table":"public.rep_part","op":"upsert","key":{"id":1},"row":{"id":1,"status":"live"}}},
+                                                        {"id":"00000000-0000-0000-0000-0000000000c5","topic":"rep.row","payload":{"table":"public.rep_part","op":"upsert","key":{"id":2},"row":{"id":2,"status":"live"}}}]') $$,
+                'replika kolom parsial diterima (regresi: INSERT … ON CONFLICT menolak NOT NULL kolom lain)');
+select is((select string_agg(id || ':' || owner_col || ':' || status, ',') from public.rep_part), '1:milik-pemilik-baris:live',
+          'baris ada: hanya kolom terkirim yang berubah; baris belum ada: dilewati');
+
+-- backfill: bus.resync mengirim ulang semua baris tabel pemilik dengan kolom dari trigger replicate-nya
+delete from bus.outbox where target = 'creator';
+insert into public.rep_src (id, a) values (11, 'x'), (12, 'y');
+delete from bus.outbox where target = 'creator';
+select is(bus.resync('public.rep_src', 'creator'), 2, 'resync: semua baris');
+select is((select jsonb_agg(payload -> 'row' order by seq) from bus.outbox where target = 'creator'),
+          '[{"a":"x","id":11},{"a":"y","id":12}]'::jsonb, 'resync memakai kolom trigger (tanpa kolom milik lain)');
+select throws_ok($$ select bus.resync('public.rep_src', 'brand') $$, 'P0001', 'bus_no_replica:public.rep_src:brand',
+                 'target tanpa replika ditolak');
+
 select * from finish();
 rollback;

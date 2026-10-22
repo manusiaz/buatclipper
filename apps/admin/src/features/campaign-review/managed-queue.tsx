@@ -26,7 +26,7 @@ export async function ManagedQueue({ loc }: { loc: UiLocale }) {
   const owners = rows(members);
   const profiles = rows(await db.from('profiles').select('id, username, display_name').in('id', uniq(owners.map((m) => m.user_id))));
   const files = rows(assets);
-  const hrefs = await assetHrefs(db, files);
+  const hrefs = await assetHrefs(files);
   const orgName = new Map(rows(orgs).map((o) => [o.id, o.name]));
   const profile = new Map(profiles.map((p) => [p.id, p]));
   // Brief mentah brand (api.managed_briefs, staf saja); kosong → brief draft.

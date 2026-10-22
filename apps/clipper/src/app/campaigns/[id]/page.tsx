@@ -2,7 +2,7 @@ import type { Metadata } from 'next';
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { getTranslations } from 'next-intl/server';
-import { requireClipper } from '@clipper/auth/server';
+import { brandServer, requireClipper } from '@clipper/auth/server';
 import {
   Avatar,
   Badge,
@@ -63,7 +63,7 @@ export default async function CampaignDetailPage({ params, searchParams }: Props
       .eq('user_id', claims.sub)
       .in('platform', platforms)
       .neq('status', 'disconnected'),
-    privatePaths.length ? db.storage.from('campaign-assets').createSignedUrls(privatePaths, 3600) : Promise.resolve({ data: [] }),
+    privatePaths.length ? (await brandServer()).storage.from('campaign-assets').createSignedUrls(privatePaths, 3600) : Promise.resolve({ data: [] }),
     myClipTerms(),
   ]);
   const signedUrl = new Map((signed.data ?? []).map((s) => [s.path, s.signedUrl]));
