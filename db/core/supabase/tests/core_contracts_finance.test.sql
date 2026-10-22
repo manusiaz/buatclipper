@@ -235,6 +235,9 @@ select ok((select bool_and(next_poll_at <= now()) from tracking.submissions wher
 select pg_temp.snap((select v::uuid from t_ids where k = k1), 1000) from (values ('s4b'), ('s4c'), ('s4d')) x(k1);
 select is((select sum(demand) from finance.clip_earnings where pool_id = '66666666-0000-0000-0000-0000000000a4'), 3000::numeric,
           'settlement: Δ setelah cut-off dicatat sebagai demand, belum dijurnal');
+select pg_temp.snap((select v::uuid from t_ids where k = 's4b'), 2000);
+select is((select sum(demand) from finance.clip_earnings where pool_id = '66666666-0000-0000-0000-0000000000a4'), 3000::numeric,
+          'R76: poll ulang selama settlement tidak menambah demand (jatah dari snapshot pertama setelah cut-off)');
 select is((select total - allocated from finance.reward_pools where id = '66666666-0000-0000-0000-0000000000a4'), 1000::numeric,
           'settlement: sisa pool belum dibagi sebelum finalisasi');
 update tracking.submissions set last_snapshot_at = now() where campaign_id = '55555555-0000-0000-0000-0000000000a4';
