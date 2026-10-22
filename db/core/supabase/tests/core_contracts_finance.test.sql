@@ -240,7 +240,7 @@ select is((select sum(demand) from finance.clip_earnings where pool_id = '666666
           'R76: poll ulang selama settlement tidak menambah demand (jatah dari snapshot pertama setelah cut-off)');
 select is((select total - allocated from finance.reward_pools where id = '66666666-0000-0000-0000-0000000000a4'), 1000::numeric,
           'settlement: sisa pool belum dibagi sebelum finalisasi');
-update tracking.submissions set last_snapshot_at = now() where campaign_id = '55555555-0000-0000-0000-0000000000a4';
+update tracking.submissions set last_snapshot_at = clock_timestamp() where campaign_id = '55555555-0000-0000-0000-0000000000a4';  -- seperti worker (taken = clock_timestamp)
 select finance.finalize_settlements();
 select is((select sum(amount) from finance.clip_earnings where pool_id = '66666666-0000-0000-0000-0000000000a4'
             and submission_id <> (select v::uuid from t_ids where k = 's4a')), 1000::numeric,
@@ -250,6 +250,25 @@ select ok((select max(amount) - min(amount) <= 0.0000000001 from finance.clip_ea
 select is((select status::text from market.campaigns where id = '55555555-0000-0000-0000-0000000000a4'), 'exhausted',
           'settlement selesai, pool habis → exhausted');
 select ok(not exists (select 1 from finance.pool_settlements where pool_id = '66666666-0000-0000-0000-0000000000a4'), 'settlement mode berakhir');
+
+-- R77: submisi yang memicu settlement ikut dibagi lewat poll berikutnya (snapshot pemicunya bukan "setelah cut-off").
+insert into market.profiles (id, username, display_name) values
+  ('11111111-0000-0000-0000-000000000d7a', 'r77_a', 'R77 A'), ('11111111-0000-0000-0000-000000000d7b', 'r77_b', 'R77 B');
+insert into tracking.social_accounts (user_id, platform, external_id, handle, status, platform_created_at) values
+  ('11111111-0000-0000-0000-000000000d7a', 'tiktok', 'tt-r77a', '@r77a', 'verified', now() - interval '2 years'),
+  ('11111111-0000-0000-0000-000000000d7b', 'tiktok', 'tt-r77b', '@r77b', 'verified', now() - interval '2 years');
+select pg_temp.mk_campaign('55555555-0000-0000-0000-0000000000d7', 'r77-trigger', 0);
+select pg_temp.mk_pool('55555555-0000-0000-0000-0000000000d7', '66666666-0000-0000-0000-0000000000d7', 100000, 1000000);
+select pg_temp.mk_rule('55555555-0000-0000-0000-0000000000d7', '66666666-0000-0000-0000-0000000000d7', 'per_1k_views', '{"rate":1000}');
+insert into t_ids select 's77a', pg_temp.mk_sub('55555555-0000-0000-0000-0000000000d7', '11111111-0000-0000-0000-000000000d7a', 'v77a');
+insert into t_ids select 's77b', pg_temp.mk_sub('55555555-0000-0000-0000-0000000000d7', '11111111-0000-0000-0000-000000000d7b', 'v77b');
+select pg_temp.snap((select v::uuid from t_ids where k = 's77a'), 96000);
+select pg_temp.snap((select v::uuid from t_ids where k = 's77a'), 97000);
+select pg_temp.snap((select v::uuid from t_ids where k = 's77b'), 1000);
+select is((select array_agg(demand order by submission_id = (select v::uuid from t_ids where k = 's77b')) from finance.clip_earnings
+            where pool_id = '66666666-0000-0000-0000-0000000000d7'), array[1000, 1000]::numeric[],
+          'R77: pemicu settlement dan submisi lain dengan Δ sama sama-sama tercatat demand');
+update tracking.social_accounts set status = 'disconnected' where user_id in ('11111111-0000-0000-0000-000000000d7a', '11111111-0000-0000-0000-000000000d7b');  -- tidak ikut uji eligible
 
 -- K5: raise_rate — rule lama ditutup, rule baru berlaku untuk snapshot sesudahnya
 select pg_temp.mk_campaign('55555555-0000-0000-0000-0000000000a5', 'k5-raise');
