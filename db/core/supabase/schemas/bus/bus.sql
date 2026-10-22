@@ -3,8 +3,10 @@
 --   relay : job bus-relay (pg_cron, tiap 5 detik) → satu batch per target, urut seq, ditandatangani HMAC
 --           → POST {bus_url_<target>}/functions/v1/bridge action 'bus.deliver' (protokol bridge, header x-bridge-from)
 --   terima: api.bus_receive(source, events) satu transaksi per batch; event yang sudah ada di bus.inbox dilewati (idempoten),
---           handler per topic dari bus.handlers. Gagal → seluruh batch ditolak, pengirim mengulang dengan backoff;
+--           handler per topic (konvensi nama bus_in.*). Gagal → seluruh batch ditolak, pengirim mengulang dengan backoff;
 --           batch berikutnya tidak dikirim sebelum batch ini diterima (urutan per target terjaga).
+--   handler: fungsi bus_in.<topic dengan titik → garis bawah>(payload jsonb), mis. topic 'audit.log' → bus_in.audit_log(jsonb).
+--           Konvensi nama (bukan tabel konfigurasi) supaya pendaftaran ikut DDL/migrasi.
 -- Vault pengirim: bus_url_<target> (URL dasar Kong target) dan bus_secret_<target> (secret HMAC pengirim → target).
 create schema if not exists bus;
 
@@ -31,15 +33,10 @@ create table bus.inbox (
   received_at timestamptz not null default now()
 );
 
--- topic → fungsi handler(jsonb) returns void, diisi file domain yang menerima event itu.
-create table bus.handlers (
-  topic text primary key,
-  fn regprocedure not null
-);
+create schema if not exists bus_in;  -- handler event masuk (lihat kepala file)
 
 alter table bus.outbox enable row level security;  -- policy:core.definer-only (tanpa policy: hanya fungsi definer)
 alter table bus.inbox enable row level security;  -- policy:core.definer-only (tanpa policy: hanya fungsi definer)
-alter table bus.handlers enable row level security;  -- policy:core.definer-only (tanpa policy: hanya fungsi definer)
 
 create function bus.emit(p_target text, p_topic text, p_payload jsonb) returns uuid
 language sql security definer set search_path = '' as $$
@@ -129,10 +126,8 @@ begin
       skipped := skipped + 1;
       continue;
     end if;
-    select bh.fn into h from bus.handlers bh where bh.topic = e ->> 'topic';
-    if h is null and e ->> 'topic' = 'rep.row' then
-      h := 'bus.apply_row(jsonb)'::regprocedure;  -- replikasi baris: handler bawaan
-    end if;
+    h := case when e ->> 'topic' = 'rep.row' then 'bus.apply_row(jsonb)'::regprocedure  -- replikasi baris: handler bawaan
+              else to_regprocedure(format('bus_in.%s(jsonb)', replace(e ->> 'topic', '.', '_'))) end;
     if h is null then
       raise exception 'bus_no_handler:%', e ->> 'topic' using errcode = 'P0001';
     end if;
@@ -151,25 +146,13 @@ language sql stable security definer set search_path = '' as $$
 $$;
 
 -- ===== Replikasi baris (pemilik kolom → replika read-only di project lain) =====
--- bus.replicas di project pemilik: kolom miliknya yang dikirim ke target (primary key selalu ikut). Trigger bus.replicate
--- (AFTER INSERT/UPDATE/DELETE, dipasang file tabel) mengirim topic 'rep.row' hanya bila kolom milik sendiri berubah.
+-- Pemilik memasang trigger AFTER INSERT/UPDATE/DELETE ... execute function bus.replicate('<target>:<kolom>,<kolom>', ...):
+-- tiap argumen = satu target + kolom milik project ini yang dikirim (primary key selalu ikut). Konfigurasi di argumen trigger
+-- (DDL) supaya ikut migrasi. Topic 'rep.row' hanya dikirim bila kolom milik sendiri berubah.
 -- Penerima: bus.apply_row upsert kolom yang dikirim saja (kolom milik project lain di baris yang sama tidak tersentuh) atau
 -- delete; flag transaksi bus.applying = on selama penerapan supaya trigger bus.replicate di penerima tidak memantulkannya.
 -- Urutan per baris aman: update baris yang sama terserialisasi row lock, jadi seq outbox = urutan commit baris itu.
--- Reaksi penerima (mis. accrual saat snapshot tiba) didaftarkan eksplisit di bus.replica_hooks, bukan trigger tersembunyi.
-create table bus.replicas (
-  source_table regclass not null,
-  target text not null check (target in ('identity', 'creator', 'brand', 'admin')),
-  columns text[] not null,
-  primary key (source_table, target)
-);
-create table bus.replica_hooks (
-  target_table regclass primary key,
-  fn regprocedure not null  -- fn(op text, row jsonb) returns void, dijalankan setelah baris diterapkan
-);
-alter table bus.replicas enable row level security;  -- policy:core.definer-only (tanpa policy: hanya fungsi definer)
-alter table bus.replica_hooks enable row level security;  -- policy:core.definer-only (tanpa policy: hanya fungsi definer)
-
+-- Reaksi penerima (mis. accrual saat snapshot tiba): fungsi bus_in.<schema>_<tabel>_applied(op text, row jsonb) bila ada.
 create function bus.pk_columns(p_table regclass) returns text[]
 language sql stable set search_path = '' as $$
   select array_agg(a.attname::text order by k.ord)
@@ -190,7 +173,8 @@ begin
   if current_setting('bus.applying', true) = 'on' then
     return null;
   end if;
-  for r in select b.target, b.columns from bus.replicas b where b.source_table = tg_relid order by b.target loop
+  for r in select split_part(a, ':', 1) as target, string_to_array(split_part(a, ':', 2), ',') as columns
+             from unnest(tg_argv) a loop
     continue when tg_op = 'UPDATE' and not exists (select 1 from unnest(r.columns) c where newj -> c is distinct from oldj -> c);
     perform bus.emit(r.target, 'rep.row', jsonb_build_object(
       'table', tg_relid::regclass::text,
@@ -225,13 +209,13 @@ begin
       using p -> 'row';
   end if;
   perform set_config('bus.applying', 'off', true);
-  select rh.fn into h from bus.replica_hooks rh where rh.target_table = t;
+  h := to_regprocedure(format('bus_in.%s_%s_applied(text, jsonb)', split_part(p ->> 'table', '.', 1), split_part(p ->> 'table', '.', 2)));
   if h is not null then
     execute format('select %s($1, $2)', h::regproc) using p ->> 'op', coalesce(p -> 'row', p -> 'key');
   end if;
 end $$;
 
-revoke all on bus.outbox, bus.inbox, bus.handlers, bus.replicas, bus.replica_hooks from anon, authenticated;
+revoke all on bus.outbox, bus.inbox from anon, authenticated;
 revoke execute on function bus.emit(text, text, jsonb), bus.relay(), bus.stuck(), api.bus_receive(text, jsonb), bus.pk_columns(regclass),
   bus.replicate(), bus.apply_row(jsonb) from public;
 grant execute on function api.bus_receive(text, jsonb) to service_role;

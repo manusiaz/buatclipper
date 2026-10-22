@@ -57,14 +57,17 @@ for (const p of ['creator', 'brand']) {
   }
 }
 
-// Protokol bus SQL sama di semua project (pengirim & penerima harus sepakat format batch, idempotensi, urutan).
-const busSql = readFileSync(join(root, 'db/core/supabase/schemas/bus/bus.sql'), 'utf8');
-for (const p of ['creator', 'brand']) {
-  let copy = null;
-  try {
-    copy = readFileSync(join(root, `db/${p}/supabase/schemas/bus/bus.sql`), 'utf8');
-  } catch {}
-  if (copy !== busSql) errors.push(`db/${p}/supabase/schemas/bus/bus.sql: beda dari db/core`);
+// SQL bersama sama di semua project: protokol bus (pengirim & penerima sepakat), helper error/sesi, dan aturan akses
+// (iss identity, admin aal2, role org) — satu definisi untuk semua database.
+for (const f of ['bus/bus.sql', 'ops/_base.sql', 'ops/_auth.sql']) {
+  const src = readFileSync(join(root, 'db/core/supabase/schemas', f), 'utf8');
+  for (const p of ['creator', 'brand']) {
+    let copy = null;
+    try {
+      copy = readFileSync(join(root, `db/${p}/supabase/schemas`, f), 'utf8');
+    } catch {}
+    if (copy !== src) errors.push(`db/${p}/supabase/schemas/${f}: beda dari db/core (jalankan scripts/sync-fn-shared.sh)`);
+  }
 }
 
 if (errors.length) {

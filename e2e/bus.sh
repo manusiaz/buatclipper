@@ -9,9 +9,8 @@ PAIRS="creator:admin brand:admin admin:creator admin:brand creator:brand brand:c
 for t in admin creator brand; do
   q "$t" <<'SQL'
 create table if not exists public.bus_e2e_log (src text, v text, at timestamptz default clock_timestamp());
-create or replace function public.bus_e2e_handler(p jsonb) returns void language sql as
+create or replace function bus_in.uji_ping(p jsonb) returns void language sql as
   $$ insert into public.bus_e2e_log (src, v) values (p ->> 'src', p ->> 'v') $$;
-insert into bus.handlers (topic, fn) values ('uji.ping', 'public.bus_e2e_handler(jsonb)') on conflict do nothing;
 truncate public.bus_e2e_log;
 SQL
 done
@@ -35,7 +34,7 @@ for pr in $PAIRS; do
     echo "✗ $f → $t (diterima: '${got}', terkirim: '${acked}', error: $(q "$f" -c "select last_error from bus.outbox where topic = 'uji.ping' and target = '$t' and last_error is not null limit 1"))"; fail=1; fi
 done
 for t in admin creator brand; do
-  q "$t" -c "delete from bus.handlers where topic = 'uji.ping'" -c "delete from bus.outbox where topic = 'uji.ping'" \
-         -c "delete from bus.inbox where topic = 'uji.ping'" -c "drop function public.bus_e2e_handler(jsonb)" -c "drop table public.bus_e2e_log" >/dev/null
+  q "$t" -c "delete from bus.outbox where topic = 'uji.ping'" -c "delete from bus.inbox where topic = 'uji.ping'" \
+         -c "drop function bus_in.uji_ping(jsonb)" -c "drop table public.bus_e2e_log" >/dev/null
 done
 exit $fail

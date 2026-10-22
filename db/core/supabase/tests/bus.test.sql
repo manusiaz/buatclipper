@@ -2,12 +2,11 @@
 begin;
 select no_plan();
 
-create function public.bus_test_handler(p jsonb) returns void language plpgsql as $$
+create table public.bus_test_log (v text);
+create function bus_in.test_ping(p jsonb) returns void language plpgsql as $$
 begin
   insert into public.bus_test_log (v) values (p ->> 'v');
 end $$;
-create table public.bus_test_log (v text);
-insert into bus.handlers (topic, fn) values ('test.ping', 'public.bus_test_handler(jsonb)');
 
 -- ===== penerima =====
 select is(api.bus_receive('creator', '[{"id":"00000000-0000-0000-0000-0000000000b1","topic":"test.ping","payload":{"v":"a"}},
@@ -67,8 +66,7 @@ select is(bus.relay(), 0, 'tidak ada yang tersisa');
 
 -- ===== replikasi baris =====
 create table public.rep_src (id int primary key, a text, b text not null default 'milik-lain');
-create trigger rep_src_replicate after insert or update or delete on public.rep_src for each row execute function bus.replicate();
-insert into bus.replicas (source_table, target, columns) values ('public.rep_src', 'creator', '{a}');
+create trigger rep_src_replicate after insert or update or delete on public.rep_src for each row execute function bus.replicate('creator:a');
 delete from bus.outbox where target = 'creator';
 insert into public.rep_src (id, a) values (1, 'satu');
 update public.rep_src set b = 'diubah-pemilik-lain' where id = 1;
@@ -82,11 +80,9 @@ select is((select jsonb_agg(payload order by seq) from bus.outbox where target =
 
 -- penerima: tabel replika dengan kolom milik project lain (b) tidak tersentuh upsert parsial; tanpa gema balik
 create table public.rep_dst (id int primary key, a text, b text not null default 'lokal');
-create trigger rep_dst_replicate after insert or update or delete on public.rep_dst for each row execute function bus.replicate();
-insert into bus.replicas (source_table, target, columns) values ('public.rep_dst', 'brand', '{b}');
+create trigger rep_dst_replicate after insert or update or delete on public.rep_dst for each row execute function bus.replicate('brand:b');
 create table public.rep_hook_log (op text, row jsonb);
-create function public.rep_hook(p_op text, p_row jsonb) returns void language sql as $$ insert into public.rep_hook_log values (p_op, p_row) $$;
-insert into bus.replica_hooks (target_table, fn) values ('public.rep_dst', 'public.rep_hook(text, jsonb)');
+create function bus_in.public_rep_dst_applied(p_op text, p_row jsonb) returns void language sql as $$ insert into public.rep_hook_log values (p_op, p_row) $$;
 delete from bus.outbox where target = 'brand';
 select api.bus_receive('creator', '[{"id":"00000000-0000-0000-0000-0000000000c1","topic":"rep.row","payload":{"op":"upsert","key":{"id":7},"row":{"id":7,"a":"dari-pemilik"},"table":"public.rep_dst"}}]');
 update public.rep_dst set b = 'milik-lokal' where id = 7;

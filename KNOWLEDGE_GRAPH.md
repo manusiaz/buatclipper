@@ -330,9 +330,6 @@ Wajib tetap benar setiap perubahan (dicek otomatis saat graph ini dibuat; cek ul
 | `table:trust.score_events` | table | db/core/supabase/schemas/trust/score_events.sql | E-40 score_events |  |
 | `table:bus.outbox` | table | db/core/supabase/schemas/bus/bus.sql | Outbox event antar DB (transactional outbox, urut seq per target, backoff) | identik di creator/brand |
 | `table:bus.inbox` | table | db/core/supabase/schemas/bus/bus.sql | Event yang sudah diterima (dedupe idempoten) | identik di creator/brand |
-| `table:bus.handlers` | table | db/core/supabase/schemas/bus/bus.sql | topic → fungsi handler penerima | identik di creator/brand |
-| `table:bus.replicas` | table | db/core/supabase/schemas/bus/bus.sql | Replikasi baris: tabel + target + kolom milik project ini (trigger bus.replicate) | identik di creator/brand |
-| `table:bus.replica_hooks` | table | db/core/supabase/schemas/bus/bus.sql | Reaksi penerima setelah baris replika diterapkan (mis. accrual) | identik di creator/brand |
 | `job:bus-relay` | job | db/core/supabase/schemas/bus/self.sql | Kirim batch outbox per target lewat pg_net + HMAC (tiap 5 detik) | per project |
 | `api:rpc core.bus_receive` | api | db/core/supabase/schemas/bus/bus.sql | Terapkan batch event dari project lain dalam satu transaksi, idempoten | identik di creator/brand |
 | `table:vault.social-tokens` | table | db/core/supabase/schemas/tracking/vault.sql | Supabase Vault core: token sosmed |  |
@@ -1050,7 +1047,7 @@ Arah: `A --tipe--> B` = A bergantung pada B. `?` = belum terverifikasi.
 | `api:rpc core.buy_pin` | writes | `table:finance.invoices` | db/core/supabase/schemas/api/campaigns.sql:692 (finance.issue_invoice) |
 | `api:rpc core.my_clip_terms` | reads | `table:market.profiles` | db/core/supabase/schemas/api/read_models.sql:153 (trust_score dari market.profiles) |
 | `api:rpc core.claim_campaign` | reads | `table:market.campaigns` | db/core/supabase/schemas/api/campaigns.sql:136 |
-| `api:rpc core.claim_campaign` | reads | `table:market.profiles` | db/core/supabase/schemas/api/_helpers.sql:203 (market.claim_check) |
+| `api:rpc core.claim_campaign` | reads | `table:market.profiles` | db/core/supabase/schemas/api/_helpers.sql:185 (market.claim_check) |
 | `api:rpc core.claim_campaign` | writes | `table:market.claims` | db/core/supabase/schemas/api/campaigns.sql:150 |
 | `api:rpc core.confirm_invoice_payment` | guarded-by | `policy:core.admin-aal2` | db/core/supabase/schemas/finance/invoice_confirm.sql:114 |
 | `api:rpc core.confirm_invoice_payment` | writes | `table:finance.invoices` | db/core/supabase/schemas/finance/invoice_confirm.sql:142 |
@@ -1094,9 +1091,9 @@ Arah: `A --tipe--> B` = A bergantung pada B. `?` = belum terverifikasi.
 | `api:rpc core.link_agency` | writes | `table:market.org_links` | db/core/supabase/schemas/api/org.sql:123 |
 | `api:rpc core.list_campaigns` | reads | `table:finance.reward_pools` | db/core/supabase/schemas/api/campaigns.sql:82 |
 | `api:rpc core.list_campaigns` | reads | `table:market.campaigns` | db/core/supabase/schemas/api/campaigns.sql:90 |
-| `api:rpc core.list_campaigns` | reads | `table:market.claims` | db/core/supabase/schemas/api/_helpers.sql:184 (market.claim_check) |
-| `api:rpc core.list_campaigns` | reads | `table:market.profiles` | db/core/supabase/schemas/api/_helpers.sql:203 (market.claim_check) |
-| `api:rpc core.list_campaigns` | reads | `table:tracking.social_accounts` | db/core/supabase/schemas/api/_helpers.sql:227 (market.claim_check) |
+| `api:rpc core.list_campaigns` | reads | `table:market.claims` | db/core/supabase/schemas/api/_helpers.sql:166 (market.claim_check) |
+| `api:rpc core.list_campaigns` | reads | `table:market.profiles` | db/core/supabase/schemas/api/_helpers.sql:185 (market.claim_check) |
+| `api:rpc core.list_campaigns` | reads | `table:tracking.social_accounts` | db/core/supabase/schemas/api/_helpers.sql:209 (market.claim_check) |
 | `api:rpc core.manage_org` | guarded-by | `policy:core.admin-aal2` | db/core/supabase/schemas/api/org.sql:279 |
 | `api:rpc core.manage_org` | writes | `table:market.org_members` | db/core/supabase/schemas/api/org.sql:318 |
 | `api:rpc core.manage_org` | writes | `table:market.organizations` | db/core/supabase/schemas/api/org.sql:294 |
@@ -1258,8 +1255,8 @@ Arah: `A --tipe--> B` = A bergantung pada B. `?` = belum terverifikasi.
 | `job:broadcast-dispatch` | calls | `fn:enqueue_notification` | db/core/supabase/schemas/ops/broadcast_dispatch.sql:40 |
 | `job:broadcast-dispatch` | writes | `table:ops.broadcasts` | db/core/supabase/schemas/ops/broadcast_dispatch.sql:46 |
 | `job:broadcast-dispatch` | writes | `table:ops.notifications` | db/core/supabase/schemas/ops/broadcast_dispatch.sql:40 (ops.enqueue_notification) |
-| `job:budget-alerts` | calls | `fn:enqueue_notification` | db/core/supabase/schemas/api/_helpers.sql:63 (market.notify_org, dipanggil market/jobs.sql baris 92) |
-| `job:budget-alerts` | writes | `table:ops.notifications` | db/core/supabase/schemas/api/_helpers.sql:63 (market.notify_org → ops.enqueue_notification) |
+| `job:budget-alerts` | calls | `fn:enqueue_notification` | db/core/supabase/schemas/api/_helpers.sql:45 (market.notify_org, dipanggil market/jobs.sql baris 92) |
+| `job:budget-alerts` | writes | `table:ops.notifications` | db/core/supabase/schemas/api/_helpers.sql:45 (market.notify_org → ops.enqueue_notification) |
 | `job:claim-expiry` | calls | `fn:enqueue_notification` | db/core/supabase/schemas/market/claims.sql:37 |
 | `job:claim-expiry` | writes | `table:market.claims` | db/core/supabase/schemas/market/claims.sql:41 |
 | `job:earning-release` | calls | `fn:enqueue_notification` | db/core/supabase/schemas/finance/earnings.sql:507 |
@@ -1509,16 +1506,13 @@ Arah: `A --tipe--> B` = A bergantung pada B. `?` = belum terverifikasi.
 | `table:trust.score_events` | guarded-by | `policy:core.rls-self` | db/core/supabase/schemas/trust/score_events.sql:21 |
 | `table:trust.score_events` | typed-by | `table:market.profiles` | db/core/supabase/schemas/trust/score_events.sql:5 |
 | `table:vault.social-tokens` | guarded-by | `policy:core.definer-only` | db/core/supabase/schemas/tracking/vault.sql:4 |
-| `table:bus.outbox` | guarded-by | `policy:core.definer-only` | db/core/supabase/schemas/bus/bus.sql:40 |
-| `table:bus.inbox` | guarded-by | `policy:core.definer-only` | db/core/supabase/schemas/bus/bus.sql:41 |
-| `table:bus.handlers` | guarded-by | `policy:core.definer-only` | db/core/supabase/schemas/bus/bus.sql:42 |
-| `table:bus.replicas` | guarded-by | `policy:core.definer-only` | db/core/supabase/schemas/bus/bus.sql:170 |
-| `table:bus.replica_hooks` | guarded-by | `policy:core.definer-only` | db/core/supabase/schemas/bus/bus.sql:171 |
-| `job:bus-relay` | writes | `table:bus.outbox` | db/core/supabase/schemas/bus/bus.sql:109 |
-| `job:bus-relay` | calls | `api:fn core/bridge` | db/core/supabase/schemas/bus/bus.sql:104 |
+| `table:bus.outbox` | guarded-by | `policy:core.definer-only` | db/core/supabase/schemas/bus/bus.sql:38 |
+| `table:bus.inbox` | guarded-by | `policy:core.definer-only` | db/core/supabase/schemas/bus/bus.sql:39 |
+| `job:bus-relay` | writes | `table:bus.outbox` | db/core/supabase/schemas/bus/bus.sql:106 |
+| `job:bus-relay` | calls | `api:fn core/bridge` | db/core/supabase/schemas/bus/bus.sql:101 |
 | `api:fn core/bridge` | calls | `api:rpc core.bus_receive` | db/core/supabase/functions/_shared/bus.ts:27 |
-| `api:rpc core.bus_receive` | reads | `table:bus.handlers` | db/core/supabase/schemas/bus/bus.sql:132 |
-| `api:rpc core.bus_receive` | writes | `table:bus.inbox` | db/core/supabase/schemas/bus/bus.sql:140 |
+| `api:rpc core.bus_receive` | reads | `table:bus.inbox` | db/core/supabase/schemas/bus/bus.sql:125 |
+| `api:rpc core.bus_receive` | writes | `table:bus.inbox` | db/core/supabase/schemas/bus/bus.sql:135 |
 | `policy:bridge-hmac` | configured-by | `env:BRIDGE_SECRET_CORE_TO_IDENTITY` | db/core/supabase/functions/_shared/bridge.ts:66 |
 | `policy:bridge-hmac` | configured-by | `env:BRIDGE_SECRET_IDENTITY_TO_CORE` | db/core/supabase/functions/bridge/index.ts:10 |
 | `policy:core.admin-aal2` | typed-by | `fn:custom_access_token_hook` | PRD v0.3.1 §15.5 alur 2 kontrak claim app_roles; kode: ops/_auth.sql baris 12, 18 (claim app_roles dari hook) |
