@@ -268,6 +268,15 @@ select pg_temp.snap((select v::uuid from t_ids where k = 's77b'), 1000);
 select is((select array_agg(demand order by submission_id = (select v::uuid from t_ids where k = 's77b')) from finance.clip_earnings
             where pool_id = '66666666-0000-0000-0000-0000000000d7'), array[1000, 1000]::numeric[],
           'R77: pemicu settlement dan submisi lain dengan Δ sama sama-sama tercatat demand');
+-- R78: poll ulang selama settlement ditunda utuh (counted_views tidak maju); sesudah settlement pertumbuhannya tetap dibayar.
+select pg_temp.snap((select v::uuid from t_ids where k = 's77b'), 2000);
+select is((select counted_views from tracking.submissions where id = (select v::uuid from t_ids where k = 's77b')), 1000::bigint,
+          'R78: poll kedua selama settlement tidak memajukan counted_views');
+update tracking.submissions set last_snapshot_at = clock_timestamp() where campaign_id = '55555555-0000-0000-0000-0000000000d7';
+select finance.finalize_settlements();
+select pg_temp.snap((select v::uuid from t_ids where k = 's77b'), 2000);
+select is((select sum(amount + demand) from finance.clip_earnings where submission_id = (select v::uuid from t_ids where k = 's77b')), 2000::numeric,
+          'R78: settlement kurang peminat → pertumbuhan yang ditunda tetap dibayar sesudahnya (tidak hilang)');
 update tracking.social_accounts set status = 'disconnected' where user_id in ('11111111-0000-0000-0000-000000000d7a', '11111111-0000-0000-0000-000000000d7b');  -- tidak ikut uji eligible
 
 -- K5: raise_rate — rule lama ditutup, rule baru berlaku untuk snapshot sesudahnya

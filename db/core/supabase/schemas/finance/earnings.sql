@@ -186,6 +186,16 @@ begin
   crossed := v >= c.min_views;
 
   perform 1 from finance.reward_pools fp where fp.campaign_id = c.id order by fp.id for update;
+  -- Jatah settlement = snapshot pertama setelah cut-off (§10.5 / settle_pool), jadi bagian tidak bergantung frekuensi poll (R76).
+  -- Poll berikutnya selama settlement itu berjalan ditunda utuh: tidak ada accrual dan counted_views tidak maju, supaya
+  -- pertumbuhannya (termasuk milestone) dihitung sesudah settlement selesai, bukan hilang (R78). Snapshot final tetap dihitung.
+  if not snap.is_final and exists (
+       select 1 from finance.pool_settlements ps join finance.reward_pools rp on rp.id = ps.pool_id
+        where rp.campaign_id = c.id
+          and exists (select 1 from tracking.view_snapshots vs where vs.submission_id = s.id and vs.taken_at >= ps.cutoff_at
+                       and (vs.taken_at, vs.id) < (snap.taken_at, snap.id))) then
+    return;
+  end if;
   for r in select rr.* from market.rate_rules rr
             where rr.campaign_id = c.id and rr.effective_from <= snap.taken_at
               and (rr.effective_to is null or rr.effective_to > snap.taken_at)
@@ -222,11 +232,6 @@ begin
     end if;
 
     if in_settle then
-      -- Jatah settlement = snapshot pertama setelah cut-off (§10.5 / settle_pool); poll berikutnya tidak menambah demand,
-      -- supaya bagian tidak bergantung pada seberapa sering submisi di-poll (R76).
-      continue when exists (select 1 from tracking.view_snapshots vs join finance.pool_settlements ps on ps.pool_id = p.id
-                             where vs.submission_id = s.id and vs.taken_at >= ps.cutoff_at
-                               and (vs.taken_at, vs.id) < (snap.taken_at, snap.id));
       insert into finance.clip_earnings as x (submission_id, rule_id, pool_id, demand, demand_snapshot, views_from, views_to, once_paid)
       values (s.id, r.id, p.id, amt, snap.id, case when view_based then base end, case when view_based then v end, not view_based)
       on conflict (submission_id, rule_id) do update
