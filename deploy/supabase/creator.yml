@@ -1,0 +1,10 @@
+# Stack creator (= db/creator/supabase/config.toml versi self-hosted): tanpa login sendiri (signup mati); token user diverifikasi
+# lewat JWKS bersama (public key identity). Fungsi: bridge (penerima bus, HMAC per pengirim).
+services:
+  functions:
+    environment:
+      IDENTITY_ISSUER: ${IDENTITY_ISSUER}
+      IDENTITY_JWKS_URL: ${IDENTITY_PUBLIC_URL}/auth/v1/.well-known/jwks.json
+      APP_ORIGINS: ${APP_ORIGINS}
+      BUS_SECRET_FROM_ADMIN: ${BUS_SECRET_FROM_ADMIN}
+      BUS_SECRET_FROM_BRAND: ${BUS_SECRET_FROM_BRAND}

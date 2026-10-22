@@ -1,9 +1,14 @@
 #!/usr/bin/env bash
-# Uji bus antar database di stack lokal (scripts/dev-stack.sh): tiap pasangan pengirim→penerima mengirim 2 event lewat
+# Uji bus antar database di stack lokal (scripts/dev-stack.sh) atau server deploy (BUS_DB_PREFIX=deploy): tiap pasangan pengirim→penerima mengirim 2 event lewat
 # outbox → relay pg_net → bridge penerima (HMAC) → bus_receive → handler uji. Lulus bila semua event diterapkan berurutan
 # dan outbox pengirim menandai terkirim. Handler/tabel uji dibersihkan di akhir.
 set -euo pipefail
-declare -A DB=([admin]=supabase_db_clipper-core [creator]=supabase_db_clipper-creator [brand]=supabase_db_clipper-brand)
+# Container DB: default stack lokal (scripts/dev-stack.sh); server deploy/deploy.sh: BUS_DB_PREFIX=deploy → core-db, creator-db, brand-db.
+if [ "${BUS_DB_PREFIX:-}" = deploy ]; then
+  declare -A DB=([admin]=core-db [creator]=creator-db [brand]=brand-db)
+else
+  declare -A DB=([admin]=supabase_db_clipper-core [creator]=supabase_db_clipper-creator [brand]=supabase_db_clipper-brand)
+fi
 q() { docker exec -i "${DB[$1]}" psql -U postgres -d postgres -qAt -v ON_ERROR_STOP=1 "${@:2}"; }
 PAIRS="creator:admin brand:admin admin:creator admin:brand creator:brand brand:creator"
 for t in admin creator brand; do

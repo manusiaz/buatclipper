@@ -18,6 +18,7 @@
   },
   "scripts": {
     "typecheck": "tsc --noEmit -p .",
+    "test": "vitest run --passWithNoTests",
     "gen:icons": "node scripts/gen-icons.mjs"
   },
   "dependencies": {

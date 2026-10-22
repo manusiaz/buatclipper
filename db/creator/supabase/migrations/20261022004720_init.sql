@@ -10,9 +10,9 @@ CREATE SCHEMA "ops";
 
 CREATE SCHEMA "tracking";
 
-CREATE EXTENSION "pg_cron";
+CREATE EXTENSION IF NOT EXISTS "pg_cron";
 
-CREATE EXTENSION "pg_net" SCHEMA "extensions";
+CREATE EXTENSION IF NOT EXISTS "pg_net" SCHEMA "extensions";
 
 CREATE TABLE "bus"."handlers" (
   "topic" text         NOT NULL,

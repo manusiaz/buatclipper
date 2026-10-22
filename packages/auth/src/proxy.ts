@@ -29,7 +29,8 @@ export function buildCsp(nonce: string): string {
     "base-uri 'self'",
     "object-src 'none'",
     "form-action 'self'",
-    dev ? '' : 'upgrade-insecure-requests',
+    // Hanya situs https (produksi); SCHEME=http (uji deploy tanpa sertifikat) akan rusak bila resource dipaksa ke https.
+    !dev && process.env.NEXT_PUBLIC_WEB_URL?.startsWith('https:') ? 'upgrade-insecure-requests' : '',
   ].filter(Boolean).join('; ');
 }
 

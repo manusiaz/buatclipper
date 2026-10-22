@@ -2,6 +2,7 @@
 // Components with state/effects carry 'use client' in their own module; everything else is server-compatible.
 
 export { cn } from './lib/cn';
+export { randomId } from './lib/uuid';
 export {
   formatNumber,
   formatCompact,

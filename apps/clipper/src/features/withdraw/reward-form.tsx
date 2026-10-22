@@ -5,7 +5,7 @@
 import { useMemo, useState, useTransition } from 'react';
 import { useRouter } from 'next/navigation';
 import { useLocale, useTranslations } from 'next-intl';
-import { Alert, Badge, Button, Card, CardDescription, CardHeader, CardTitle, Field, Icon, Input, formatNumber, toast } from '@clipper/ui';
+import { Alert, Badge, Button, Card, CardDescription, CardHeader, CardTitle, Field, Icon, Input, formatNumber, randomId, toast } from '@clipper/ui';
 import type { RecipientField } from '@clipper/clipper-lib/pure';
 import { requestFulfillment } from './actions';
 
@@ -32,7 +32,7 @@ export function RewardForm({ option, disabled }: { option: RewardOption; disable
   const [values, setValues] = useState<Record<string, string>>({});
   const [error, setError] = useState<string | null>(null);
   const [pending, start] = useTransition();
-  const idem = useMemo(() => crypto.randomUUID(), []);
+  const idem = useMemo(randomId, []);
 
   const inline = option.fields.filter((f) => !f.pii);
   const needsRef = option.fields.some((f) => f.pii);

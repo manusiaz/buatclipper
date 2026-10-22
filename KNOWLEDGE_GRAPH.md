@@ -30,6 +30,7 @@ Last verified: b92218e (2026-10-22) — `db reset` kedua project dari rantai mig
 Urut murah → mahal. `.github/workflows/ci.yml` menjalankan perintah yang sama: job `apps` (baris pnpm), `functions` (deno, matrix identity/core) dan `db` (`supabase start` lalu `test db`, `db lint`, `db advisors`, matrix identity/core). Stub pgTAP, `pnpm e2e` dan checker hanya lokal. Ubah perintah di sini dan di CI bersamaan.
 
 ```bash
+deploy/deploy.sh up all         # satu VPS: 4 DB + 5 app + Caddy (HTTPS otomatis); DNS 9 nama → IP VPS (lihat deploy/config.env.example)
 scripts/local-up.sh             # laptop sendiri: cek prasyarat + pnpm install + dev-stack (ulang sekali bila gagal) + pnpm dev; `admin email` = admin_super lokal (akun terpisah)
 scripts/dev-stack.sh            # stack lokal: identity :54321 + core :55321, secret dev, Vault pg_cron, apps/*/.env.local (--reset = db reset)
 deploy/deploy.sh secrets        # self-hosted, mesin admin: secret lengkap + secrets.{identity,core,apps}.env per server
@@ -414,6 +415,8 @@ Wajib tetap benar setiap perubahan (dicek otomatis saat graph ini dibuat; cek ul
 | `config:host.app` | config |  | app.{domain} → project Vercel apps/clipper; host redirect URI OAuth sosmed; Vercel Pro, region Functions sin1 | Vercel / Supabase dashboard + DNS |
 | `config:host.auth` | config |  | auth.{domain} → custom domain project Supabase identity (consent screen Google); aktif sebelum issuer didaftarkan di core | Vercel / Supabase dashboard + DNS |
 | `config:host.brand` | config |  | brand.{domain} → project Vercel apps/brand; Vercel Pro, region Functions sin1 | Vercel / Supabase dashboard + DNS |
+| `config:host.brand-api` | config | deploy/caddy/brand.caddy | brand-api.{domain} → API Supabase brand (org, isi campaign, storage cover/aset); NEXT_PUBLIC_BRAND_DB_URL | DNS A ke server brand |
+| `config:host.creator-api` | config | deploy/caddy/creator.caddy | creator-api.{domain} → API Supabase creator (bridge bus; domain creator di 4DB-4) | DNS A ke server creator |
 | `config:host.www` | config |  | Domain {domain} + www → project Vercel apps/web; Vercel Pro, region Functions sin1 | Vercel / Supabase dashboard + DNS |
 | `config:identity-signing-key` | config |  | Signing key ES256 identity (asimetris, ber-kid; syarat Custom OIDC); private key hanya di identity | Supabase dashboard identity → JWT signing keys |
 | `config:supabase.core` | config | db/core/supabase/config.toml | config.toml core: project_id, port, pgdelta, auth off (signup & provider mati), signing_keys_path sama dengan identity (dev); hosted: compute Small + PITR; Branching tidak dipakai |  |
@@ -447,7 +450,7 @@ Wajib tetap benar setiap perubahan (dicek otomatis saat graph ini dibuat; cek ul
 | `test:rls.access-matrix` | test | db/core/supabase/tests/core_access.test.sql | pgTAP core: RLS per role (anon, clipper, anggota org, admin aal1/aal2, iss lain), state machine, ledger, constraint uang, link laporan, storage, job; bagian identity di db/identity/supabase/tests/identity_access.test.sql |  |
 | `test:spike.oidc-cross-project` | test |  | Spike Fase 0: discovery identity terbaca; JWT identity diterima REST, RLS, Storage core; iss lain ditolak | Fase 0 manual di project hosted (Custom OIDC tidak ada di CLI); lokal: kunci signing sama, iss lain ditolak di core_access.test.sql |
 | `doc:scripts/dev-stack.sh` | doc | scripts/dev-stack.sh | Stack lokal penuh: 2 project Supabase, secret dev Edge Function, Vault pg_cron, apps/*/.env.local |  |
-| `doc:deploy/deploy.sh` | doc | deploy/deploy.sh | Deploy self-hosted per peran server: `up identity` / `up core` / `up apps` (tiga server, disarankan) atau `up all`; compose resmi Supabase (dipin) + override deploy/supabase/*.yml, `deploy.sh secrets` memecah secret per peran (core tanpa PII/private key, app hanya kunci publik), migration + seed + bucket + Vault + issuer, 5 app (app.Dockerfile / APP_IMAGE), Caddy per server (deploy/caddy/*.caddy); `check` (pra-cek peran) dan `backup` (dump DB + file Storage, BACKUP_KEEP_DAYS) |  |
+| `doc:deploy/deploy.sh` | doc | deploy/deploy.sh | Deploy self-hosted 4 DB: `up identity` / `up core` (admin) / `up creator` / `up brand` / `up apps` (server per peran) atau `up all` (satu VPS); compose resmi Supabase (dipin) + override deploy/supabase/*.yml, `deploy.sh secrets` memecah secret per peran (core tanpa PII/private key, creator/brand hanya kunci stack + secret bus pasangannya, app hanya kunci publik; secrets.env lama dilengkapi tanpa mengubah kunci), migration + seed + bucket + Vault (bus_url_/bus_secret_ per target) + issuer, kick antrean bus setelah semua hidup, 5 app (app.Dockerfile / APP_IMAGE), Caddy per server (deploy/caddy/*.caddy); `check` (pra-cek peran) dan `backup` (dump DB + file Storage, BACKUP_KEEP_DAYS). Diuji di sandbox: `up all` (domain uji, SCHEME=http) → e2e roles 20/20 + bus 6/6 |  |
 | `doc:spec/contracts.yaml` | doc | spec/contracts.yaml | Kontrak fungsi SQL & Edge Function (PRD Lampiran A.3); semua sudah ditulis di db/**, berkas belum dipangkas |  |
 | `doc:spec/journeys.yaml` | doc | spec/journeys.yaml | Journey per layar J-C1–C6, J-B1–B3, J-A1–A7, aturan pindah host, menu per app (PRD §6) |  |
 | `doc:spec/kg.yaml` | doc | spec/kg.yaml | Registri 44 entitas (fields = salinan kolom SQL) + state machine S-01–S-06; trigger state machine dibangkitkan spec/gen_states.py |  |
@@ -511,7 +514,7 @@ Arah: `A --tipe--> B` = A bergantung pada B. `?` = belum terverifikasi.
 | `page:accounts/kyc` | writes | `table:bucket.kyc-docs` | apps/accounts/src/features/kyc/actions.ts:16 |
 | `page:accounts/login` | calls | `mod:auth` | PRD v0.3.1 §7 F-C01; kode baris 6 (LoginForm @clipper/auth/components) |
 | `page:accounts/login` | routes-to | `api:GET accounts/auth/callback` | packages/auth/src/actions.ts:52 (googleSignIn redirectTo) |
-| `page:accounts/login` | routes-to | `page:accounts/onboarding` | packages/auth/src/proxy.ts:93 (user baru: guard app → onboarding) |
+| `page:accounts/login` | routes-to | `page:accounts/onboarding` | packages/auth/src/proxy.ts:94 (user baru: guard app → onboarding) |
 | `page:accounts/login` | wrapped-by | `layout:accounts` | apps/accounts/src/app/layout.tsx:20 |
 | `page:accounts/onboarding` | calls | `api:rpc core.ensure_profile` | apps/accounts/src/features/onboarding/actions.ts:67 |
 | `page:accounts/onboarding` | calls | `api:rpc identity.record_consent` | apps/accounts/src/features/onboarding/actions.ts:80 |
@@ -688,7 +691,7 @@ Arah: `A --tipe--> B` = A bergantung pada B. `?` = belum terverifikasi.
 | `layout:clipper` | routes-to | `page:app/share` | apps/clipper/src/app/manifest.ts:19 (share_target) |
 | `page:app/.well-known/assetlinks.json` | configured-by | `env:ANDROID_APP_PACKAGE` | apps/clipper/src/app/.well-known/assetlinks.json/route.ts:7 |
 | `page:app/.well-known/assetlinks.json` | configured-by | `env:ANDROID_CERT_SHA256` | apps/clipper/src/app/.well-known/assetlinks.json/route.ts:7 |
-| `doc:deploy/deploy.sh` | documents | `env:ANDROID_APP_PACKAGE` | deploy/deploy.sh:305 |
+| `doc:deploy/deploy.sh` | documents | `env:ANDROID_APP_PACKAGE` | deploy/deploy.sh:351 |
 | `page:app/social` | configured-by | `env:NEXT_PUBLIC_GOOGLE_CLIENT_ID` | PRD v0.3.1 §15.7 client ID publik (belum di kode: app tidak membaca client ID; URL OAuth dibuat core/social, lihat mod:social) |
 | `page:app/social` | configured-by | `env:NEXT_PUBLIC_META_APP_ID` | PRD v0.3.1 §15.7 client ID publik (belum di kode: app tidak membaca client ID; URL OAuth dibuat core/social, lihat mod:social) |
 | `page:app/social` | configured-by | `env:NEXT_PUBLIC_TIKTOK_CLIENT_KEY` | PRD v0.3.1 §15.7 client ID publik (belum di kode: app tidak membaca client ID; URL OAuth dibuat core/social, lihat mod:social) |
@@ -823,7 +826,7 @@ Arah: `A --tipe--> B` = A bergantung pada B. `?` = belum terverifikasi.
 | `layout:brand` | configured-by | `config:host.brand` | packages/auth/src/index.ts:9 |
 | `layout:brand` | renders | `mod:ui` | apps/brand/src/app/layout.tsx:6 |
 | `layout:brand` | routes-to | `page:accounts/` | apps/brand/src/features/shell/user-menu.tsx:37 |
-| `layout:brand` | routes-to | `page:accounts/login` | packages/auth/src/proxy.ts:83 (loginUrl, next=brand) |
+| `layout:brand` | routes-to | `page:accounts/login` | packages/auth/src/proxy.ts:84 (loginUrl, next=brand) |
 | `layout:brand` | routes-to | `page:brand/` | PRD v0.3.1 §6.6 menu: Pemilih org (org sendiri + klien agency); kode: features/shell/user-menu.tsx baris 40 (href /, pemilih org) |
 | `layout:brand` | routes-to | `page:brand/[org]/billing` | apps/brand/src/app/[org]/layout.tsx:28 |
 | `layout:brand` | routes-to | `page:brand/[org]/campaigns` | apps/brand/src/app/[org]/layout.tsx:26 |
@@ -843,7 +846,7 @@ Arah: `A --tipe--> B` = A bergantung pada B. `?` = belum terverifikasi.
 | `layout:clipper` | routes-to | `page:accounts/` | apps/clipper/src/features/shell/account-menu.tsx:24 |
 | `layout:clipper` | routes-to | `page:app/campaigns` | apps/clipper/src/features/shell/app-chrome.tsx:33 |
 | `layout:clipper` | routes-to | `page:app/leaderboard` | apps/clipper/src/features/shell/account-menu.tsx:46 |
-| `layout:clipper` | routes-to | `page:app/login` | packages/auth/src/proxy.ts:84 |
+| `layout:clipper` | routes-to | `page:app/login` | packages/auth/src/proxy.ts:85 |
 | `layout:clipper` | routes-to | `page:app/notifications` | apps/clipper/src/features/shell/app-chrome.tsx:54 |
 | `layout:clipper` | routes-to | `page:app/offline` | apps/clipper/public/sw.js:36 (fallback service worker, didaftarkan layout.tsx baris 41) |
 | `layout:clipper` | routes-to | `page:app/profile` | apps/clipper/src/features/shell/account-menu.tsx:43 |
@@ -911,7 +914,7 @@ Arah: `A --tipe--> B` = A bergantung pada B. `?` = belum terverifikasi.
 | `mod:social` | configured-by | `env:NEXT_PUBLIC_META_APP_ID` | kode: _shared/social/mod.ts baris 18 (nama asli META_APP_ID) |
 | `mod:social` | configured-by | `env:NEXT_PUBLIC_TIKTOK_CLIENT_KEY` | kode: _shared/social/mod.ts baris 17 (nama asli TIKTOK_CLIENT_KEY) |
 | `api:GET accounts/auth/callback` | calls | `mod:auth` | apps/accounts/src/app/auth/callback/route.ts:1 |
-| `api:GET accounts/auth/callback` | routes-to | `page:accounts/onboarding` | packages/auth/src/proxy.ts:93 (user baru: guard app → onboarding) |
+| `api:GET accounts/auth/callback` | routes-to | `page:accounts/onboarding` | packages/auth/src/proxy.ts:94 (user baru: guard app → onboarding) |
 | `api:GET accounts/auth/callback` | routes-to | `page:app/campaigns` | packages/auth/src/index.ts:33 (safeNext default, routes.ts baris 9) |
 | `api:GET accounts/auth/confirm` | calls | `mod:auth` | apps/accounts/src/app/auth/confirm/route.ts:1 |
 | `api:POST accounts/privacy/export` | calls | `api:fn identity/member-data` | apps/accounts/src/features/privacy/export.ts:24 |
@@ -930,7 +933,7 @@ Arah: `A --tipe--> B` = A bergantung pada B. `?` = belum terverifikasi.
 | `api:GET app/api/oauth/[platform]/start` | calls | `mod:auth` | apps/clipper/src/app/api/oauth/[platform]/start/route.ts:3 |
 | `api:GET app/api/oauth/[platform]/start` | routes-to | `api:GET app/api/oauth/[platform]/callback` | apps/clipper/src/features/social/oauth.ts:16 (redirect_uri, start/route.ts baris 18) |
 | `api:GET app/auth/callback` | calls | `mod:auth` | apps/clipper/src/app/auth/callback/route.ts:1 |
-| `api:GET app/auth/callback` | routes-to | `page:accounts/onboarding` | packages/auth/src/proxy.ts:93 (user baru: guard app → onboarding) |
+| `api:GET app/auth/callback` | routes-to | `page:accounts/onboarding` | packages/auth/src/proxy.ts:94 (user baru: guard app → onboarding) |
 | `api:GET app/auth/callback` | routes-to | `page:app/campaigns` | packages/auth/src/index.ts:33 (safeNext default, routes.ts baris 9) |
 | `api:GET brand/[org]/campaigns/[id]/report.csv` | calls | `mod:auth` | apps/brand/src/app/[org]/campaigns/[id]/report.csv/route.ts:1 |
 | `api:GET brand/[org]/campaigns/[id]/report.csv` | reads | `table:market.campaigns` | apps/brand/src/app/[org]/campaigns/[id]/report.csv/route.ts:15 |
@@ -1665,12 +1668,15 @@ Arah: `A --tipe--> B` = A bergantung pada B. `?` = belum terverifikasi.
 | `doc:scripts/dev-stack.sh` | documents | `config:supabase.core` | scripts/dev-stack.sh:64 |
 | `doc:scripts/dev-stack.sh` | documents | `config:supabase.identity` | scripts/dev-stack.sh:64 |
 | `doc:scripts/dev-stack.sh` | documents | `env:BRIDGE_SECRET_CORE_TO_IDENTITY` | scripts/dev-stack.sh:18 |
-| `doc:deploy/deploy.sh` | documents | `env:BRIDGE_SECRET_CORE_TO_IDENTITY` | deploy/keys.mjs:58 |
-| `doc:deploy/deploy.sh` | documents | `env:BRIDGE_SECRET_IDENTITY_TO_CORE` | deploy/keys.mjs:59 |
-| `doc:deploy/deploy.sh` | documents | `env:PII_HMAC_KEY` | deploy/keys.mjs:60 |
-| `doc:deploy/deploy.sh` | documents | `env:PII_ENC_KEY` | deploy/keys.mjs:61 (PII_ENC_KEYS) |
-| `doc:deploy/deploy.sh` | documents | `env:VAPID_PRIVATE_KEY` | deploy/keys.mjs:66 |
-| `doc:deploy/deploy.sh` | documents | `env:IDENTITY_ISSUER` | deploy/deploy.sh:205 |
+| `doc:deploy/deploy.sh` | documents | `env:BRIDGE_SECRET_CORE_TO_IDENTITY` | deploy/keys.mjs:66 |
+| `doc:deploy/deploy.sh` | documents | `env:BRIDGE_SECRET_IDENTITY_TO_CORE` | deploy/keys.mjs:67 |
+| `doc:deploy/deploy.sh` | documents | `env:PII_HMAC_KEY` | deploy/keys.mjs:68 |
+| `doc:deploy/deploy.sh` | documents | `env:PII_ENC_KEY` | deploy/keys.mjs:69 (PII_ENC_KEYS) |
+| `doc:deploy/deploy.sh` | documents | `env:VAPID_PRIVATE_KEY` | deploy/keys.mjs:74 |
+| `doc:deploy/deploy.sh` | documents | `env:IDENTITY_ISSUER` | deploy/deploy.sh:237 |
+| `doc:deploy/deploy.sh` | documents | `config:host.brand-api` | deploy/deploy.sh:57 (stack_host: <stack>-api.DOMAIN) |
+| `doc:deploy/deploy.sh` | documents | `config:host.creator-api` | deploy/deploy.sh:57 (stack_host: <stack>-api.DOMAIN) |
+| `mod:db-brand` | configured-by | `config:host.brand-api` | deploy/deploy.sh:344 (apps_env) |
 | `doc:deploy/deploy.sh` | documents | `fn:custom_access_token_hook` | deploy/supabase/identity.yml:17 (GOTRUE_HOOK_CUSTOM_ACCESS_TOKEN_URI) |
 | `doc:scripts/dev-stack.sh` | documents | `env:BRIDGE_SECRET_IDENTITY_TO_CORE` | scripts/dev-stack.sh:19 |
 | `doc:scripts/dev-stack.sh` | documents | `env:IDENTITY_ISSUER` | scripts/dev-stack.sh:44 |
@@ -1880,7 +1886,7 @@ Arah: `A --tipe--> B` = A bergantung pada B. `?` = belum terverifikasi.
 | `page:app/.well-known/apple-app-site-association` | calls | `mod:clipper-lib` | apps/clipper/src/app/.well-known/apple-app-site-association/route.ts:1 |
 | `page:app/.well-known/apple-app-site-association` | configured-by | `env:APPLE_TEAM_ID` | apps/clipper/src/app/.well-known/apple-app-site-association/route.ts:7 |
 | `page:app/.well-known/apple-app-site-association` | configured-by | `env:IOS_BUNDLE_ID` | apps/clipper/src/app/.well-known/apple-app-site-association/route.ts:7 |
-| `doc:deploy/deploy.sh` | documents | `env:APPLE_TEAM_ID` | deploy/deploy.sh:306 |
+| `doc:deploy/deploy.sh` | documents | `env:APPLE_TEAM_ID` | deploy/deploy.sh:352 |
 | `api:fn identity/session-handoff` | writes | `table:member.session_handoffs` | db/identity/supabase/schemas/api/svc.sql:178 (api.svc_create_handoff; redeem = svc_redeem_handoff) |
 | `page:accounts/handoff` | calls | `api:fn identity/session-handoff` | apps/accounts/src/lib/handoff.ts:4 |
 | `api:fn identity/bridge` | calls | `mod:apns` | db/identity/supabase/functions/bridge/handler.ts:5 |

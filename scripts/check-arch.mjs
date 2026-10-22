@@ -72,6 +72,20 @@ for (const [f, projects] of [['bus/bus.sql', ['creator', 'brand']], ['ops/_base.
   }
 }
 
+// Migration harus jalan juga di stack self-hosted (deploy/deploy.sh): image Supabase resmi sudah memasang sebagian extension
+// (mis. pg_net), jadi CREATE EXTENSION tanpa IF NOT EXISTS gagal di server walau lolos di CLI lokal.
+for (const p of readdirSync(join(root, 'db'))) {
+  const dir = join(root, 'db', p, 'supabase/migrations');
+  let files = [];
+  try {
+    files = readdirSync(dir);
+  } catch {}
+  for (const f of files) {
+    const bad = readFileSync(join(dir, f), 'utf8').match(/^\s*create extension (?!if not exists)\S+/gim);
+    if (bad) errors.push(`db/${p}/supabase/migrations/${f}: ${bad[0].trim()} — pakai IF NOT EXISTS (stack self-hosted sudah memasangnya)`);
+  }
+}
+
 if (errors.length) {
   console.error(errors.join('\n'));
   process.exit(1);

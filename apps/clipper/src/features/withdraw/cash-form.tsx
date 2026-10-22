@@ -4,7 +4,7 @@
 import { useMemo, useState, useTransition } from 'react';
 import { useRouter } from 'next/navigation';
 import { useLocale, useTranslations } from 'next-intl';
-import { Alert, Button, Field, Input, RadioGroup, formatIDR, formatNumber, toast } from '@clipper/ui';
+import { Alert, Button, Field, Input, RadioGroup, formatIDR, formatNumber, randomId, toast } from '@clipper/ui';
 import { requestPayout } from './actions';
 
 export interface MethodOption {
@@ -43,7 +43,7 @@ export function CashForm({
   const [error, setError] = useState<string | null>(null);
   const [pending, start] = useTransition();
   // Satu kunci per percobaan form: kirim ulang setelah error jaringan tidak membuat payout kedua.
-  const idem = useMemo(() => crypto.randomUUID(), []);
+  const idem = useMemo(randomId, []);
 
   const amount = Number(raw.replace(/\D/g, '')) || 0;
   const chargedFee = channel === 'instant' ? fee : 0;

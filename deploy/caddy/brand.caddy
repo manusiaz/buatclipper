@@ -1,0 +1,4 @@
+# Server brand: API Supabase brand (org, tim, isi campaign, storage cover & aset campaign).
+{$SCHEME}://brand-api.{$DOMAIN} {
+	import supabase_api brand-gw:8000
+}

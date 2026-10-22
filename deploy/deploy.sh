@@ -1,12 +1,14 @@
 #!/usr/bin/env bash
-# Deploy self-hosted Clipper Platform: stack Supabase resmi identity & core + 5 app Next.js + Caddy (HTTPS otomatis Let's
-# Encrypt). Tiga server terpisah (disarankan: data PII identity tidak satu mesin dengan data bisnis core) atau satu server.
+# Deploy self-hosted Clipper Platform: 4 stack Supabase resmi — identity (akun & PII), core (= admin: uang & platform), creator,
+# brand — + 5 app Next.js + Caddy (HTTPS otomatis Let's Encrypt). Server per peran (disarankan: data PII identity tidak satu
+# mesin dengan data bisnis) atau satu server (`up all`).
 # Idempoten: jalankan ulang untuk update (migration baru, fungsi, app).
 #
 #   Mesin admin (sekali):  deploy/deploy.sh secrets   → secrets.env (lengkap, simpan offline) +
 #                          secrets.identity.env / secrets.core.env / secrets.apps.env (hanya yang dibutuhkan server itu)
 #   Server A (identity):   salin secrets.identity.env → deploy/secrets.env, isi deploy/config.env, deploy/deploy.sh up identity
 #   Server B (core):       salin secrets.core.env     → deploy/secrets.env, isi deploy/config.env, deploy/deploy.sh up core
+#   Server creator/brand:  salin secrets.creator.env / secrets.brand.env → deploy/secrets.env, deploy/deploy.sh up creator|brand
 #   Server C (app):        salin secrets.apps.env     → deploy/secrets.env, isi deploy/config.env, deploy/deploy.sh up apps
 #   Satu server:           deploy/deploy.sh up all   (secret dibuat otomatis bila belum ada)
 #   Admin pertama:         deploy/deploy.sh admin email@domain   (di server identity / satu server) → login di admin.{DOMAIN}
@@ -16,11 +18,12 @@
 #                          → deploy/stack/*/backups (dump DB + file Storage, BACKUP_KEEP_DAYS); salin ke luar server
 #   deploy/deploy.sh down [peran] · deploy/deploy.sh status
 #
-# DNS A: auth.{DOMAIN} → server identity, api.{DOMAIN} → server core, {DOMAIN} + accounts./app./brand./admin. → server app.
+# DNS A: auth.{DOMAIN} → server identity, api.{DOMAIN} → server core (admin), creator-api.{DOMAIN} → server creator,
+# brand-api.{DOMAIN} → server brand, {DOMAIN} + accounts./app./brand./admin. → server app. Satu server: semua ke IP yang sama.
 # Syarat tiap server: Docker Engine + compose ≥ 2.24.4 (tag !override), git, port 80/443 terbuka. deploy/secrets.env
 # disimpan terpisah dari backup (tanpa kunci PII/Vault dump tidak terbaca utuh). Studio (dashboard DB) tidak publik:
-# ssh -L 8001:127.0.0.1:8001 server-identity (core: 8002) → http://localhost:800x (user supabase, password
-# {IDENTITY|CORE}_DASHBOARD_PASSWORD di secrets.env).
+# ssh -L 8001:127.0.0.1:8001 server-identity (core: 8002, creator: 8003, brand: 8004) → http://localhost:800x (user supabase,
+# password {IDENTITY|CORE|CREATOR|BRAND}_DASHBOARD_PASSWORD di secrets.env).
 set -euo pipefail
 cd "$(dirname "$0")"
 DEPLOY=$PWD ROOT=$(cd .. && pwd)
@@ -29,8 +32,9 @@ SUPABASE_REF=${SUPABASE_REF:-d897e1462ad33ee9c7daba8cfee8f14e303c0cf5}
 
 CMD=${1:-} ROLE=${2:-all}
 [ "$CMD" = admin ] && { ADMIN_EMAIL=${2:-}; ROLE=identity; }
-case "$ROLE" in all | identity | core | apps) ;; *) echo "peran tidak dikenal: $ROLE (all|identity|core|apps)"; exit 1 ;; esac
-case "$ROLE" in all) STACKS="identity core" SITES="apps identity core" ;; apps) STACKS="" SITES=apps ;; *) STACKS=$ROLE SITES=$ROLE ;; esac
+ALL_STACKS="identity core creator brand"
+case "$ROLE" in all | identity | core | creator | brand | apps) ;; *) echo "peran tidak dikenal: $ROLE (all|identity|core|creator|brand|apps)"; exit 1 ;; esac
+case "$ROLE" in all) STACKS=$ALL_STACKS SITES="apps $ALL_STACKS" ;; apps) STACKS="" SITES=apps ;; *) STACKS=$ROLE SITES=$ROLE ;; esac
 
 load_config() {
   [ -f config.env ] || { echo "deploy/config.env belum ada: cp deploy/config.env.example deploy/config.env lalu isi"; exit 1; }
@@ -47,7 +51,11 @@ load_config() {
   fi
   WEB="$SCHEME://$DOMAIN" ACC="$SCHEME://accounts.$DOMAIN" APP="$SCHEME://app.$DOMAIN" BRAND="$SCHEME://brand.$DOMAIN"
   ADMIN="$SCHEME://admin.$DOMAIN" AUTH="$SCHEME://auth.$DOMAIN" API="$SCHEME://api.$DOMAIN"
+  CREATOR_API="$SCHEME://creator-api.$DOMAIN" BRAND_API="$SCHEME://brand-api.$DOMAIN"
 }
+# Host publik API tiap stack (Caddy deploy/caddy/<stack>.caddy) dan nama stack di bus (core = admin).
+stack_host() { case $1 in identity) echo "auth.$DOMAIN" ;; core) echo "api.$DOMAIN" ;; *) echo "$1-api.$DOMAIN" ;; esac; }
+bus_name() { [ "$1" = core ] && echo admin || echo "$1"; }
 
 node_run() { docker run --rm -u "$(id -u):$(id -g)" -v "$DEPLOY":/w -v "$ROOT/db":/db:ro -w /w node:22-alpine node "$@"; }
 
@@ -56,32 +64,43 @@ node_run() { docker run --rm -u "$(id -u):$(id -g)" -v "$DEPLOY":/w -v "$ROOT/db
 role_keys() {
   case "$1" in
     identity) echo '^(IDENTITY_[A-Z0-9_]+|BRIDGE_SECRET_[A-Z_]+|PII_[A-Z_]+|VAPID_PUBLIC_KEY|VAPID_PRIVATE_KEY|DISBURSE_CALLBACK_TOKEN)=' ;;
-    core) echo '^(CORE_[A-Z0-9_]+|BRIDGE_SECRET_[A-Z_]+|UNSUBSCRIBE_SECRET)=' ;;
-    apps) echo '^(IDENTITY_ANON_KEY|CORE_ANON_KEY|VAPID_PUBLIC_KEY)=' ;;
+    # Secret bus: hanya pasangan yang melibatkan stack ini (pengirim memegang secret ke tiap target, penerima dari tiap pengirim).
+    core) echo '^(CORE_[A-Z0-9_]+|BRIDGE_SECRET_[A-Z_]+|UNSUBSCRIBE_SECRET|BUS_ADMIN_TO_[A-Z]+|BUS_[A-Z]+_TO_ADMIN)=' ;;
+    creator) echo '^(CREATOR_[A-Z0-9_]+|BUS_CREATOR_TO_[A-Z]+|BUS_[A-Z]+_TO_CREATOR)=' ;;
+    brand) echo '^(BRAND_[A-Z0-9_]+|BUS_BRAND_TO_[A-Z]+|BUS_[A-Z]+_TO_BRAND)=' ;;
+    apps) echo '^(IDENTITY_ANON_KEY|CORE_ANON_KEY|BRAND_ANON_KEY|VAPID_PUBLIC_KEY)=' ;;
   esac
 }
 make_secrets() {
-  [ -f secrets.env ] || node_run keys.mjs secrets.env
+  node_run keys.mjs secrets.env   # baru → dibuat; lama → hanya kunci yang belum ada ditambahkan (stack/bus baru)
   local r
-  for r in identity core apps; do (umask 077 && grep -E "$(role_keys "$r")" secrets.env > "secrets.$r.env"); done
+  for r in $ALL_STACKS apps; do (umask 077 && grep -E "$(role_keys "$r")" secrets.env > "secrets.$r.env"); done
 }
 # secrets.env = KEY=value literal (JSON/JWT), dibaca tanpa evaluasi shell.
 load_secrets() {
-  if [ ! -f secrets.env ]; then
-    [ "$ROLE" = all ] || { echo "deploy/secrets.env belum ada: jalankan 'deploy.sh secrets' di mesin admin lalu salin secrets.$ROLE.env ke sini sebagai deploy/secrets.env"; exit 1; }
+  if [ "$ROLE" = all ]; then
     make_secrets
+  elif [ ! -f secrets.env ]; then
+    echo "deploy/secrets.env belum ada: jalankan 'deploy.sh secrets' di mesin admin lalu salin secrets.$ROLE.env ke sini sebagai deploy/secrets.env"; exit 1
   fi
   chmod 600 secrets.env
   while IFS='=' read -r k v; do [ -n "$k" ] && export "$k=$v"; done < secrets.env
   local r need stack_keys="POSTGRES_PASSWORD JWT_SECRET ANON_KEY SERVICE_ROLE_KEY JWT_JWKS SECRET_KEY_BASE VAULT_ENC_KEY
     PG_META_CRYPTO_KEY DASHBOARD_PASSWORD S3_PROTOCOL_ACCESS_KEY_ID S3_PROTOCOL_ACCESS_KEY_SECRET"
-  for r in identity core apps; do
+  local bus_in bus_out
+  for r in $ALL_STACKS apps; do
     [ "$ROLE" = all ] || [ "$ROLE" = "$r" ] || continue
+    bus_in= bus_out=
+    if [[ $r =~ ^(core|creator|brand)$ ]]; then
+      local me=$(bus_name "$r") o
+      for o in admin creator brand; do [ "$o" = "$me" ] || { bus_in+=" BUS_${o^^}_TO_${me^^}"; bus_out+=" BUS_${me^^}_TO_${o^^}"; }; done
+    fi
     case $r in
       identity) need="$(printf 'IDENTITY_%s ' $stack_keys) IDENTITY_JWT_KEYS BRIDGE_SECRET_CORE_TO_IDENTITY BRIDGE_SECRET_IDENTITY_TO_CORE
                       PII_HMAC_KEY PII_ENC_KEYS PII_ENC_KEY_VERSION VAPID_PUBLIC_KEY VAPID_PRIVATE_KEY DISBURSE_CALLBACK_TOKEN" ;;
-      core) need="$(printf 'CORE_%s ' $stack_keys) BRIDGE_SECRET_CORE_TO_IDENTITY BRIDGE_SECRET_IDENTITY_TO_CORE UNSUBSCRIBE_SECRET" ;;
-      apps) need="IDENTITY_ANON_KEY CORE_ANON_KEY VAPID_PUBLIC_KEY" ;;
+      core) need="$(printf 'CORE_%s ' $stack_keys) BRIDGE_SECRET_CORE_TO_IDENTITY BRIDGE_SECRET_IDENTITY_TO_CORE UNSUBSCRIBE_SECRET$bus_in$bus_out" ;;
+      creator | brand) need="$(printf "${r^^}_%s " $stack_keys)$bus_in$bus_out" ;;
+      apps) need="IDENTITY_ANON_KEY CORE_ANON_KEY BRAND_ANON_KEY VAPID_PUBLIC_KEY" ;;
     esac
     for k in $need; do [ -n "${!k:-}" ] || { echo "secrets.env kurang $k untuk peran $r"; exit 1; }; done
   done
@@ -101,14 +120,13 @@ served_hosts() {
   for s in $SITES; do
     case $s in
       apps) echo "$DOMAIN accounts.$DOMAIN app.$DOMAIN brand.$DOMAIN admin.$DOMAIN" ;;
-      identity) echo "auth.$DOMAIN" ;;
-      core) echo "api.$DOMAIN" ;;
+      *) stack_host "$s" ;;
     esac
   done | tr '\n' ' '
 }
-extra_hosts_yaml() { # service... — blok compose extra_hosts untuk auth./api. (dipakai fungsi, Auth, dan app server-side)
+extra_hosts_yaml() { # service... — blok compose extra_hosts untuk host API stack (fungsi, Auth, db/pg_net bus, app server-side)
   local svc h t lines=
-  for h in "auth.$DOMAIN" "api.$DOMAIN"; do t=$(host_target "$h"); [ -n "$t" ] && lines+="      - $h:$t"$'\n'; done
+  for h in $(for p in $ALL_STACKS; do stack_host "$p"; done); do t=$(host_target "$h"); [ -n "$t" ] && lines+="      - $h:$t"$'\n'; done
   echo "services:"
   for svc in "$@"; do
     if [ -n "$lines" ]; then printf '  %s:\n    extra_hosts:\n%s' "$svc" "$lines"; else printf '  %s: {}\n' "$svc"; fi
@@ -133,7 +151,7 @@ fetch_supabase() {
 }
 
 # Satu stack: salin compose resmi (volumes data lama tidak ditimpa), override, .env, fungsi.
-prepare_stack() { # identity|core
+prepare_stack() { # identity|core|creator|brand
   local p=$1 P=${1^^} dir=stack/$1
   mkdir -p "$dir"
   copy_tree stack/.supabase/docker "$dir" --exclude=./volumes/db/data --exclude=./volumes/storage --exclude=./volumes/functions
@@ -145,9 +163,9 @@ prepare_stack() { # identity|core
   while IFS= read -r line; do
     if [[ "$line" =~ ^([A-Z0-9_]+)= ]] && ! grep -q "^${BASH_REMATCH[1]}=" "$e"; then printf '%s\n' "$line" >> "$e"; fi
   done < "$dir/.env.example"
-  [ "$p" = identity ] && pub=$AUTH || pub=$API
+  pub="$SCHEME://$(stack_host "$p")"
   # EXTRA_COMPOSE_FILES (config.env, pisah ':'): override tambahan, mis. docker-compose.s3.yml resmi untuk storage S3.
-  extra_hosts_yaml auth functions > "$dir/clipper.hosts.yml"
+  extra_hosts_yaml auth functions db > "$dir/clipper.hosts.yml"
   setenv "$e" COMPOSE_FILE "docker-compose.yml:clipper.common.yml:clipper.$p.yml:clipper.hosts.yml${EXTRA_COMPOSE_FILES:+:$EXTRA_COMPOSE_FILES}"
   setenv "$e" COMPOSE_PROJECT_NAME "clipper-$p"
   setenv "$e" STACK "$p"
@@ -168,6 +186,14 @@ prepare_stack() { # identity|core
   setenv "$e" IDENTITY_PUBLIC_URL "$AUTH"; setenv "$e" CORE_PUBLIC_URL "$API"
   setenv "$e" BRIDGE_SECRET_CORE_TO_IDENTITY "$BRIDGE_SECRET_CORE_TO_IDENTITY"
   setenv "$e" BRIDGE_SECRET_IDENTITY_TO_CORE "$BRIDGE_SECRET_IDENTITY_TO_CORE"
+  # Penerima bus (fungsi bridge): secret dari tiap pengirim → BUS_SECRET_FROM_<PENGIRIM> (deploy/supabase/<stack>.yml).
+  if [[ $p =~ ^(core|creator|brand)$ ]]; then
+    local me=$(bus_name "$p") o v
+    for o in admin creator brand; do
+      [ "$o" = "$me" ] && continue
+      v="BUS_${o^^}_TO_${me^^}"; setenv "$e" "BUS_SECRET_FROM_${o^^}" "${!v}"
+    done
+  fi
   if [ "$p" = identity ]; then
     setenv "$e" GW_PORT 8001; setenv "$e" DB_PORT 5433
     setenv "$e" JWT_KEYS "$IDENTITY_JWT_KEYS"
@@ -197,9 +223,15 @@ prepare_stack() { # identity|core
     setenv "$e" DISBURSE_PROVIDER "${DISBURSE_PROVIDER:-mock}"
     setenv "$e" VAPID_SUBJECT "mailto:${SMTP_ADMIN_EMAIL:-admin@$DOMAIN}"
     setenv "$e" APP_URL "$APP"; setenv "$e" BRAND_URL "$BRAND"; setenv "$e" ACCOUNTS_URL "$ACC"; setenv "$e" ADMIN_URL "$ADMIN"
+  elif [ "$p" != core ]; then   # creator | brand: tanpa login sendiri, percaya token identity (JWKS bersama)
+    [ "$p" = creator ] && { setenv "$e" GW_PORT 8003; setenv "$e" DB_PORT 5435; setenv "$e" SITE_URL "$APP"; }
+    [ "$p" = brand ] && { setenv "$e" GW_PORT 8004; setenv "$e" DB_PORT 5436; setenv "$e" SITE_URL "$BRAND"; }
+    setenv "$e" STORAGE_FILE_SIZE_LIMIT 524288000   # brand: campaign-assets 500 MiB
+    setenv "$e" DISABLE_SIGNUP true; setenv "$e" ENABLE_EMAIL_SIGNUP false
+    setenv "$e" IDENTITY_ISSUER "$AUTH/auth/v1"
   else
     setenv "$e" GW_PORT 8002; setenv "$e" DB_PORT 5434
-    setenv "$e" STORAGE_FILE_SIZE_LIMIT 524288000   # campaign-assets 500 MiB
+    setenv "$e" STORAGE_FILE_SIZE_LIMIT 524288000
     setenv "$e" SITE_URL "$APP"
     setenv "$e" DISABLE_SIGNUP true; setenv "$e" ENABLE_EMAIL_SIGNUP false
     setenv "$e" IDENTITY_ISSUER "$AUTH/auth/v1"
@@ -279,10 +311,23 @@ SQL
   done
   psql_db "$p" -o /dev/null < "$ROOT/db/$p/supabase/seed.sql"
   node_run buckets.mjs "/db/$p/supabase/config.toml" | psql_db "$p" -o /dev/null
-  if [ "$p" = core ]; then
-    psql_db core -v iss="$AUTH/auth/v1" <<'SQL'
+  if [ "$p" != identity ]; then
+    psql_db "$p" -v iss="$AUTH/auth/v1" <<'SQL'
 update ops.settings set value = to_jsonb(:'iss'::text) where key = 'auth.identity_issuer';
 SQL
+    # Bus pengirim (Vault): URL publik bridge tiap target + secret pasangan; relay pg_cron/pg_net dari container db (extra_hosts).
+    local me=$(bus_name "$p") t tp sec
+    for t in admin creator brand; do
+      [ "$t" = "$me" ] && continue
+      tp=$t; [ "$t" = admin ] && tp=core
+      sec="BUS_${me^^}_TO_${t^^}"
+      psql_db "$p" -tA -o /dev/null -v url="$SCHEME://$(stack_host "$tp")" -v key="${!sec}" -v url_name="bus_url_$t" -v key_name="bus_secret_$t" <<'SQL'
+select vault.update_secret(id, :'url') from vault.secrets where name = :'url_name';
+select vault.create_secret(:'url', :'url_name') where not exists (select 1 from vault.secrets where name = :'url_name');
+select vault.update_secret(id, :'key') from vault.secrets where name = :'key_name';
+select vault.create_secret(:'key', :'key_name') where not exists (select 1 from vault.secrets where name = :'key_name');
+SQL
+    done
   else
     psql_db identity -v web="https://$DOMAIN" <<'SQL'   # legal_versions.url wajib https (CHECK)
 update member.legal_versions set url = :'web' || substr(url, length('https://clipper.localhost') + 1)
@@ -296,6 +341,7 @@ apps_env() {
     echo "APP_IMAGE=${APP_IMAGE:-}"
     echo "NEXT_PUBLIC_IDENTITY_URL=$AUTH"; echo "NEXT_PUBLIC_IDENTITY_PUBLISHABLE_KEY=$IDENTITY_ANON_KEY"
     echo "NEXT_PUBLIC_CORE_URL=$API"; echo "NEXT_PUBLIC_CORE_PUBLISHABLE_KEY=$CORE_ANON_KEY"
+    echo "NEXT_PUBLIC_BRAND_DB_URL=$BRAND_API"; echo "NEXT_PUBLIC_BRAND_DB_PUBLISHABLE_KEY=$BRAND_ANON_KEY"
     echo "NEXT_PUBLIC_COOKIE_DOMAIN=.$DOMAIN"
     echo "NEXT_PUBLIC_WEB_URL=$WEB"; echo "NEXT_PUBLIC_ACCOUNTS_URL=$ACC"; echo "NEXT_PUBLIC_APP_URL=$APP"
     echo "NEXT_PUBLIC_BRAND_URL=$BRAND"; echo "NEXT_PUBLIC_ADMIN_URL=$ADMIN"
@@ -341,7 +387,7 @@ caddy_up() {
 case "$CMD" in
   secrets)
     make_secrets
-    echo "secrets.env (lengkap, simpan offline) + secrets.identity.env / secrets.core.env / secrets.apps.env dibuat"
+    echo "secrets.env (lengkap, simpan offline) + secrets.{identity,core,creator,brand,apps}.env dibuat"
     ;;
   up)
     load_config
@@ -369,6 +415,10 @@ case "$CMD" in
       apps up -d --no-build --remove-orphans
     fi
     caddy_up
+    # Event bus yang gagal selama deploy (stack/Caddy tujuan belum hidup) tertahan backoff s.d. 1 jam → kirim ulang sekarang.
+    for p in $STACKS; do
+      [ "$p" = identity ] || psql_db "$p" -c "update bus.outbox set next_at = now() where sent_at is null and request_id is null and next_at > now()"
+    done
     echo "siap ($ROLE): $(served_hosts)"
     ;;
   down)
@@ -379,7 +429,7 @@ case "$CMD" in
     true
     ;;
   status)
-    for p in identity core; do [ -d "stack/$p" ] && compose "$p" ps --format 'table {{.Name}}\t{{.Status}}'; done
+    for p in $ALL_STACKS; do [ -d "stack/$p" ] && compose "$p" ps --format 'table {{.Name}}\t{{.Status}}'; done
     [ -f .generated/apps.hosts.yml ] && apps ps --format 'table {{.Name}}\t{{.Status}}'
     [ -f .generated/caddy.yml ] && docker compose -f .generated/caddy.yml ps --format 'table {{.Name}}\t{{.Status}}'
     true
@@ -403,7 +453,7 @@ case "$CMD" in
       else echo "  $h → $ip: ${other}BUKAN server ini (di belakang NAT? isi PUBLIC_IP di config.env)"; ok=; fi
       [ -n "$ok" ] || [ "$SCHEME" = http ] || bad=1
     done
-    for h in "auth.$DOMAIN" "api.$DOMAIN"; do   # server lain (bridge, JWKS, fetch app): belum up = wajar saat deploy pertama
+    for h in $(for p in $ALL_STACKS; do stack_host "$p"; done); do   # server lain (bridge, bus, JWKS, fetch app): belum up = wajar saat deploy pertama
       [[ " $(served_hosts) " == *" $h "* ]] && continue
       t=$(peer_ip "$h") add=(); [ -n "$t" ] && add=(--add-host "$h:$t")
       # Jalur yang sama dengan container (PEER_HOSTS → extra_hosts, kosong = DNS); JWKS GoTrue = stack Supabase itu yang menjawab.

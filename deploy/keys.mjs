@@ -1,5 +1,6 @@
-// Secret produksi deploy self-hosted, dibuat sekali ke deploy/secrets.env (sudah ada → tidak disentuh, supaya kunci tidak
-// berubah diam-diam). Dijalankan deploy.sh lewat container node:22-alpine, jadi server cukup punya Docker.
+// Secret produksi deploy self-hosted, dibuat sekali ke deploy/secrets.env. File sudah ada → kunci lama tidak disentuh (tidak
+// berubah diam-diam); hanya kunci yang belum ada (mis. stack creator/brand, secret bus) ditambahkan. Dijalankan deploy.sh
+// lewat container node:22-alpine, jadi server cukup punya Docker.
 //
 // Pemisahan kunci (Invarian identity ↔ core):
 // - Satu pasangan EC P-256: private key HANYA di GoTrue identity (menandatangani token user, kid sama di JWKS kedua stack),
@@ -10,10 +11,9 @@ import crypto from 'node:crypto';
 import fs from 'node:fs';
 
 const out = process.argv[2] ?? 'secrets.env';
-if (fs.existsSync(out)) {
-  console.log(`${out} sudah ada, tidak diubah`);
-  process.exit(0);
-}
+const old = fs.existsSync(out)
+  ? Object.fromEntries(fs.readFileSync(out, 'utf8').split('\n').filter((l) => l.includes('=')).map((l) => [l.slice(0, l.indexOf('=')), l.slice(l.indexOf('=') + 1)]))
+  : null;
 
 const b64u = (buf) => Buffer.from(buf).toString('base64url');
 const rand = (n = 32) => crypto.randomBytes(n).toString('base64url');
@@ -24,16 +24,24 @@ function hs256(secret, payload) {
   return `${data}.${crypto.createHmac('sha256', secret).update(data).digest('base64url')}`;
 }
 
-const { privateKey } = crypto.generateKeyPairSync('ec', { namedCurve: 'P-256' });
-const jwk = privateKey.export({ format: 'jwk' });
-const kid = crypto.randomUUID();
-const ecPublic = { kty: 'EC', kid, use: 'sig', key_ops: ['verify'], alg: 'ES256', ext: true, crv: jwk.crv, x: jwk.x, y: jwk.y };
-const ecPrivate = { ...ecPublic, key_ops: ['sign', 'verify'], d: jwk.d };
+// Pasangan EC identity: dari file lama bila ada (stack baru memverifikasi token dengan public key yang sama).
+let ecPublic, ecPrivate;
+if (old?.IDENTITY_JWT_KEYS) {
+  ecPrivate = JSON.parse(old.IDENTITY_JWT_KEYS).find((k) => k.kty === 'EC');
+  const { d: _d, ...pub } = ecPrivate;
+  ecPublic = { ...pub, key_ops: ['verify'] };
+} else {
+  const { privateKey } = crypto.generateKeyPairSync('ec', { namedCurve: 'P-256' });
+  const jwk = privateKey.export({ format: 'jwk' });
+  ecPublic = { kty: 'EC', kid: crypto.randomUUID(), use: 'sig', key_ops: ['verify'], alg: 'ES256', ext: true, crv: jwk.crv, x: jwk.x, y: jwk.y };
+  ecPrivate = { ...ecPublic, key_ops: ['sign', 'verify'], d: jwk.d };
+}
 
 const iat = Math.floor(Date.now() / 1000);
 const exp = iat + 10 * 365 * 24 * 3600;
 const lines = [];
-for (const p of ['IDENTITY', 'CORE']) {
+// CORE = project admin (nama folder db/core).
+for (const p of ['IDENTITY', 'CORE', 'CREATOR', 'BRAND']) {
   const jwtSecret = rand(48);
   const oct = { kty: 'oct', k: b64u(jwtSecret), alg: 'HS256' };
   lines.push(
@@ -65,5 +73,21 @@ lines.push(
   `VAPID_PUBLIC_KEY=${b64u(ecdh.getPublicKey())}`,
   `VAPID_PRIVATE_KEY=${b64u(ecdh.getPrivateKey())}`,
 );
-fs.writeFileSync(out, `${lines.join('\n')}\n`, { mode: 0o600 });
-console.log(`${out} dibuat`);
+// Bus antar DB: satu secret per pasangan pengirim→penerima (sama dengan scripts/dev-stack.sh).
+const BUS = ['ADMIN', 'CREATOR', 'BRAND', 'IDENTITY'];
+for (const f of BUS) for (const t of BUS) if (f !== t) lines.push(`BUS_${f}_TO_${t}=${rand()}`);
+
+if (!old) {
+  fs.writeFileSync(out, `${lines.join('\n')}\n`, { mode: 0o600 });
+  console.log(`${out} dibuat`);
+} else {
+  // Kunci satu stack ditambahkan utuh atau tidak sama sekali (anon/service key harus cocok dengan JWT_SECRET-nya).
+  const stackOf = (k) => k.match(/^(IDENTITY|CORE|CREATOR|BRAND)_/)?.[1];
+  const missingStacks = new Set(lines.map((l) => l.split('=')[0]).filter((k) => stackOf(k) && !(k in old)).map(stackOf));
+  const add = lines.filter((l) => {
+    const k = l.split('=')[0];
+    return !(k in old) && (!stackOf(k) || missingStacks.has(stackOf(k)));
+  });
+  if (add.length) fs.appendFileSync(out, `${add.join('\n')}\n`);
+  console.log(add.length ? `${out}: ${add.length} kunci baru ditambahkan (${add.map((l) => l.split('=')[0]).join(', ')})` : `${out} sudah lengkap, tidak diubah`);
+}

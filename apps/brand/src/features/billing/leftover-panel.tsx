@@ -2,7 +2,7 @@
 
 import { useState, useTransition } from 'react';
 import { useLocale, useTranslations } from 'next-intl';
-import { Alert, Button, Card, CardContent, CardDescription, CardHeader, CardTitle, Dialog, DialogContent, Field, Input, formatIDR, toast } from '@clipper/ui';
+import { Alert, Button, Card, CardContent, CardDescription, CardHeader, CardTitle, Dialog, DialogContent, Field, Input, formatIDR, randomId, toast } from '@clipper/ui';
 import { useErrorText } from '@/lib/use-error';
 import { requestRefund } from './actions';
 import { emptyDest, RefundDestFields, toDest, type RefundDestConfig } from './refund-dest';
@@ -44,7 +44,7 @@ export function LeftoverPanel({
 
   const openDialog = (row: LeftoverRow, mode: Mode) => {
     setAmount(String(Math.floor(row.leftover)));
-    setDialog({ row, mode, key: crypto.randomUUID() });
+    setDialog({ row, mode, key: randomId() });
   };
 
   return (
