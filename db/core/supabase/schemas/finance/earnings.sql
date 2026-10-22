@@ -180,7 +180,9 @@ begin
   if snap.is_final and v < base then
     perform finance.correct_down(s.id, snap.id, v);
     update tracking.submissions set counted_views = v where id = s.id;
-    return;
+    -- Tidak berhenti di sini: rule yang kursornya masih di bawah views final (pertumbuhan yang tertunda settlement) tetap
+    -- dibayar sampai v lewat loop per rule; rule yang sudah dikoreksi punya kursor = v sehingga Δ-nya 0 (R80).
+    base := v;
   end if;
   if not snap.is_final and snap.taken_at > s.posted_at + make_interval(days => c.view_window_days) then
     return;

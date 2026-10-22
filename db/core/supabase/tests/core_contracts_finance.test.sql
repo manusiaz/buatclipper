@@ -302,6 +302,20 @@ select is((select demand from finance.clip_earnings where submission_id = (selec
 select is((select demand from finance.clip_earnings where submission_id = (select v::uuid from t_ids where k = 's79a')
              and pool_id = '66666666-0000-0000-0000-0000000000da'), 1000::numeric,
           'R79: settlement Rupiah tetap hanya dari snapshot pertama setelah cut-off-nya');
+-- R80: snapshot final yang turun di bawah counted_views tetap membayar pertumbuhan rule yang tertunda settlement.
+select pg_temp.mk_campaign('55555555-0000-0000-0000-0000000000dc', 'r80-final-down', 0);
+select pg_temp.mk_pool('55555555-0000-0000-0000-0000000000dc', '66666666-0000-0000-0000-0000000000dc', 100000, 10000000);
+select pg_temp.mk_rule('55555555-0000-0000-0000-0000000000dc', '66666666-0000-0000-0000-0000000000dc', 'per_1k_views', '{"rate":1000}');
+insert into t_ids select 's80x', pg_temp.mk_sub('55555555-0000-0000-0000-0000000000dc', '11111111-0000-0000-0000-000000000da1', 'v80x');
+insert into t_ids select 's80y', pg_temp.mk_sub('55555555-0000-0000-0000-0000000000dc', '11111111-0000-0000-0000-000000000da2', 'v80y');
+select pg_temp.snap((select v::uuid from t_ids where k = 's80y'), 96000);  -- sisa 4.000 → settlement
+select pg_temp.snap((select v::uuid from t_ids where k = 's80x'), 1000);   -- demand sampai 1.000
+select pg_temp.snap((select v::uuid from t_ids where k = 's80x'), 2000);   -- dilewati (kursor tetap 1.000)
+update tracking.submissions set last_snapshot_at = clock_timestamp() where campaign_id = '55555555-0000-0000-0000-0000000000dc';
+select finance.finalize_settlements();                                      -- sisa cukup: 1.000 dibayar
+select pg_temp.snap((select v::uuid from t_ids where k = 's80x'), 1500, null, true);  -- final turun ke 1.500
+select is((select sum(amount + demand) from finance.clip_earnings where submission_id = (select v::uuid from t_ids where k = 's80x')), 1500::numeric,
+          'R80: final 1.500 < counted_views 2.000 tetap membayar 1.000–1.500 yang tertunda (tidak hilang saat lock)');
 update tracking.social_accounts set status = 'disconnected' where user_id in ('11111111-0000-0000-0000-000000000da1', '11111111-0000-0000-0000-000000000da2');
 
 -- K5: raise_rate — rule lama ditutup, rule baru berlaku untuk snapshot sesudahnya
