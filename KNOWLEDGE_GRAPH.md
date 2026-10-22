@@ -30,6 +30,7 @@ Last verified: b92218e (2026-10-22) — `db reset` kedua project dari rantai mig
 Urut murah → mahal. `.github/workflows/ci.yml` menjalankan perintah yang sama: job `apps` (baris pnpm), `functions` (deno, matrix identity/core) dan `db` (`supabase start` lalu `test db`, `db lint`, `db advisors`, matrix identity/core). Stub pgTAP, `pnpm e2e` dan checker hanya lokal. Ubah perintah di sini dan di CI bersamaan.
 
 ```bash
+scripts/local-up.sh             # laptop sendiri: cek prasyarat + pnpm install + dev-stack (ulang sekali bila gagal) + pnpm dev; `admin email` = admin_super lokal (akun terpisah)
 scripts/dev-stack.sh            # stack lokal: identity :54321 + core :55321, secret dev, Vault pg_cron, apps/*/.env.local (--reset = db reset)
 deploy/deploy.sh secrets        # self-hosted, mesin admin: secret lengkap + secrets.{identity,core,apps}.env per server
 deploy/deploy.sh up identity    # per server: identity | core | apps (atau all = satu server); idempoten, juga untuk update

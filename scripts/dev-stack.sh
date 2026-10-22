@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# Stack lokal penuh: dua project Supabase (identity :54321, core :55321) — network docker terpisah (alias kong/db sama),
+# Stack lokal penuh: empat project Supabase (identity :54321, admin/core :55321, creator :56321, brand :57321) — network docker
+# terpisah (alias kong/db sama),
 # panggilan lintas stack lewat gateway host (host.docker.internal) —, secret dev Edge Function,
 # Vault untuk pg_cron, dan apps/*/.env.local untuk 5 app. Idempoten. Host dev: *.clipper.localhost.
 # Pakai: scripts/dev-stack.sh [--reset]   (--reset = supabase db reset kedua project, data lokal hilang)
