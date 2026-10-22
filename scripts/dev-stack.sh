@@ -25,6 +25,10 @@ VAPID_PUBLIC_KEY=$(echo "$vapid" | python3 -c 'import json,sys;print(json.load(s
 VAPID_PRIVATE_KEY=$(echo "$vapid" | python3 -c 'import json,sys;print(json.load(sys.stdin)["privateKey"])')
 EOF
 fi
+# Bus antar DB: satu secret per pasangan pengirim→penerima (BUS_<DARI>_TO_<KE>); ditambahkan ke file secret lama bila belum ada.
+for f in CREATOR BRAND ADMIN IDENTITY; do for t in CREATOR BRAND ADMIN IDENTITY; do
+  grep -q "^BUS_${f}_TO_${t}=" "$SECRETS" || echo "BUS_${f}_TO_${t}=$(rand)" >> "$SECRETS"
+done; done
 set -a; . "$SECRETS"; set +a
 
 # Kunci signing JWT lokal (ES256), sama untuk kedua project: core memverifikasi JWT identity (produksi: Custom OIDC/JWKS).
@@ -91,6 +95,9 @@ vault 54322 identity_url "http://supabase_kong_clipper-identity:8000"
 vault 54322 identity_secret_key "$ID_SVC"
 vault 55322 core_url "http://supabase_kong_clipper-core:8000"
 vault 55322 core_secret_key "$CORE_SVC"
+# Bus pengirim (Vault): admin(core) → admin loopback uji; target lain ditambah saat project-nya ada.
+vault 55322 bus_url_admin "http://supabase_kong_clipper-core:8000"
+vault 55322 bus_secret_admin "$BUS_ADMIN_TO_ADMIN"
 
 for a in web accounts clipper brand admin; do
   {

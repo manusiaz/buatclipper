@@ -5,6 +5,7 @@
 //  - pg_cron/pg_net (header apikey): reconcile_ids (alur 10), disburse (alur 11), ban_user, notify_admins (alert F-X01)
 //    → diteruskan ke bridge identity.
 import { verifyBridge } from "../_shared/bridge.ts";
+import { handleBusDelivery } from "../_shared/bus.ts";
 import { type Rpc, RpcError } from "../_shared/db.ts";
 import { HttpError, json } from "../_shared/http.ts";
 
@@ -13,6 +14,8 @@ type Payload = Record<string, unknown>;
 export interface BridgeDeps {
   rpc: Rpc;
   inboundSecret: () => string;
+  /** Secret HMAC bus per pengirim (lihat _shared/bus.ts). */
+  busSecret?: (from: string) => string;
   requireApiKey: (req: Request) => Promise<void>;
   identity: (action: string, payload: Payload) => Promise<unknown>;
   /** Hapus foto profil di bucket publik avatars/{user_id}/ lewat Storage API (alur 7, AA-16). */
@@ -170,6 +173,8 @@ export function createBridgeHandler(deps: BridgeDeps): (req: Request) => Promise
   return async (req: Request) => {
     try {
       if (req.method !== "POST") throw new HttpError(405, "method_not_allowed");
+      // Event dari project lain lewat bus (x-bridge-from = pengirim; secret per pengirim).
+      if (req.headers.has("x-bridge-from")) return await handleBusDelivery(req, deps.rpc, deps.busSecret);
       if (req.headers.has("x-bridge-sig")) {
         const msg = await verifyBridge(req, deps.inboundSecret());
         const a = Object.hasOwn(INBOUND, msg.action) ? INBOUND[msg.action] : undefined;

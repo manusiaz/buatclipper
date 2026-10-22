@@ -55,6 +55,22 @@ pnpm e2e:mobile                 # app native (build web Expo disajikan di :3002)
 python3 <skill alaconnect>/scripts/check_graph.py .         # harus berakhir RESULT PASS
 ```
 
+## Arsitektur 4 database (keputusan owner 2026-10-22, sedang dikerjakan)
+
+Pemilik data = tempat data ditulis. Uang hanya bergerak di **admin** (satu ledger double-entry, satu transaksi per accrual/payout/invoice).
+
+| DB | Folder | Pemilik | Tabel (dari core) |
+|---|---|---|---|
+| identity | `db/identity` | akun & PII | tetap (`member.*`, `auth.*`) |
+| creator | `db/creator` | clipper | `market.profiles`, `market.referrals`, `tracking.social_accounts`, `market.claims`, `tracking.submissions`, `tracking.view_snapshots`, inbox notifikasi clipper |
+| brand | `db/brand` | brand & agency | `market.organizations`, `org_members`, `org_invites`, `org_links`, `campaigns` (isi: brief, aset, jadwal, syarat, status), `campaign_assets`, `campaign_invites`, `report_links`, `budget_alerts`, inbox notifikasi brand |
+| admin | `db/admin` (= core lama) | platform & uang | `finance.*` (ledger, clip_earnings, pool_settlements, invoices, payouts, batches, bank_lines, fulfillments, refunds, fee_rules, **reward_pools, reward_codes**), `market.rate_rules`, `market.reward_types`, `trust.*`, `ops.settings/alerts/audit_logs/broadcasts`, `market.categories`, replika ringkas campaign (status, jadwal, window, min_views) untuk accrual. Definisi uang authoritative di sini (brand mengubah lewat RPC ke admin) supaya accrual/raise_rate tidak pernah memakai rate basi |
+
+Lintas DB:
+- **Tulis lintas domain = event** lewat transactional outbox (`bus.outbox` ditulis di transaksi yang sama dengan datanya) → relay pg_cron + pg_net → Edge Function `bus` penerima (HMAC, pola `policy:bridge-hmac`) → `bus.apply` idempoten (`bus.inbox` dedupe per event id, urut per aggregate). Tidak ada transaksi terdistribusi.
+- **Baca lintas domain** = replika read-model di DB yang butuh (mis. katalog campaign di creator untuk claim_check; ekonomi campaign di admin untuk accrual; statistik views/spend di brand untuk dashboard), atau app membaca langsung view `api` DB pemilik dengan JWT user (semua DB percaya issuer identity yang sama).
+- **Aksi admin** pada data domain lain = RPC bridge sinkron ke DB pemilik (HMAC) + audit log di admin.
+
 ## Invarian pemisahan
 
 Wajib tetap benar setiap perubahan (dicek otomatis saat graph ini dibuat; cek ulang tiap task; 1 dan 4 juga dicek `pnpm lint` = `scripts/check-arch.mjs`):
@@ -312,6 +328,11 @@ Wajib tetap benar setiap perubahan (dicek otomatis saat graph ini dibuat; cek ul
 | `table:trust.sanctions` | table | db/core/supabase/schemas/trust/sanctions.sql | §12 sanksi bertingkat per clipper (warn/hold/reverse/suspend/ban) + banding sekali |  |
 | `table:trust.review_decisions` | table | db/core/supabase/schemas/trust/review_decisions.sql | E-19 keputusan review |  |
 | `table:trust.score_events` | table | db/core/supabase/schemas/trust/score_events.sql | E-40 score_events |  |
+| `table:bus.outbox` | table | db/core/supabase/schemas/bus/bus.sql | Outbox event antar DB (transactional outbox, urut seq per target, backoff) | identik di creator/brand |
+| `table:bus.inbox` | table | db/core/supabase/schemas/bus/bus.sql | Event yang sudah diterima (dedupe idempoten) | identik di creator/brand |
+| `table:bus.handlers` | table | db/core/supabase/schemas/bus/bus.sql | topic → fungsi handler penerima | identik di creator/brand |
+| `job:bus-relay` | job | db/core/supabase/schemas/bus/self.sql | Kirim batch outbox per target lewat pg_net + HMAC (tiap 5 detik) | per project |
+| `api:rpc core.bus_receive` | api | db/core/supabase/schemas/bus/bus.sql | Terapkan batch event dari project lain dalam satu transaksi, idempoten | identik di creator/brand |
 | `table:vault.social-tokens` | table | db/core/supabase/schemas/tracking/vault.sql | Supabase Vault core: token sosmed |  |
 | `policy:bridge-hmac` | policy | db/core/supabase/functions/_shared/bridge.ts | Panggilan lintas project wajib tanda tangan HMAC per arah (x-bridge-ts + x-bridge-sig, skew 300 detik); salinan identity di db/identity/supabase/functions/_shared/bridge.ts |  |
 | `policy:core.admin-aal2` | policy | db/core/supabase/schemas/ops/_auth.sql | Claim app_roles admin_* + aal2 (tanpa IP allowlist: IP klien belum terbukti bisa dipercaya) |  |
@@ -890,7 +911,7 @@ Arah: `A --tipe--> B` = A bergantung pada B. `?` = belum terverifikasi.
 | `api:GET brand/[org]/campaigns/[id]/report.csv` | reads | `table:tracking.view_snapshots` | apps/brand/src/app/[org]/campaigns/[id]/report.csv/route.ts:42 |
 | `api:GET identity/.well-known/openid-configuration` | reads | `config:identity-signing-key` | PRD v0.3.1 §15.6 public key di JWKS |
 | `api:fn core/bridge` | configured-by | `env:BRIDGE_SECRET_IDENTITY_TO_CORE` | db/core/supabase/functions/bridge/index.ts:10 |
-| `api:fn core/bridge` | guarded-by | `policy:bridge-hmac` | db/core/supabase/functions/bridge/handler.ts:174 |
+| `api:fn core/bridge` | guarded-by | `policy:bridge-hmac` | db/core/supabase/functions/bridge/handler.ts:179 |
 | `api:fn core/bridge` | reads | `table:finance.fulfillments` | db/core/supabase/schemas/api/bridge.sql:281 (rpc bridge_fulfillment_export), db/core/supabase/schemas/api/bridge.sql:268 (rpc bridge_pph21: reward non-tunai terkirim, §5.4) |
 | `api:fn core/bridge` | writes | `table:finance.fulfillments` | db/core/supabase/schemas/api/bridge.sql:307 (rpc bridge_attach_fulfillment_export: klaim di CSV → processing + export_ref) |
 | `api:fn core/bridge` | reads | `table:finance.ledger_entries` | db/core/supabase/schemas/api/bridge.sql:133 (rpc bridge_close_account: cek saldo) |
@@ -904,7 +925,7 @@ Arah: `A --tipe--> B` = A bergantung pada B. `?` = belum terverifikasi.
 | `api:fn core/bridge` | writes | `table:tracking.social_accounts` | db/core/supabase/schemas/api/bridge.sql:152 (rpc bridge_close_account) |
 | `api:fn core/bridge` | writes | `table:trust.fraud_flags` | db/core/supabase/schemas/api/bridge.sql:115 (rpc bridge_raise_fraud_flag → trust.raise_flag) |
 | `api:fn core/bridge` | writes | `table:vault.social-tokens` | db/core/supabase/schemas/api/bridge.sql:149 (rpc bridge_close_account: hapus token) |
-| `api:fn core/bridge` | calls | `api:fn identity/bridge` | db/core/supabase/functions/bridge/handler.ts:152 (cron disburse & ban_user → identity) |
+| `api:fn core/bridge` | calls | `api:fn identity/bridge` | db/core/supabase/functions/bridge/handler.ts:155 (cron disburse & ban_user → identity) |
 | `api:fn core/fulfill` | calls | `ext:brand-webhook` | db/core/supabase/functions/fulfill/fulfill.ts:115 |
 | `api:fn core/fulfill` | guarded-by | `policy:fn-cron-key` | db/core/supabase/functions/fulfill/index.ts:10 |
 | `api:fn core/fulfill` | reads | `table:finance.fulfillments` | db/core/supabase/schemas/api/worker.sql:567 (rpc worker_fulfillments_due) |
@@ -1254,7 +1275,7 @@ Arah: `A --tipe--> B` = A bergantung pada B. `?` = belum terverifikasi.
 | `job:notify-drain` | calls | `api:fn core/notify` | db/core/supabase/schemas/ops/cron.sql:8 |
 | `job:notify-drain` | configured-by | `env:CORE_SECRET_KEY` | db/core/supabase/schemas/ops/enqueue_notification.sql:36 (ops.invoke_function → header apikey) |
 | `job:reconcile-daily` | calls | `api:fn core/bridge` | db/core/supabase/schemas/finance/cron.sql:9 |
-| `job:reconcile-daily` | calls | `api:fn identity/bridge` | db/core/supabase/functions/bridge/handler.ts:117 |
+| `job:reconcile-daily` | calls | `api:fn identity/bridge` | db/core/supabase/functions/bridge/handler.ts:120 |
 | `job:reconcile-daily` | configured-by | `env:BRIDGE_SECRET_CORE_TO_IDENTITY` | db/core/supabase/functions/_shared/bridge.ts:66 |
 | `job:reconcile-daily` | reads | `table:finance.ledger_entries` | db/core/supabase/schemas/finance/reconcile.sql:15 |
 | `job:referral-bonus` | writes | `table:finance.ledger_entries` | db/core/supabase/schemas/finance/referral_bonus.sql:34 (finance.post) |
@@ -1481,6 +1502,14 @@ Arah: `A --tipe--> B` = A bergantung pada B. `?` = belum terverifikasi.
 | `table:trust.score_events` | guarded-by | `policy:core.rls-self` | db/core/supabase/schemas/trust/score_events.sql:21 |
 | `table:trust.score_events` | typed-by | `table:market.profiles` | db/core/supabase/schemas/trust/score_events.sql:5 |
 | `table:vault.social-tokens` | guarded-by | `policy:core.definer-only` | db/core/supabase/schemas/tracking/vault.sql:4 |
+| `table:bus.outbox` | guarded-by | `policy:core.definer-only` | db/core/supabase/schemas/bus/bus.sql:40 |
+| `table:bus.inbox` | guarded-by | `policy:core.definer-only` | db/core/supabase/schemas/bus/bus.sql:41 |
+| `table:bus.handlers` | guarded-by | `policy:core.definer-only` | db/core/supabase/schemas/bus/bus.sql:42 |
+| `job:bus-relay` | writes | `table:bus.outbox` | db/core/supabase/schemas/bus/bus.sql:109 |
+| `job:bus-relay` | calls | `api:fn core/bridge` | db/core/supabase/schemas/bus/bus.sql:104 |
+| `api:fn core/bridge` | calls | `api:rpc core.bus_receive` | db/core/supabase/functions/_shared/bus.ts:27 |
+| `api:rpc core.bus_receive` | reads | `table:bus.handlers` | db/core/supabase/schemas/bus/bus.sql:132 |
+| `api:rpc core.bus_receive` | writes | `table:bus.inbox` | db/core/supabase/schemas/bus/bus.sql:137 |
 | `policy:bridge-hmac` | configured-by | `env:BRIDGE_SECRET_CORE_TO_IDENTITY` | db/core/supabase/functions/_shared/bridge.ts:66 |
 | `policy:bridge-hmac` | configured-by | `env:BRIDGE_SECRET_IDENTITY_TO_CORE` | db/core/supabase/functions/bridge/index.ts:10 |
 | `policy:core.admin-aal2` | typed-by | `fn:custom_access_token_hook` | PRD v0.3.1 §15.5 alur 2 kontrak claim app_roles; kode: ops/_auth.sql baris 12, 18 (claim app_roles dari hook) |
@@ -1564,8 +1593,8 @@ Arah: `A --tipe--> B` = A bergantung pada B. `?` = belum terverifikasi.
 | `test:spike.oidc-cross-project` | tests | `config:tpa-oidc-identity` | PRD v0.3.1 R-14 |
 | `test:spike.oidc-cross-project` | tests | `policy:core.iss-identity` | PRD v0.3.1 R-14 + §15.6 |
 | `test:spike.oidc-cross-project` | tests | `policy:fn-verify-jwt` | PRD v0.3.1 §15.6 |
-| `doc:scripts/dev-stack.sh` | documents | `config:supabase.core` | scripts/dev-stack.sh:58 |
-| `doc:scripts/dev-stack.sh` | documents | `config:supabase.identity` | scripts/dev-stack.sh:58 |
+| `doc:scripts/dev-stack.sh` | documents | `config:supabase.core` | scripts/dev-stack.sh:62 |
+| `doc:scripts/dev-stack.sh` | documents | `config:supabase.identity` | scripts/dev-stack.sh:62 |
 | `doc:scripts/dev-stack.sh` | documents | `env:BRIDGE_SECRET_CORE_TO_IDENTITY` | scripts/dev-stack.sh:17 |
 | `doc:deploy/deploy.sh` | documents | `env:BRIDGE_SECRET_CORE_TO_IDENTITY` | deploy/keys.mjs:58 |
 | `doc:deploy/deploy.sh` | documents | `env:BRIDGE_SECRET_IDENTITY_TO_CORE` | deploy/keys.mjs:59 |
@@ -1575,7 +1604,7 @@ Arah: `A --tipe--> B` = A bergantung pada B. `?` = belum terverifikasi.
 | `doc:deploy/deploy.sh` | documents | `env:IDENTITY_ISSUER` | deploy/deploy.sh:205 |
 | `doc:deploy/deploy.sh` | documents | `fn:custom_access_token_hook` | deploy/supabase/identity.yml:17 (GOTRUE_HOOK_CUSTOM_ACCESS_TOKEN_URI) |
 | `doc:scripts/dev-stack.sh` | documents | `env:BRIDGE_SECRET_IDENTITY_TO_CORE` | scripts/dev-stack.sh:18 |
-| `doc:scripts/dev-stack.sh` | documents | `env:IDENTITY_ISSUER` | scripts/dev-stack.sh:39 |
+| `doc:scripts/dev-stack.sh` | documents | `env:IDENTITY_ISSUER` | scripts/dev-stack.sh:43 |
 | `doc:scripts/dev-stack.sh` | documents | `env:PII_ENC_KEY` | scripts/dev-stack.sh:20 |
 | `doc:scripts/dev-stack.sh` | documents | `env:PII_HMAC_KEY` | scripts/dev-stack.sh:19 |
 | `doc:scripts/dev-stack.sh` | documents | `env:VAPID_PRIVATE_KEY` | scripts/dev-stack.sh:25 |
@@ -2544,7 +2573,8 @@ Keputusan yang sudah diambil — jangan dibahas ulang tanpa alasan baru.
 | 2026-10-20 | Kode verifikasi deskripsi YouTube deterministik sha256(user:channel) tanpa secret | Yang dibuktikan kendali atas deskripsi channel, bukan kerahasiaan kode; kode user lain tidak berguna tanpa akses edit channel; tanpa state/secret baru | `api:fn core/social`, `mod:social` |
 | 2026-10-20 | Nilai awal tier Trust Score: skor ≥ 80 → cap 120% & hold 3 hari, ≥ 60 → cap 100% & hold 5 hari; TikTok cap 80% & hold minimal 10 hari | PRD tidak memberi angka; nilai konservatif, bisa diubah admin (ops.settings) | `fn:accrue_earnings`, `job:earning-release`, `page:app/profile` |
 | 2026-10-15 | D-12: DB dipisah jadi identity (login + PII) dan core (campaign, tracking, uang) | Permintaan owner: database member terpisah; core bocor tidak membuka PII | `ext:supabase-identity`, `ext:supabase-core`, semua `table:member.*` |
-| 2026-10-15 | Core tidak dipecah per fitur; pemisahan di core per schema | accrue_earnings wajib satu transaksi (§10.5 #4) | `fn:accrue_earnings`, `table:finance.*` |
+| 2026-10-22 | DIGANTI owner: core dipecah jadi 3 database fisik — creator, brand, admin (identity tetap) | Permintaan owner (data admin, creator, brand harus terpisah fisik). Syarat §10.5 #4 tetap: ledger + aturan bayar + pool + accrual di satu DB (admin); domain lain bertukar event lewat outbox (lihat Arsitektur 4 database) | semua `table:*` core, `fn:accrue_earnings`, `api:fn */bus` |
+| 2026-10-15 | (diganti 2026-10-22) Core tidak dipecah per fitur; pemisahan di core per schema | accrue_earnings wajib satu transaksi (§10.5 #4) | `fn:accrue_earnings`, `table:finance.*` |
 | 2026-10-15 | D-13: subdomain per kelompok user (5 app), bukan per fitur | 45 fitur di satu trust level; scope PWA satu origin; redirect URI TikTok maks 10 | `config:host.*`, `layout:*` |
 | 2026-10-15 | Satu monorepo, folder per fitur, 1 project Vercel per app | Kode bersama tanpa disalin; deploy & env terpisah | `mod:*`, `comp:CampaignBuilder` |
 | 2026-10-15 | Panggilan lintas project hanya lewat bridge HMAC; tidak ada project yang pegang secret key project lain | Least privilege di batas PII | `api:fn core/bridge`, `api:fn identity/bridge`, `policy:bridge-hmac` |
