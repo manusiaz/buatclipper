@@ -395,6 +395,10 @@ Wajib tetap benar setiap perubahan (dicek otomatis saat graph ini dibuat; cek ul
 | `config:host.www` | config |  | Domain {domain} + www → project Vercel apps/web; Vercel Pro, region Functions sin1 | Vercel / Supabase dashboard + DNS |
 | `config:identity-signing-key` | config |  | Signing key ES256 identity (asimetris, ber-kid; syarat Custom OIDC); private key hanya di identity | Supabase dashboard identity → JWT signing keys |
 | `config:supabase.core` | config | db/core/supabase/config.toml | config.toml core: project_id, port, pgdelta, auth off (signup & provider mati), signing_keys_path sama dengan identity (dev); hosted: compute Small + PITR; Branching tidak dipakai |  |
+| `config:supabase.creator` | config | db/creator/supabase/config.toml | config.toml creator (4 DB): project_id clipper-creator, port 5632x, auth off, bucket avatars, secret bus per pengirim | `db/creator` |
+| `config:supabase.brand` | config | db/brand/supabase/config.toml | config.toml brand (4 DB): project_id clipper-brand, port 5732x, auth off, bucket campaign-covers/assets, secret bus per pengirim | `db/brand` |
+| `api:fn creator/bridge` | api | db/creator/supabase/functions/bridge/index.ts | Terima event bus (HMAC per pengirim) → bus_receive creator |  |
+| `api:fn brand/bridge` | api | db/brand/supabase/functions/bridge/index.ts | Terima event bus (HMAC per pengirim) → bus_receive brand |  |
 | `config:supabase.identity` | config | db/identity/supabase/config.toml | config.toml identity: project_id, port, pgdelta, auth hook, jwt_expiry 600, template OTP {{ .Token }}, bucket privat, signing_keys_path (dev), `[edge_runtime.secrets]`; SMTP Resend & CAPTCHA Turnstile diatur di Dashboard; hosted: compute Small + PITR |  |
 | `config:tpa-oidc-identity` | config |  | Third-Party Auth core → Custom OIDC; issuer = nilai issuer discovery identity setelah custom domain aktif; tidak ada di CLI/config.toml | Supabase dashboard core / Management API (oidc_issuer_url) |
 | `ext:ai-clip` | ext |  | Tool AI Clip (produk terpisah, F-C17) — link keluar dari menu app | — |
@@ -415,6 +419,7 @@ Wajib tetap benar setiap perubahan (dicek otomatis saat graph ini dibuat; cek ul
 | `test:core.full-product` | test | db/core/supabase/tests/core_full_product.test.sql | pgTAP core fitur penuh: campaign privat & template, agency, referral, leaderboard, kode voucher, invoice pinned/managed, instant withdraw, Trust Score, brief terstruktur (format, cek caption, brief terkunci, berkas internal) — 36 tes |  |
 | `test:e2e.cross-host` | test | e2e/journey.cjs | Journey Playwright 390px lintas host: web → accounts (OTP Mailpit, onboarding + avatar) → app (claim, tasks) → accounts/invite → brand; seed e2e/seed.sql (`pnpm e2e`) |  |
 | `test:e2e.mobile` | test | e2e/mobile.cjs | Journey Playwright 390px app native (build web Expo di host app): login OTP → gate onboarding → onboarding di accounts → tab Campaign → claim + snackbar → tab Clip → share (campaign terdeteksi dari link) & tempel link → notifikasi + angka → Dompet → Tarik saldo (checklist) → hub Akun (Referral, Leaderboard, Sosmed, Pengaturan tema gelap) → keluar |  |
+| `test:e2e.bus` | test | e2e/bus.sh | Bus lintas stack sungguhan: 6 pasangan pengirim→penerima (admin/creator/brand), 2 event berurutan + outbox terkirim; handler uji dibersihkan |  |
 | `test:member-data.integrity` | test | db/identity/supabase/tests/identity_access.test.sql | pgTAP identity: consent versi terbaru, hook claim, NIK/rekening ganda, nama rekening = KYC, reviewer KYC aal2, tombstone hapus akun, push — 50 tes |  |
 | `test:pwa.ios-login` | test |  | Fase 0 di iPhone: login OTP & Google di PWA terinstal, buka accounts dari PWA, sesi > 7 hari | Manual Fase 0 di iPhone (belum ada berkas tes) |
 | `test:rls.access-matrix` | test | db/core/supabase/tests/core_access.test.sql | pgTAP core: RLS per role (anon, clipper, anggota org, admin aal1/aal2, iss lain), state machine, ledger, constraint uang, link laporan, storage, job; bagian identity di db/identity/supabase/tests/identity_access.test.sql |  |
@@ -1555,6 +1560,9 @@ Arah: `A --tipe--> B` = A bergantung pada B. `?` = belum terverifikasi.
 | `test:core.full-product` | tests | `table:market.referrals` | db/core/supabase/tests/core_full_product.test.sql:86 |
 | `test:core.full-product` | tests | `table:trust.score_events` | db/core/supabase/tests/core_full_product.test.sql:141 |
 | `test:e2e.cross-host` | configured-by | `doc:scripts/dev-stack.sh` | e2e/journey.cjs:1 |
+| `test:e2e.bus` | configured-by | `doc:scripts/dev-stack.sh` | e2e/bus.sh:2 |
+| `test:e2e.bus` | calls | `api:fn creator/bridge` | e2e/bus.sh:3 |
+| `test:e2e.bus` | calls | `api:fn brand/bridge` | e2e/bus.sh:3 |
 | `test:e2e.cross-host` | configured-by | `doc:deploy/deploy.sh` | e2e/journey.cjs:2 (E2E_* menimpa host & DB untuk stack self-hosted) |
 | `test:e2e.cross-host` | tests | `page:accounts/invite/[token]` | e2e/journey.cjs:114 |
 | `test:e2e.cross-host` | tests | `page:accounts/login` | e2e/journey.cjs:55 |
@@ -1593,8 +1601,8 @@ Arah: `A --tipe--> B` = A bergantung pada B. `?` = belum terverifikasi.
 | `test:spike.oidc-cross-project` | tests | `config:tpa-oidc-identity` | PRD v0.3.1 R-14 |
 | `test:spike.oidc-cross-project` | tests | `policy:core.iss-identity` | PRD v0.3.1 R-14 + §15.6 |
 | `test:spike.oidc-cross-project` | tests | `policy:fn-verify-jwt` | PRD v0.3.1 §15.6 |
-| `doc:scripts/dev-stack.sh` | documents | `config:supabase.core` | scripts/dev-stack.sh:62 |
-| `doc:scripts/dev-stack.sh` | documents | `config:supabase.identity` | scripts/dev-stack.sh:62 |
+| `doc:scripts/dev-stack.sh` | documents | `config:supabase.core` | scripts/dev-stack.sh:63 |
+| `doc:scripts/dev-stack.sh` | documents | `config:supabase.identity` | scripts/dev-stack.sh:63 |
 | `doc:scripts/dev-stack.sh` | documents | `env:BRIDGE_SECRET_CORE_TO_IDENTITY` | scripts/dev-stack.sh:17 |
 | `doc:deploy/deploy.sh` | documents | `env:BRIDGE_SECRET_CORE_TO_IDENTITY` | deploy/keys.mjs:58 |
 | `doc:deploy/deploy.sh` | documents | `env:BRIDGE_SECRET_IDENTITY_TO_CORE` | deploy/keys.mjs:59 |

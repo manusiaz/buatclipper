@@ -15,7 +15,7 @@ function* walk(dir) {
   }
 }
 
-const SECRET = /\b(SUPABASE_SERVICE_ROLE_KEY|SUPABASE_SECRET_KEYS?|PII_[A-Z_]+|BRIDGE_SECRET_[A-Z_]+|RESEND_API_KEY|[A-Z]+_CLIENT_SECRET|[A-Z]+_APP_SECRET|XENDIT_[A-Z_]+|VAPID_PRIVATE_KEY|DISBURSE_CALLBACK_TOKEN|UNSUBSCRIBE_SECRET)\b/;
+const SECRET = /\b(SUPABASE_SERVICE_ROLE_KEY|SUPABASE_SECRET_KEYS?|PII_[A-Z_]+|BRIDGE_SECRET_[A-Z_]+|BUS_[A-Z_]+|RESEND_API_KEY|[A-Z]+_CLIENT_SECRET|[A-Z]+_APP_SECRET|XENDIT_[A-Z_]+|VAPID_PRIVATE_KEY|DISBURSE_CALLBACK_TOKEN|UNSUBSCRIBE_SECRET)\b/;
 const NO_IDENTITY = ['web', 'brand'];
 
 for (const app of readdirSync(join(root, 'apps'))) {
@@ -41,6 +41,30 @@ for (const file of walk(join(root, 'packages'))) {
   const src = readFileSync(file, 'utf8');
   if (/from ['"]@clipper\/app-/.test(src)) errors.push(`${relative(root, file)}: package tidak boleh import app`);
   if (SECRET.test(src) && !file.includes('/scripts/')) errors.push(`${relative(root, file)}: package app tidak boleh membaca secret`);
+}
+
+// Kode Edge Function bersama: salinan di project creator/brand harus sama persis dengan sumbernya di core
+// (scripts/sync-fn-shared.sh), supaya protokol bridge/bus tidak menyimpang antar database.
+const SHARED_FN = ['http.ts', 'bridge.ts', 'db.ts', 'bus.ts'];
+for (const p of ['creator', 'brand']) {
+  for (const f of SHARED_FN) {
+    const src = readFileSync(join(root, 'db/core/supabase/functions/_shared', f), 'utf8');
+    let copy = null;
+    try {
+      copy = readFileSync(join(root, `db/${p}/supabase/functions/_shared`, f), 'utf8');
+    } catch {}
+    if (copy !== src) errors.push(`db/${p}/supabase/functions/_shared/${f}: beda dari db/core (jalankan scripts/sync-fn-shared.sh)`);
+  }
+}
+
+// Protokol bus SQL sama di semua project (pengirim & penerima harus sepakat format batch, idempotensi, urutan).
+const busSql = readFileSync(join(root, 'db/core/supabase/schemas/bus/bus.sql'), 'utf8');
+for (const p of ['creator', 'brand']) {
+  let copy = null;
+  try {
+    copy = readFileSync(join(root, `db/${p}/supabase/schemas/bus/bus.sql`), 'utf8');
+  } catch {}
+  if (copy !== busSql) errors.push(`db/${p}/supabase/schemas/bus/bus.sql: beda dari db/core`);
 }
 
 if (errors.length) {

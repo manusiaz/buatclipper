@@ -37,7 +37,7 @@ if [ ! -f "$KEYS" ]; then
   mkdir -p db/identity/supabase/dev-keys db/core/supabase/dev-keys
   supabase gen signing-key --algorithm ES256 2>/dev/null | python3 -c 'import json,sys; json.dump([json.load(sys.stdin)], sys.stdout)' > "$KEYS"
 fi
-cp "$KEYS" db/core/supabase/dev-keys/signing_keys.json
+for p in core creator brand; do mkdir -p "db/$p/supabase/dev-keys"; cp "$KEYS" "db/$p/supabase/dev-keys/signing_keys.json"; done
 
 # Nilai non-rahasia. Lintas stack: host.docker.internal:<port host>; dalam stack sendiri: nama container.
 export IDENTITY_ISSUER="http://127.0.0.1:54321/auth/v1"
@@ -58,7 +58,8 @@ for v in TIKTOK_CLIENT_KEY TIKTOK_CLIENT_SECRET META_APP_ID META_APP_SECRET GOOG
   export "$v=${!v:-}"
 done
 
-for p in identity core; do
+bash scripts/sync-fn-shared.sh
+for p in identity core creator brand; do
   supabase start --workdir "db/$p" -x vector,logflare,studio,imgproxy >/dev/null
   # Setelah Docker/mesin restart hanya container db yang hidup lagi; `supabase start` menganggap stack sudah jalan.
   if [ "$(docker inspect -f '{{.State.Running}}' "supabase_edge_runtime_clipper-$p" 2>/dev/null)" != true ]; then
@@ -70,7 +71,7 @@ done
 
 # Container edge runtime tidak selalu punya akses internet: unduh paket npm di host lalu salin ke cache Deno container.
 DENO_NPM="$(deno info --json | python3 -c 'import json,sys; print(json.load(sys.stdin)["denoDir"])')/npm"
-for p in identity core; do
+for p in identity core creator brand; do
   (cd "db/$p/supabase/functions" && deno cache */index.ts >/dev/null)
   docker exec "supabase_edge_runtime_clipper-$p" mkdir -p /root/.cache/deno/npm
   docker cp "$DENO_NPM/registry.npmjs.org" "supabase_edge_runtime_clipper-$p:/root/.cache/deno/npm/" >/dev/null
@@ -95,9 +96,16 @@ vault 54322 identity_url "http://supabase_kong_clipper-identity:8000"
 vault 54322 identity_secret_key "$ID_SVC"
 vault 55322 core_url "http://supabase_kong_clipper-core:8000"
 vault 55322 core_secret_key "$CORE_SVC"
-# Bus pengirim (Vault): admin(core) → admin loopback uji; target lain ditambah saat project-nya ada.
-vault 55322 bus_url_admin "http://supabase_kong_clipper-core:8000"
-vault 55322 bus_secret_admin "$BUS_ADMIN_TO_ADMIN"
+# Bus pengirim (Vault): URL Kong target + secret pasangan pengirim→penerima. Lintas stack lewat gateway host; admin(core) juga
+# ke dirinya sendiri (loopback uji). Port DB / API: identity 5432x, admin(core) 5532x, creator 5632x, brand 5732x.
+declare -A DBP=([admin]=55322 [creator]=56322 [brand]=57322) APIP=([admin]=55321 [creator]=56321 [brand]=57321)
+for f in admin creator brand; do for t in admin creator brand; do
+  [ "$f" = "$t" ] && [ "$f" != admin ] && continue
+  url="http://host.docker.internal:${APIP[$t]}"; [ "$f" = "$t" ] && url="http://supabase_kong_clipper-core:8000"
+  sec="BUS_${f^^}_TO_${t^^}"
+  vault "${DBP[$f]}" "bus_url_$t" "$url"
+  vault "${DBP[$f]}" "bus_secret_$t" "${!sec}"
+done; done
 
 for a in web accounts clipper brand admin; do
   {
@@ -118,4 +126,4 @@ MH="${MOBILE_HOST:-127.0.0.1}"
   echo "EXPO_PUBLIC_CORE_URL=http://$MH:55321"; echo "EXPO_PUBLIC_CORE_PUBLISHABLE_KEY=$CORE_PUB"
   echo "EXPO_PUBLIC_APP_URL=$APP"; echo "EXPO_PUBLIC_ACCOUNTS_URL=$ACC"; echo "EXPO_PUBLIC_BRAND_URL=$BRAND"; echo "EXPO_PUBLIC_WEB_URL=$WEB"
 } > apps/mobile/.env.local
-echo "stack lokal siap: identity http://127.0.0.1:54321 (email: http://127.0.0.1:54324), core http://127.0.0.1:55321"
+echo "stack lokal siap: identity http://127.0.0.1:54321 (email: http://127.0.0.1:54324), admin(core) http://127.0.0.1:55321, creator http://127.0.0.1:56321, brand http://127.0.0.1:57321"

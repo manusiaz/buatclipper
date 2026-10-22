@@ -1,0 +1,54 @@
+# Project creator (arsitektur 4 DB, keputusan owner 2026-10-22): creator (profil clipper, akun sosmed, claim, submisi, snapshot views). Tanpa PII, tanpa uang.
+# Login hanya dari identity (Third-Party Auth → Custom OIDC di produksi; lokal: signing key dev sama).
+project_id = "clipper-creator"
+
+[api]
+port = 56321
+schemas = ["api"]
+extra_search_path = ["extensions"]
+
+[db]
+port = 56322
+shadow_port = 56320
+
+[db.pooler]
+port = 56329
+
+[studio]
+port = 56323
+
+[local_smtp]
+port = 56324
+
+[analytics]
+port = 56327
+
+[edge_runtime]
+inspector_port = 8085
+
+[auth]
+enable_signup = false
+signing_keys_path = "./dev-keys/signing_keys.json"
+
+[auth.email]
+enable_signup = false
+
+[storage.buckets.avatars]
+public = true
+file_size_limit = "1MiB"
+allowed_mime_types = ["image/jpeg", "image/png", "image/webp"]
+
+[experimental.pgdelta]
+enabled = true
+
+[functions.bridge]
+verify_jwt = false
+
+[edge_runtime.secrets]
+IDENTITY_ISSUER = "env(IDENTITY_ISSUER)"
+IDENTITY_JWKS_URL = "env(IDENTITY_JWKS_URL)"
+APP_ORIGINS = "env(APP_ORIGINS)"
+# Bus antar DB (penerima): secret per pengirim.
+BUS_SECRET_FROM_ADMIN = "env(BUS_ADMIN_TO_CREATOR)"
+BUS_SECRET_FROM_BRAND = "env(BUS_BRAND_TO_CREATOR)"
+BUS_SECRET_FROM_IDENTITY = "env(BUS_IDENTITY_TO_CREATOR)"
