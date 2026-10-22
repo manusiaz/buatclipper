@@ -151,6 +151,8 @@ declare
   entries jsonb := '[]';
   v bigint;
   base bigint;
+  rbase bigint;
+  paid_once boolean;
   crossed boolean;
   view_based boolean;
   raw numeric;
@@ -186,16 +188,6 @@ begin
   crossed := v >= c.min_views;
 
   perform 1 from finance.reward_pools fp where fp.campaign_id = c.id order by fp.id for update;
-  -- Jatah settlement = snapshot pertama setelah cut-off (§10.5 / settle_pool), jadi bagian tidak bergantung frekuensi poll (R76).
-  -- Poll berikutnya selama settlement itu berjalan ditunda utuh: tidak ada accrual dan counted_views tidak maju, supaya
-  -- pertumbuhannya (termasuk milestone) dihitung sesudah settlement selesai, bukan hilang (R78). Snapshot final tetap dihitung.
-  if not snap.is_final and exists (
-       select 1 from finance.pool_settlements ps join finance.reward_pools rp on rp.id = ps.pool_id
-        where rp.campaign_id = c.id
-          and exists (select 1 from tracking.view_snapshots vs where vs.submission_id = s.id and vs.taken_at >= ps.cutoff_at
-                       and (vs.taken_at, vs.id) < (snap.taken_at, snap.id))) then
-    return;
-  end if;
   for r in select rr.* from market.rate_rules rr
             where rr.campaign_id = c.id and rr.effective_from <= snap.taken_at
               and (rr.effective_to is null or rr.effective_to > snap.taken_at)
@@ -203,18 +195,32 @@ begin
             order by rr.pool_id, rr.effective_from, rr.id loop
     select * into ce from finance.clip_earnings x where x.submission_id = s.id and x.rule_id = r.id;
     view_based := r.kind in ('per_1k_views', 'tiered_cpm');
+    -- Kursor per rule (R79): views terakhir yang sudah dibayar/masuk demand rule ini (views_to), lalu versi lineage-nya
+    -- (raise_rate), baru counted_views. Pool/settlement lain tidak menggeser dasar hitung rule ini.
+    rbase := coalesce(ce.views_to, (select max(x.views_to) from finance.clip_earnings x join market.rate_rules r2 on r2.id = x.rule_id
+                                     where x.submission_id = s.id and coalesce(r2.lineage_id, r2.id) = coalesce(r.lineage_id, r.id)),
+                      base);
+    -- Settlement per pool: jatah = snapshot pertama setelah cut-off pool itu (R76); poll berikutnya melewati rule pool itu
+    -- tanpa menggeser kursornya, jadi pertumbuhannya dibayar sesudah settlement (R78) — pool lain tetap jalan (R79).
+    if not snap.is_final and exists (select 1 from finance.pool_settlements ps join tracking.view_snapshots vs on vs.submission_id = s.id
+                                      where ps.pool_id = r.pool_id and vs.taken_at >= ps.cutoff_at
+                                        and (vs.taken_at, vs.id) < (snap.taken_at, snap.id)) then
+      if view_based and ce.submission_id is null then  -- paku kursor sebelum counted_views maju karena pool lain
+        insert into finance.clip_earnings (submission_id, rule_id, pool_id, views_from, views_to)
+        values (s.id, r.id, r.pool_id, rbase, rbase) on conflict do nothing;
+      end if;
+      continue;
+    end if;
+    paid_once := coalesce(ce.once_paid, false) or exists (
+                   select 1 from finance.clip_earnings x join market.rate_rules r2 on r2.id = x.rule_id
+                    where x.submission_id = s.id and x.once_paid and coalesce(r2.lineage_id, r2.id) = coalesce(r.lineage_id, r.id));
     raw := case
       -- raise_rate menutup rule & membuat versi baru (lineage_id sama): versi yang sudah dibayar = sudah dibayar.
-      when r.kind = 'flat_per_post' then
-        case when coalesce(ce.once_paid, false) or exists (
-                    select 1 from finance.clip_earnings x join market.rate_rules r2 on r2.id = x.rule_id
-                     where x.submission_id = s.id and x.once_paid
-                       and coalesce(r2.lineage_id, r2.id) = coalesce(r.lineage_id, r.id)) then 0
-             else (r.params ->> 'amount')::numeric end
+      when r.kind = 'flat_per_post' then case when paid_once then 0 else (r.params ->> 'amount')::numeric end
+      -- milestone: sekali per lineage begitu views ≥ threshold (tidak bergantung poll mana yang melewatinya)
       when r.kind = 'milestone_bonus' then
-        case when crossed and not coalesce(ce.once_paid, false) and base < (r.params ->> 'threshold')::numeric
-                  and v >= (r.params ->> 'threshold')::numeric then (r.params ->> 'amount')::numeric else 0 end
-      when crossed then finance.rule_amount(r.kind, r.params, base, v)
+        case when crossed and not paid_once and v >= (r.params ->> 'threshold')::numeric then (r.params ->> 'amount')::numeric else 0 end
+      when crossed then finance.rule_amount(r.kind, r.params, rbase, v)
       else 0 end;
     continue when coalesce(raw, 0) <= 0;
 
@@ -233,7 +239,7 @@ begin
 
     if in_settle then
       insert into finance.clip_earnings as x (submission_id, rule_id, pool_id, demand, demand_snapshot, views_from, views_to, once_paid)
-      values (s.id, r.id, p.id, amt, snap.id, case when view_based then base end, case when view_based then v end, not view_based)
+      values (s.id, r.id, p.id, amt, snap.id, case when view_based then rbase end, case when view_based then v end, not view_based)
       on conflict (submission_id, rule_id) do update
         set demand = x.demand + excluded.demand, demand_snapshot = excluded.demand_snapshot,
             views_from = coalesce(x.views_from, excluded.views_from), views_to = coalesce(excluded.views_to, x.views_to),
@@ -248,7 +254,7 @@ begin
       finance.e(finance.account('user_wallet', s.user_id, p.reward_type_id), amt, 'accrual', snap.id || ':' || r.id, 'pending'));
     update finance.reward_pools set allocated = allocated + amt where id = p.id;
     insert into finance.clip_earnings as x (submission_id, rule_id, pool_id, amount, views_from, views_to, once_paid)
-    values (s.id, r.id, p.id, amt, case when view_based then base end, case when view_based then v end, not view_based)
+    values (s.id, r.id, p.id, amt, case when view_based then rbase end, case when view_based then v end, not view_based)
     on conflict (submission_id, rule_id) do update
       set amount = x.amount + excluded.amount,
           views_from = coalesce(x.views_from, excluded.views_from), views_to = coalesce(excluded.views_to, x.views_to),

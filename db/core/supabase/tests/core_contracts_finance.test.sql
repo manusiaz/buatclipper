@@ -270,14 +270,39 @@ select is((select array_agg(demand order by submission_id = (select v::uuid from
           'R77: pemicu settlement dan submisi lain dengan Δ sama sama-sama tercatat demand');
 -- R78: poll ulang selama settlement ditunda utuh (counted_views tidak maju); sesudah settlement pertumbuhannya tetap dibayar.
 select pg_temp.snap((select v::uuid from t_ids where k = 's77b'), 2000);
-select is((select counted_views from tracking.submissions where id = (select v::uuid from t_ids where k = 's77b')), 1000::bigint,
-          'R78: poll kedua selama settlement tidak memajukan counted_views');
+select is((select views_to from finance.clip_earnings where submission_id = (select v::uuid from t_ids where k = 's77b')), 1000::bigint,
+          'R78: poll kedua selama settlement tidak memajukan kursor rule pool yang sedang settlement');
 update tracking.submissions set last_snapshot_at = clock_timestamp() where campaign_id = '55555555-0000-0000-0000-0000000000d7';
 select finance.finalize_settlements();
 select pg_temp.snap((select v::uuid from t_ids where k = 's77b'), 2000);
 select is((select sum(amount + demand) from finance.clip_earnings where submission_id = (select v::uuid from t_ids where k = 's77b')), 2000::numeric,
           'R78: settlement kurang peminat → pertumbuhan yang ditunda tetap dibayar sesudahnya (tidak hilang)');
 update tracking.social_accounts set status = 'disconnected' where user_id in ('11111111-0000-0000-0000-000000000d7a', '11111111-0000-0000-0000-000000000d7b');  -- tidak ikut uji eligible
+-- R79: dua pool satu campaign dengan cut-off berbeda — sudah tercatat di settlement pool Rupiah tidak menghalangi snapshot pertama
+-- submisi itu untuk settlement pool Diamonds (kursor per rule).
+insert into market.profiles (id, username, display_name) values
+  ('11111111-0000-0000-0000-000000000da1', 'r79_a', 'R79 A'), ('11111111-0000-0000-0000-000000000da2', 'r79_b', 'R79 B');
+insert into tracking.social_accounts (user_id, platform, external_id, handle, status, platform_created_at) values
+  ('11111111-0000-0000-0000-000000000da1', 'tiktok', 'tt-r79a', '@r79a', 'verified', now() - interval '2 years'),
+  ('11111111-0000-0000-0000-000000000da2', 'tiktok', 'tt-r79b', '@r79b', 'verified', now() - interval '2 years');
+select pg_temp.mk_campaign('55555555-0000-0000-0000-0000000000da', 'r79-two-pools', 0);
+select pg_temp.mk_pool('55555555-0000-0000-0000-0000000000da', '66666666-0000-0000-0000-0000000000da', 100000, 10000000);
+select pg_temp.mk_pool('55555555-0000-0000-0000-0000000000da', '66666666-0000-0000-0000-0000000000db', 1000, 100000, '77777777-0000-0000-0000-000000000002');
+select pg_temp.mk_rule('55555555-0000-0000-0000-0000000000da', '66666666-0000-0000-0000-0000000000da', 'per_1k_views', '{"rate":1000}');
+select pg_temp.mk_rule('55555555-0000-0000-0000-0000000000da', '66666666-0000-0000-0000-0000000000db', 'per_1k_views', '{"rate":1}', p_rt => '77777777-0000-0000-0000-000000000002');
+insert into t_ids select 's79a', pg_temp.mk_sub('55555555-0000-0000-0000-0000000000da', '11111111-0000-0000-0000-000000000da1', 'v79a');
+insert into t_ids select 's79b', pg_temp.mk_sub('55555555-0000-0000-0000-0000000000da', '11111111-0000-0000-0000-000000000da2', 'v79b');
+select pg_temp.snap((select v::uuid from t_ids where k = 's79a'), 96000);   -- Rupiah sisa 4.000 → settlement Rupiah
+select pg_temp.snap((select v::uuid from t_ids where k = 's79a'), 97000);   -- tercatat di settlement Rupiah; Diamonds normal
+select pg_temp.snap((select v::uuid from t_ids where k = 's79b'), 860000);  -- Diamonds sisa 43 → settlement Diamonds
+select pg_temp.snap((select v::uuid from t_ids where k = 's79a'), 98000);   -- pertama sejak cut-off Diamonds
+select is((select demand from finance.clip_earnings where submission_id = (select v::uuid from t_ids where k = 's79a')
+             and pool_id = '66666666-0000-0000-0000-0000000000db'), 1::numeric,
+          'R79: submisi yang sudah ikut settlement Rupiah tetap tercatat di settlement Diamonds (cut-off berbeda)');
+select is((select demand from finance.clip_earnings where submission_id = (select v::uuid from t_ids where k = 's79a')
+             and pool_id = '66666666-0000-0000-0000-0000000000da'), 1000::numeric,
+          'R79: settlement Rupiah tetap hanya dari snapshot pertama setelah cut-off-nya');
+update tracking.social_accounts set status = 'disconnected' where user_id in ('11111111-0000-0000-0000-000000000da1', '11111111-0000-0000-0000-000000000da2');
 
 -- K5: raise_rate — rule lama ditutup, rule baru berlaku untuk snapshot sesudahnya
 select pg_temp.mk_campaign('55555555-0000-0000-0000-0000000000a5', 'k5-raise');

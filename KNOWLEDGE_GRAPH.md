@@ -3,7 +3,7 @@
 > Everything is one system. Every page is a node; every line is a real data or design dependency.
 > Dikelola oleh skill `alaconnect`. Edit inkremental — jangan generate ulang.
 
-Last verified: 319a01b + app native lengkap per DS mobile (IA 4 tab, layar native, widget Android/iOS, Live Activity, universal/App Link, notifikasi berangka, handoff sesi) — lint (check-arch + drift token), typecheck semua workspace, vitest 245, deno identity 132 + core 81, pgTAP identity 172 + core 1031 setelah `db reset` dari migrasi (declarative sync: no changes), build clipper + accounts, expo export ios/android/web, fungsi widget hasil bundle dijalankan terpisah (widget-fns.test.ts), expo prebuild android+ios, e2e 10/10, e2e:roles 20/20 (daftar brand → org → builder → invoice → approve → claim/submit → review → banding → earning → KYC → tarik saldo → dashboard), e2e:mobile 12/12, Codex R53–R78 diperbaiki (2026-10-21)
+Last verified: 319a01b + app native lengkap per DS mobile (IA 4 tab, layar native, widget Android/iOS, Live Activity, universal/App Link, notifikasi berangka, handoff sesi) — lint (check-arch + drift token), typecheck semua workspace, vitest 245, deno identity 132 + core 81, pgTAP identity 172 + core 1033 setelah `db reset` dari migrasi (declarative sync: no changes), build clipper + accounts, expo export ios/android/web, fungsi widget hasil bundle dijalankan terpisah (widget-fns.test.ts), expo prebuild android+ios, e2e 10/10, e2e:roles 20/20 (daftar brand → org → builder → invoice → approve → claim/submit → review → banding → earning → KYC → tarik saldo → dashboard), e2e:mobile 12/12, Codex R53–R79 diperbaiki (2026-10-21)
 
 **Status:** sistem sudah dibangun dan dites. 5 app Next.js 16 (`apps/web`, `apps/accounts`, `apps/clipper`, `apps/brand`, `apps/admin`) di atas `packages/{ui,campaign-builder,clipper-lib,auth,db-core,db-identity,i18n,config}`, plus app native Expo `apps/mobile` (Android + iOS, satu kode). 2 project Supabase (`db/identity`, `db/core`): schema deklaratif, `migrations/` (pg-delta), config.toml, seed.sql. 12 Edge Function: core `bridge`, `fulfill`, `notify`, `refresh-tokens`, `social`, `track-worker`; identity `admin-auth`, `bridge`, `delete-account`, `disburse`, `member-data`, `pii-export`. Tes: pgTAP 6 file (`db/core/supabase/tests` 4, `db/identity/supabase/tests` 2), unit test app/package (`pnpm test`, 38 file `*.test.ts(x)`), unit test Deno (29 file `*_test.ts` di `db/*/supabase/functions`), journey E2E lintas host `e2e/journey.cjs` (Playwright: web → accounts → app → undangan → brand), CI `.github/workflows/ci.yml` (job apps, functions, db per project). Diverifikasi di 7408318: `pnpm lint` ok, `pnpm typecheck` ok, `pnpm test` 197 tes lulus (campaign-builder 69, accounts 32, web 29, admin 24, brand 22, clipper 21), `pnpm build` 5 app ok, Deno fmt/lint/check ok + tes core 70 & identity 82, pgTAP core 727 & identity 107 (stub Postgres 16 dan `supabase test db`), `supabase db lint` (schema app) & `db advisors --type security` bersih, `pnpm e2e` 9/9 langkah 2× di build produksi. Node yang filenya ada punya kolom Path; bukti edge = `file:line` (dicek `check_graph.py`). Bukti yang masih rujukan PRD v0.3.1 = belum ada satu baris kode yang menyebut target, atau kodenya ada di folder route group `(account)`, `(auth)`, `(console)`: regex checker tidak menerima tanda kurung, jadi baris kodenya ditulis `kode baris N` (dicek manual). `(belum di kode)` = edge PRD yang tidak dibangun begitu. Edge `reads` page → table = dependency data logis; di kode jalannya lewat view/fungsi schema `api` (`policy:core.api-only`). Rujukan lintas DB (`table → table` antar project) tidak punya foreign key.
 
@@ -1210,14 +1210,14 @@ Arah: `A --tipe--> B` = A bergantung pada B. `?` = belum terverifikasi.
 | `api:view identity.audit_logs` | guarded-by | `policy:identity.admin-aal2` | db/identity/supabase/schemas/api/views.sql:17 |
 | `api:view identity.audit_logs` | reads | `table:member.audit_logs` | db/identity/supabase/schemas/api/views.sql:19 |
 | `api:view identity.my_recipients` | reads | `table:member.recipient_details` | db/identity/supabase/schemas/api/views.sql:16 |
-| `fn:accrue_earnings` | reads | `table:market.campaigns` | db/core/supabase/schemas/finance/earnings.sql:173 |
-| `fn:accrue_earnings` | reads | `table:market.rate_rules` | db/core/supabase/schemas/finance/earnings.sql:199 |
-| `fn:accrue_earnings` | reads | `table:tracking.submissions` | db/core/supabase/schemas/finance/earnings.sql:162 |
-| `fn:accrue_earnings` | reads | `table:tracking.view_snapshots` | db/core/supabase/schemas/finance/earnings.sql:166 |
-| `fn:accrue_earnings` | writes | `table:finance.ledger_accounts` | db/core/supabase/schemas/finance/earnings.sql:248 (finance.account membuat wallet bila belum ada) |
-| `fn:accrue_earnings` | writes | `table:finance.ledger_entries` | db/core/supabase/schemas/finance/earnings.sql:264 (finance.post) |
-| `fn:accrue_earnings` | writes | `table:finance.reward_pools` | db/core/supabase/schemas/finance/earnings.sql:249 |
-| `fn:accrue_earnings` | writes | `table:tracking.submissions` | db/core/supabase/schemas/finance/earnings.sql:180 |
+| `fn:accrue_earnings` | reads | `table:market.campaigns` | db/core/supabase/schemas/finance/earnings.sql:175 |
+| `fn:accrue_earnings` | reads | `table:market.rate_rules` | db/core/supabase/schemas/finance/earnings.sql:191 |
+| `fn:accrue_earnings` | reads | `table:tracking.submissions` | db/core/supabase/schemas/finance/earnings.sql:164 |
+| `fn:accrue_earnings` | reads | `table:tracking.view_snapshots` | db/core/supabase/schemas/finance/earnings.sql:168 |
+| `fn:accrue_earnings` | writes | `table:finance.ledger_accounts` | db/core/supabase/schemas/finance/earnings.sql:254 (finance.account membuat wallet bila belum ada) |
+| `fn:accrue_earnings` | writes | `table:finance.ledger_entries` | db/core/supabase/schemas/finance/earnings.sql:270 (finance.post) |
+| `fn:accrue_earnings` | writes | `table:finance.reward_pools` | db/core/supabase/schemas/finance/earnings.sql:255 |
+| `fn:accrue_earnings` | writes | `table:tracking.submissions` | db/core/supabase/schemas/finance/earnings.sql:182 |
 | `fn:custom_access_token_hook` | reads | `table:member.consents` | db/identity/supabase/schemas/member/custom_access_token_hook.sql:32 |
 | `fn:custom_access_token_hook` | reads | `table:member.kyc_records` | db/identity/supabase/schemas/member/custom_access_token_hook.sql:26 |
 | `fn:custom_access_token_hook` | reads | `table:member.legal_versions` | db/identity/supabase/schemas/member/custom_access_token_hook.sql:11 |
@@ -1225,8 +1225,8 @@ Arah: `A --tipe--> B` = A bergantung pada B. `?` = belum terverifikasi.
 | `fn:enqueue_notification` | emits | `event:queue.email` | db/core/supabase/schemas/ops/enqueue_notification.sql:20 |
 | `fn:enqueue_notification` | reads | `table:ops.notification_prefs` | db/core/supabase/schemas/ops/enqueue_notification.sql:17 (hanya email promosi; push tetap) |
 | `fn:enqueue_notification` | writes | `table:ops.notifications` | db/core/supabase/schemas/ops/enqueue_notification.sql:14 |
-| `fn:reverse_earning` | writes | `table:finance.ledger_entries` | db/core/supabase/schemas/finance/earnings.sql:350 (finance.post) |
-| `fn:reverse_earning` | writes | `table:finance.reward_pools` | db/core/supabase/schemas/finance/earnings.sql:343 |
+| `fn:reverse_earning` | writes | `table:finance.ledger_entries` | db/core/supabase/schemas/finance/earnings.sql:356 (finance.post) |
+| `fn:reverse_earning` | writes | `table:finance.reward_pools` | db/core/supabase/schemas/finance/earnings.sql:349 |
 | `job:broadcast-dispatch` | calls | `fn:enqueue_notification` | db/core/supabase/schemas/ops/broadcast_dispatch.sql:40 |
 | `job:broadcast-dispatch` | writes | `table:ops.broadcasts` | db/core/supabase/schemas/ops/broadcast_dispatch.sql:46 |
 | `job:broadcast-dispatch` | writes | `table:ops.notifications` | db/core/supabase/schemas/ops/broadcast_dispatch.sql:40 (ops.enqueue_notification) |
@@ -1234,9 +1234,9 @@ Arah: `A --tipe--> B` = A bergantung pada B. `?` = belum terverifikasi.
 | `job:budget-alerts` | writes | `table:ops.notifications` | db/core/supabase/schemas/api/_helpers.sql:63 (market.notify_org → ops.enqueue_notification) |
 | `job:claim-expiry` | calls | `fn:enqueue_notification` | db/core/supabase/schemas/market/claims.sql:37 |
 | `job:claim-expiry` | writes | `table:market.claims` | db/core/supabase/schemas/market/claims.sql:41 |
-| `job:earning-release` | calls | `fn:enqueue_notification` | db/core/supabase/schemas/finance/earnings.sql:487 |
-| `job:earning-release` | writes | `table:finance.ledger_entries` | db/core/supabase/schemas/finance/earnings.sql:485 (finance.post) |
-| `job:earning-release` | reads | `table:finance.fee_rules` | db/core/supabase/schemas/finance/earnings.sql:454 (fee rule efektif campaign → clipper_fee_pct dipotong saat rilis) |
+| `job:earning-release` | calls | `fn:enqueue_notification` | db/core/supabase/schemas/finance/earnings.sql:493 |
+| `job:earning-release` | writes | `table:finance.ledger_entries` | db/core/supabase/schemas/finance/earnings.sql:491 (finance.post) |
+| `job:earning-release` | reads | `table:finance.fee_rules` | db/core/supabase/schemas/finance/earnings.sql:460 (fee rule efektif campaign → clipper_fee_pct dipotong saat rilis) |
 | `job:fraud-device-scan` | calls | `api:fn core/bridge` | db/identity/supabase/functions/bridge/handler.ts:225 |
 | `job:fraud-device-scan` | calls | `api:fn identity/bridge` | db/identity/supabase/schemas/member/cron.sql:17 |
 | `job:fraud-device-scan` | configured-by | `env:BRIDGE_SECRET_IDENTITY_TO_CORE` | db/identity/supabase/functions/_shared/bridge.ts:136 |
@@ -1797,7 +1797,7 @@ Arah: `A --tipe--> B` = A bergantung pada B. `?` = belum terverifikasi.
 | `api:rpc core.mark_batch_paid` | calls | `fn:payout_notice` | db/core/supabase/schemas/finance/payout_flow.sql:257 |
 | `fn:payout_notice` | reads | `table:finance.payouts` | db/core/supabase/schemas/finance/payout_flow.sql:110 |
 | `fn:notify_payout_processing` | reads | `table:ops.settings` | db/core/supabase/schemas/finance/payout_flow.sql:122 |
-| `fn:clip_estimate` | reads | `table:finance.ledger_entries` | db/core/supabase/schemas/finance/earnings.sql:499 |
+| `fn:clip_estimate` | reads | `table:finance.ledger_entries` | db/core/supabase/schemas/finance/earnings.sql:505 |
 | `test:mobile.unit` | tests | `mod:mobile-widget-ios` | apps/mobile/src/widget-fns.test.ts:53 (string fungsi widget dari babel-preset-expo dijalankan di context terpisah) |
 | `test:mobile.unit` | tests | `mod:live-activity` | apps/mobile/src/widget-fns.test.ts:54 |
 | `test:mobile.unit` | tests | `mod:widget-snapshot` | apps/mobile/src/widget-snapshot.test.ts:8 |
@@ -2525,6 +2525,7 @@ Masalah sistem yang ditemukan saat menyusun PRD v0.2 dan saat dicek ulang (v0.2.
 | 2026-10-22 | `fn:accrue_earnings` | Review Codex R76: selama settlement mode tiap poll menambah demand (upsert akumulatif) padahal kontrak settle_pool = snapshot pertama setelah cut-off → bagian pro-rata bergantung frekuensi polling (A dua kali poll dapat 2/3, B 1/3) | diperbaiki: di cabang settlement, submisi yang sudah punya snapshot sejak cut-off tidak menambah demand (termasuk snapshot pertama yang demand-nya nol); pertumbuhan sesudahnya tidak masuk jatah settlement itu; pgTAP core 1028 (asersi baru + 'jatah sama untuk Δ sama' gagal di kode lama) |
 | 2026-10-22 | `fn:accrue_earnings` | Review Codex R77 (efek fix R76 gua): cutoff settlement = now() (awal transaksi) sedangkan snapshot pakai clock_timestamp() → snapshot pemicu settlement terhitung "setelah cut-off", poll berikutnya submisi itu dilewati → clipper lain dengan Δ sama mengambil seluruh sisa | diperbaiki: start_settlement mencatat cutoff_at = clock_timestamp(); pemicu ikut dapat jatah dari poll berikutnya (finalisasi tetap menunggunya); simulasi K4 memakai clock_timestamp seperti worker; pgTAP core 1029 (asersi gagal di kode lama: demand pemicu 0) |
 | 2026-10-22 | `fn:accrue_earnings` | Review Codex R78 (efek fix R76 gua): poll yang dilewati selama settlement tetap memajukan counted_views → bila settlement kurang peminat (sisa > demand), pertumbuhan & milestone pada poll itu hilang permanen | diperbaiki: selama settlement berjalan, snapshot non-final berikutnya dari submisi yang sudah tercatat ditunda utuh (return sebelum loop: tanpa accrual, counted_views tidak maju) → dihitung sesudah settlement; tidak ada hitung ganda di pool lain; snapshot final tetap dihitung; pgTAP core 1031 (2 asersi gagal di kode lama: 1000 vs 2000) |
+| 2026-10-22 | `fn:accrue_earnings` | Review Codex R79 (efek fix R78 gua): penundaan se-campaign membuat submisi yang sudah ikut settlement pool Rupiah terlewat dari settlement pool Diamonds (cut-off berbeda) → jatahnya hilang. Akar R76/R78/R79: satu kursor counted_views dipakai semua pool | diperbaiki: kursor per rule — rule berbasis views menghitung dari views_to rule itu (lalu lineage raise_rate, lalu counted_views); settlement dilewati per pool, bukan se-campaign; rule yang dilewati tanpa kursor dipaku di nilai sekarang; milestone & flat sekali per lineage (milestone tidak hilang bila poll yang melewatinya ditunda). Perubahan perilaku: views selama pool habis dibayar bila pool di-top-up (dulu hangus). pgTAP core 1033 (asersi R79 gagal di kode lama) + e2e:roles 20/20 |
 | 2026-10-21 | `page:admin/login` | QA lintas peran (e2e/roles.cjs, 20/20 langkah): pendaftaran TOTP admin pertama kadang menolak kode benar — halaman login dirender ulang server setelah OTP sehingga dua MfaPanel enroll memanggil mfaEnroll, yang menghapus faktor belum terverifikasi milik panel lain (GoTrue: POST/DELETE/POST /factors) | diperbaiki: satu promise enroll per jenis sesi di packages/auth components (gagal → dibuang supaya bisa diulang); GoTrue log tinggal satu POST /factors |
 | 2026-10-21 | `page:app/wallet/withdraw` | QA lintas peran: setelah KYC disetujui, withdraw masih "Menunggu verifikasi" sampai token sesi diperbarui (klaim kyc dari JWT, umur 600 dtk) tanpa petunjuk; API mengembalikan 500 (bukan 404) untuk submisi/claim yang tidak ada; nama aset tampil dengan prefix UUID storage | terbuka (UX/kosmetik, tidak memengaruhi uang atau akses) |
 | 2026-10-21 | `page:app/campaigns/[id]` | QA lintas peran: ukuran aset < 1 MB tampil "0 MB" di detail campaign web dan native (formatCompact(bytes / 1e6)) | diperbaiki: formatBytes dipindah dari campaign-builder ke @clipper/ui/format (B/KB/MB/GB) dan dipakai builder, detail web, detail native; e2e:roles mengecek ukuran aset |
