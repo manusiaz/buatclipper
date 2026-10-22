@@ -65,5 +65,40 @@ select bus.relay();
 select ok((select bool_and(sent_at is not null) from bus.outbox where target = 'brand'), 'jawaban 200 → batch ditandai terkirim');
 select is(bus.relay(), 0, 'tidak ada yang tersisa');
 
+-- ===== replikasi baris =====
+create table public.rep_src (id int primary key, a text, b text not null default 'milik-lain');
+create trigger rep_src_replicate after insert or update or delete on public.rep_src for each row execute function bus.replicate();
+insert into bus.replicas (source_table, target, columns) values ('public.rep_src', 'creator', '{a}');
+delete from bus.outbox where target = 'creator';
+insert into public.rep_src (id, a) values (1, 'satu');
+update public.rep_src set b = 'diubah-pemilik-lain' where id = 1;
+update public.rep_src set a = 'satu-baru' where id = 1;
+delete from public.rep_src where id = 1;
+select is((select jsonb_agg(payload order by seq) from bus.outbox where target = 'creator' and topic = 'rep.row'),
+          '[{"op":"upsert","key":{"id":1},"row":{"a":"satu","id":1},"table":"public.rep_src"},
+            {"op":"upsert","key":{"id":1},"row":{"a":"satu-baru","id":1},"table":"public.rep_src"},
+            {"op":"delete","key":{"id":1},"row":null,"table":"public.rep_src"}]'::jsonb,
+          'replikasi: hanya kolom milik sendiri + pk; update kolom milik project lain tidak dikirim; delete ikut');
+
+-- penerima: tabel replika dengan kolom milik project lain (b) tidak tersentuh upsert parsial; tanpa gema balik
+create table public.rep_dst (id int primary key, a text, b text not null default 'lokal');
+create trigger rep_dst_replicate after insert or update or delete on public.rep_dst for each row execute function bus.replicate();
+insert into bus.replicas (source_table, target, columns) values ('public.rep_dst', 'brand', '{b}');
+create table public.rep_hook_log (op text, row jsonb);
+create function public.rep_hook(p_op text, p_row jsonb) returns void language sql as $$ insert into public.rep_hook_log values (p_op, p_row) $$;
+insert into bus.replica_hooks (target_table, fn) values ('public.rep_dst', 'public.rep_hook(text, jsonb)');
+delete from bus.outbox where target = 'brand';
+select api.bus_receive('creator', '[{"id":"00000000-0000-0000-0000-0000000000c1","topic":"rep.row","payload":{"op":"upsert","key":{"id":7},"row":{"id":7,"a":"dari-pemilik"},"table":"public.rep_dst"}}]');
+update public.rep_dst set b = 'milik-lokal' where id = 7;
+select api.bus_receive('creator', '[{"id":"00000000-0000-0000-0000-0000000000c2","topic":"rep.row","payload":{"op":"upsert","key":{"id":7},"row":{"id":7,"a":"pemilik-ubah"},"table":"public.rep_dst"}}]');
+select is((select a || '|' || b from public.rep_dst where id = 7), 'pemilik-ubah|milik-lokal',
+          'upsert replika hanya kolom yang dikirim; kolom milik lokal tetap');
+select is((select count(*)::int from bus.outbox where target = 'brand'), 1,
+          'perubahan hasil replika tidak dipantulkan (hanya update kolom lokal b yang dikirim)');
+select is((select array_agg(op order by row ->> 'a') from public.rep_hook_log), array['upsert', 'upsert'], 'hook penerima dijalankan per baris');
+select api.bus_receive('creator', '[{"id":"00000000-0000-0000-0000-0000000000c3","topic":"rep.row","payload":{"op":"delete","key":{"id":7},"row":null,"table":"public.rep_dst"}}]');
+select ok(not exists (select 1 from public.rep_dst where id = 7), 'delete replika');
+select is(current_setting('bus.applying', true), 'off', 'flag penerapan dimatikan lagi setelah apply');
+
 select * from finish();
 rollback;

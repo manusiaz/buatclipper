@@ -331,6 +331,8 @@ Wajib tetap benar setiap perubahan (dicek otomatis saat graph ini dibuat; cek ul
 | `table:bus.outbox` | table | db/core/supabase/schemas/bus/bus.sql | Outbox event antar DB (transactional outbox, urut seq per target, backoff) | identik di creator/brand |
 | `table:bus.inbox` | table | db/core/supabase/schemas/bus/bus.sql | Event yang sudah diterima (dedupe idempoten) | identik di creator/brand |
 | `table:bus.handlers` | table | db/core/supabase/schemas/bus/bus.sql | topic → fungsi handler penerima | identik di creator/brand |
+| `table:bus.replicas` | table | db/core/supabase/schemas/bus/bus.sql | Replikasi baris: tabel + target + kolom milik project ini (trigger bus.replicate) | identik di creator/brand |
+| `table:bus.replica_hooks` | table | db/core/supabase/schemas/bus/bus.sql | Reaksi penerima setelah baris replika diterapkan (mis. accrual) | identik di creator/brand |
 | `job:bus-relay` | job | db/core/supabase/schemas/bus/self.sql | Kirim batch outbox per target lewat pg_net + HMAC (tiap 5 detik) | per project |
 | `api:rpc core.bus_receive` | api | db/core/supabase/schemas/bus/bus.sql | Terapkan batch event dari project lain dalam satu transaksi, idempoten | identik di creator/brand |
 | `table:vault.social-tokens` | table | db/core/supabase/schemas/tracking/vault.sql | Supabase Vault core: token sosmed |  |
@@ -1510,11 +1512,13 @@ Arah: `A --tipe--> B` = A bergantung pada B. `?` = belum terverifikasi.
 | `table:bus.outbox` | guarded-by | `policy:core.definer-only` | db/core/supabase/schemas/bus/bus.sql:40 |
 | `table:bus.inbox` | guarded-by | `policy:core.definer-only` | db/core/supabase/schemas/bus/bus.sql:41 |
 | `table:bus.handlers` | guarded-by | `policy:core.definer-only` | db/core/supabase/schemas/bus/bus.sql:42 |
+| `table:bus.replicas` | guarded-by | `policy:core.definer-only` | db/core/supabase/schemas/bus/bus.sql:170 |
+| `table:bus.replica_hooks` | guarded-by | `policy:core.definer-only` | db/core/supabase/schemas/bus/bus.sql:171 |
 | `job:bus-relay` | writes | `table:bus.outbox` | db/core/supabase/schemas/bus/bus.sql:109 |
 | `job:bus-relay` | calls | `api:fn core/bridge` | db/core/supabase/schemas/bus/bus.sql:104 |
 | `api:fn core/bridge` | calls | `api:rpc core.bus_receive` | db/core/supabase/functions/_shared/bus.ts:27 |
 | `api:rpc core.bus_receive` | reads | `table:bus.handlers` | db/core/supabase/schemas/bus/bus.sql:132 |
-| `api:rpc core.bus_receive` | writes | `table:bus.inbox` | db/core/supabase/schemas/bus/bus.sql:137 |
+| `api:rpc core.bus_receive` | writes | `table:bus.inbox` | db/core/supabase/schemas/bus/bus.sql:140 |
 | `policy:bridge-hmac` | configured-by | `env:BRIDGE_SECRET_CORE_TO_IDENTITY` | db/core/supabase/functions/_shared/bridge.ts:66 |
 | `policy:bridge-hmac` | configured-by | `env:BRIDGE_SECRET_IDENTITY_TO_CORE` | db/core/supabase/functions/bridge/index.ts:10 |
 | `policy:core.admin-aal2` | typed-by | `fn:custom_access_token_hook` | PRD v0.3.1 §15.5 alur 2 kontrak claim app_roles; kode: ops/_auth.sql baris 12, 18 (claim app_roles dari hook) |

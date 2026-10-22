@@ -130,6 +130,9 @@ begin
       continue;
     end if;
     select bh.fn into h from bus.handlers bh where bh.topic = e ->> 'topic';
+    if h is null and e ->> 'topic' = 'rep.row' then
+      h := 'bus.apply_row(jsonb)'::regprocedure;  -- replikasi baris: handler bawaan
+    end if;
     if h is null then
       raise exception 'bus_no_handler:%', e ->> 'topic' using errcode = 'P0001';
     end if;
@@ -147,6 +150,88 @@ language sql stable security definer set search_path = '' as $$
     from bus.outbox o where o.sent_at is null and o.attempts >= 5 order by o.target, o.seq;
 $$;
 
-revoke all on bus.outbox, bus.inbox, bus.handlers from anon, authenticated;
-revoke execute on function bus.emit(text, text, jsonb), bus.relay(), bus.stuck(), api.bus_receive(text, jsonb) from public;
+-- ===== Replikasi baris (pemilik kolom → replika read-only di project lain) =====
+-- bus.replicas di project pemilik: kolom miliknya yang dikirim ke target (primary key selalu ikut). Trigger bus.replicate
+-- (AFTER INSERT/UPDATE/DELETE, dipasang file tabel) mengirim topic 'rep.row' hanya bila kolom milik sendiri berubah.
+-- Penerima: bus.apply_row upsert kolom yang dikirim saja (kolom milik project lain di baris yang sama tidak tersentuh) atau
+-- delete; flag transaksi bus.applying = on selama penerapan supaya trigger bus.replicate di penerima tidak memantulkannya.
+-- Urutan per baris aman: update baris yang sama terserialisasi row lock, jadi seq outbox = urutan commit baris itu.
+-- Reaksi penerima (mis. accrual saat snapshot tiba) didaftarkan eksplisit di bus.replica_hooks, bukan trigger tersembunyi.
+create table bus.replicas (
+  source_table regclass not null,
+  target text not null check (target in ('identity', 'creator', 'brand', 'admin')),
+  columns text[] not null,
+  primary key (source_table, target)
+);
+create table bus.replica_hooks (
+  target_table regclass primary key,
+  fn regprocedure not null  -- fn(op text, row jsonb) returns void, dijalankan setelah baris diterapkan
+);
+alter table bus.replicas enable row level security;  -- policy:core.definer-only (tanpa policy: hanya fungsi definer)
+alter table bus.replica_hooks enable row level security;  -- policy:core.definer-only (tanpa policy: hanya fungsi definer)
+
+create function bus.pk_columns(p_table regclass) returns text[]
+language sql stable set search_path = '' as $$
+  select array_agg(a.attname::text order by k.ord)
+    from pg_index i
+    cross join lateral unnest(i.indkey) with ordinality k(attnum, ord)
+    join pg_attribute a on a.attrelid = i.indrelid and a.attnum = k.attnum
+   where i.indrelid = p_table and i.indisprimary;
+$$;
+
+create function bus.replicate() returns trigger
+language plpgsql security definer set search_path = '' as $$
+declare
+  r record;
+  newj jsonb := case when tg_op <> 'DELETE' then to_jsonb(new) end;
+  oldj jsonb := case when tg_op <> 'INSERT' then to_jsonb(old) end;
+  pk text[] := bus.pk_columns(tg_relid);
+begin
+  if current_setting('bus.applying', true) = 'on' then
+    return null;
+  end if;
+  for r in select b.target, b.columns from bus.replicas b where b.source_table = tg_relid order by b.target loop
+    continue when tg_op = 'UPDATE' and not exists (select 1 from unnest(r.columns) c where newj -> c is distinct from oldj -> c);
+    perform bus.emit(r.target, 'rep.row', jsonb_build_object(
+      'table', tg_relid::regclass::text,
+      'op', case when tg_op = 'DELETE' then 'delete' else 'upsert' end,
+      'key', (select jsonb_object_agg(k, coalesce(newj, oldj) -> k) from unnest(pk) k),
+      'row', case when tg_op <> 'DELETE' then (select jsonb_object_agg(c, newj -> c) from unnest(r.columns || pk) c) end));
+  end loop;
+  return null;
+end $$;
+
+create function bus.apply_row(p jsonb) returns void
+language plpgsql security definer set search_path = '' as $$
+declare
+  t regclass := (p ->> 'table')::regclass;
+  pk text[] := bus.pk_columns(t);
+  cols text[];
+  upd text;
+  h regprocedure;
+begin
+  perform set_config('bus.applying', 'on', true);
+  if p ->> 'op' = 'delete' then
+    execute format('delete from %s x using jsonb_populate_record(null::%s, $1) k where %s', t, t,
+                   (select string_agg(format('x.%1$I = k.%1$I', c), ' and ') from unnest(pk) c))
+      using p -> 'key';
+  else
+    select array_agg(k) into cols from jsonb_object_keys(p -> 'row') k;
+    select string_agg(format('%1$I = excluded.%1$I', c), ', ') into upd from unnest(cols) c where not c = any (pk);
+    execute format('insert into %1$s (%2$s) select %2$s from jsonb_populate_record(null::%1$s, $1) on conflict (%3$s) do %4$s',
+                   t, (select string_agg(format('%I', c), ', ') from unnest(cols) c),
+                   (select string_agg(format('%I', c), ', ') from unnest(pk) c),
+                   case when upd is null then 'nothing' else 'update set ' || upd end)
+      using p -> 'row';
+  end if;
+  perform set_config('bus.applying', 'off', true);
+  select rh.fn into h from bus.replica_hooks rh where rh.target_table = t;
+  if h is not null then
+    execute format('select %s($1, $2)', h::regproc) using p ->> 'op', coalesce(p -> 'row', p -> 'key');
+  end if;
+end $$;
+
+revoke all on bus.outbox, bus.inbox, bus.handlers, bus.replicas, bus.replica_hooks from anon, authenticated;
+revoke execute on function bus.emit(text, text, jsonb), bus.relay(), bus.stuck(), api.bus_receive(text, jsonb), bus.pk_columns(regclass),
+  bus.replicate(), bus.apply_row(jsonb) from public;
 grant execute on function api.bus_receive(text, jsonb) to service_role;
