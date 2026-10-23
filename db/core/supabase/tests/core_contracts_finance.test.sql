@@ -1459,6 +1459,27 @@ select api.bus_receive('creator', jsonb_build_array(jsonb_build_object('id', gen
 select is((select counted_views from tracking.submissions where id = (select v::uuid from t_ids where k = 's5')), 7000::bigint,
           'snapshot replika lewat bus → fraud + accrue_earnings (counted_views naik)');
 
+-- Pemantauan bus (ops.watch_bus, job bus-watch)
+insert into ops.bus_peers (source, pinged_at) values ('creator', now()), ('brand', now()) on conflict (source) do update set pinged_at = now(), stuck = '[]';
+select ops.watch_bus();
+select ok(not exists (select 1 from ops.alerts where kind = 'bus.stuck'), 'bus sehat (ping baru, tidak ada antrean macet) → tanpa alert');
+select bus_in.bus_ping('{"source":"creator","at":"2020-01-01T00:00:00Z","stuck":[]}');
+select ok((select pinged_at > now() - interval '1 minute' from ops.bus_peers where source = 'creator'), 'ping lama yang tiba terlambat tidak memundurkan waktu ping');
+update ops.bus_peers set pinged_at = now() - interval '20 minutes' where source = 'brand';
+select ops.watch_bus();
+select ok((select payload -> 'late' = '["brand"]' and severity = 'critical' from ops.alerts where kind = 'bus.stuck' and resolved_at is null),
+          'ping brand telat > 15 menit → alert kritis bus.stuck');
+select ops.watch_bus();
+select is((select count(*)::int from ops.alerts where kind = 'bus.stuck'), 1, 'alert bus.stuck maks satu per jam (tidak spam)');
+update ops.alerts set resolved_at = now(), resolved_by = '33333333-0000-0000-0000-0000000000ad' where kind = 'bus.stuck';
+update ops.bus_peers set pinged_at = now();
+select bus_in.bus_ping('{"source":"creator","stuck":[{"target":"brand","attempts":7}]}');
+select ops.watch_bus();
+select ok((select payload -> 'peer_stuck' -> 0 ->> 'target' = 'brand' from ops.alerts where kind = 'bus.stuck' and resolved_at is null),
+          'antrean creator → brand macet (dilaporkan lewat ping) → alert');
+update ops.alerts set resolved_at = now(), resolved_by = '33333333-0000-0000-0000-0000000000ad' where kind = 'bus.stuck';
+select bus_in.bus_ping('{"source":"creator","stuck":[]}');
+
 -- ========== K. Post hilang, status token, akun sosmed ==========
 insert into t_ids select 'lost_s1', jsonb_build_object('amount', trunc(sum(ce.amount)), 'views', max(s.counted_views))::text
   from finance.clip_earnings ce join tracking.submissions s on s.id = ce.submission_id

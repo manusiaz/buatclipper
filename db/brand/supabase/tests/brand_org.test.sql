@@ -291,8 +291,8 @@ select throws_ok($$ delete from market.org_members where user_id = '22222222-000
                     and org_id = '44444444-0000-0000-0000-000000000002' $$, '23514', null, 'brand_owner terakhir tidak bisa dihapus');
 
 -- ---------- akses ----------
-select is((select count(*)::int from pg_proc p where p.pronamespace = 'api'::regnamespace
-            and has_function_privilege('anon', p.oid, 'execute')), 1, 'anon hanya bisa invite_preview');
+select is((select array_agg(p.proname::text order by p.proname) from pg_proc p where p.pronamespace = 'api'::regnamespace
+            and has_function_privilege('anon', p.oid, 'execute')), array['health', 'invite_preview'], 'anon hanya bisa health & invite_preview');
 select ok(not has_function_privilege('authenticated', 'bus.emit(text, text, jsonb)', 'execute'), 'browser tidak bisa menulis outbox');
 
 select * from finish();

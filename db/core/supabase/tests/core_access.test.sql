@@ -44,8 +44,8 @@ insert into market.campaigns (id, org_id, slug, title, type, category_id, platfo
 select is((select count(*)::int from pg_class c where c.relnamespace = 'api'::regnamespace and c.relkind = 'v'
             and not coalesce(c.reloptions @> array['security_invoker=true'], false)), 0, 'semua view api security_invoker');
 select is((select array_agg(p.proname::text order by p.proname) from pg_proc p where p.pronamespace = 'api'::regnamespace
-            and has_function_privilege('anon', p.oid, 'execute')), array['list_campaigns', 'report_by_token'],
-          'anon hanya bisa EXECUTE list_campaigns (landing) & report_by_token (undangan org di brand)');
+            and has_function_privilege('anon', p.oid, 'execute')), array['health', 'list_campaigns', 'report_by_token'],
+          'anon hanya bisa EXECUTE health (monitor uptime), list_campaigns (landing) & report_by_token (undangan org di brand)');
 select is((select count(*)::int from pg_class c where c.relnamespace in ('market'::regnamespace, 'tracking'::regnamespace,
             'finance'::regnamespace, 'trust'::regnamespace, 'ops'::regnamespace) and c.relkind = 'r' and not c.relrowsecurity),
           0, 'RLS aktif di semua tabel core');
@@ -269,7 +269,7 @@ update market.claims set expires_at = now() - interval '1 minute', created_at = 
 select market.run_claim_expiry();
 select is((select status::text from market.claims where id = '88888888-0000-0000-0000-000000000003'), 'expired',
           'claim lewat 48 jam jadi expired');
-select is((select count(*)::int from cron.job), 13, '13 job pg_cron admin terdaftar (termasuk bus-relay; job tracking di creator)');
+select is((select count(*)::int from cron.job), 14, '14 job pg_cron admin terdaftar (termasuk bus-relay & bus-watch; job tracking di creator)');
 select ok(exists (select 1 from cron.job where jobname = 'bus-relay' and schedule = '1 seconds'), 'relay bus tiap detik (lag replika)');
 select is(array(select distinct m[1] from cron.job, regexp_matches(command, '([a-z_]+\.[a-z_]+)\(', 'g') m
                 where to_regproc(m[1]) is null order by 1),

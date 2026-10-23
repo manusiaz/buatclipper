@@ -73,3 +73,6 @@ insert into ops.settings (key, value) values
   ('trust.fraud.shared_device_window_hours', '24'),
   ('trust.fraud.shared_device_min_accounts', '3')
 on conflict (key) do nothing;
+
+-- Pemantauan bus: pengirim yang diharapkan (ping pertama paling lambat 15 menit setelah deploy; ops.watch_bus).
+insert into ops.bus_peers (source) values ('creator'), ('brand') on conflict (source) do nothing;

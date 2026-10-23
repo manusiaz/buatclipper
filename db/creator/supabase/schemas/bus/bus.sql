@@ -145,6 +145,32 @@ language sql stable security definer set search_path = '' as $$
     from bus.outbox o where o.sent_at is null and o.attempts >= 5 order by o.target, o.seq;
 $$;
 
+-- ===== Pemantauan =====
+-- bus.ping: creator/brand → admin tiap 5 menit (job bus-ping di bus/self.sql). Antrean per target FIFO, jadi ping yang telat =
+-- antrean pengirim → admin macet; payload stuck = antrean pengirim ke target lain yang macet. Admin menyimpan & memberi alert.
+create index inbox_source_idx on bus.inbox (source, received_at desc);
+
+create function bus.ping() returns uuid
+language sql security definer set search_path = '' as $$
+  select bus.emit('admin', 'bus.ping', jsonb_build_object('source', bus.me(), 'at', now(),
+    'stuck', coalesce((select jsonb_agg(jsonb_build_object('target', s.target, 'since', s.created_at, 'attempts', s.attempts))
+                         from bus.stuck() s), '[]')));
+$$;
+
+-- Endpoint health tiap project (POST /rest/v1/rpc/health): antrean keluar per target + event terakhir yang diterima per sumber.
+-- Angka & waktu saja (tanpa pesan error / URL), jadi boleh dipanggil monitor uptime dengan publishable key.
+create function api.health() returns jsonb
+language sql stable security definer set search_path = '' as $$
+  select jsonb_build_object('db', bus.me(), 'at', now(),
+    'outbox', coalesce((select jsonb_object_agg(x.target, jsonb_build_object('pending', x.pending, 'stuck', x.stuck, 'oldest_pending_at', x.oldest))
+                          from (select o.target, count(*) as pending, count(*) filter (where o.attempts >= 5) as stuck, min(o.created_at) as oldest
+                                  from bus.outbox o where o.sent_at is null group by o.target) x), '{}'),
+    'last_received', (select jsonb_object_agg(src, (select max(i.received_at) from bus.inbox i where i.source = src))
+                        from unnest(array['creator', 'brand', 'admin']) src where src <> bus.me()));
+$$;
+revoke execute on function bus.ping(), api.health() from public;
+grant execute on function api.health() to anon, authenticated, service_role;
+
 -- ===== Replikasi baris (pemilik kolom → replika read-only di project lain) =====
 -- Pemilik memasang trigger AFTER INSERT/UPDATE/DELETE ... execute function bus.replicate('<target>:<kolom>,<kolom>', ...):
 -- tiap argumen = satu target + kolom milik project ini yang dikirim (primary key selalu ikut). Konfigurasi di argumen trigger

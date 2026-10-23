@@ -61,3 +61,46 @@ end $$;
 
 revoke execute on function bus_in.audit_log(jsonb), bus_in.review_decision(jsonb), bus_in.notify_user(jsonb),
   bus_in.referral_record(jsonb), bus_in.org_owner_lost(jsonb) from public;
+
+-- Pemantauan bus (lihat bus.ping): ping terakhir tiap project pengirim + antrean macet yang dilaporkannya.
+create table ops.bus_peers (
+  source text primary key check (source in ('creator', 'brand')),
+  pinged_at timestamptz not null default now(),
+  stuck jsonb not null default '[]' check (jsonb_typeof(stuck) = 'array')
+);
+alter table ops.bus_peers enable row level security;
+create policy bus_peers_iss on ops.bus_peers as restrictive for all to authenticated  -- policy:core.iss-identity
+  using ((select ops.iss_ok())) with check ((select ops.iss_ok()));
+create policy bus_peers_admin_read on ops.bus_peers for select to authenticated using ((select ops.has_admin()));  -- policy:core.admin-aal2
+grant select on ops.bus_peers to authenticated;
+
+create function bus_in.bus_ping(p jsonb) returns void
+language sql set search_path = '' as $$
+  insert into ops.bus_peers (source, pinged_at, stuck)
+  select p ->> 'source', coalesce((p ->> 'at')::timestamptz, now()),
+         case when jsonb_typeof(p -> 'stuck') = 'array' then p -> 'stuck' else '[]' end
+   where p ->> 'source' in ('creator', 'brand')
+  on conflict (source) do update set pinged_at = greatest(ops.bus_peers.pinged_at, excluded.pinged_at), stuck = excluded.stuck;
+$$;
+
+-- job:bus-watch (5 menit): ping creator/brand telat > 15 menit, antrean mereka yang macet, atau antrean admin sendiri yang
+-- macet → alert kritis bus.stuck (email admin lewat job alert-notify; maks satu per jam).
+create function ops.watch_bus() returns void
+language plpgsql security definer set search_path = '' as $$
+declare
+  late jsonb;
+  peer_stuck jsonb;
+  own_stuck jsonb;
+begin
+  select jsonb_agg(p.source order by p.source) into late from ops.bus_peers p where p.pinged_at < now() - interval '15 minutes';
+  select jsonb_agg(jsonb_build_object('source', p.source) || e.value) into peer_stuck
+    from ops.bus_peers p cross join lateral jsonb_array_elements(p.stuck) e;
+  select jsonb_agg(jsonb_build_object('target', s.target, 'since', s.created_at, 'attempts', s.attempts)) into own_stuck from bus.stuck() s;
+  if late is not null or peer_stuck is not null or own_stuck is not null then
+    perform ops.raise_alert('bus.stuck', 'critical', jsonb_strip_nulls(jsonb_build_object('late', late, 'peer_stuck', peer_stuck,
+                                                                                         'admin_stuck', own_stuck)), interval '1 hour');
+  end if;
+end $$;
+revoke execute on function bus_in.bus_ping(jsonb), ops.watch_bus() from public;
+select cron.schedule('bus-watch', '*/5 * * * *', $$select ops.watch_bus()$$);
+

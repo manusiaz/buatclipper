@@ -225,6 +225,15 @@ select lives_ok($$ select api.bus_receive('admin', jsonb_build_array(jsonb_build
 select is(ops.cfg('tracking.poll_schedule'), '[{"until_hours":null,"every_hours":12}]'::jsonb, 'config replika terbaca');
 
 -- ---------- hak akses ----------
+select is((select array_agg(p.proname::text order by p.proname) from pg_proc p where p.pronamespace = 'api'::regnamespace
+            and has_function_privilege('anon', p.oid, 'execute')), array['health'], 'anon hanya bisa health (monitor uptime)');
+select is((select array_agg(k order by k) from jsonb_object_keys(api.health()) k), array['at', 'db', 'last_received', 'outbox'],
+          'health: angka & waktu saja (tanpa pesan error / URL)');
+select is(api.health() -> 'outbox' -> 'admin' ->> 'pending', (select count(*)::text from bus.outbox where target = 'admin' and sent_at is null),
+          'health: antrean keluar per target');
+create temp table t_ping as select bus.ping() as id;
+select ok((select payload ->> 'source' = 'creator' and payload -> 'stuck' = '[]' and target = 'admin' from bus.outbox where id = (select id from t_ping)),
+          'bus.ping ke admin: sumber + antrean macet');
 select is((select count(*)::int from pg_proc p where p.pronamespace = 'api'::regnamespace and p.proname ~ '^worker_'
             and (has_function_privilege('authenticated', p.oid, 'execute') or has_function_privilege('anon', p.oid, 'execute'))), 0,
           'authenticated/anon tidak bisa EXECUTE RPC worker');
