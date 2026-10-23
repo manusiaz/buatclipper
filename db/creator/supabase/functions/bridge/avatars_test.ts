@@ -1,17 +1,24 @@
 import assert from "node:assert/strict";
 import { type AvatarBucket, removeAnonymizedAvatars } from "./avatars.ts";
 
-function bucket(files: Record<string, string[]>, fail = false): AvatarBucket & { removed: string[] } {
+// Storage tiruan: objek path penuh; list(prefix) = file langsung (id) + subfolder (id null), seperti Storage API.
+function bucket(objects: string[], fail = false): AvatarBucket & { removed: string[] } {
   const removed: string[] = [];
   return {
     removed,
-    list: (prefix) => Promise.resolve({ data: (files[prefix] ?? []).map((name) => ({ name })), error: null }),
+    list: (prefix) => {
+      const names = new Map<string, string | null>();
+      for (const o of objects.filter((o) => o.startsWith(prefix + "/"))) {
+        const rest = o.slice(prefix.length + 1).split("/");
+        names.set(rest[0], rest.length > 1 ? null : o);
+      }
+      return Promise.resolve({ data: [...names].map(([name, id]) => ({ name, id })), error: null });
+    },
     remove: (paths) => {
       if (fail) return Promise.resolve({ error: new Error("storage down") });
-      removed.push(...paths);
       for (const p of paths) {
-        const [u, n] = p.split("/");
-        files[u] = files[u].filter((f) => f !== n);
+        const i = objects.indexOf(p);
+        if (i >= 0) removed.push(...objects.splice(i, 1));
       }
       return Promise.resolve({ error: null });
     },
@@ -19,7 +26,7 @@ function bucket(files: Record<string, string[]>, fail = false): AvatarBucket & {
 }
 
 Deno.test("avatar: profile.anonymize → semua file avatars/{user}/ dihapus; event lain tidak menyentuh storage", async () => {
-  const b = bucket({ u1: ["a.webp", "b.png"], u2: ["c.webp"] });
+  const b = bucket(["u1/a.webp", "u1/b.png", "u2/c.webp"]);
   await removeAnonymizedAvatars([
     { id: "1", topic: "rep.row", payload: { table: "market.profiles" } },
     { id: "2", topic: "profile.anonymize", payload: { user_id: "u1" } },
@@ -31,7 +38,13 @@ Deno.test("avatar: hapus gagal → error (bus mengulang batch)", async () => {
   await assert.rejects(() =>
     removeAnonymizedAvatars(
       [{ id: "1", topic: "profile.anonymize", payload: { user_id: "u1" } }],
-      bucket({ u1: ["a.webp"] }, true),
+      bucket(["u1/a.webp"], true),
     )
   );
+});
+
+Deno.test("avatar: subfolder (R85-1) dikosongkan rekursif, tidak berputar selamanya", async () => {
+  const b = bucket(["u1/a.webp", "u1/x/b.webp", "u1/x/y/c.webp", "u2/d.webp"]);
+  await removeAnonymizedAvatars([{ id: "1", topic: "profile.anonymize", payload: { user_id: "u1" } }], b);
+  assert.deepEqual(b.removed.sort(), ["u1/a.webp", "u1/x/b.webp", "u1/x/y/c.webp"]);
 });
