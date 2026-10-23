@@ -3,7 +3,7 @@
 > Everything is one system. Every page is a node; every line is a real data or design dependency.
 > Dikelola oleh skill `alaconnect`. Edit inkremental — jangan generate ulang.
 
-Last verified: f1c7064+ (2026-10-23) — 4 DB (identity, admin = folder `db/core`, creator, brand): `db reset` keempat DB dari rantai migrasi (declarative sync: no changes), pgTAP identity 172 + admin 995 + creator 93 + brand 123, deno identity 133 + core 28 + creator 58, lint (check-arch 4 DB), typecheck 15 workspace, unit test semua, e2e bus 6/6 + roles 21/21 + journey 10/10 + mobile 13/13; simulasi VPS `deploy.sh up all` dari nol → roles 21/21, bus 6/6. Katalog endpoint per DB: docs/endpoints/*.md (`pnpm endpoints`).
+Last verified: f1c7064+ (2026-10-23) — 4 DB (identity, admin = folder `db/core`, creator, brand): `db reset` keempat DB dari rantai migrasi (declarative sync: no changes), pgTAP identity 172 + admin 995 + creator 93 + brand 123, deno identity 133 + core 28 + creator 58, lint (check-arch 4 DB), typecheck 15 workspace, unit test semua, e2e bus 7/7 + roles 21/21 + journey 10/10 + mobile 13/13; simulasi VPS `deploy.sh up all` dari nol → roles 21/21, bus 6/6. Katalog endpoint per DB: docs/endpoints/*.md (`pnpm endpoints`).
 
 **Status:** sistem sudah dibangun dan dites. 5 app Next.js 16 (`apps/web`, `apps/accounts`, `apps/clipper`, `apps/brand`, `apps/admin`) di atas `packages/{ui,campaign-builder,clipper-lib,auth,db-core,db-identity,i18n,config}`, plus app native Expo `apps/mobile` (Android + iOS, satu kode). 4 project Supabase (`db/identity`, `db/core` = admin, `db/creator`, `db/brand`): schema deklaratif, `migrations/` (pg-delta), config.toml, seed; bus event antar DB. Endpoint per DB: docs/endpoints/{identity,admin,creator,brand}.md.sql. 12 Edge Function: core `bridge`, `fulfill`, `notify`, `refresh-tokens`, `social`, `track-worker`; identity `admin-auth`, `bridge`, `delete-account`, `disburse`, `member-data`, `pii-export`. Tes: pgTAP 6 file (`db/core/supabase/tests` 4, `db/identity/supabase/tests` 2), unit test app/package (`pnpm test`, 38 file `*.test.ts(x)`), unit test Deno (29 file `*_test.ts` di `db/*/supabase/functions`), journey E2E lintas host `e2e/journey.cjs` (Playwright: web → accounts → app → undangan → brand), CI `.github/workflows/ci.yml` (job apps, functions, db per project). Diverifikasi di 7408318: `pnpm lint` ok, `pnpm typecheck` ok, `pnpm test` 197 tes lulus (campaign-builder 69, accounts 32, web 29, admin 24, brand 22, clipper 21), `pnpm build` 5 app ok, Deno fmt/lint/check ok + tes core 70 & identity 82, pgTAP core 727 & identity 107 (stub Postgres 16 dan `supabase test db`), `supabase db lint` (schema app) & `db advisors --type security` bersih, `pnpm e2e` 9/9 langkah 2× di build produksi. Node yang filenya ada punya kolom Path; bukti edge = `file:line` (dicek `check_graph.py`). Bukti yang masih rujukan PRD v0.3.1 = belum ada satu baris kode yang menyebut target, atau kodenya ada di folder route group `(account)`, `(auth)`, `(console)`: regex checker tidak menerima tanda kurung, jadi baris kodenya ditulis `kode baris N` (dicek manual). `(belum di kode)` = edge PRD yang tidak dibangun begitu. Edge `reads` page → table = dependency data logis; di kode jalannya lewat view/fungsi schema `api` (`policy:core.api-only`). Rujukan lintas DB (`table → table` antar project) tidak punya foreign key.
 
@@ -464,7 +464,7 @@ Wajib tetap benar setiap perubahan (dicek otomatis saat graph ini dibuat; cek ul
 | `test:e2e.cross-host` | test | e2e/journey.cjs | Journey Playwright 390px lintas host: web → accounts (OTP Mailpit, onboarding + avatar) → app (claim, tasks) → accounts/invite → brand; seed e2e/seed.sql (`pnpm e2e`) |  |
 | `test:e2e.mobile` | test | e2e/mobile.cjs | Journey Playwright 390px app native (build web Expo di host app): login OTP → gate onboarding → onboarding di accounts → tab Campaign → claim + snackbar → tab Clip → share (campaign terdeteksi dari link) & tempel link → notifikasi + angka → Dompet → Tarik saldo (checklist) → hub Akun (Referral, Leaderboard, Sosmed, Pengaturan tema gelap) → keluar |  |
 | `test:e2e.roles` | test | e2e/roles.cjs | QA lintas peran Playwright: brand → admin → clipper → brand → admin, plus pemeriksaan pemilik data & bus tidak macet di 4 DB |  |
-| `test:e2e.bus` | test | e2e/bus.sh | Bus lintas stack sungguhan: 6 pasangan pengirim→penerima (admin/creator/brand), 2 event berurutan + outbox terkirim; handler uji dibersihkan |  |
+| `test:e2e.bus` | test | e2e/bus.sh | Bus lintas stack sungguhan: 6 pasangan pengirim→penerima (admin/creator/brand), 2 event berurutan + outbox terkirim; kiriman kembar bersamaan ke bus_receive dilewati (bukan 500); handler uji dibersihkan |  |
 | `test:member-data.integrity` | test | db/identity/supabase/tests/identity_access.test.sql | pgTAP identity: consent versi terbaru, hook claim, NIK/rekening ganda, nama rekening = KYC, reviewer KYC aal2, tombstone hapus akun, push — 50 tes |  |
 | `test:pwa.ios-login` | test |  | Fase 0 di iPhone: login OTP & Google di PWA terinstal, buka accounts dari PWA, sesi > 7 hari | Manual Fase 0 di iPhone (belum ada berkas tes) |
 | `test:rls.access-matrix` | test | db/core/supabase/tests/core_access.test.sql | pgTAP core: RLS per role (anon, clipper, anggota org, admin aal1/aal2, iss lain), state machine, ledger, constraint uang, link laporan, storage, job; bagian identity di db/identity/supabase/tests/identity_access.test.sql |  |
@@ -1191,14 +1191,14 @@ Arah: `A --tipe--> B` = A bergantung pada B. `?` = belum terverifikasi.
 | `test:creator.profiles` | tests | `api:rpc creator.ensure_profile` | db/creator/supabase/tests/creator_profiles.test.sql:1 |
 | `test:e2e.roles` | tests | `page:app/profile` | e2e/roles.cjs:451 (ubah nama + foto → creator → replika admin) |
 | `table:brand/ops.audit_logs` | calls | `fn:bus_in.admin` | db/brand/supabase/schemas/ops/audit_logs.sql:24 (ops.forward_audit) |
-| `api:rpc core.bus_receive` | calls | `fn:bus_in.admin` | db/core/supabase/schemas/bus/bus.sql:130 |
+| `api:rpc core.bus_receive` | calls | `fn:bus_in.admin` | db/core/supabase/schemas/bus/bus.sql:133 |
 | `job:bus-ping` | emits | `fn:bus_in.admin` | db/creator/supabase/schemas/bus/self.sql:6 (bus.ping; brand: db/brand/supabase/schemas/bus/self.sql baris 6) |
 | `fn:bus_in.admin` | writes | `table:ops.bus_peers` | db/core/supabase/schemas/bus/inbound.sql:79 (bus_ping) |
 | `job:bus-watch` | reads | `table:ops.bus_peers` | db/core/supabase/schemas/bus/inbound.sql:95 |
 | `job:bus-watch` | calls | `job:alert-notify` | db/core/supabase/schemas/bus/inbound.sql:100 (ops.raise_alert bus.stuck → email admin) |
 | `table:ops.bus_peers` | guarded-by | `policy:core.iss-identity` | db/core/supabase/schemas/bus/inbound.sql:72 |
 | `table:ops.bus_peers` | guarded-by | `policy:core.admin-aal2` | db/core/supabase/schemas/bus/inbound.sql:74 |
-| `api:rpc core.health` | reads | `table:bus.outbox` | db/core/supabase/schemas/bus/bus.sql:167 |
+| `api:rpc core.health` | reads | `table:bus.outbox` | db/core/supabase/schemas/bus/bus.sql:169 |
 | `doc:docs/endpoints` | documents | `api:rpc core.health` | docs/endpoints/admin.md:13 |
 | `test:core.full-product` | tests | `job:bus-watch` | db/core/supabase/tests/core_contracts_finance.test.sql:1470 |
 | `test:creator.tracking` | tests | `api:rpc creator.health` | db/creator/supabase/tests/creator_tracking.test.sql:229 |
@@ -1228,7 +1228,7 @@ Arah: `A --tipe--> B` = A bergantung pada B. `?` = belum terverifikasi.
 | `api:rpc core.copy_campaign_economics` | writes | `table:finance.reward_pools` | db/core/supabase/schemas/api/campaigns.sql:535 |
 | `api:rpc core.copy_campaign_economics` | writes | `table:market.rate_rules` | db/core/supabase/schemas/api/campaigns.sql:538 |
 | `api:rpc core.save_campaign` | reads | `table:market.campaigns` | db/core/supabase/schemas/api/campaigns.sql:206 (gerbang content_version replika) |
-| `api:rpc core.bus_receive` | calls | `fn:bus_in.market_campaigns_applied` | db/core/supabase/schemas/bus/bus.sql:261 |
+| `api:rpc core.bus_receive` | calls | `fn:bus_in.market_campaigns_applied` | db/core/supabase/schemas/bus/bus.sql:263 |
 | `fn:bus_in.market_campaigns_applied` | writes | `table:market.campaigns` | db/core/supabase/schemas/market/campaigns.sql:110 |
 | `fn:bus_in.market_campaigns_applied` | writes | `table:finance.invoices` | db/core/supabase/schemas/market/campaigns.sql:114 |
 | `comp:CampaignBuilder` | calls | `api:rpc brand.save_campaign` | packages/campaign-builder/src/persist.ts:47 (persistCampaign) |
@@ -1644,8 +1644,8 @@ Arah: `A --tipe--> B` = A bergantung pada B. `?` = belum terverifikasi.
 | `job:bus-relay` | writes | `table:bus.outbox` | db/core/supabase/schemas/bus/bus.sql:106 |
 | `job:bus-relay` | calls | `api:fn core/bridge` | db/core/supabase/schemas/bus/bus.sql:101 |
 | `api:fn core/bridge` | calls | `api:rpc core.bus_receive` | db/core/supabase/functions/_shared/bus.ts:32 |
-| `api:rpc core.bus_receive` | reads | `table:bus.inbox` | db/core/supabase/schemas/bus/bus.sql:125 |
-| `api:rpc core.bus_receive` | writes | `table:bus.inbox` | db/core/supabase/schemas/bus/bus.sql:135 |
+| `api:rpc core.bus_receive` | reads | `table:bus.inbox` | db/core/supabase/schemas/bus/bus.sql:127 (klaim on conflict = cek idempoten) |
+| `api:rpc core.bus_receive` | writes | `table:bus.inbox` | db/core/supabase/schemas/bus/bus.sql:127 |
 | `policy:bridge-hmac` | configured-by | `env:BRIDGE_SECRET_CORE_TO_IDENTITY` | db/core/supabase/functions/_shared/bridge.ts:66 |
 | `policy:bridge-hmac` | configured-by | `env:BRIDGE_SECRET_IDENTITY_TO_CORE` | db/core/supabase/functions/bridge/index.ts:10 |
 | `policy:core.admin-aal2` | typed-by | `fn:custom_access_token_hook` | PRD v0.3.1 §15.5 alur 2 kontrak claim app_roles; kode: ops/_auth.sql baris 12, 18 (claim app_roles dari hook) |
@@ -1693,6 +1693,7 @@ Arah: `A --tipe--> B` = A bergantung pada B. `?` = belum terverifikasi.
 | `test:e2e.cross-host` | configured-by | `doc:scripts/dev-stack.sh` | e2e/journey.cjs:1 |
 | `test:e2e.bus` | configured-by | `doc:scripts/dev-stack.sh` | e2e/bus.sh:2 |
 | `test:e2e.bus` | calls | `api:fn creator/bridge` | e2e/bus.sh:3 |
+| `test:e2e.bus` | tests | `api:rpc core.bus_receive` | e2e/bus.sh:43 |
 | `test:e2e.bus` | calls | `api:fn brand/bridge` | e2e/bus.sh:3 |
 | `test:e2e.cross-host` | configured-by | `doc:deploy/deploy.sh` | e2e/journey.cjs:2 (E2E_* menimpa host & DB untuk stack self-hosted) |
 | `test:e2e.cross-host` | tests | `page:accounts/invite/[token]` | e2e/journey.cjs:118 |
@@ -2713,6 +2714,7 @@ Masalah sistem yang ditemukan saat menyusun PRD v0.2 dan saat dicek ulang (v0.2.
 | 2026-10-23 | `table:bus.outbox` | Review Codex R84-1: bus.resync tabel append-only (view_snapshots) ke admin → apply_row meng-UPDATE baris yang sama → trigger append-only raise → antrean creator→admin macet selamanya; hook snapshot juga akan jalan dua kali | diperbaiki: apply_row hanya meng-UPDATE kolom yang berbeda dan tidak menjalankan hook bila baris sudah ada dengan nilai sama (tes terbukti merah di kode lama) |
 | 2026-10-23 | `api:fn identity/delete-account` | Review Codex R84-2: hapus akun saat replika profil creator belum tiba di admin → bridge_close_account no_profile tanpa event → profil, avatar & token sosmed di creator tertinggal; replika telat membuat profil aktif di admin | diperbaiki: no_profile tetap mengirim profile.anonymize ke creator dan menulis nisan profil closed di admin (replika telat hanya mengisi kolom isi, status tetap closed) |
 | 2026-10-23 | `api:fn creator/bridge` | Review Codex R85-1: policy avatars hanya mengunci folder pertama = uid → user bisa unggah avatars/<uid>/x/y.webp; saat hapus akun list() mengembalikan entri folder (id null) dan remove(folder) no-op → loop tak berujung, batch admin→creator tidak pernah 200 → bus macet | diperbaiki: bridge/avatars.ts mengosongkan subfolder rekursif dan berhenti bila tidak ada kemajuan; terbukti di Storage lokal (entri folder id null, remove folder no-op) dan tes baru hang di kode lama |
+| 2026-10-23 | `api:rpc core.bus_receive` | Simulasi VPS dari nol: Caddy restart di akhir deploy memutus request relay yang transaksinya masih jalan di DB penerima; retry relay bersamaan → bus_receive kedua gagal duplicate key inbox → 500 → backoff 80/160 dtk, bus tertahan ~3 menit, attempts ≥ 5 (bus.stuck) dan e2e roles gagal | diperbaiki: bus_receive mengklaim inbox (on conflict do nothing) sebelum handler, kiriman kembar menunggu lalu dilewati; deploy.sh up menolkan attempts saat kick outbox. Bukti: e2e/bus.sh kiriman kembar merah di kode lama; sim ulang dari nol → outbox kosong attempts 0, roles 21/21, bus 7/7, 0 alert |
 
 ## Keputusan
 
