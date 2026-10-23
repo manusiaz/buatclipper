@@ -463,7 +463,9 @@ step('clipper-profile-edit', ['clipper'], async ({ clipper }) => {
     'nama & avatar di creator = replika admin: ' + own);
   const src = await clipper.locator(`img[src*="/avatars/"]`).first().getAttribute('src');
   check(src && src.startsWith(CREATOR_API), 'avatar disajikan storage creator: ' + src);
-  check((await clipper.request.get(src)).ok(), 'file avatar ada di storage creator');
+  const shown = await clipper.locator(`img[src*="/avatars/"]`).first().evaluate((img) =>
+    img.complete ? img.naturalWidth > 0 : new Promise((ok) => { img.onload = () => ok(img.naturalWidth > 0); img.onerror = () => ok(false); }));
+  check(shown, 'foto avatar dari storage creator tampil');
   await shot(clipper, 'clipper-profile-edit');
   log('clipper: ubah nama + foto → creator, halaman langsung menampilkan versi baru');
 });
@@ -835,5 +837,10 @@ async function shot(page, name) {
   const relevant = errors.filter((e) => !/favicon|Download the React DevTools|\[Fast Refresh\]|HMR/.test(e));
   if (relevant.length) console.log('\nConsole/page errors:\n' + [...new Set(relevant)].join('\n'));
   await browser.close();
+  // Resource gagal dimuat / error JS = gagal (mis. cover _next/image 400 di server deploy), bukan sekadar dicetak.
+  if (relevant.some((e) => / pageerror |Failed to load resource/.test(e))) {
+    console.error('✗ console/page error (lihat daftar di atas)');
+    failed = failed || 'console-errors';
+  }
   if (failed) process.exitCode = 1;
 })();

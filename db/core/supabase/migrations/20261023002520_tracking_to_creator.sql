@@ -1,5 +1,14 @@
 SET local check_function_bodies = off;
 
+-- 4DB-4b: akun sosmed + token, isi submisi, dan snapshot pindah ke project creator. Migration ini tidak memindahkan data lama;
+-- DB admin yang sudah berisi data tracking harus dipindah dulu (token Vault ikut, id snapshot lama bentrok dengan id creator).
+DO $$ BEGIN
+  IF EXISTS (SELECT 1 FROM tracking.social_accounts) OR EXISTS (SELECT 1 FROM tracking.submissions)
+     OR EXISTS (SELECT 1 FROM tracking.view_snapshots) THEN
+    RAISE EXCEPTION 'admin sudah berisi data tracking: pindahkan akun sosmed, token, submisi, snapshot ke project creator dulu (4DB-4b)';
+  END IF;
+END $$;
+
 SELECT cron.unschedule('token-refresh');
 
 SELECT cron.unschedule('track-due');

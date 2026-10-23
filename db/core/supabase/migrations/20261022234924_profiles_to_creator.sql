@@ -1,5 +1,13 @@
 SET local check_function_bodies = off;
 
+-- 4DB-4a: isi profil pindah ke project creator. Migration ini tidak memindahkan data lama; DB admin yang sudah berisi profil
+-- harus dipindah dulu (kalau tidak: username di creator tidak tahu username lama, profil lama tanpa salinan creator).
+DO $$ BEGIN
+  IF EXISTS (SELECT 1 FROM market.profiles) THEN
+    RAISE EXCEPTION 'admin sudah berisi profil: pindahkan isi profil + file avatars ke project creator dulu (4DB-4a)';
+  END IF;
+END $$;
+
 DROP POLICY "avatars_own_update" ON "storage"."objects";
 
 DROP POLICY "avatars_own_write" ON "storage"."objects";

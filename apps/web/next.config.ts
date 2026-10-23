@@ -3,7 +3,6 @@ import { clipperNextConfig } from '@clipper/config/next';
 
 // Cover campaign = storage publik project brand.
 const brand = new URL(process.env.NEXT_PUBLIC_BRAND_DB_URL ?? 'http://127.0.0.1:57321');
-const local = ['127.0.0.1', 'localhost'].includes(brand.hostname);
 
 export default createNextIntlPlugin('./src/i18n/request.ts')(
   clipperNextConfig({
@@ -18,8 +17,9 @@ export default createNextIntlPlugin('./src/i18n/request.ts')(
             pathname: '/storage/v1/object/public/campaign-covers/**',
           },
         ],
-        // Stack Supabase lokal di 127.0.0.1; produksi selalu host publik.
-        dangerouslyAllowLocalIP: local,
+        // Host cover resolve ke alamat privat: dev 127.0.0.1, deploy (deploy.sh extra_hosts) Caddy server sendiri. Aman dari
+        // SSRF karena remotePatterns mengunci host + path ke storage cover brand; URL lain tetap ditolak.
+        dangerouslyAllowLocalIP: true,
       },
       outputFileTracingIncludes: { '/legal/*': ['./content/legal/**'] },
     },
