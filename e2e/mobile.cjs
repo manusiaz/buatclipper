@@ -3,7 +3,7 @@
 // CORS Edge Function; kode layarnya sama dengan build Android/iOS (beda hanya modul .web stub: push, widget, share intent).
 // Journey: login OTP native → gate onboarding → onboarding di accounts → tab Campaign → claim (snackbar) → tab Clip →
 // share (campaign terdeteksi dari link) & tempel link → notifikasi + angka → Dompet → Tarik saldo → hub Akun (Sosmed,
-// Leaderboard, Referral, Pengaturan: tema gelap) → keluar dari tab Akun.
+// Leaderboard, Referral, Pengaturan: tema gelap) → edit profil (nama + foto) → keluar dari tab Akun.
 const { chromium } = require('playwright');
 const { execFileSync } = require('child_process');
 const fs = require('fs');
@@ -170,6 +170,24 @@ const server = http.createServer((req, res) => {
     await page.waitForTimeout(500);
     await shot('10-settings-dark');
     log('native: hub Akun → Referral, Leaderboard, Sosmed, Pengaturan (tema gelap)');
+    // 8b. Edit profil: nama + foto (diperkecil di perangkat) → storage & RPC creator → replika admin → foto tampil dari creator
+    const png = path.join(OUT, 'avatar.png');
+    fs.writeFileSync(png, Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==', 'base64'));
+    await page.goto(NATIVE + '/profile');
+    await page.getByRole('button', { name: 'Ubah', exact: true }).click({ timeout: 15000 });
+    const [chooser] = await Promise.all([page.waitForEvent('filechooser'), page.getByRole('button', { name: 'Ganti foto' }).click()]);
+    await chooser.setFiles(png);
+    await page.getByLabel('Nama tampilan').fill('M2E Diubah');
+    await page.getByRole('button', { name: 'Simpan', exact: true }).click();
+    await page.getByText('Profil diperbarui').waitFor({ timeout: 20000 });
+    await page.getByRole('button', { name: 'Simpan', exact: true }).waitFor({ state: 'hidden', timeout: 10000 });
+    const saved = sql(`select display_name || ' ' || coalesce(avatar_path, '-') from market.profiles where id = '${uid}'`);
+    if (!new RegExp(`^M2E Diubah ${uid}/.+\\.jpg$`).test(saved)) throw new Error('replika admin tidak memuat profil baru: ' + saved);
+    const img = page.locator(`img[src*="/storage/v1/object/public/avatars/${uid}/"]`).first();
+    await img.waitFor({ state: 'attached', timeout: 15000 });
+    await page.waitForFunction((el) => el.complete && el.naturalWidth > 0, await img.elementHandle(), { timeout: 15000 });
+    await shot('10b-profile-edited');
+    log('native: edit profil (nama + foto) → creator → replika admin, foto tampil dari storage creator');
     // 9. Keluar dari tab Akun: push & token perangkat dilepas, cache dihapus → layar login
     await page.goto(NATIVE + '/');
     await page.getByTestId('tab-account').click({ timeout: 15000 });

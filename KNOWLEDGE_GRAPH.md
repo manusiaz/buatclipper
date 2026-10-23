@@ -3,7 +3,7 @@
 > Everything is one system. Every page is a node; every line is a real data or design dependency.
 > Dikelola oleh skill `alaconnect`. Edit inkremental — jangan generate ulang.
 
-Last verified: f1c7064+ (2026-10-23) — 4 DB (identity, admin = folder `db/core`, creator, brand): `db reset` keempat DB dari rantai migrasi (declarative sync: no changes), pgTAP identity 172 + admin 995 + creator 93 + brand 123, deno identity 133 + core 28 + creator 58, lint (check-arch 4 DB), typecheck 15 workspace, unit test semua, e2e bus 6/6 + roles 21/21 + journey 10/10 + mobile 12/12; simulasi VPS `deploy.sh up all` dari nol → roles 21/21, bus 6/6. Katalog endpoint per DB: docs/endpoints/*.md (`pnpm endpoints`).
+Last verified: f1c7064+ (2026-10-23) — 4 DB (identity, admin = folder `db/core`, creator, brand): `db reset` keempat DB dari rantai migrasi (declarative sync: no changes), pgTAP identity 172 + admin 995 + creator 93 + brand 123, deno identity 133 + core 28 + creator 58, lint (check-arch 4 DB), typecheck 15 workspace, unit test semua, e2e bus 6/6 + roles 21/21 + journey 10/10 + mobile 13/13; simulasi VPS `deploy.sh up all` dari nol → roles 21/21, bus 6/6. Katalog endpoint per DB: docs/endpoints/*.md (`pnpm endpoints`).
 
 **Status:** sistem sudah dibangun dan dites. 5 app Next.js 16 (`apps/web`, `apps/accounts`, `apps/clipper`, `apps/brand`, `apps/admin`) di atas `packages/{ui,campaign-builder,clipper-lib,auth,db-core,db-identity,i18n,config}`, plus app native Expo `apps/mobile` (Android + iOS, satu kode). 4 project Supabase (`db/identity`, `db/core` = admin, `db/creator`, `db/brand`): schema deklaratif, `migrations/` (pg-delta), config.toml, seed; bus event antar DB. Endpoint per DB: docs/endpoints/{identity,admin,creator,brand}.md.sql. 12 Edge Function: core `bridge`, `fulfill`, `notify`, `refresh-tokens`, `social`, `track-worker`; identity `admin-auth`, `bridge`, `delete-account`, `disburse`, `member-data`, `pii-export`. Tes: pgTAP 6 file (`db/core/supabase/tests` 4, `db/identity/supabase/tests` 2), unit test app/package (`pnpm test`, 38 file `*.test.ts(x)`), unit test Deno (29 file `*_test.ts` di `db/*/supabase/functions`), journey E2E lintas host `e2e/journey.cjs` (Playwright: web → accounts → app → undangan → brand), CI `.github/workflows/ci.yml` (job apps, functions, db per project). Diverifikasi di 7408318: `pnpm lint` ok, `pnpm typecheck` ok, `pnpm test` 197 tes lulus (campaign-builder 69, accounts 32, web 29, admin 24, brand 22, clipper 21), `pnpm build` 5 app ok, Deno fmt/lint/check ok + tes core 70 & identity 82, pgTAP core 727 & identity 107 (stub Postgres 16 dan `supabase test db`), `supabase db lint` (schema app) & `db advisors --type security` bersih, `pnpm e2e` 9/9 langkah 2× di build produksi. Node yang filenya ada punya kolom Path; bukti edge = `file:line` (dicek `check_graph.py`). Bukti yang masih rujukan PRD v0.3.1 = belum ada satu baris kode yang menyebut target, atau kodenya ada di folder route group `(account)`, `(auth)`, `(console)`: regex checker tidak menerima tanda kurung, jadi baris kodenya ditulis `kode baris N` (dicek manual). `(belum di kode)` = edge PRD yang tidak dibangun begitu. Edge `reads` page → table = dependency data logis; di kode jalannya lewat view/fungsi schema `api` (`policy:core.api-only`). Rujukan lintas DB (`table → table` antar project) tidak punya foreign key.
 
@@ -511,6 +511,7 @@ Wajib tetap benar setiap perubahan (dicek otomatis saat graph ini dibuat; cek ul
 | `page:mobile/social` | page | apps/mobile/app/social.tsx | Akun sosmed native: status, followers, hubungkan/reconnect (OAuth resmi di browser in-app → kembali via app-return), panduan IG, pilih Page FB, kode YouTube |  |
 | `page:mobile/share` | page | apps/mobile/app/share.tsx | Kirim clip: link dari share sheet atau tempel → dicocokkan ke claim terbuka (matchShare) → Submit 1 tap |  |
 | `page:mobile/notifications` | page | apps/mobile/app/notifications.tsx | Notifikasi in-app native: ikon, judul, isi, baris angka (notificationFacts), alasan; tap → layar native / browser |  |
+| `page:mobile/profile` | page | apps/mobile/app/profile.tsx | Profil & Trust Score native: sanksi + banding, riwayat skor, edit nama & foto (diperkecil 512 px, ≤ 1 MB) |  |
 | `test:mobile.unit` | test | apps/mobile/src/widget-snapshot.test.ts | Vitest app native: snapshot widget (jadwal cair, rekening, campaign) + nativeRoute (src/links.test.ts) |  |
 
 ## Edges
@@ -1948,6 +1949,8 @@ Arah: `A --tipe--> B` = A bergantung pada B. `?` = belum terverifikasi.
 | `page:mobile/share` | reads | `table:market.claims` | apps/mobile/src/data.ts:649 |
 | `page:mobile/notifications` | calls | `mod:clipper-lib` | apps/mobile/app/notifications.tsx:7 (buildNotificationViews + notificationFacts + notificationIcon) |
 | `page:mobile/notifications` | reads | `table:ops.notifications` | apps/mobile/src/data.ts:601 |
+| `page:mobile/profile` | writes | `table:bucket.avatars` | apps/mobile/src/data.ts:462 |
+| `page:mobile/profile` | calls | `api:rpc creator.ensure_profile` | apps/mobile/src/data.ts:465 (lalu tunggu replika admin) |
 | `page:app/share` | calls | `mod:clipper-lib` | apps/clipper/src/app/share/page.tsx:6 (matchShare, sama dengan app native) |
 | `page:app/.well-known/apple-app-site-association` | calls | `mod:clipper-lib` | apps/clipper/src/app/.well-known/apple-app-site-association/route.ts:1 |
 | `page:app/.well-known/apple-app-site-association` | configured-by | `env:APPLE_TEAM_ID` | apps/clipper/src/app/.well-known/apple-app-site-association/route.ts:7 |
@@ -1975,6 +1978,7 @@ Arah: `A --tipe--> B` = A bergantung pada B. `?` = belum terverifikasi.
 | `test:e2e.mobile` | tests | `page:mobile/notifications` | e2e/mobile.cjs:135 |
 | `test:e2e.mobile` | tests | `page:mobile/withdraw` | e2e/mobile.cjs:148 |
 | `test:e2e.mobile` | tests | `page:mobile/social` | e2e/mobile.cjs:165 |
+| `test:e2e.mobile` | tests | `page:mobile/profile` | e2e/mobile.cjs:176 |
 | `test:mobile.unit` | tests | `mod:live-activity` | apps/mobile/src/device-release.test.ts:43 (gagal DELETE → batal keluar, token tak didaftarkan ulang) |
 | `test:mobile.unit` | tests | `mod:widget-snapshot` | apps/mobile/src/device-release.test.ts:41 (muatan saat keluar dibuang, cadangan per user) |
 
