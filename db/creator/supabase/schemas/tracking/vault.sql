@@ -1,5 +1,5 @@
--- vault.social-tokens: token OAuth sosmed disimpan di Supabase Vault core, tidak pernah plaintext di tabel.
--- Hanya Edge Function core/social dan refresh-tokens (service role) yang memanggil fungsi ini.
+-- vault.social-tokens: token OAuth sosmed disimpan di Supabase Vault creator, tidak pernah plaintext di tabel.
+-- Hanya Edge Function creator/social dan refresh-tokens (service role) yang memanggil fungsi ini.
 create function api.store_social_token(p_account_id uuid, p_token text) returns uuid
 language plpgsql security definer set search_path = '' as $$
 declare

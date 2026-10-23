@@ -83,7 +83,7 @@ ID_PUB=$(status identity PUBLISHABLE_KEY); CORE_PUB=$(status core PUBLISHABLE_KE
 # Kunci cron = nilai yang dilihat Edge Function sendiri (SUPABASE_SERVICE_ROLE_KEY di container berbeda dengan yang
 # dicetak `supabase status`). Produksi: isi Vault dengan secret key yang sama dengan env fungsi (Fase 0).
 fnkey() { docker exec "supabase_edge_runtime_clipper-$1" printenv SUPABASE_SERVICE_ROLE_KEY; }
-ID_SVC=$(fnkey identity); CORE_SVC=$(fnkey core)
+ID_SVC=$(fnkey identity); CORE_SVC=$(fnkey core); CREATOR_SVC=$(fnkey creator)
 
 # Vault: URL + kunci yang dipakai pg_cron/pg_net memanggil Edge Function project sendiri (policy:fn-cron-key).
 vault() { # port name value
@@ -97,6 +97,8 @@ vault 54322 identity_url "http://supabase_kong_clipper-identity:8000"
 vault 54322 identity_secret_key "$ID_SVC"
 vault 55322 core_url "http://supabase_kong_clipper-core:8000"
 vault 55322 core_secret_key "$CORE_SVC"
+vault 56322 creator_url "http://supabase_kong_clipper-creator:8000"
+vault 56322 creator_secret_key "$CREATOR_SVC"
 # Bus pengirim (Vault): URL Kong target + secret pasangan pengirim→penerima. Lintas stack lewat gateway host; admin(core) juga
 # ke dirinya sendiri (loopback uji). Port DB / API: identity 5432x, admin(core) 5532x, creator 5632x, brand 5732x.
 declare -A DBP=([admin]=55322 [creator]=56322 [brand]=57322) APIP=([admin]=55321 [creator]=56321 [brand]=57321)
@@ -111,9 +113,12 @@ done; done
 # Backfill replika (data lama sebelum replika ada; idempoten, dikirim relay bus): kolom milik admin ke brand & creator,
 # isi profil milik creator ke admin & brand.
 psql "postgresql://postgres:postgres@127.0.0.1:55322/postgres" -qtAX -v ON_ERROR_STOP=1 \
-  -c "select bus.resync('market.categories', 'brand'), bus.resync('market.profiles', 'brand'), bus.resync('market.profiles', 'creator')" >/dev/null
+  -c "select bus.resync('market.categories', 'brand'), bus.resync('market.profiles', 'brand'), bus.resync('market.profiles', 'creator'),
+             bus.resync('ops.settings', 'creator'), bus.resync('market.campaigns', 'creator'), bus.resync('market.claims', 'creator')" >/dev/null
 psql "postgresql://postgres:postgres@127.0.0.1:56322/postgres" -qtAX -v ON_ERROR_STOP=1 \
   -c "select bus.resync('market.profiles', 'admin'), bus.resync('market.profiles', 'brand')" >/dev/null
+psql "postgresql://postgres:postgres@127.0.0.1:57322/postgres" -qtAX -v ON_ERROR_STOP=1 \
+  -c "select bus.resync('market.campaigns', 'creator')" >/dev/null
 
 for a in web accounts clipper brand admin; do
   {

@@ -38,9 +38,9 @@ core_internal:
   recalc_scores: {job: trust-score, writes: [market.profiles], rule: "50 + jumlah delta E-40, dibatasi 0–100"}
   dispatch_broadcasts: {job: broadcast-dispatch, writes: [ops.broadcasts, ops.notifications], rule: "segmen → penerima → enqueue_notification"}
 edge:
-  core/social: "connect OAuth (tukar code → store_social_token), daftar video, verifikasi kepemilikan, submit (E-12): caption dicek api.missing_brief_tags, durasi dicek min/max_duration_sec; campaign berbatas durasi + API tanpa durasi → in_review walau review_mode auto"
-  core/track-worker: "ambil batch queue tracking, fetchMetrics, tulis snapshot, cek ulang caption lewat api.missing_brief_tags (hashtag/mention/link hilang → flag), panggil accrue_earnings"
-  core/refresh-tokens: "refresh token sosmed sebelum kedaluwarsa"
+  creator/social: "connect OAuth (tukar code → store_social_token), daftar video, verifikasi kepemilikan, submit (E-12): caption dicek api.missing_brief_tags, durasi dicek min/max_duration_sec; campaign berbatas durasi + API tanpa durasi → in_review walau review_mode auto"
+  creator/track-worker: "ambil batch queue tracking, fetchMetrics, tulis snapshot, cek ulang caption lewat api.missing_brief_tags (hashtag/mention/link hilang → flag), panggil accrue_earnings"
+  creator/refresh-tokens: "refresh token sosmed sebelum kedaluwarsa"
   core/notify: "kuras queue email → bridge identity (email + push); endpoint one-click unsubscribe (List-Unsubscribe-Post) untuk email promosi"
   core/bridge: "terima panggilan identity (get_batch, attach_export, attach_proof, raise_fraud_flag, close_account, mark_instant) + kirim reconcile_ids"
   core/fulfill: "pasang kode dari pool, kirim webhook reward (tanda tangan HMAC, retry 5 menit)"

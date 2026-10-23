@@ -15,7 +15,8 @@ fs.mkdirSync(OUT, { recursive: true });
 const NATIVE = 'http://app.clipper.localhost:3002', ACC = 'http://accounts.clipper.localhost:3001';
 const CORE_DB = 'postgresql://postgres:postgres@127.0.0.1:55322/postgres', MAILPIT = 'http://127.0.0.1:54324';
 const CAMPAIGN = 'e2e00000-0000-0000-0000-0000000000c0';
-const sql = (q) => execFileSync('psql', [CORE_DB, '-X', '-tAqc', q], { encoding: 'utf8' }).trim();
+const CREATOR_DB = 'postgresql://postgres:postgres@127.0.0.1:56322/postgres';
+const sql = (q, db = CORE_DB) => execFileSync('psql', [db, '-X', '-tAqc', q], { encoding: 'utf8' }).trim();
 const email = `m2e-${Date.now()}@clipper.localhost`;
 const username = `m2e_${Date.now().toString(36)}`;
 const log = (...a) => console.log('✓', ...a);
@@ -90,8 +91,10 @@ const server = http.createServer((req, res) => {
     await shot('03-campaigns');
     // 3. Detail → claim (RPC claim_campaign dengan JWT identity) → tercatat di core + snackbar
     const uid = sql(`select id from market.profiles where username = '${username}'`);
-    sql(`insert into tracking.social_accounts (user_id, platform, external_id, handle, followers, platform_created_at)
-         values ('${uid}', 'tiktok', 'tt-${username}', '@${username}', 5000, now() - interval '400 days')`);
+    // akun sosmed milik DB creator (worker_upsert_social_account); claim di admin membaca replikanya
+    const acc = sql(`insert into tracking.social_accounts (user_id, platform, external_id, handle, followers, platform_created_at)
+         values ('${uid}', 'tiktok', 'tt-${username}', '@${username}', 5000, now() - interval '400 days') returning id`, CREATOR_DB);
+    for (let i = 0; i < 40 && !sql(`select 1 from tracking.social_accounts where id = '${acc}'`); i++) await new Promise((r) => setTimeout(r, 500));
     await page.getByRole('link', { name: 'E2E Journey Campaign' }).first().click();
     await page.getByTestId('claim').click({ timeout: 15000 });
     await page.getByTestId('open-submit').waitFor({ timeout: 15000 });

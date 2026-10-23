@@ -1,4 +1,5 @@
-// core/social (user JWT identity): connect OAuth sosmed, daftar video setelah claim, submit video (E-12).
+// creator/social (user JWT identity): connect OAuth sosmed, daftar video setelah claim, submit video (E-12). Claim & campaign =
+// replika admin/brand di DB creator; keputusan review & uang di admin (replika submisi).
 // Aksi POST {action, …}: authorize | connect | youtube_code | youtube_verify | list_videos | submit. CORS hanya origin di APP_ORIGINS.
 import { type User, verifyUserJwt } from "../_shared/auth.ts";
 import { type Rpc, RpcError, serviceRpc, userClient } from "../_shared/db.ts";
@@ -338,13 +339,8 @@ export function defaultSocialDeps(): SocialDeps {
       if (error) throw new RpcError("claims", error.code ?? "", error.message);
       return data as Claim | null;
     },
-    async missingTags(user, campaignId, caption) {
-      const { data, error } = await userClient(user.jwt).rpc("missing_brief_tags", {
-        p_campaign: campaignId,
-        p_caption: caption,
-      });
-      if (error) throw new RpcError("missing_brief_tags", error.code ?? "", error.message);
-      return data as string[] | null;
+    async missingTags(_user, campaignId, caption) {
+      return await serviceRpc()<string[] | null>("missing_brief_tags", { p_campaign: campaignId, p_caption: caption });
     },
     coverHash: (url) => coverHash(url),
     redirectAllowlist: envList("SOCIAL_REDIRECT_ALLOWLIST"),

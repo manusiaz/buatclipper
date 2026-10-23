@@ -12,7 +12,7 @@ import { createYouTube } from "./youtube.ts";
 
 export * from "./types.ts";
 
-/** Env client id/secret per platform (secret hanya di Edge Functions core, §15.7). */
+/** Env client id/secret per platform (secret hanya di Edge Functions creator, §15.7). */
 export const PLATFORM_ENV: Record<Platform, [string, string]> = {
   tiktok: ["TIKTOK_CLIENT_KEY", "TIKTOK_CLIENT_SECRET"],
   instagram: ["META_APP_ID", "META_APP_SECRET"],

@@ -15,6 +15,9 @@ create unique index claims_one_open_per_campaign on market.claims (campaign_id, 
 create index claims_user_idx on market.claims (user_id, created_at desc);
 create index claims_campaign_idx on market.claims (campaign_id, status);
 create index claims_expiring_idx on market.claims (expires_at) where status = 'open';
+-- Replika ke creator: submit memeriksa claim terbuka milik sendiri.
+create trigger claims_replicate after insert or update or delete on market.claims for each row
+  execute function bus.replicate('creator:campaign_id,user_id,status,expires_at,created_at');
 
 alter table market.claims enable row level security;
 create policy claims_iss on market.claims as restrictive for all to authenticated  -- policy:core.iss-identity

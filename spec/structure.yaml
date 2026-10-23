@@ -98,11 +98,11 @@ pages:  # id: [file route, tanggung jawab]
 
 features:  # folder relatif ke apps/<app>/src/features/ kecuali disebut lain
   F-C01: {name: "Auth & onboarding", folders: [accounts/auth, accounts/onboarding, clipper/auth, packages/auth], pages: ["page:accounts/login", "page:accounts/onboarding", "page:app/login"], db: [market.profiles, member.consents, member.legal_versions, bucket.avatars], fn: [api.ensure_profile, api.record_consent, member.custom_access_token_hook]}
-  F-C02: {name: "Connect akun sosmed", folders: [clipper/social], pages: ["page:app/social"], db: [tracking.social_accounts, vault.social-tokens], fn: [core/social, api.store_social_token]}
+  F-C02: {name: "Connect akun sosmed", folders: [clipper/social], pages: ["page:app/social"], db: [tracking.social_accounts, vault.social-tokens], fn: [creator/social, creator.store_social_token]}
   F-C03: {name: "Campaign list", folders: [clipper/campaigns], pages: ["page:app/campaigns"], db: [market.campaigns, finance.reward_pools, market.categories], fn: [api.list_campaigns]}
   F-C04: {name: "Detail & instruksi", folders: [clipper/campaigns], pages: ["page:app/campaigns/[id]"], db: [market.campaigns, market.rate_rules, market.campaign_assets, bucket.campaign-assets], fn: []}
   F-C05: {name: "Claim", folders: [clipper/claim], pages: ["page:app/campaigns/[id]"], db: [market.claims], fn: [api.claim_campaign]}
-  F-C06: {name: "Submit link", folders: [clipper/submit], pages: ["page:app/campaigns/[id]"], db: [tracking.submissions, market.campaigns], fn: [core/social, api.missing_brief_tags]}
+  F-C06: {name: "Submit link", folders: [clipper/submit], pages: ["page:app/campaigns/[id]"], db: [tracking.submissions, market.campaigns], fn: [creator/social, api.missing_brief_tags]}
   F-C07: {name: "Tugas Saya", folders: [clipper/tasks], pages: ["page:app/tasks"], db: [market.claims, tracking.submissions, tracking.view_snapshots, trust.review_decisions], fn: [api.appeal_submission]}
   F-C08: {name: "Wallet", folders: [clipper/wallet], pages: ["page:app/wallet"], db: [finance.ledger_accounts, finance.ledger_entries, finance.reward_codes], fn: []}
   F-C09: {name: "Withdraw & klaim reward", folders: [clipper/withdraw, accounts/payout-methods], pages: ["page:app/wallet/withdraw", "page:accounts/payout-methods"], db: [finance.payouts, finance.fulfillments, member.payout_methods, member.recipient_details], fn: [api.request_payout, api.request_fulfillment, api.my_payout_methods, identity/member-data]}

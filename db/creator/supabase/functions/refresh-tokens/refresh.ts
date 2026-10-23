@@ -1,4 +1,4 @@
-// core/refresh-tokens (§11, R-08): refresh token sosmed yang kedaluwarsa dalam 12 jam (TikTok 24 jam, IG/Threads 60 hari).
+// creator/refresh-tokens (§11, R-08): refresh token sosmed yang kedaluwarsa dalam 12 jam (TikTok 24 jam, IG/Threads 60 hari).
 // Sukses → store_social_token (Vault) + status verified. Refresh ditolak platform → status expired (minta reconnect).
 import type { Rpc } from "../_shared/db.ts";
 import { parseToken, type Platform, type PlatformAdapter, Retryable, TokenExpired } from "../_shared/social/mod.ts";

@@ -3,7 +3,7 @@
 # hanya me-mount folder functions project-nya sendiri). scripts/check-arch.mjs menolak salinan yang berbeda dari sumber.
 set -euo pipefail
 cd "$(dirname "$0")/.."
-FILES="http.ts bridge.ts db.ts bus.ts"
+FILES="http.ts bridge.ts db.ts bus.ts auth.ts testing.ts"
 for p in creator brand; do
   mkdir -p "db/$p/supabase/functions/_shared"
   for f in $FILES; do cp "db/core/supabase/functions/_shared/$f" "db/$p/supabase/functions/_shared/$f"; done

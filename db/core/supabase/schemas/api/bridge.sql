@@ -146,13 +146,9 @@ begin
   update tracking.submissions set status = 'rejected' where user_id = p_user and status in ('validating', 'in_review');
   update tracking.submissions set status = 'rejected_final' where user_id = p_user and status = 'appealed';
   update market.claims set status = 'released' where user_id = p_user and status = 'open';
-  delete from vault.secrets v where v.id in (select a.token_ref from tracking.social_accounts a where a.user_id = p_user);
-  delete from tracking.social_accounts a
-   where a.user_id = p_user and not exists (select 1 from tracking.submissions s where s.social_account_id = a.id);
-  update tracking.social_accounts set status = 'disconnected', token_ref = null, handle = 'deleted', followers = null
-   where user_id = p_user;
   update market.profiles set referral_code = null, suspended_until = null, status = 'closed' where id = p_user;
-  perform bus.emit('creator', 'profile.anonymize', jsonb_build_object('user_id', p_user));  -- isi profil milik creator
+  -- isi profil, token & akun sosmed milik creator (anonimkan, hapus token, putus akun)
+  perform bus.emit('creator', 'profile.anonymize', jsonb_build_object('user_id', p_user));
   return jsonb_build_object('ok', true, 'reason', null);
 end $$;
 

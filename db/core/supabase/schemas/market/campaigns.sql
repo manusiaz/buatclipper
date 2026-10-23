@@ -87,7 +87,8 @@ create trigger campaigns_template_stays_draft before insert or update of status 
 
 -- Status, jadwal, pin ke brand (tampilan builder/dashboard; kunci brief di brand membaca status ini).
 create trigger campaigns_replicate after insert or update or delete on market.campaigns for each row
-  execute function bus.replicate('brand:status,start_at,submit_deadline,view_window_days,pinned_until');
+  execute function bus.replicate('brand:status,start_at,submit_deadline,view_window_days,pinned_until',
+                                'creator:status,submit_deadline,view_window_days');
 
 -- Isi tiba dari brand (bus.apply_row). Brand mengunci brief sejak status replika ≠ draft/rejected; balapan dengan replika status
 -- (isi berubah tepat setelah diajukan) ditutup di sini: in_review dengan isi lebih baru dari yang diajukan → kembali draft, invoice

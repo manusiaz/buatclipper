@@ -1,4 +1,4 @@
-// core/track-worker — dipicu pg_cron tiap 5 menit lewat ops.invoke_function (header apikey = secret key core).
+// creator/track-worker — dipicu pg_cron tiap 5 menit lewat ops.invoke_function (header apikey = secret key creator).
 // Respons 202 langsung (pg_net menunggu maks 5 detik), kerja lanjut di EdgeRuntime.waitUntil. ?sync=1 = tunggu hasil.
 import { requireApiKey } from "../_shared/auth.ts";
 import { serviceRpc } from "../_shared/db.ts";

@@ -28,11 +28,11 @@ export const identityApi = identity.schema('api');
 
 export type FnResult<T> = { ok: true; data: T } | { ok: false; error: string; detail?: unknown; status: number };
 
-/** Edge Function core/identity dengan JWT user (tanpa Origin = jalur server-ke-server di _shared/http.ts). */
-export async function invoke<T = unknown>(project: 'core' | 'identity', name: string, body: unknown): Promise<FnResult<T>> {
+/** Edge Function core/creator/identity dengan JWT user (tanpa Origin = jalur server-ke-server di _shared/http.ts). */
+export async function invoke<T = unknown>(project: 'core' | 'creator' | 'identity', name: string, body: unknown): Promise<FnResult<T>> {
   const token = await accessToken();
   if (!token) return { ok: false, error: 'auth:no_session', status: 401 };
-  const [base, key] = project === 'core' ? [env.coreUrl, env.coreKey] : [env.identityUrl, env.identityKey];
+  const [base, key] = project === 'core' ? [env.coreUrl, env.coreKey] : project === 'creator' ? [env.creatorDbUrl, env.creatorDbKey] : [env.identityUrl, env.identityKey];
   let res: Response;
   try {
     res = await fetch(`${base}/functions/v1/${name}`, {

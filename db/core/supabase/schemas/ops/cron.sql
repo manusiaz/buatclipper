@@ -1,7 +1,6 @@
 -- Queue (Supabase Queues/pgmq) dan job ops. Jadwal pg_cron dalam UTC (WIB = UTC+7).
 -- Catatan: job & queue adalah konfigurasi extension, bukan DDL biasa. pg-delta melacak job pg_cron bernama; kalau diff tidak
 -- menangkap queue, jalankan file ini sebagai migration manual (dicek di Fase 0).
-select pgmq.create('tracking');
 select pgmq.create('email');
 
 -- job:notify-drain — tiap menit memicu worker notify: kuras antrean email → bridge identity (alur 4).

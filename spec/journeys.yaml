@@ -233,7 +233,7 @@ journeys:
       - ext:meta
       - ext:google
       - api:GET app/api/oauth/[platform]/callback
-      - api:fn core/social
+      - api:fn creator/social
       - table:vault.social-tokens
       - table:tracking.social_accounts
       next:
@@ -289,7 +289,7 @@ journeys:
         hashtag/mention/link wajib ada (api.missing_brief_tags), durasi sesuai brief (API tanpa durasi → review manual), video belum pernah disubmit di
         campaign ini → E-12 validating → in_review (review manual) atau tracking (auto); E-11 submitted.'
       nodes:
-      - api:fn core/social
+      - api:fn creator/social
       - api:rpc core.missing_brief_tags
       - table:tracking.submissions
       - table:market.claims
@@ -311,7 +311,7 @@ journeys:
         + email/push lewat identity (alur 4).
       nodes:
       - job:track-due
-      - api:fn core/track-worker
+      - api:fn creator/track-worker
       - table:tracking.view_snapshots
       - fn:accrue_earnings
       - table:finance.ledger_entries

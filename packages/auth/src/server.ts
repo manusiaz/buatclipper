@@ -120,12 +120,12 @@ export type FnResult<T> = { ok: true; data: T } | { ok: false; error: string; de
 
 /**
  * Panggil Edge Function dengan JWT sesi user (diverifikasi fungsi lewat JWKS identity). Menyatukan dua envelope:
- * core → body mentah / {error, message, detail}; identity → {ok, data} / {ok:false, error:{code, message}}.
- * brand & web hanya boleh project 'core' (dicek scripts/check-arch.mjs).
+ * core/creator → body mentah / {error, message, detail}; identity → {ok, data} / {ok:false, error:{code, message}}.
+ * brand & web tidak boleh project 'identity' (dicek scripts/check-arch.mjs). creator = social (sosmed, daftar video, submit).
  * kind 'public' = tanpa sesi user, hanya publishable key (mis. accounts /handoff menukar kode session-handoff).
  */
 export async function invokeFunction<T = unknown>(
-  project: 'core' | 'identity',
+  project: 'core' | 'creator' | 'identity',
   name: string,
   body: unknown,
   kind: SessionKind | 'public' = 'sso',
@@ -134,7 +134,9 @@ export async function invokeFunction<T = unknown>(
   if (kind !== 'public' && !token) return { ok: false, error: 'auth:no_session', status: 401 };
   const [base, key] = project === 'core'
     ? [process.env.NEXT_PUBLIC_CORE_URL!, process.env.NEXT_PUBLIC_CORE_PUBLISHABLE_KEY!]
-    : [process.env.NEXT_PUBLIC_IDENTITY_URL!, process.env.NEXT_PUBLIC_IDENTITY_PUBLISHABLE_KEY!];
+    : project === 'creator'
+      ? [process.env.NEXT_PUBLIC_CREATOR_DB_URL!, process.env.NEXT_PUBLIC_CREATOR_DB_PUBLISHABLE_KEY!]
+      : [process.env.NEXT_PUBLIC_IDENTITY_URL!, process.env.NEXT_PUBLIC_IDENTITY_PUBLISHABLE_KEY!];
   let res: Response;
   try {
     res = await fetch(`${base}/functions/v1/${name}`, {

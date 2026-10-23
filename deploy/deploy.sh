@@ -229,19 +229,21 @@ prepare_stack() { # identity|core|creator|brand
     setenv "$e" STORAGE_FILE_SIZE_LIMIT 524288000   # brand: campaign-assets 500 MiB
     setenv "$e" DISABLE_SIGNUP true; setenv "$e" ENABLE_EMAIL_SIGNUP false
     setenv "$e" IDENTITY_ISSUER "$AUTH/auth/v1"
+    if [ "$p" = creator ]; then   # OAuth sosmed: Edge Function social / track-worker / refresh-tokens
+      setenv "$e" SOCIAL_REDIRECT_ALLOWLIST \
+        "$(for x in tiktok instagram youtube threads facebook x; do printf '%s/api/oauth/%s/callback,' "$APP" "$x"; done | sed 's/,$//')"
+      for k in TIKTOK_CLIENT_KEY TIKTOK_CLIENT_SECRET META_APP_ID META_APP_SECRET GOOGLE_CLIENT_ID GOOGLE_CLIENT_SECRET YOUTUBE_API_KEY \
+               THREADS_APP_ID THREADS_APP_SECRET FACEBOOK_APP_ID FACEBOOK_APP_SECRET X_CLIENT_ID X_CLIENT_SECRET; do
+        setenv "$e" "$k" "${!k:-}"
+      done
+    fi
   else
     setenv "$e" GW_PORT 8002; setenv "$e" DB_PORT 5434
     setenv "$e" STORAGE_FILE_SIZE_LIMIT 524288000
     setenv "$e" SITE_URL "$APP"
     setenv "$e" DISABLE_SIGNUP true; setenv "$e" ENABLE_EMAIL_SIGNUP false
     setenv "$e" IDENTITY_ISSUER "$AUTH/auth/v1"
-    setenv "$e" SOCIAL_REDIRECT_ALLOWLIST \
-      "$(for x in tiktok instagram youtube threads facebook x; do printf '%s/api/oauth/%s/callback,' "$APP" "$x"; done | sed 's/,$//')"
     setenv "$e" UNSUBSCRIBE_SECRET "$UNSUBSCRIBE_SECRET"
-    for k in TIKTOK_CLIENT_KEY TIKTOK_CLIENT_SECRET META_APP_ID META_APP_SECRET GOOGLE_CLIENT_ID GOOGLE_CLIENT_SECRET YOUTUBE_API_KEY \
-             THREADS_APP_ID THREADS_APP_SECRET FACEBOOK_APP_ID FACEBOOK_APP_SECRET X_CLIENT_ID X_CLIENT_SECRET; do
-      setenv "$e" "$k" "${!k:-}"
-    done
   fi
   chmod 600 "$e"
 

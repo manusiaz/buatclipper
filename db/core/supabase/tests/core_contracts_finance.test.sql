@@ -120,6 +120,42 @@ begin
   perform finance.accrue_earnings(p_sub, vid);
   return vid;
 end $$;
+-- Replika tiba dari creator (pemilik isi submisi & snapshot; validasi submit & antrean poll dites di db/creator): submisi baru
+-- (isi + review_route seperti creator) → keputusan admin; snapshot (raw + caption + extra) → fraud, accrual, lock, jadwal poll.
+create function pg_temp.create_submission(p_user uuid, p_claim uuid, p_account uuid, p_post text, p_url text, p_posted timestamptz,
+                                          p_caption text, p_duration int, p_cover bigint default null) returns jsonb
+language plpgsql as $$
+declare cl market.claims; c market.campaigns; pf market.platform; sid uuid; st text;
+begin
+  select * into cl from market.claims where id = p_claim;
+  select * into c from market.campaigns where id = cl.campaign_id;
+  select platform into pf from tracking.social_accounts where id = p_account;
+  insert into tracking.submissions (claim_id, user_id, campaign_id, social_account_id, platform, post_id, url, posted_at, duration_sec,
+                                    review_route, cover_hash)
+  values (cl.id, p_user, c.id, p_account, pf, p_post, p_url, p_posted, p_duration,
+          case when c.review_mode in ('manual', 'brand') or (p_duration is null and (c.min_duration_sec is not null or c.max_duration_sec is not null))
+                    or (c.type = 'music' and pf = 'tiktok') then 'manual' else 'auto' end, p_cover)
+  returning id into sid;
+  perform tracking.decide_new_submission(sid);
+  select status::text into st from tracking.submissions where id = sid;
+  return jsonb_build_object('submission_id', sid, 'status', st);
+end $$;
+create function pg_temp.record_snapshot(p_sub uuid, p_views bigint, p_likes bigint, p_comments bigint, p_shares bigint, p_caption text,
+                                        p_raw jsonb, p_extra jsonb default '{}') returns jsonb
+language plpgsql as $$
+declare st tracking.submission_status; vid bigint;
+begin
+  select status into st from tracking.submissions where id = p_sub;
+  if st not in ('tracking', 'flagged') then  -- creator tidak mencatat snapshot submisi yang tidak dilacak
+    return jsonb_build_object('snapshot_id', null, 'flagged', st = 'flagged', 'next_poll_at', null, 'locked', st in ('locked', 'settled'));
+  end if;
+  insert into tracking.view_snapshots (submission_id, taken_at, views, likes, comments, shares, is_final, raw)
+  values (p_sub, clock_timestamp(), p_views, p_likes, p_comments, p_shares, tracking.final_due(p_sub),
+          nullif(coalesce(p_raw, '{}') || case when coalesce(p_extra, '{}') <> '{}' then jsonb_build_object('extra', p_extra) else '{}' end
+                 || case when p_caption is not null then jsonb_build_object('caption', p_caption) else '{}' end, '{}'))
+  returning id into vid;
+  return tracking.apply_snapshot(vid);
+end $$;
 create function pg_temp.bal(p_user uuid, p_state text, p_rt uuid default '77777777-0000-0000-0000-000000000001') returns numeric
 language sql security definer as $$
   select coalesce(sum(e.amount), 0) from finance.ledger_entries e join finance.ledger_accounts a on a.id = e.account_id
@@ -1236,7 +1272,7 @@ select is((select status::text from tracking.submissions where id = (select v::u
 -- fixture bagian berikut mengandalkan budi masih disuspend
 update market.profiles set status = 'suspended', suspended_until = now() + interval '30 days' where id = '11111111-0000-0000-0000-00000000000b';
 
--- ========== I. worker_create_submission (core/social, E-12) ==========
+-- ========== I. submisi baru dari creator (E-12): keputusan admin ==========
 insert into market.campaigns (id, org_id, slug, title, type, platforms, start_at, submit_deadline, created_by, review_mode, required_hashtags,
                               min_duration_sec, max_duration_sec)
 values ('55555555-0000-0000-0000-0000000000b0', '44444444-0000-0000-0000-000000000001', 'k10-submit', 'Submit', 'clipping', '{tiktok}',
@@ -1253,62 +1289,7 @@ insert into market.claims (id, campaign_id, user_id, expires_at, created_at) val
   ('88888888-0000-0000-0000-0000000000b1', '55555555-0000-0000-0000-0000000000b0', '11111111-0000-0000-0000-00000000000d', now() + interval '46 hours', now() - interval '2 hours'),
   ('88888888-0000-0000-0000-0000000000a3', '55555555-0000-0000-0000-0000000000a3', '11111111-0000-0000-0000-00000000000a', now() + interval '46 hours', now() - interval '2 hours'),
   ('88888888-0000-0000-0000-0000000000b2', '55555555-0000-0000-0000-0000000000b1', '11111111-0000-0000-0000-00000000000f', now() + interval '46 hours', now() - interval '2 hours');
-select throws_ok($$ select api.worker_create_submission('11111111-0000-0000-0000-00000000000e', '88888888-0000-0000-0000-0000000000b0',
-                    '99999999-0000-0000-0000-00000000000e', 'x', 'https://tiktok.com/x', now(), '#mplid', 30) $$, 'P0001', 'profile_inactive',
-                 'submit: profil banned ditolak');
-select throws_ok($$ select api.worker_create_submission('11111111-0000-0000-0000-00000000000a', gen_random_uuid(),
-                    '99999999-0000-0000-0000-00000000000a', 'x', 'https://tiktok.com/x', now(), '#mplid', 30) $$, 'P0001', 'claim_not_open',
-                 'submit: claim tidak ada');
-select throws_ok($$ select api.worker_create_submission('11111111-0000-0000-0000-00000000000a', '88888888-0000-0000-0000-0000000000b1',
-                    '99999999-0000-0000-0000-00000000000a', 'x', 'https://tiktok.com/x', now(), '#mplid', 30) $$, 'P0001', 'not_your_claim',
-                 'submit: claim milik orang lain');
-select throws_ok($$ select api.worker_create_submission('11111111-0000-0000-0000-00000000000a', '88888888-0000-0000-0000-0000000000a3',
-                    '99999999-0000-0000-0000-00000000000a', 'x', 'https://tiktok.com/x', now(), '#mplid', 30) $$, 'P0001', 'campaign_closed',
-                 'submit: campaign sudah exhausted');
-select throws_ok($$ select api.worker_create_submission('11111111-0000-0000-0000-00000000000a', '88888888-0000-0000-0000-0000000000b0',
-                    '99999999-0000-0000-0000-00000000000d', 'x', 'https://tiktok.com/x', now(), '#mplid', 30) $$, 'P0001', 'account_not_yours',
-                 'submit: akun sosmed orang lain');
-select throws_ok($$ select api.worker_create_submission('11111111-0000-0000-0000-00000000000a', '88888888-0000-0000-0000-0000000000b0',
-                    '99999999-0000-0000-0000-0000000000a2', 'x', 'https://instagram.com/p/x', now(), '#mplid', 30) $$, 'P0001',
-                 'platform_not_allowed', 'submit: platform di luar campaign');
-select throws_ok($$ select api.worker_create_submission('11111111-0000-0000-0000-00000000000a', '88888888-0000-0000-0000-0000000000b0',
-                    '99999999-0000-0000-0000-00000000000a', 'x', 'https://tiktok.com/x', now() - interval '3 hours', '#mplid', 30) $$, 'P0001',
-                 'posted_before_claim', 'submit: diposting sebelum claim');
-select throws_ok($$ select api.worker_create_submission('11111111-0000-0000-0000-00000000000a', '88888888-0000-0000-0000-0000000000b0',
-                    '99999999-0000-0000-0000-00000000000a', 'x', 'https://tiktok.com/x', now() - interval '1 hour', 'seru banget', 30) $$, 'P0001',
-                 'missing_tags:#mplid', 'submit: hashtag wajib hilang (kode + daftar)');
-select throws_ok($$ select api.worker_create_submission('11111111-0000-0000-0000-00000000000a', '88888888-0000-0000-0000-0000000000b0',
-                    '99999999-0000-0000-0000-00000000000a', 'x', 'https://tiktok.com/x', now() - interval '1 hour', '#mplid', 5) $$, 'P0001',
-                 'duration_out_of_range', 'submit: durasi di luar batas');
--- Regresi R75: suspend yang sudah lewat masanya tidak memblok submit (claim_check juga menerimanya).
-update market.profiles set status = 'suspended', suspended_until = now() - interval '1 hour' where id = '11111111-0000-0000-0000-00000000000a';
-select throws_ok($$ select api.worker_create_submission('11111111-0000-0000-0000-00000000000a', '88888888-0000-0000-0000-0000000000b0',
-                    '99999999-0000-0000-0000-00000000000a', 'x', 'https://tiktok.com/x', now() - interval '1 hour', '#mplid', 5) $$, 'P0001',
-                 'duration_out_of_range', 'R75: suspend kedaluwarsa lolos cek profil submit');
-update market.profiles set status = 'active', suspended_until = null where id = '11111111-0000-0000-0000-00000000000a';
--- Regresi R67: bergabung ke org pemilik campaign setelah claim → submit ditolak own_org.
-insert into market.org_members (org_id, user_id, role) values ('44444444-0000-0000-0000-000000000001', '11111111-0000-0000-0000-00000000000a', 'brand_manager');
-select throws_ok($$ select api.worker_create_submission('11111111-0000-0000-0000-00000000000a', '88888888-0000-0000-0000-0000000000b0',
-                    '99999999-0000-0000-0000-00000000000a', 'x', 'https://tiktok.com/x', now() - interval '1 hour', '#mplid', 30) $$, 'P0001',
-                 'not_eligible:own_org', 'R67: anggota org pemilik (bergabung setelah claim) tidak bisa submit');
-delete from market.org_members where org_id = '44444444-0000-0000-0000-000000000001' and user_id = '11111111-0000-0000-0000-00000000000a';
--- Regresi R63: syarat follower/umur akun berlaku untuk akun yang dipakai submit.
-set local session_replication_role = replica;
-update market.campaigns set min_followers = 1000000000 where id = '55555555-0000-0000-0000-0000000000b0';
-set local session_replication_role = origin;
-select throws_ok($$ select api.worker_create_submission('11111111-0000-0000-0000-00000000000a', '88888888-0000-0000-0000-0000000000b0',
-                    '99999999-0000-0000-0000-00000000000a', 'x', 'https://tiktok.com/x', now() - interval '1 hour', '#mplid', 30) $$, 'P0001',
-                 'not_eligible:min_followers', 'R63: akun submit di bawah min_followers ditolak');
-set local session_replication_role = replica;
-update market.campaigns set min_followers = 0, min_account_age_days = 30000 where id = '55555555-0000-0000-0000-0000000000b0';
-set local session_replication_role = origin;
-select throws_ok($$ select api.worker_create_submission('11111111-0000-0000-0000-00000000000a', '88888888-0000-0000-0000-0000000000b0',
-                    '99999999-0000-0000-0000-00000000000a', 'x', 'https://tiktok.com/x', now() - interval '1 hour', '#mplid', 30) $$, 'P0001',
-                 'not_eligible:min_account_age', 'R63: akun submit di bawah min_account_age ditolak');
-set local session_replication_role = replica;
-update market.campaigns set min_account_age_days = 0 where id = '55555555-0000-0000-0000-0000000000b0';
-set local session_replication_role = origin;
-insert into t_ids select 's10', api.worker_create_submission('11111111-0000-0000-0000-00000000000a', '88888888-0000-0000-0000-0000000000b0',
+insert into t_ids select 's10', pg_temp.create_submission('11111111-0000-0000-0000-00000000000a', '88888888-0000-0000-0000-0000000000b0',
   '99999999-0000-0000-0000-00000000000a', 'vid-10', 'https://tiktok.com/@andi/video/10', now() - interval '1 hour', 'Mantap #MPLID', 30,
   1234567890123) ->> 'submission_id';
 select is((select status::text || ':' || (next_poll_at <= now())::text from tracking.submissions where id = (select v::uuid from t_ids where k = 's10')),
@@ -1320,30 +1301,11 @@ select ok(exists (select 1 from trust.score_events e where e.reason = 'submissio
           and exists (select 1 from ops.notifications n where n.event = 'submission.approved'
                         and n.payload ->> 'submission_id' = (select v from t_ids where k = 's10')),
           'regresi G-3/G-17: review auto menaikkan Trust Score dan mengabari clipper (submission.approved)');
--- Regresi R64: claim kedua yang sudah terbuka tidak melewati max_clips_per_clipper saat submit.
-set local session_replication_role = replica;
-update market.campaigns set max_clips_per_clipper = 1 where id = '55555555-0000-0000-0000-0000000000b0';
-insert into market.claims (id, campaign_id, user_id, expires_at, created_at) values
-  ('88888888-0000-0000-0000-000000000064', '55555555-0000-0000-0000-0000000000b0', '11111111-0000-0000-0000-00000000000a', now() + interval '46 hours', now() - interval '2 hours');
-set local session_replication_role = origin;
-select throws_ok($$ select api.worker_create_submission('11111111-0000-0000-0000-00000000000a', '88888888-0000-0000-0000-000000000064',
-                    '99999999-0000-0000-0000-00000000000a', 'vid-r64', 'https://tiktok.com/@andi/video/64', now() - interval '1 hour', '#mplid', 30) $$, 'P0001',
-                 'not_eligible:max_clips', 'R64: submit claim kedua saat kuota clip penuh ditolak');
-set local session_replication_role = replica;
-delete from market.claims where id = '88888888-0000-0000-0000-000000000064';
-update market.campaigns set max_clips_per_clipper = 10 where id = '55555555-0000-0000-0000-0000000000b0';
-set local session_replication_role = origin;
-select throws_ok($$ select api.worker_create_submission('11111111-0000-0000-0000-00000000000d', '88888888-0000-0000-0000-0000000000b1',
-                    '99999999-0000-0000-0000-00000000000d', 'vid-10', 'https://tiktok.com/x', now() - interval '1 hour', '#mplid', 30) $$, 'P0001',
-                 'already_submitted', 'submit: video sama di campaign sama');
-select throws_ok($$ select api.worker_create_submission('11111111-0000-0000-0000-00000000000d', '88888888-0000-0000-0000-0000000000b1',
-                    '99999999-0000-0000-0000-00000000000d', 'v1', 'https://tiktok.com/x', now() - interval '1 hour', '#mplid', 30) $$, 'P0001',
-                 'reused_video', 'submit: video yang dipakai di campaign lain (allow_video_reuse mati)');
-select is(api.worker_create_submission('11111111-0000-0000-0000-00000000000d', '88888888-0000-0000-0000-0000000000b1',
+select is(pg_temp.create_submission('11111111-0000-0000-0000-00000000000d', '88888888-0000-0000-0000-0000000000b1',
             '99999999-0000-0000-0000-00000000000d', 'vid-11', 'https://tiktok.com/@dedi/video/11', now() - interval '1 hour', '#mplid', null,
             1234567890120) ->> 'status',
           'in_review', 'durasi tidak diketahui + campaign berbatas durasi → in_review walau review auto');
-select is(api.worker_create_submission('11111111-0000-0000-0000-00000000000f', '88888888-0000-0000-0000-0000000000b2',
+select is(pg_temp.create_submission('11111111-0000-0000-0000-00000000000f', '88888888-0000-0000-0000-0000000000b2',
             '99999999-0000-0000-0000-00000000000f', 'vid-12', 'https://tiktok.com/@fani/video/12', now() - interval '1 hour', 'halo', null,
             -1234567890123) ->> 'status',
           'in_review', 'review brand → in_review');
@@ -1357,7 +1319,7 @@ update market.campaigns set status = 'live' where id = '55555555-0000-0000-0000-
 insert into market.claims (id, campaign_id, user_id, expires_at, created_at) values
   ('88888888-0000-0000-0000-0000000000b9', '55555555-0000-0000-0000-0000000000b9', '11111111-0000-0000-0000-00000000000a',
    now() + interval '46 hours', now() - interval '2 hours');
-select is(api.worker_create_submission('11111111-0000-0000-0000-00000000000a', '88888888-0000-0000-0000-0000000000b9',
+select is(pg_temp.create_submission('11111111-0000-0000-0000-00000000000a', '88888888-0000-0000-0000-0000000000b9',
             '99999999-0000-0000-0000-00000000000a', 'vid-music', 'https://tiktok.com/@andi/video/99', now() - interval '1 hour', 'pakai sound', 30)
           ->> 'status', 'in_review', 'regresi AA-11: campaign musik TikTok → in_review walau review auto');
 -- Regresi review R34-2: campaign musik review brand yang tidak direview 72 jam tidak di-auto-approve (sound belum diverifikasi).
@@ -1407,29 +1369,24 @@ select ok(not exists (select 1 from trust.fraud_flags f join tracking.submission
 select is((select count(*)::int from ops.notifications where event = 'submission.pending_review' and user_id = '22222222-0000-0000-0000-0000000000a1'),
           1, 'review brand: org dinotifikasi submisi menunggu review');
 
--- ========== J. worker_record_snapshot (track-worker, §11) ==========
-select is((select jsonb_object_keys from jsonb_object_keys(api.worker_submission_context((select v::uuid from t_ids where k = 's10'))) limit 1)
-          is not null, true, 'worker_submission_context terbaca');
-select is(api.worker_submission_context((select v::uuid from t_ids where k = 's10')) #>> '{campaign,required_hashtags,0}', 'mplid',
-          'context memuat brief untuk cek caption');
+-- ========== J. snapshot dari creator (§11): fraud, accrual, lock, jadwal poll ==========
 create temp table t_rec on commit drop as
-  select api.worker_record_snapshot((select v::uuid from t_ids where k = 's10'), 2000, 100, 5, 1, '#mplid mantap', '{"api":"tiktok"}',
+  select pg_temp.record_snapshot((select v::uuid from t_ids where k = 's10'), 2000, 100, 5, 1, '#mplid mantap', '{"api":"tiktok"}',
                                     '{"reach":1500}') as r;
 select is((select r - 'snapshot_id' from t_rec), jsonb_build_object('flagged', false, 'next_poll_at', now() + interval '4 hours', 'locked', false),
           'snapshot pertama: umur < 72 jam → poll lagi 4 jam');
 select is((select raw from tracking.view_snapshots where id = (select (r ->> 'snapshot_id')::bigint from t_rec)),
-          '{"api":"tiktok","extra":{"reach":1500}}'::jsonb, 'p_extra tersimpan di raw.extra');
-select is((select last_snapshot_at is not null from tracking.submissions where id = (select v::uuid from t_ids where k = 's10'))
-          and api.worker_submission_context((select v::uuid from t_ids where k = 's10')) #>> '{submission,last_snapshot_at}' is not null, true,
-          'context memuat last_snapshot_at');
+          '{"api":"tiktok","extra":{"reach":1500},"caption":"#mplid mantap"}'::jsonb, 'extra & caption dari creator ada di raw');
+select is((select last_snapshot_at is not null from tracking.submissions where id = (select v::uuid from t_ids where k = 's10')), true,
+          'snapshot terakhir tercatat');
 select is(pg_temp.rule_amt((select v::uuid from t_ids where k = 's10'),
                            (select id from market.rate_rules where campaign_id = '55555555-0000-0000-0000-0000000000b0')), 2000::numeric,
           'record_snapshot memanggil accrue_earnings');
-select is((api.worker_record_snapshot((select v::uuid from t_ids where k = 's10'), 100000, 10, 0, 0, '#mplid', '{}') ->> 'flagged')::boolean, true,
+select is((pg_temp.record_snapshot((select v::uuid from t_ids where k = 's10'), 100000, 10, 0, 0, '#mplid', '{}') ->> 'flagged')::boolean, true,
           'FR-01: like rate di bawah 0,5% → flag');
 select is((select status::text from tracking.submissions where id = (select v::uuid from t_ids where k = 's10')), 'tracking',
           'FR-01 hanya antre review, earning tetap jalan');
-select is((api.worker_record_snapshot((select v::uuid from t_ids where k = 's10'), 101000, 2000, 0, 0, 'caption diedit', '{}') ->> 'flagged')::boolean,
+select is((pg_temp.record_snapshot((select v::uuid from t_ids where k = 's10'), 101000, 2000, 0, 0, 'caption diedit', '{}') ->> 'flagged')::boolean,
           true, 'FR-06: hashtag wajib hilang dari caption → flag');
 select is((select status::text from tracking.submissions where id = (select v::uuid from t_ids where k = 's10')), 'flagged', 'FR-06 → submisi flagged');
 select is((select last_views::text || ':' || (last_views <> counted_views)::text from api.submissions
@@ -1440,50 +1397,41 @@ select ok(exists (select 1 from trust.fraud_flags where target_id = (select v::u
 select is(pg_temp.rule_amt((select v::uuid from t_ids where k = 's10'),
                            (select id from market.rate_rules where campaign_id = '55555555-0000-0000-0000-0000000000b0')), 100000::numeric,
           'snapshot saat flagged tidak menambah earning');
-select is((api.worker_record_snapshot((select v::uuid from t_ids where k = 's5'), 6000, null, null, null, null, null) ->> 'next_poll_at')::timestamptz,
+select is((pg_temp.record_snapshot((select v::uuid from t_ids where k = 's5'), 6000, null, null, null, null, null) ->> 'next_poll_at')::timestamptz,
           now() + interval '24 hours', 'umur posting 5 hari → poll tiap 24 jam');
-select is(api.worker_record_snapshot((select v::uuid from t_ids where k = 's7'), 9999, null, null, null, null, null) ->> 'snapshot_id', null,
+select is(pg_temp.record_snapshot((select v::uuid from t_ids where k = 's7'), 9999, null, null, null, null, null) ->> 'snapshot_id', null,
           'submisi yang sudah settled tidak dicatat (no-op)');
 insert into ops.settings (key, value) values ('trust.fraud.min_avg_watch_sec', '3'), ('trust.fraud.max_skip_rate', '80'),
   ('trust.fraud.min_id_country_share', '0.5');
-select is((api.worker_record_snapshot((select v::uuid from t_ids where k = 's2'), 140000, 5000, 100, 50, null, null, '{"avg_watch_time":1}')
+select is((pg_temp.record_snapshot((select v::uuid from t_ids where k = 's2'), 140000, 5000, 100, 50, null, null, '{"avg_watch_time":1}')
            ->> 'flagged')::boolean, true, 'FR-09: durasi tonton rata-rata < 3 detik → flag');
 select ok(exists (select 1 from trust.fraud_flags where target_id = (select v::uuid from t_ids where k = 's2') and signal = 'FR-09'), 'flag FR-09');
 select is((select status::text from tracking.submissions where id = (select v::uuid from t_ids where k = 's2')), 'tracking', 'FR-09 hanya antre review');
-select is((api.worker_record_snapshot((select v::uuid from t_ids where k = 's2'), 150000, 5000, 100, 50, null, null,
+select is((pg_temp.record_snapshot((select v::uuid from t_ids where k = 's2'), 150000, 5000, 100, 50, null, null,
             '{"countries":{"ID":300,"US":900,"IN":800},"traffic_sources":{"ADVERTISING":1500}}') ->> 'flagged')::boolean, true,
           'FR-11: penonton Indonesia < 50% → flag');
 select is((select status::text from tracking.submissions where id = (select v::uuid from t_ids where k = 's2')), 'flagged', 'FR-11 menahan earning');
 select is((select (details ->> 'id_share')::numeric from trust.fraud_flags where target_id = (select v::uuid from t_ids where k = 's2')
            and signal = 'FR-11'), 0.15::numeric, 'FR-11 mencatat porsi penonton Indonesia');
 -- Regresi audit AA-12 (FR-11 "sumber traffic ... tidak wajar"): porsi views dari iklan/embed > ambang config → flag + tahan earning.
-select api.worker_record_snapshot((select v::uuid from t_ids where k = 's9r'), 5000, 400, 40, 20, null, null,
+select pg_temp.record_snapshot((select v::uuid from t_ids where k = 's9r'), 5000, 400, 40, 20, null, null,
                                   '{"traffic_sources":{"SHORTS":4000,"ADVERTISING":500,"NO_LINK_EMBEDDED":500}}');
 select ok(not exists (select 1 from trust.fraud_flags where target_id = (select v::uuid from t_ids where k = 's9r') and signal = 'FR-11'),
           'traffic organik (iklan/embed 20%) tidak di-flag');
-select api.worker_record_snapshot((select v::uuid from t_ids where k = 's9r'), 8000, 640, 64, 32, null, null,
+select pg_temp.record_snapshot((select v::uuid from t_ids where k = 's9r'), 8000, 640, 64, 32, null, null,
                                   '{"traffic_sources":{"SHORTS":2000,"ADVERTISING":5000,"NO_LINK_EMBEDDED":1000}}');
 select is((select (details ->> 'offsite_share')::numeric from trust.fraud_flags where target_id = (select v::uuid from t_ids where k = 's9r')
            and signal = 'FR-11'), 0.75::numeric, 'regresi AA-12: FR-11 dari sumber traffic (75% iklan/embed)');
 select is((select status::text from tracking.submissions where id = (select v::uuid from t_ids where k = 's9r')), 'flagged',
           'FR-11 sumber traffic menahan earning');
-select is(api.worker_account_token('99999999-0000-0000-0000-00000000000a') - 'token',
-          '{"id":"99999999-0000-0000-0000-00000000000a","user_id":"11111111-0000-0000-0000-00000000000a","platform":"tiktok",
-            "external_id":"tt-andi","handle":"@andi","status":"verified"}'::jsonb, 'worker_account_token: akun + token');
-select api.worker_defer((select v::uuid from t_ids where k = 's5'), now() + interval '6 days');
-select is((select next_poll_at from tracking.submissions where id = (select v::uuid from t_ids where k = 's5')), now() + interval '6 days',
-          'worker_defer: poll dilewati sampai waktu yang diminta');
-select api.worker_defer((select v::uuid from t_ids where k = 's5'), now() + interval '90 days');
-select is((select next_poll_at from tracking.submissions where id = (select v::uuid from t_ids where k = 's5')), now() + interval '25 days',
-          'worker_defer: tidak melewati akhir view window (poll final)');
 -- Lock di akhir view window + FR-08
 select pg_temp.mk_campaign('55555555-0000-0000-0000-0000000000b2', 'k12-lock', 1000, 'auto', 1);
 select pg_temp.mk_pool('55555555-0000-0000-0000-0000000000b2', '66666666-0000-0000-0000-0000000000b2', 1000000, 1000000);
 select pg_temp.mk_rule('55555555-0000-0000-0000-0000000000b2', '66666666-0000-0000-0000-0000000000b2', 'per_1k_views', '{"rate":2000}');
 insert into t_ids select 's12', pg_temp.mk_sub('55555555-0000-0000-0000-0000000000b2', '11111111-0000-0000-0000-00000000000d', 'v12', now() - interval '2 days');
 select pg_temp.snap((select v::uuid from t_ids where k = 's12'), 10000, now() - interval '36 hours');
-select is((api.worker_submission_context((select v::uuid from t_ids where k = 's12')) ->> 'final')::boolean, true, 'view window lewat → poll final');
-select is((api.worker_record_snapshot((select v::uuid from t_ids where k = 's12'), 7000, 500, 10, 5, null, null) ->> 'locked')::boolean, true,
+select is(tracking.final_due((select v::uuid from t_ids where k = 's12')), true, 'view window lewat → poll final');
+select is((pg_temp.record_snapshot((select v::uuid from t_ids where k = 's12'), 7000, 500, 10, 5, null, null) ->> 'locked')::boolean, true,
           'snapshot final → submisi locked');
 select is((select is_final from tracking.view_snapshots where submission_id = (select v::uuid from t_ids where k = 's12') order by id desc limit 1),
           true, 'snapshot final tercatat');
@@ -1500,13 +1448,22 @@ reset role;
 select ok(exists (select 1 from ops.notifications where event = 'submission.forfeited' and payload ->> 'submission_id' = (select v from t_ids where k = 's12')
                   and payload ->> 'reason' = 'fraud:FR-02'), 'regresi AA-22: earning submisi locked dibatalkan → clipper dikabari');
 
+-- Replika lewat bus (rep.row dari creator) memanggil hook yang sama; hook tidak pernah raise (batch bus tidak macet).
+select lives_ok($$ select bus_in.tracking_view_snapshots_applied('upsert', '{"id":-1}') $$, 'hook snapshot: snapshot tidak ada → tidak raise');
+select ok(exists (select 1 from ops.alerts where kind = 'tracking.apply_failed' and payload ->> 'snapshot_id' = '-1'),
+          'hook snapshot gagal → alert tracking.apply_failed');
+select api.bus_receive('creator', jsonb_build_array(jsonb_build_object('id', gen_random_uuid(), 'topic', 'rep.row', 'payload',
+  jsonb_build_object('table', 'tracking.view_snapshots', 'op', 'upsert', 'key', '{"id":900001}',
+    'row', jsonb_build_object('id', 900001, 'submission_id', (select v from t_ids where k = 's5'), 'taken_at', now(), 'views', 7000,
+                              'is_final', false, 'raw', '{"caption":"halo"}')))));
+select is((select counted_views from tracking.submissions where id = (select v::uuid from t_ids where k = 's5')), 7000::bigint,
+          'snapshot replika lewat bus → fraud + accrue_earnings (counted_views naik)');
+
 -- ========== K. Post hilang, status token, akun sosmed ==========
 insert into t_ids select 'lost_s1', jsonb_build_object('amount', trunc(sum(ce.amount)), 'views', max(s.counted_views))::text
   from finance.clip_earnings ce join tracking.submissions s on s.id = ce.submission_id
  where ce.submission_id = (select v::uuid from t_ids where k = 's1') and ce.released_at is null;
-select api.worker_post_gone((select v::uuid from t_ids where k = 's1'), 'deleted');
-insert into t_ids select 'paused_a', count(*)::text from tracking.submissions
- where social_account_id = '99999999-0000-0000-0000-00000000000a' and status in ('tracking', 'flagged');
+select tracking.post_gone((select v::uuid from t_ids where k = 's1'), 'deleted');
 select is((select status::text from tracking.submissions where id = (select v::uuid from t_ids where k = 's1')), 'forfeited', 'post dihapus → forfeited');
 select is((select sum(amount) from finance.clip_earnings where submission_id = (select v::uuid from t_ids where k = 's1')), 0::numeric,
           'post dihapus → earning pending hangus');
@@ -1515,32 +1472,14 @@ select is((select count(*)::int from ops.notifications where event = 'submission
 select is((select e.delta from trust.score_events e join trust.fraud_flags f on f.id::text = e.ref_id
            where f.signal = 'FR-06' and f.target_id = (select v::uuid from t_ids where k = 's1') and e.reason = 'fraud_flag'), -10::smallint,
           'regresi AA-9: post hilang (FR-06 otomatis) menurunkan Trust Score');
-select api.worker_account_status('99999999-0000-0000-0000-00000000000a', 'expired');
-select api.worker_account_status('99999999-0000-0000-0000-00000000000a', 'expired');
-select is((select count(*)::int from ops.notifications where event = 'social.token_expired'), 1, 'token kedaluwarsa: notifikasi sekali');
 select ok((select (v::jsonb ->> 'amount')::numeric > 0 from t_ids where k = 'lost_s1'), 'fixture: s1 punya earning pending sebelum post hilang');
 select is((select jsonb_build_object('amount', (payload -> 'amounts' -> 0 ->> 'amount')::numeric, 'views', (payload ->> 'views')::bigint)
              || jsonb_build_object('n', jsonb_array_length(payload -> 'amounts'), 'platform', payload ->> 'platform')
              from ops.notifications where event = 'submission.forfeited' and payload ->> 'submission_id' = (select v from t_ids where k = 's1')),
           (select v::jsonb from t_ids where k = 'lost_s1') || '{"n":1,"platform":"tiktok"}',
           'DS angka: submission.forfeited membawa nominal yang hangus (dibaca sebelum reversal) + views');
-select ok((select (v)::int > 0 from t_ids where k = 'paused_a'), 'fixture: akun andi punya submisi yang dilacak');
-select is((select payload ->> 'paused_count' from ops.notifications where event = 'social.token_expired'),
-          (select v from t_ids where k = 'paused_a'), 'DS angka: social.token_expired membawa jumlah video yang tracking-nya berhenti');
-select is((select count(*)::int from tracking.submissions where social_account_id = '99999999-0000-0000-0000-00000000000a'
-           and status in ('tracking', 'flagged') and next_poll_at is not null), 0, 'token kedaluwarsa: tracking di-pause');
-select api.worker_account_status('99999999-0000-0000-0000-00000000000a', 'verified');
-select is((select count(*)::int from tracking.submissions where social_account_id = '99999999-0000-0000-0000-00000000000a'
-           and status in ('tracking', 'flagged') and next_poll_at is null), 0, 'reconnect: tracking lanjut');
-insert into t_ids select 'acc_fani_ig', api.worker_upsert_social_account('11111111-0000-0000-0000-00000000000f', 'instagram', 'ig-fani', '@fani.ig', 120,
-  now() - interval '3 years', jsonb_build_object('access_token', 'tok-1', 'expires_at', now() + interval '1 hour')::text);
-select throws_ok($$ select api.worker_upsert_social_account('11111111-0000-0000-0000-00000000000f', 'tiktok', 'tt-andi', '@curian', 1, null, 'x') $$,
-                 'P0001', 'social_taken', 'akun sosmed milik clipper lain ditolak');
-select api.store_social_token('99999999-0000-0000-0000-00000000000d', jsonb_build_object('access_token', 'tok-2', 'expires_at', now() + interval '30 days')::text);
-select is((select array_agg(account_id) from api.worker_accounts_to_refresh(interval '6 hours')), array[(select v::uuid from t_ids where k = 'acc_fani_ig')],
-          'refresh-tokens: hanya token yang kedaluwarsa dalam 6 jam');
--- Regresi audit AA-10 (§4 admin_support "reset koneksi akun"): token dicabut, tracking di-pause, clipper diminta menyambung ulang.
-insert into t_ids select 'tok_dedi', token_ref::text from tracking.social_accounts where id = '99999999-0000-0000-0000-00000000000d';
+-- Regresi audit AA-10 (§4 admin_support "reset koneksi akun"): event social.reset ke creator (token dicabut, tracking berhenti,
+-- clipper diminta menyambung ulang — dites di db/creator) + audit log di admin.
 set local role authenticated;
 select pg_temp.jwt('11111111-0000-0000-0000-00000000000d');
 select throws_ok($$ select api.reset_social_account('99999999-0000-0000-0000-00000000000d', 'coba') $$, '42501', 'auth:forbidden',
@@ -1549,34 +1488,15 @@ select pg_temp.jwt('33333333-0000-0000-0000-0000000000c1', '{"app_roles":["admin
 select throws_ok($$ select api.reset_social_account('99999999-0000-0000-0000-00000000000d', ' ') $$, 'P0001', 'invalid:reason',
                  'reset koneksi wajib alasan');
 reset role;
--- Regresi review R36-1: batas akun per platform diturunkan → perubahan status akun yang sudah ada tetap jalan.
-insert into ops.settings (key, value) values ('public.market.max_accounts_per_platform', '0')
-  on conflict (key) do update set value = excluded.value;
 set local role authenticated;
 select pg_temp.jwt('33333333-0000-0000-0000-0000000000c1', '{"app_roles":["admin_support"],"aal":"aal2"}');
 select lives_ok($$ select api.reset_social_account('99999999-0000-0000-0000-00000000000d', 'token macet, permintaan clipper') $$,
-                'regresi AA-10/R36-1: admin_support mereset koneksi akun sosmed (walau batas akun diturunkan)');
+                'regresi AA-10: admin_support mereset koneksi akun sosmed');
 reset role;
-update ops.settings set value = '3' where key = 'public.market.max_accounts_per_platform';
-select is((select status || ':' || (token_ref is null)::text from tracking.social_accounts where id = '99999999-0000-0000-0000-00000000000d'),
-          'revoked:true', 'reset: status revoked, token_ref dilepas');
--- Regresi review R34-1: refresh token yang sedang jalan saat reset tidak menghidupkan akun lagi.
-select api.worker_account_status('99999999-0000-0000-0000-00000000000d', 'expired');  -- polling lama dapat 401 (R35-1)
-select api.store_social_token('99999999-0000-0000-0000-00000000000d', '{"access_token":"refresh-telat"}');
-select api.worker_account_status('99999999-0000-0000-0000-00000000000d', 'verified');
-select is((select status || ':' || (token_ref is null)::text from tracking.social_accounts where id = '99999999-0000-0000-0000-00000000000d'),
-          'revoked:true', 'regresi R34-1: refresh yang selesai setelah reset tidak menulis token / memverifikasi ulang');
-select ok(not exists (select 1 from vault.secrets where id = (select v::uuid from t_ids where k = 'tok_dedi')), 'reset: token Vault dihapus');
-select is((select count(*)::int from tracking.submissions where social_account_id = '99999999-0000-0000-0000-00000000000d'
-           and status in ('tracking', 'flagged') and next_poll_at is not null), 0, 'reset: tracking di-pause');
-select ok(exists (select 1 from ops.notifications where event = 'social.token_expired' and user_id = '11111111-0000-0000-0000-00000000000d')
+select ok(exists (select 1 from bus.outbox where target = 'creator' and topic = 'social.reset'
+                   and payload ->> 'account_id' = '99999999-0000-0000-0000-00000000000d')
           and exists (select 1 from ops.audit_logs where action = 'social.reset' and target = 'social_account:99999999-0000-0000-0000-00000000000d'),
-          'reset: clipper dikabari + audit log');
-select api.worker_upsert_social_account('11111111-0000-0000-0000-00000000000d', 'tiktok',
-                                        (select external_id from tracking.social_accounts where id = '99999999-0000-0000-0000-00000000000d'),
-                                        '@dedi', null, null, '{"access_token":"baru"}');
-select is((select status || ':' || (token_ref is not null)::text from tracking.social_accounts where id = '99999999-0000-0000-0000-00000000000d'),
-          'verified:true', 'akun yang direset bisa disambung ulang oleh pemiliknya (token baru tersimpan)');
+          'reset: event social.reset ke creator + audit log');
 -- Regresi audit AA-13 (§12 "semua ambang di config"): ambang FR-05 dibaca identity dari config core.
 insert into ops.settings (key, value) values ('trust.fraud.shared_device_min_accounts', '5')
   on conflict (key) do update set value = excluded.value;
@@ -1590,16 +1510,12 @@ select ok((select status = 'closed' and referral_code is null from market.profil
           'profil closed di admin');
 select ok(exists (select 1 from bus.outbox where target = 'creator' and topic = 'profile.anonymize'
                    and payload ->> 'user_id' = '11111111-0000-0000-0000-00000000000f'), 'isi profil dianonimkan lewat event ke creator');
-select is((select count(*)::int from tracking.social_accounts where user_id = '11111111-0000-0000-0000-00000000000f' and status <> 'disconnected'), 0,
-          'akun sosmed diputus/dihapus');
-select ok(not exists (select 1 from vault.secrets where name like 'social:' || (select v from t_ids where k = 'acc_fani_ig')),
-          'token Vault akun sosmed dihapus');
 select is((select status::text from tracking.submissions where user_id = '11111111-0000-0000-0000-00000000000f'), 'rejected',
           'submisi yang menunggu review dihentikan');
 
 -- ========== M. Hak akses RPC service_role ==========
-select is((select count(*)::int from pg_proc p where p.pronamespace = 'api'::regnamespace and p.proname ~ '^(worker|bridge)_'), 34,
-          '34 RPC worker/bridge');
+select is((select count(*)::int from pg_proc p where p.pronamespace = 'api'::regnamespace and p.proname ~ '^(worker|bridge)_'), 24,
+          '24 RPC worker/bridge (worker tracking di creator)');
 select is((select count(*)::int from pg_proc p where p.pronamespace = 'api'::regnamespace and p.proname ~ '^(worker|bridge)_'
             and (has_function_privilege('authenticated', p.oid, 'execute') or has_function_privilege('anon', p.oid, 'execute'))), 0,
           'authenticated/anon tidak bisa EXECUTE RPC worker/bridge');
@@ -1616,13 +1532,13 @@ select pg_temp.jwt('11111111-0000-0000-0000-00000000000a');
 select throws_ok($$ select api.worker_ack('email', 1) $$, '42501', null, 'browser tidak bisa memanggil worker_ack');
 select throws_ok($$ select api.bridge_close_account('11111111-0000-0000-0000-00000000000a') $$, '42501', null, 'browser tidak bisa memanggil bridge');
 reset role;
-select pgmq.send('tracking', jsonb_build_object('submission_id', (select v from t_ids where k = 's10')));
-insert into t_ids select 'last_notif', max(id)::text from ops.notifications where event = 'social.token_expired';
+select pgmq.send('email', jsonb_build_object('notification_id', 0));
+insert into t_ids select 'last_notif', max(id)::text from ops.notifications where event = 'submission.forfeited';
 set local role service_role;
-select is((select count(*)::int from api.worker_dequeue('tracking', 5)), 1, 'service_role: worker_dequeue queue tracking');
-select lives_ok($$ select api.worker_ack('tracking', (select max(msg_id) from api.worker_dequeue('tracking', 5))) $$, 'service_role: worker_ack');
-select throws_ok($$ select * from api.worker_dequeue('rahasia', 5) $$, 'P0001', 'invalid:queue', 'hanya queue tracking & email');
-select is(api.worker_notification((select v::bigint from t_ids where k = 'last_notif')) ->> 'event', 'social.token_expired', 'worker_notification');
+select ok((select count(*)::int from api.worker_dequeue('email', 100)) >= 1, 'service_role: worker_dequeue queue email');
+select lives_ok($$ select api.worker_ack('email', (select max(msg_id) from api.worker_dequeue('email', 100))) $$, 'service_role: worker_ack');
+select throws_ok($$ select * from api.worker_dequeue('tracking', 5) $$, 'P0001', 'invalid:queue', 'hanya queue email (tracking di creator)');
+select is(api.worker_notification((select v::bigint from t_ids where k = 'last_notif')) ->> 'event', 'submission.forfeited', 'worker_notification');
 reset role;
 select api.worker_unsubscribe('11111111-0000-0000-0000-00000000000d');
 select is((select email_promotions from ops.notification_prefs where user_id = '11111111-0000-0000-0000-00000000000d'), false, 'one-click unsubscribe');
@@ -2056,7 +1972,7 @@ select pg_temp.mk_campaign('55555555-0000-0000-0000-0000000000f3', 'low-follower
 select pg_temp.mk_pool('55555555-0000-0000-0000-0000000000f3', '66666666-0000-0000-0000-0000000000f3', 1000000, 1000000);
 select pg_temp.mk_rule('55555555-0000-0000-0000-0000000000f3', '66666666-0000-0000-0000-0000000000f3', 'per_1k_views', '{"rate":10}');
 insert into t_ids select 'sf3', pg_temp.mk_sub('55555555-0000-0000-0000-0000000000f3', '11111111-0000-0000-0000-0000000000f3', 'vf3');
-select api.worker_record_snapshot((select v::uuid from t_ids where k = 'sf3'), 150000, 20000, 900, 300, '#x', '{}', '{}');
+select pg_temp.record_snapshot((select v::uuid from t_ids where k = 'sf3'), 150000, 20000, 900, 300, '#x', '{}', '{}');
 select ok(exists (select 1 from trust.fraud_flags where signal = 'FR-03' and target_id = (select v::uuid from t_ids where k = 'sf3')),
           'regresi G-6: akun lama follower 20 dengan 150rb views → FR-03');
 -- R16: follower tidak diketahui (YouTube hidden subscriber / Threads tanpa insight) bukan "follower sedikit"
@@ -2064,26 +1980,16 @@ insert into market.profiles (id, username, display_name) values ('11111111-0000-
 insert into tracking.social_accounts (user_id, platform, external_id, handle, followers, platform_created_at)
 values ('11111111-0000-0000-0000-0000000000f6', 'tiktok', 'tt-f6', '@tersembunyi', null, now() - interval '400 days');
 insert into t_ids select 'sf6', pg_temp.mk_sub('55555555-0000-0000-0000-0000000000f3', '11111111-0000-0000-0000-0000000000f6', 'vf6');
-select api.worker_record_snapshot((select v::uuid from t_ids where k = 'sf6'), 150000, 20000, 900, 300, '#x', '{}', '{}');
+select pg_temp.record_snapshot((select v::uuid from t_ids where k = 'sf6'), 150000, 20000, 900, 300, '#x', '{}', '{}');
 select ok(not exists (select 1 from trust.fraud_flags where signal = 'FR-03' and target_id = (select v::uuid from t_ids where k = 'sf6')),
           'regresi R16: follower null tidak memicu FR-03');
--- Regresi R17: retry tertunda (Retry-After/backoff) → penjadwal tidak mengantre ulang submisi itu walau next_poll_at lewat
-update tracking.submissions set next_poll_at = now() - interval '1 minute' where id = (select v::uuid from t_ids where k = 'sf6');
-select api.worker_retry_later('tracking', 0, 3600, (select v::uuid from t_ids where k = 'sf6'));
-select tracking.enqueue_due_submissions();
-select ok(not exists (select 1 from pgmq.q_tracking where message ->> 'submission_id' = (select v from t_ids where k = 'sf6')),
-          'regresi R17: penjadwal menunggu retry_after (poll final di ujung window tidak memotong backoff)');
--- Regresi audit 2 AA-6: worker mati → pesan menumpuk di antrean, next_poll_at terus digeser lease → tetap terdeteksi macet.
-update tracking.submissions set retry_after = null, next_poll_at = now() - interval '1 minute' where id = (select v::uuid from t_ids where k = 'sf6');
-select tracking.enqueue_due_submissions();
-update pgmq.q_tracking set enqueued_at = now() - interval '90 minutes', vt = now() - interval '90 minutes' where message ->> 'submission_id' = (select v from t_ids where k = 'sf6');
-select is((select count(*)::int from tracking.submissions where id = (select v::uuid from t_ids where k = 'sf6')
-             and next_poll_at < now() - interval '2 hours'), 0, 'next_poll_at sudah digeser lease (metrik lama tidak melihatnya)');
-select ok(tracking.lagging_count() >= 1, 'regresi AA-6: antrean tracking tidak diproses > 1 jam = tracking macet (alert & overview)');
+-- Regresi AA-6 (antrean & lease di creator): jadwal poll admin hanya maju saat snapshot tiba → lewat > 2 jam = tracking macet.
+update tracking.submissions set next_poll_at = now() - interval '3 hours' where id = (select v::uuid from t_ids where k = 'sf6');
+select ok(tracking.lagging_count() >= 1, 'regresi AA-6: jadwal poll lewat > 2 jam = tracking macet (alert & overview)');
 create temp table t_lag as select tracking.lagging_count() as n;
-update pgmq.q_tracking set vt = now() + interval '6 hours' where message ->> 'submission_id' = (select v from t_ids where k = 'sf6');
-select is(tracking.lagging_count(), (select n - 1 from t_lag), 'regresi R29-1: pesan yang sengaja ditunda (retry_later) bukan tanda macet');
-update pgmq.q_tracking set vt = now() - interval '1 minute' where message ->> 'submission_id' = (select v from t_ids where k = 'sf6');
+update tracking.social_accounts set status = 'token_expired' where user_id = '11111111-0000-0000-0000-0000000000f6';
+select is(tracking.lagging_count(), (select n - 1 from t_lag), 'akun yang token-nya kedaluwarsa (tracking berhenti) bukan tanda macet');
+update tracking.social_accounts set status = 'verified' where user_id = '11111111-0000-0000-0000-0000000000f6';
 update tracking.submissions set status = 'forfeited', next_poll_at = null where id = (select v::uuid from t_ids where k = 'sf6');
 select is(tracking.lagging_count(), (select n - 1 from t_lag), 'regresi R29-1: submisi yang sudah berhenti dilacak tidak dihitung');
 

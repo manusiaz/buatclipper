@@ -45,7 +45,7 @@ for (const file of walk(join(root, 'packages'))) {
 
 // Kode Edge Function bersama: salinan di project creator/brand harus sama persis dengan sumbernya di core
 // (scripts/sync-fn-shared.sh), supaya protokol bridge/bus tidak menyimpang antar database.
-const SHARED_FN = ['http.ts', 'bridge.ts', 'db.ts', 'bus.ts'];
+const SHARED_FN = ['http.ts', 'bridge.ts', 'db.ts', 'bus.ts', 'auth.ts', 'testing.ts'];
 for (const p of ['creator', 'brand']) {
   for (const f of SHARED_FN) {
     const src = readFileSync(join(root, 'db/core/supabase/functions/_shared', f), 'utf8');

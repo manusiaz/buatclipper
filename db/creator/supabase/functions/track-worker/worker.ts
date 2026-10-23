@@ -1,4 +1,4 @@
-// core/track-worker (§11): kuras queue "tracking" dalam batch kecil sampai ±50 detik, kelompokkan per akun,
+// creator/track-worker (§11): kuras queue "tracking" dalam batch kecil sampai ±50 detik, kelompokkan per akun,
 // fetchMetrics, lalu worker_record_snapshot (SQL: cek ulang caption via missing_brief_tags, fraud flag, accrue_earnings,
 // jadwal poll berikutnya) / worker_post_gone / worker_account_status('expired'). Error API & rate limit tidak di-ack:
 // pesan muncul lagi setelah visibility timeout. Tidak pernah menulis 0 views.

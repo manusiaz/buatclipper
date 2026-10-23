@@ -1,4 +1,4 @@
-// core/refresh-tokens — dipicu pg_cron (job token-refresh, tiap 6 jam) dengan header apikey = secret key core.
+// creator/refresh-tokens — dipicu pg_cron (job token-refresh, tiap 6 jam) dengan header apikey = secret key creator.
 import { requireApiKey } from "../_shared/auth.ts";
 import { serviceRpc } from "../_shared/db.ts";
 import { background, errorResponse, HttpError, json } from "../_shared/http.ts";

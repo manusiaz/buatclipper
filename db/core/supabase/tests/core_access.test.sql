@@ -94,9 +94,6 @@ insert into tracking.social_accounts (id, user_id, platform, external_id, handle
   ('99999999-0000-0000-0000-000000000002', '11111111-0000-0000-0000-00000000000a', 'tiktok', 'tt-2', '@andi2'),
   ('99999999-0000-0000-0000-000000000003', '11111111-0000-0000-0000-00000000000a', 'tiktok', 'tt-3', '@andi3');
 select throws_ok($$ insert into tracking.social_accounts (user_id, platform, external_id, handle)
-                    values ('11111111-0000-0000-0000-00000000000a', 'tiktok', 'tt-4', '@andi4') $$, '23514', null,
-                 'akun TikTok ke-4 untuk clipper yang sama ditolak');
-select throws_ok($$ insert into tracking.social_accounts (user_id, platform, external_id, handle)
                     values ('11111111-0000-0000-0000-00000000000b', 'tiktok', 'tt-1', '@curian') $$, '23505', null,
                  'akun sosmed yang sudah terhubung tidak bisa dipasang clipper lain');
 select throws_ok($$ insert into tracking.submissions (claim_id, user_id, campaign_id, social_account_id, platform, post_id, url, posted_at)
@@ -184,7 +181,6 @@ select is((select count(*)::int from api.claims), 2, 'clipper A melihat 2 claim 
 select is((select count(*)::int from api.campaigns), 1, 'clipper tidak melihat campaign draft');
 select is((select amount from api.wallet_balances where state = 'pending'), 50000::numeric, 'clipper A melihat saldo pending miliknya');
 select is((select count(*)::int from api.invoices), 0, 'clipper tidak melihat invoice brand');
-select throws_ok($$ select token_ref from tracking.social_accounts $$, '42501', null, 'token_ref tidak bisa dibaca browser');
 select throws_ok($$ select note from trust.review_decisions $$, '42501', null, 'catatan internal moderator tidak bisa dibaca browser');
 select is((select count(*)::int from api.review_decisions), 1, 'clipper melihat banding miliknya');
 select is((select count(*)::int from api.admin_profiles), 0, 'non-admin tidak melihat status/Trust Score user lain');
@@ -273,7 +269,7 @@ update market.claims set expires_at = now() - interval '1 minute', created_at = 
 select market.run_claim_expiry();
 select is((select status::text from market.claims where id = '88888888-0000-0000-0000-000000000003'), 'expired',
           'claim lewat 48 jam jadi expired');
-select is((select count(*)::int from cron.job), 16, '16 job pg_cron core terdaftar (termasuk bus-relay)');
+select is((select count(*)::int from cron.job), 13, '13 job pg_cron admin terdaftar (termasuk bus-relay; job tracking di creator)');
 select ok(exists (select 1 from cron.job where jobname = 'bus-relay' and schedule = '1 seconds'), 'relay bus tiap detik (lag replika)');
 select is(array(select distinct m[1] from cron.job, regexp_matches(command, '([a-z_]+\.[a-z_]+)\(', 'g') m
                 where to_regproc(m[1]) is null order by 1),

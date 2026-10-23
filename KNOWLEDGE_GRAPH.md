@@ -64,9 +64,9 @@ Pemilik data = tempat data ditulis. Uang hanya bergerak di **admin** (satu ledge
 | DB | Folder | Pemilik | Tabel (dari core) |
 |---|---|---|---|
 | identity | `db/identity` | akun & PII | tetap (`member.*`, `auth.*`) |
-| creator | `db/creator` | clipper | `market.profiles` (isi + storage avatar; status/sanksi/trust = replika admin), `tracking.social_accounts`, `market.claims`, `tracking.submissions`, `tracking.view_snapshots`, inbox notifikasi clipper |
+| creator | `db/creator` | clipper | `market.profiles` (isi + storage avatar; status/sanksi/trust = replika admin), `tracking.social_accounts` + token Vault, `tracking.submissions` (isi; status/jadwal = replika admin), `tracking.view_snapshots`, antrean poll + Edge Function social/track-worker/refresh-tokens; replika `campaigns`, `claims`, `settings`, org |
 | brand | `db/brand` | brand & agency | `market.organizations`, `org_members`, `org_invites`, `org_links`, `campaigns` (isi: judul, brief, syarat, eligibility, review mode, visibilitas; status/jadwal/pin = replika admin), `campaign_assets` + storage cover/aset, `campaign_invites`; replika `profiles`, `categories` |
-| admin | `db/admin` (= core lama) | platform & uang | `finance.*` (ledger, clip_earnings, pool_settlements, invoices, payouts, batches, bank_lines, fulfillments, refunds, fee_rules, **reward_pools, reward_codes**), `market.rate_rules`, `market.reward_types`, `trust.*`, `ops.settings/alerts/audit_logs/broadcasts`, `market.categories`, `market.referrals` (bonus = uang) + kolom profil status/sanksi/trust/kode referral, replika ringkas campaign (status, jadwal, window, min_views) untuk accrual. Definisi uang authoritative di sini (brand mengubah lewat RPC ke admin) supaya accrual/raise_rate tidak pernah memakai rate basi |
+| admin | `db/admin` (= core lama) | platform & uang | `finance.*` (ledger, clip_earnings, pool_settlements, invoices, payouts, batches, bank_lines, fulfillments, refunds, fee_rules, **reward_pools, reward_codes**), `market.rate_rules`, `market.reward_types`, `trust.*`, `ops.settings/alerts/audit_logs/broadcasts`, `market.categories`, `market.referrals` (bonus = uang) + kolom profil status/sanksi/trust/kode referral, `market.claims` (kuota & budget satu transaksi), status/`counted_views`/lock/jadwal poll submisi + fraud & accrual saat snapshot tiba, replika ringkas campaign (status, jadwal, window, min_views) untuk accrual. Definisi uang authoritative di sini (brand mengubah lewat RPC ke admin) supaya accrual/raise_rate tidak pernah memakai rate basi |
 
 Lintas DB:
 - **Tulis lintas domain = event** lewat transactional outbox (`bus.outbox` ditulis di transaksi yang sama dengan datanya) → relay pg_cron + pg_net → Edge Function `bus` penerima (HMAC, pola `policy:bridge-hmac`) → `bus.apply` idempoten (`bus.inbox` dedupe per event id, urut per aggregate). Tidak ada transaksi terdistribusi.
@@ -75,7 +75,7 @@ Lintas DB:
 - **Aksi admin pada org** dipanggil app admin langsung ke `api:rpc brand.manage_org` dengan JWT admin (DB brand percaya issuer identity yang sama, `ops.has_admin` aal2); hanya fee (`set_fee`) di admin.
 - Replika baris: pemilik memasang `bus.replicate('<target>:<kolom milik sendiri>', …)`; penerima upsert parsial (kolom milik penerima tidak tersentuh), hook `bus_in.<schema>_<tabel>_applied`. Relay tiap 1 detik.
 - Campaign: builder menyimpan isi + aset ke `api:rpc brand.save_campaign` (mengembalikan `content_version`), lalu selalu `api:rpc core.save_campaign` dengan versi itu (jadwal, pool, rule, fee, pengajuan): admin menjawab `retry:replica_lag` sampai replika isi versi itu tiba (`persistCampaign`, packages/campaign-builder/src/persist.ts) — read-your-writes untuk builder & pengajuan memvalidasi tepat isi yang dilihat. Brand mengunci brief dari status replika; balapan ≤ 1 detik ditutup `fn:bus_in.market_campaigns_applied` (in_review + isi lebih baru → kembali draft, invoice belum lunas batal). Report link & budget alert tetap di admin (angka uang/views).
-- Progres: **4DB-3 langkah 1 & 2 selesai** — org, anggota, undangan, tautan agency milik DB brand (`table:brand/market.*`); admin & creator memegang replika; efek ke admin lewat event `audit.log`, `review.decision`, `notify.user`, `profile.ensure`, `org.owner_lost` (`fn:bus_in.admin`). App accounts/brand/admin membaca & menulis org lewat `mod:db-brand`. **4DB-4 langkah 4a selesai** — profil E-01 + storage avatar milik DB creator (`table:creator/market.profiles`, `api:rpc creator.ensure_profile`, `mod:db-creator`); admin memegang replika isi + kolom miliknya (status, suspended_until, trust_score, referral_code) yang direplika ke creator & brand; referral lewat event `referral.record`, hapus akun lewat `profile.anonymize` (file avatar dihapus `api:fn creator/bridge`). App menulis profil ke creator lalu menunggu replika admin (`untilReplicated`). Berikutnya 4DB-4: sosmed, claim, submisi, snapshot + katalog campaign replika di creator; lalu rename core→admin (4DB-5).
+- Progres: **4DB-3 langkah 1 & 2 selesai** — org, anggota, undangan, tautan agency milik DB brand (`table:brand/market.*`); admin & creator memegang replika; efek ke admin lewat event `audit.log`, `review.decision`, `notify.user`, `profile.ensure`, `org.owner_lost` (`fn:bus_in.admin`). App accounts/brand/admin membaca & menulis org lewat `mod:db-brand`. **4DB-4 langkah 4a selesai** — profil E-01 + storage avatar milik DB creator (`table:creator/market.profiles`, `api:rpc creator.ensure_profile`, `mod:db-creator`); admin memegang replika isi + kolom miliknya (status, suspended_until, trust_score, referral_code) yang direplika ke creator & brand; referral lewat event `referral.record`, hapus akun lewat `profile.anonymize` (file avatar dihapus `api:fn creator/bridge`). App menulis profil ke creator lalu menunggu replika admin (`untilReplicated`). **4DB-4 langkah 4b selesai** — pipeline tracking milik creator (akun sosmed + token, isi submisi, snapshot, antrean poll, Edge Function `api:fn creator/social` / `track-worker` / `refresh-tokens`); admin menerima replika lalu memutus (`fn:tracking.decide_new_submission`, `fn:tracking.apply_snapshot`, `fn:tracking.post_gone`) — hook tidak pernah raise (gagal → alert `tracking.apply_failed`). Claim tetap di admin (direplika ke creator). Berikutnya: rename core→admin + verifikasi penuh (4DB-5).
 
 ## Invarian pemisahan
 
@@ -160,22 +160,22 @@ Wajib tetap benar setiap perubahan (dicek otomatis saat graph ini dibuat; cek ul
 | `mod:i18n` | mod | packages/i18n | Pesan ID/EN |  |
 | `mod:mobile-widget` | mod | apps/mobile/src/widget.tsx | Widget layar utama Android: Balance 4×2 (saldo + jadwal cair + ditahan, campaign baru + rate tertinggi, clip nunggu review) dan BalanceSmall 2×2 (saldo + jadwal cair); headless tiap 30 menit / saat app aktif, gagal jaringan = snapshot terakhir |  |
 | `mod:native-tokens` | mod | apps/mobile/src/tokens.gen.ts | Token DS untuk React Native (warna light/dark, radius, tipografi) — dibangkitkan dari packages/ui/src/styles.css, drift dicek `pnpm lint` |  |
-| `mod:social` | mod | db/core/supabase/functions/_shared/social | PlatformAdapter TikTok/Instagram/YouTube/Threads/Facebook/X (§11) + feature flag platform, dipakai Edge Functions core |  |
+| `mod:social` | mod | db/creator/supabase/functions/_shared/social | PlatformAdapter TikTok/Instagram/YouTube/Threads/Facebook/X (§11) + feature flag platform, dipakai Edge Functions creator |  |
 | `mod:ui` | mod | packages/ui | shadcn/ui + design token untuk 5 app |  |
 | `api:GET accounts/auth/callback` | api | apps/accounts/src/app/auth/callback/route.ts | Tukar code OAuth Google (PKCE) jadi sesi, lalu ke onboarding atau next |  |
 | `api:GET accounts/auth/confirm` | api | apps/accounts/src/app/auth/confirm/route.ts | Verifikasi token_hash dari email (undangan, ganti email) jadi sesi |  |
 | `api:POST accounts/privacy/export` | api | apps/accounts/src/app/(account)/privacy/export/route.ts | Unduh data saya (C2.4, UU PDP): JSON gabungan data identity (member-data download_my_data) + data core milik sendiri; cek origin accounts |  |
-| `api:GET app/api/oauth/[platform]/callback` | api | apps/clipper/src/app/api/oauth/[platform]/callback/route.ts | Callback OAuth sosmed: cek state, teruskan code ke core/social |  |
-| `api:GET app/api/oauth/[platform]/start` | api | apps/clipper/src/app/api/oauth/[platform]/start/route.ts | Mulai connect sosmed (C1.5): minta URL izin + state/PKCE ke core/social, simpan di cookie httpOnly, redirect ke platform |  |
+| `api:GET app/api/oauth/[platform]/callback` | api | apps/clipper/src/app/api/oauth/[platform]/callback/route.ts | Callback OAuth sosmed: cek state, teruskan code ke creator/social |  |
+| `api:GET app/api/oauth/[platform]/start` | api | apps/clipper/src/app/api/oauth/[platform]/start/route.ts | Mulai connect sosmed (C1.5): minta URL izin + state/PKCE ke creator/social, simpan di cookie httpOnly, redirect ke platform |  |
 | `api:GET app/auth/callback` | api | apps/clipper/src/app/auth/callback/route.ts | Tukar code OAuth Google untuk login di app (PWA) |  |
 | `api:GET brand/[org]/campaigns/[id]/report.csv` | api | apps/brand/src/app/[org]/campaigns/[id]/report.csv/route.ts | CSV laporan campaign per submisi + snapshot views untuk anggota org (F-B09) |  |
 | `api:GET identity/.well-known/openid-configuration` | api |  | Discovery OIDC + JWKS identity (publik): issuer, jwks_uri; selalu ada, tanpa OAuth 2.1 Server | Supabase Auth identity, bawaan |
 | `api:fn core/bridge` | api | db/core/supabase/functions/bridge/index.ts | Terima panggilan identity (HMAC): get_batch, attach_export, attach_proof, raise_fraud_flag, close_account, get_payout, mark_instant, pph21, fulfillment_export, attach_fulfillment_export, fulfillment_export_accepted; dari pg_cron (apikey): reconcile_ids, disburse, ban_user → identity |  |
 | `api:fn core/fulfill` | api | db/core/supabase/functions/fulfill/index.ts | Fulfillment otomatis: pasang kode dari pool (E-41), kirim webhook reward ke brand (HMAC, retry 5 menit) |  |
 | `api:fn core/notify` | api | db/core/supabase/functions/notify/index.ts | Kuras antrean email → bridge identity (alur 4) |  |
-| `api:fn core/refresh-tokens` | api | db/core/supabase/functions/refresh-tokens/index.ts | Refresh token sosmed sebelum kedaluwarsa (§11, R-08) |  |
-| `api:fn core/social` | api | db/core/supabase/functions/social/index.ts | Connect OAuth (tukar code), daftar video, verifikasi kepemilikan, submit |  |
-| `api:fn core/track-worker` | api | db/core/supabase/functions/track-worker/index.ts | Ambil metrik per batch, tulis snapshot, panggil accrue (§11) |  |
+| `api:fn creator/refresh-tokens` | api | db/creator/supabase/functions/refresh-tokens/index.ts | Refresh token sosmed sebelum kedaluwarsa (§11, R-08) |  |
+| `api:fn creator/social` | api | db/creator/supabase/functions/social/index.ts | Connect OAuth (tukar code), daftar video, verifikasi kepemilikan, submit |  |
+| `api:fn creator/track-worker` | api | db/creator/supabase/functions/track-worker/index.ts | Ambil metrik per batch, tulis snapshot, panggil accrue (§11) |  |
 | `api:fn identity/admin-auth` | api | db/identity/supabase/functions/admin-auth/index.ts | Auth Admin API dengan secret key identity: undang user (paket managed), ban/unban (ban_duration), reset MFA admin |  |
 | `api:fn identity/bridge` | api | db/identity/supabase/functions/bridge/index.ts | Terima panggilan core (HMAC): send_email, send_push, check_ids, disburse, ban_user; dari pg_cron (apikey): fraud_device_scan |  |
 | `api:fn identity/delete-account` | api | db/identity/supabase/functions/delete-account/index.ts | Orkestrasi hapus akun UU PDP (alur 7) |  |
@@ -213,7 +213,7 @@ Wajib tetap benar setiap perubahan (dicek otomatis saat graph ini dibuat; cek ul
 | `api:rpc core.list_campaigns` | api | db/core/supabase/schemas/api/campaigns.sql | CTA per user: bisa claim / sudah claim belum submit / slot penuh / budget habis / deadline lewat / tidak eligible + alasan |  |
 | `api:rpc core.manage_org` | api | db/core/supabase/schemas/api/org.sql | Admin fee custom org (set_fee, F-A07); aksi org lain di `api:rpc brand.manage_org` |  |
 | `api:rpc core.manage_user` | api | db/core/supabase/schemas/trust/manage_user.sql | Admin atas clipper: override Trust Score, suspend/unsuspend + audit log (F-A07) |  |
-| `api:rpc core.reset_social_account` | api | db/core/supabase/schemas/trust/manage_user.sql | admin_support/admin_moderator reset koneksi akun sosmed (§4): token dicabut, tracking di-pause, clipper diminta sambung ulang |  |
+| `api:rpc core.reset_social_account` | api | db/core/supabase/schemas/trust/manage_user.sql | admin_support/admin_moderator reset koneksi akun sosmed (§4) lewat event social.reset ke creator (token dicabut, tracking berhenti), clipper diminta sambung ulang |  |
 | `api:rpc core.mark_batch_paid` | api | db/core/supabase/schemas/finance/payout_flow.sql | Tandai batch paid/gagal + jurnal (F-A08) |  |
 | `api:rpc core.mark_fulfillment_delivered` | api | db/core/supabase/schemas/finance/fulfillment_admin.sql | Admin tandai fulfillment manual_export (atau webhook macet yang dikonfirmasi brand) terkirim dengan referensi kiriman + audit log (F-A10) |  |
 | `api:rpc core.retry_fulfillment` | api | db/core/supabase/schemas/finance/fulfillment_admin.sql | Admin kirim ulang webhook macet (on_hold setelah 12× gagal): attempts 0, worker mengambil lagi, berhenti lagi setelah 12× gagal (J-A5) |  |
@@ -237,7 +237,7 @@ Wajib tetap benar setiap perubahan (dicek otomatis saat graph ini dibuat; cek ul
 | `api:rpc core.save_campaign` | api | db/core/supabase/schemas/api/campaigns.sql | Bagian admin builder: jadwal, pool, rule, fee, pengajuan + invoice; gerbang content_version replika isi (retry:replica_lag) |  |
 | `api:rpc core.save_reward_type` | api | db/core/supabase/schemas/api/org.sql | Brand simpan reward type custom (F-B03) |  |
 | `api:rpc core.send_broadcast` | api | db/core/supabase/schemas/api/config.sql | dikirim job broadcast-dispatch |  |
-| `api:rpc core.store_social_token` | api | db/core/supabase/schemas/tracking/vault.sql | Simpan/perbarui token OAuth sosmed di Vault core; hanya service role (core/social, refresh-tokens) |  |
+| `api:rpc creator.store_social_token` | api | db/creator/supabase/schemas/tracking/vault.sql | Simpan/perbarui token OAuth sosmed di Vault creator; hanya service role (creator/social, refresh-tokens) |  |
 | `api:rpc core.update_config` | api | db/core/supabase/schemas/api/config.sql | Admin ubah settings, fee rules, pinned & kategori (F-A04, F-A09) |  |
 | `api:rpc core.upload_reward_codes` | api | db/core/supabase/schemas/api/org.sql | kode duplikat diabaikan (unique) |  |
 | `api:view core.admin_profiles` | api | db/core/supabase/schemas/api/views.sql | View status & Trust Score semua profil, hanya admin aal2 (F-A07) |  |
@@ -275,11 +275,11 @@ Wajib tetap benar setiap perubahan (dicek otomatis saat graph ini dibuat; cek ul
 | `job:notify-drain` | job | db/core/supabase/schemas/ops/cron.sql | Cron pemicu worker notify (antrean email) |  |
 | `job:reconcile-daily` | job | db/core/supabase/schemas/finance/cron.sql | Rekonsiliasi harian + cari ID lintas DB yatim |  |
 | `job:referral-bonus` | job | db/core/supabase/schemas/finance/cron.sql | Bonus referral harian dari earning teman (F-C16) |  |
-| `job:token-refresh` | job | db/core/supabase/schemas/tracking/cron.sql | Cron refresh token sosmed |  |
-| `job:track-due` | job | db/core/supabase/schemas/tracking/cron.sql | pg_cron 15 menit: submisi jatuh tempo → antrean tracking |  |
+| `job:token-refresh` | job | db/creator/supabase/schemas/tracking/jobs.sql | Cron refresh token sosmed (creator) |  |
+| `job:track-due` | job | db/creator/supabase/schemas/tracking/jobs.sql | pg_cron 15 menit (creator): submisi jatuh tempo (jadwal admin) → antrean tracking, lease & backoff lokal |  |
 | `job:trust-score` | job | db/core/supabase/schemas/trust/cron.sql | Hitung ulang Trust Score tiap malam (F-C12) |  |
 | `event:queue.email` | event | db/core/supabase/schemas/ops/cron.sql | Supabase Queue email notifikasi (tanpa PII); tidak diekspos, dibaca worker lewat Postgres |  |
-| `event:queue.tracking` | event | db/core/supabase/schemas/ops/cron.sql | Supabase Queue submisi jatuh tempo; tidak diekspos (pgmq_public mati), dibaca worker lewat Postgres |  |
+| `event:queue.tracking` | event | db/creator/supabase/schemas/tracking/jobs.sql | Supabase Queue submisi jatuh tempo; tidak diekspos (pgmq_public mati), dibaca worker lewat Postgres |  |
 | `table:auth.sessions` | table |  | Sesi login + ip & user_agent | identity (bawaan Supabase) |
 | `table:auth.users` | table |  | Akun login Supabase Auth: email, HP, Google | identity (bawaan Supabase) |
 | `table:bucket.avatars` | table | db/creator/supabase/schemas/market/storage.sql | Storage creator publik: foto profil (F-C01), folder {user_id}/ | `db/creator` |
@@ -315,7 +315,7 @@ Wajib tetap benar setiap perubahan (dicek otomatis saat graph ini dibuat; cek ul
 | `table:creator/market.organizations` | table | db/creator/supabase/schemas/market/orgs.sql | Replika org/anggota/tautan agency di creator (katalog, aturan claim) | `db/creator` |
 | `api:rpc brand.manage_org` | api | db/brand/supabase/schemas/api/org.sql | Admin (admin_ops aal2) verifikasi/tolak/suspend org, tambah anggota paket managed; keputusan → event review.decision | `db/brand` |
 | `fn:bus_in.admin` | fn | db/core/supabase/schemas/bus/inbound.sql | Handler event masuk admin: audit.log, review.decision, notify.user, referral.record, org.owner_lost (reset refund) |  |
-| `fn:bus_in.creator` | fn | db/creator/supabase/schemas/api/profile.sql | Handler event masuk creator: profile.ensure (anggota brand belum onboarding), profile.anonymize (hapus akun) | `db/creator` |
+| `fn:bus_in.creator` | fn | db/creator/supabase/schemas/api/profile.sql | Handler event masuk creator: profile.ensure (anggota brand belum onboarding), profile.anonymize (hapus akun: profil, token, akun sosmed), social.reset | `db/creator` |
 | `table:creator/market.profiles` | table | db/creator/supabase/schemas/market/profiles.sql | E-01 profil publik (pemilik): username, nama, avatar; status/trust = replika admin | `db/creator` |
 | `mod:db-creator` | module | packages/db-creator/src/index.ts | Client Data API DB creator (createCreatorClient) + types + untilReplicated (read-your-writes) | accounts, clipper, mobile |
 | `env:NEXT_PUBLIC_CREATOR_DB_URL` | env | .env.example | URL Data API DB creator (publik) | semua app |
@@ -350,9 +350,22 @@ Wajib tetap benar setiap perubahan (dicek otomatis saat graph ini dibuat; cek ul
 | `table:ops.notification_prefs` | table | db/core/supabase/schemas/ops/notifications.sql | E-34 notification_prefs |  |
 | `table:ops.notifications` | table | db/core/supabase/schemas/ops/notifications.sql | E-23 notifikasi in-app |  |
 | `table:ops.settings` | table | db/core/supabase/schemas/ops/settings.sql | E-25 config |  |
-| `table:tracking.social_accounts` | table | db/core/supabase/schemas/tracking/social_accounts.sql | E-04 akun sosmed terhubung |  |
-| `table:tracking.submissions` | table | db/core/supabase/schemas/tracking/submissions.sql | E-12 submisi |  |
-| `table:tracking.view_snapshots` | table | db/core/supabase/schemas/tracking/view_snapshots.sql | E-13 snapshot views (append-only) |  |
+| `table:tracking.social_accounts` | table | db/core/supabase/schemas/tracking/social_accounts.sql | E-04 akun sosmed — replika creator tanpa token (claim_check, fraud, admin) |  |
+| `table:tracking.submissions` | table | db/core/supabase/schemas/tracking/submissions.sql | E-12 submisi di admin: isi = replika creator; milik admin: status, counted_views, locked_at, next_poll_at |  |
+| `table:tracking.view_snapshots` | table | db/core/supabase/schemas/tracking/view_snapshots.sql | E-13 snapshot views — replika creator (append-only); tiba → tracking.apply_snapshot |
+| `table:creator/tracking.social_accounts` | table | db/creator/supabase/schemas/tracking/social_accounts.sql | E-04 akun sosmed (pemilik) + token_ref Vault creator + batas akun per platform | `db/creator` |
+| `table:creator/tracking.submissions` | table | db/creator/supabase/schemas/tracking/submissions.sql | E-12 submisi (pemilik isi, review_route, lease/backoff poll); status/jadwal = replika admin | `db/creator` |
+| `table:creator/tracking.view_snapshots` | table | db/creator/supabase/schemas/tracking/submissions.sql | E-13 snapshot views (pemilik, append-only; raw + caption + extra) | `db/creator` |
+| `table:creator/market.campaigns` | table | db/creator/supabase/schemas/market/campaigns.sql | Replika katalog campaign (isi dari brand, status/jadwal dari admin) untuk submit & tracking | `db/creator` |
+| `table:creator/market.claims` | table | db/creator/supabase/schemas/market/campaigns.sql | Replika claim dari admin (submit memeriksa claim terbuka) | `db/creator` |
+| `table:creator/ops.settings` | table | db/creator/supabase/schemas/ops/settings.sql | Replika config admin (flag platform, jadwal poll, batas akun) | `db/creator` |
+| `api:rpc creator.worker_create_submission` | api | db/creator/supabase/schemas/api/worker.sql | Validasi submit (claim, akun, video, caption, durasi, kuota, video dipakai ulang) + review_route; status diputus admin | `db/creator` |
+| `api:rpc creator.missing_brief_tags` | api | db/creator/supabase/schemas/api/worker.sql | Salinan cek caption atas replika campaign (creator/social) | `db/creator` |
+| `fn:tracking.apply_snapshot` | fn | db/core/supabase/schemas/api/worker.sql | Snapshot creator tiba di admin: fraud FR-01..11, accrue_earnings, lock final, jadwal poll berikutnya |  |
+| `fn:tracking.decide_new_submission` | fn | db/core/supabase/schemas/api/worker.sql | Submisi baru dari creator: auto/manual review, claim submitted, FR-07, notifikasi brand |  |
+| `fn:tracking.post_gone` | fn | db/core/supabase/schemas/api/worker.sql | Event submission.post_gone dari creator: earning pending hangus, Trust Score turun, notifikasi |  |
+| `env:CREATOR_SECRET_KEY` | env | db/creator/supabase/schemas/ops/helpers.sql | Secret key creator (Vault creator_secret_key) untuk pg_cron → Edge Function creator |  |
+| `test:creator.tracking` | test | db/creator/supabase/tests/creator_tracking.test.sql | pgTAP pipeline tracking creator: akun + token, validasi submit, snapshot, antrean (lease, backoff, akun tidak verified), event ke/dari admin | `db/creator` |  |
 | `table:trust.fraud_flags` | table | db/core/supabase/schemas/trust/fraud_flags.sql | E-20 fraud flag |  |
 | `table:trust.sanctions` | table | db/core/supabase/schemas/trust/sanctions.sql | §12 sanksi bertingkat per clipper (warn/hold/reverse/suspend/ban) + banding sekali |  |
 | `table:trust.review_decisions` | table | db/core/supabase/schemas/trust/review_decisions.sql | E-19 keputusan review |  |
@@ -361,11 +374,11 @@ Wajib tetap benar setiap perubahan (dicek otomatis saat graph ini dibuat; cek ul
 | `table:bus.inbox` | table | db/core/supabase/schemas/bus/bus.sql | Event yang sudah diterima (dedupe idempoten) | identik di creator/brand |
 | `job:bus-relay` | job | db/core/supabase/schemas/bus/self.sql | Kirim batch outbox per target lewat pg_net + HMAC (tiap 5 detik) | per project |
 | `api:rpc core.bus_receive` | api | db/core/supabase/schemas/bus/bus.sql | Terapkan batch event dari project lain dalam satu transaksi, idempoten | identik di creator/brand |
-| `table:vault.social-tokens` | table | db/core/supabase/schemas/tracking/vault.sql | Supabase Vault core: token sosmed |  |
+| `table:vault.social-tokens` | table | db/creator/supabase/schemas/tracking/vault.sql | Supabase Vault creator: token sosmed |  |
 | `policy:bridge-hmac` | policy | db/core/supabase/functions/_shared/bridge.ts | Panggilan lintas project wajib tanda tangan HMAC per arah (x-bridge-ts + x-bridge-sig, skew 300 detik); salinan identity di db/identity/supabase/functions/_shared/bridge.ts |  |
 | `policy:core.admin-aal2` | policy | db/core/supabase/schemas/ops/_auth.sql | Claim app_roles admin_* + aal2 (tanpa IP allowlist: IP klien belum terbukti bisa dipercaya) |  |
 | `policy:core.api-only` | policy | db/core/supabase/config.toml | Data API core hanya mengekspos schema api (`[api] schemas`, view security_invoker); public & pgmq_public tidak diekspos, pg_graphql mati; EXECUTE fungsi baru dicabut dari PUBLIC (schemas/00_setup.sql) |  |
-| `policy:core.definer-only` | policy | db/core/supabase/schemas/tracking/vault.sql | Tanpa grant ke user; hanya fungsi security definer (EXECUTE khusus service_role) / Edge Function |  |
+| `policy:core.definer-only` | policy | db/creator/supabase/schemas/tracking/vault.sql | Tanpa grant ke user; hanya fungsi security definer (EXECUTE khusus service_role) / Edge Function |  |
 | `policy:core.inherit-parent` | policy | db/core/supabase/schemas/market/rate_rules.sql | Baris terlihat kalau baris induknya terlihat (RLS induk ikut berlaku di subquery): aset/rule/pool → campaign, snapshot → submisi, entri → akun ledger; tag `-- policy:core.inherit-parent` di tiap tabel |  |
 | `policy:core.iss-identity` | policy | db/core/supabase/schemas/ops/_auth.sql | Restrictive TO authenticated: JWT harus terbitan identity; fungsi definer cek iss sendiri |  |
 | `policy:core.org-role` | policy | db/core/supabase/schemas/ops/_auth.sql | Role per org (E-03): owner kelola member, manager campaign & review, finance billing (aal2), viewer baca |  |
@@ -394,11 +407,11 @@ Wajib tetap benar setiap perubahan (dicek otomatis saat graph ini dibuat; cek ul
 | `env:META_APP_SECRET` | env | db/core/supabase/config.toml | Secret Meta — hanya Edge Functions core |  |
 | `env:NEXT_PUBLIC_CORE_PUBLISHABLE_KEY` | env | .env.example | sb_publishable core |  |
 | `env:NEXT_PUBLIC_CORE_URL` | env | .env.example | URL project core |  |
-| `env:NEXT_PUBLIC_GOOGLE_CLIENT_ID` | env | db/core/supabase/config.toml | Nama asli GOOGLE_CLIENT_ID: secret Edge Functions core (URL OAuth dibuat core/social), tidak dibaca app |  |
+| `env:NEXT_PUBLIC_GOOGLE_CLIENT_ID` | env | db/creator/supabase/config.toml | Nama asli GOOGLE_CLIENT_ID: secret Edge Functions creator (URL OAuth dibuat creator/social), tidak dibaca app |  |
 | `env:NEXT_PUBLIC_IDENTITY_PUBLISHABLE_KEY` | env | .env.example | sb_publishable identity |  |
 | `env:NEXT_PUBLIC_IDENTITY_URL` | env | .env.example | URL project identity (auth.{domain}) |  |
-| `env:NEXT_PUBLIC_META_APP_ID` | env | db/core/supabase/config.toml | Nama asli META_APP_ID: secret Edge Functions core (URL OAuth dibuat core/social), tidak dibaca app |  |
-| `env:NEXT_PUBLIC_TIKTOK_CLIENT_KEY` | env | db/core/supabase/config.toml | Nama asli TIKTOK_CLIENT_KEY: secret Edge Functions core (URL OAuth dibuat core/social), tidak dibaca app |  |
+| `env:NEXT_PUBLIC_META_APP_ID` | env | db/creator/supabase/config.toml | Nama asli META_APP_ID: secret Edge Functions creator (URL OAuth dibuat creator/social), tidak dibaca app |  |
+| `env:NEXT_PUBLIC_TIKTOK_CLIENT_KEY` | env | db/creator/supabase/config.toml | Nama asli TIKTOK_CLIENT_KEY: secret Edge Functions creator (URL OAuth dibuat creator/social), tidak dibaca app |  |
 | `env:NEXT_PUBLIC_TURNSTILE_SITE_KEY` | env | .env.example | Site key Turnstile (publik) untuk form login |  |
 | `env:NEXT_PUBLIC_VAPID_PUBLIC_KEY` | env | .env.example | Kunci publik Web Push untuk service worker clipper |  |
 | `env:ANDROID_APP_PACKAGE` | env | deploy/config.env.example | Package app Android TWA (runtime app clipper, bukan secret) |  |
@@ -649,10 +662,10 @@ Arah: `A --tipe--> B` = A bergantung pada B. `?` = belum terverifikasi.
 | `page:app/campaigns` | routes-to | `page:app/login` | packages/auth/src/server.ts:84 (requireClipper) |
 | `page:app/campaigns` | routes-to | `page:app/social` | apps/clipper/src/app/campaigns/page.tsx:39 |
 | `page:app/campaigns` | wrapped-by | `layout:clipper` | apps/clipper/src/app/layout.tsx:31 |
-| `page:app/campaigns/[id]` | calls | `api:fn core/social` | apps/clipper/src/features/submit/actions.ts:24 |
+| `page:app/campaigns/[id]` | calls | `api:fn creator/social` | apps/clipper/src/features/submit/actions.ts:24 |
 | `page:app/campaigns/[id]` | calls | `api:rpc core.my_clip_terms` | apps/clipper/src/features/lib/server.ts:35 (myClipTerms → rpc my_clip_terms: cap efektif per platform) |
 | `page:app/campaigns/[id]` | calls | `api:rpc core.claim_campaign` | apps/clipper/src/features/claim/actions.ts:13 |
-| `page:app/campaigns/[id]` | calls | `api:rpc core.missing_brief_tags` | PRD v0.3.1 §6 C1.8 tanda caption kurang sebelum Submit (belum di kode langsung: tag kurang dihitung core/social list_videos → missing_brief_tags, features/submit/actions.ts baris 20) |
+| `page:app/campaigns/[id]` | calls | `api:rpc core.missing_brief_tags` | PRD v0.3.1 §6 C1.8 tanda caption kurang sebelum Submit (belum di kode langsung: tag kurang dihitung creator/social list_videos → missing_brief_tags, features/submit/actions.ts baris 20) |
 | `page:app/campaigns/[id]` | reads | `table:bucket.campaign-assets` | apps/clipper/src/app/campaigns/[id]/page.tsx:66 |
 | `page:app/campaigns/[id]` | reads | `table:market.campaign_assets` | PRD v0.3.1 §14 kg.yaml features.F-C04; kode: lewat rpc campaign_detail (page.tsx baris 44) |
 | `page:app/campaigns/[id]` | reads | `table:market.campaigns` | PRD v0.3.1 §14 kg.yaml features.F-C04; kode: lewat rpc campaign_detail (page.tsx baris 44) |
@@ -698,11 +711,11 @@ Arah: `A --tipe--> B` = A bergantung pada B. `?` = belum terverifikasi.
 | `layout:clipper` | routes-to | `page:app/share` | apps/clipper/src/app/manifest.ts:19 (share_target) |
 | `page:app/.well-known/assetlinks.json` | configured-by | `env:ANDROID_APP_PACKAGE` | apps/clipper/src/app/.well-known/assetlinks.json/route.ts:7 |
 | `page:app/.well-known/assetlinks.json` | configured-by | `env:ANDROID_CERT_SHA256` | apps/clipper/src/app/.well-known/assetlinks.json/route.ts:7 |
-| `doc:deploy/deploy.sh` | documents | `env:ANDROID_APP_PACKAGE` | deploy/deploy.sh:352 |
-| `page:app/social` | configured-by | `env:NEXT_PUBLIC_GOOGLE_CLIENT_ID` | PRD v0.3.1 §15.7 client ID publik (belum di kode: app tidak membaca client ID; URL OAuth dibuat core/social, lihat mod:social) |
-| `page:app/social` | configured-by | `env:NEXT_PUBLIC_META_APP_ID` | PRD v0.3.1 §15.7 client ID publik (belum di kode: app tidak membaca client ID; URL OAuth dibuat core/social, lihat mod:social) |
-| `page:app/social` | configured-by | `env:NEXT_PUBLIC_TIKTOK_CLIENT_KEY` | PRD v0.3.1 §15.7 client ID publik (belum di kode: app tidak membaca client ID; URL OAuth dibuat core/social, lihat mod:social) |
-| `page:app/social` | calls | `api:fn core/social` | apps/clipper/src/features/social/actions.ts:13 (social youtube_code / youtube_verify, fallback D-11) |
+| `doc:deploy/deploy.sh` | documents | `env:ANDROID_APP_PACKAGE` | deploy/deploy.sh:354 |
+| `page:app/social` | configured-by | `env:NEXT_PUBLIC_GOOGLE_CLIENT_ID` | PRD v0.3.1 §15.7 client ID publik (belum di kode: app tidak membaca client ID; URL OAuth dibuat creator/social, lihat mod:social) |
+| `page:app/social` | configured-by | `env:NEXT_PUBLIC_META_APP_ID` | PRD v0.3.1 §15.7 client ID publik (belum di kode: app tidak membaca client ID; URL OAuth dibuat creator/social, lihat mod:social) |
+| `page:app/social` | configured-by | `env:NEXT_PUBLIC_TIKTOK_CLIENT_KEY` | PRD v0.3.1 §15.7 client ID publik (belum di kode: app tidak membaca client ID; URL OAuth dibuat creator/social, lihat mod:social) |
+| `page:app/social` | calls | `api:fn creator/social` | apps/clipper/src/features/social/actions.ts:13 (social youtube_code / youtube_verify, fallback D-11) |
 | `page:app/social` | reads | `table:tracking.social_accounts` | apps/clipper/src/app/social/page.tsx:44 |
 | `page:app/social` | routes-to | `api:GET app/api/oauth/[platform]/start` | apps/clipper/src/app/social/page.tsx:53 |
 | `page:app/social` | wrapped-by | `layout:clipper` | apps/clipper/src/app/layout.tsx:31 |
@@ -873,7 +886,7 @@ Arah: `A --tipe--> B` = A bergantung pada B. `?` = belum terverifikasi.
 | `layout:mobile` | renders | `mod:mobile-widget` | apps/mobile/index.ts:7 (registerWidgetTaskHandler, Android) |
 | `layout:mobile` | calls | `api:rpc core.list_campaigns` | apps/mobile/src/data.ts:141 |
 | `layout:mobile` | calls | `api:rpc core.claim_campaign` | apps/mobile/src/data.ts:218 |
-| `layout:mobile` | calls | `api:fn core/social` | apps/mobile/src/data.ts:237 (list_videos; submit baris 262, kode YouTube baris 274/280) |
+| `layout:mobile` | calls | `api:fn creator/social` | apps/mobile/src/data.ts:237 (list_videos; submit baris 262, kode YouTube baris 274/280) |
 | `layout:mobile` | reads | `table:finance.ledger_accounts` | kode: view api.wallet_balances (apps/mobile src/data.ts baris 359) |
 | `layout:mobile` | calls | `api:rpc identity.save_expo_push_token` | apps/mobile/src/push.ts:49 |
 | `layout:mobile` | calls | `ext:expo-push` | apps/mobile/src/push.ts:26 (token perangkat dari Expo) |
@@ -913,10 +926,10 @@ Arah: `A --tipe--> B` = A bergantung pada B. `?` = belum terverifikasi.
 | `mod:db-identity` | configured-by | `env:NEXT_PUBLIC_IDENTITY_PUBLISHABLE_KEY` | PRD v0.3.1 §15.7 (belum di kode: db-identity tidak membaca env; client sesi dibuat @clipper/auth, packages/auth/src/cookies.ts baris 18) |
 | `mod:db-identity` | configured-by | `env:NEXT_PUBLIC_IDENTITY_URL` | packages/db-identity/src/index.ts:17 |
 | `mod:db-identity` | guarded-by | `config:eslint.imports` | PRD v0.3.1 §15.3 aturan import; kode: scripts/check-arch.mjs baris 23, 30 (baris tidak menyebut nama node) |
-| `mod:social` | calls | `ext:google` | db/core/supabase/functions/_shared/social/youtube.ts:24 |
-| `mod:social` | calls | `ext:meta` | db/core/supabase/functions/_shared/social/instagram.ts:23 (Graph API Meta) |
-| `mod:social` | calls | `ext:tiktok` | db/core/supabase/functions/_shared/social/tiktok.ts:20 |
-| `mod:social` | configured-by | `env:YOUTUBE_API_KEY` | db/core/supabase/functions/_shared/social/mod.ts:34 (YOUTUBE_API_KEY → createYouTube apiKey; token meta.mode api_key memakai ?key=) |
+| `mod:social` | calls | `ext:google` | db/creator/supabase/functions/_shared/social/youtube.ts:24 |
+| `mod:social` | calls | `ext:meta` | db/creator/supabase/functions/_shared/social/instagram.ts:23 (Graph API Meta) |
+| `mod:social` | calls | `ext:tiktok` | db/creator/supabase/functions/_shared/social/tiktok.ts:20 |
+| `mod:social` | configured-by | `env:YOUTUBE_API_KEY` | db/creator/supabase/functions/_shared/social/mod.ts:34 (YOUTUBE_API_KEY → createYouTube apiKey; token meta.mode api_key memakai ?key=) |
 | `mod:social` | configured-by | `env:NEXT_PUBLIC_GOOGLE_CLIENT_ID` | kode: _shared/social/mod.ts baris 19 (nama asli GOOGLE_CLIENT_ID) |
 | `mod:social` | configured-by | `env:NEXT_PUBLIC_META_APP_ID` | kode: _shared/social/mod.ts baris 18 (nama asli META_APP_ID) |
 | `mod:social` | configured-by | `env:NEXT_PUBLIC_TIKTOK_CLIENT_KEY` | kode: _shared/social/mod.ts baris 17 (nama asli TIKTOK_CLIENT_KEY) |
@@ -934,9 +947,9 @@ Arah: `A --tipe--> B` = A bergantung pada B. `?` = belum terverifikasi.
 | `api:POST accounts/privacy/export` | reads | `table:tracking.social_accounts` | apps/accounts/src/features/privacy/export.ts:35 |
 | `api:POST accounts/privacy/export` | reads | `table:tracking.submissions` | apps/accounts/src/features/privacy/export.ts:34 |
 | `api:POST accounts/privacy/export` | reads | `table:trust.score_events` | apps/accounts/src/features/privacy/export.ts:41 |
-| `api:GET app/api/oauth/[platform]/callback` | calls | `api:fn core/social` | apps/clipper/src/app/api/oauth/[platform]/callback/route.ts:28 |
+| `api:GET app/api/oauth/[platform]/callback` | calls | `api:fn creator/social` | apps/clipper/src/app/api/oauth/[platform]/callback/route.ts:28 |
 | `api:GET app/api/oauth/[platform]/callback` | routes-to | `page:app/social` | apps/clipper/src/app/api/oauth/[platform]/callback/route.ts:17 |
-| `api:GET app/api/oauth/[platform]/start` | calls | `api:fn core/social` | apps/clipper/src/app/api/oauth/[platform]/start/route.ts:15 |
+| `api:GET app/api/oauth/[platform]/start` | calls | `api:fn creator/social` | apps/clipper/src/app/api/oauth/[platform]/start/route.ts:15 |
 | `api:GET app/api/oauth/[platform]/start` | calls | `mod:auth` | apps/clipper/src/app/api/oauth/[platform]/start/route.ts:3 |
 | `api:GET app/api/oauth/[platform]/start` | routes-to | `api:GET app/api/oauth/[platform]/callback` | apps/clipper/src/features/social/oauth.ts:16 (redirect_uri, start/route.ts baris 18) |
 | `api:GET app/auth/callback` | calls | `mod:auth` | apps/clipper/src/app/auth/callback/route.ts:1 |
@@ -950,64 +963,84 @@ Arah: `A --tipe--> B` = A bergantung pada B. `?` = belum terverifikasi.
 | `api:GET identity/.well-known/openid-configuration` | reads | `config:identity-signing-key` | PRD v0.3.1 §15.6 public key di JWKS |
 | `api:fn core/bridge` | configured-by | `env:BRIDGE_SECRET_IDENTITY_TO_CORE` | db/core/supabase/functions/bridge/index.ts:10 |
 | `api:fn core/bridge` | guarded-by | `policy:bridge-hmac` | db/core/supabase/functions/bridge/handler.ts:177 |
-| `api:fn core/bridge` | reads | `table:finance.fulfillments` | db/core/supabase/schemas/api/bridge.sql:280 (rpc bridge_fulfillment_export), db/core/supabase/schemas/api/bridge.sql:267 (rpc bridge_pph21: reward non-tunai terkirim, §5.4) |
-| `api:fn core/bridge` | writes | `table:finance.fulfillments` | db/core/supabase/schemas/api/bridge.sql:306 (rpc bridge_attach_fulfillment_export: klaim di CSV → processing + export_ref) |
+| `api:fn core/bridge` | reads | `table:finance.fulfillments` | db/core/supabase/schemas/api/bridge.sql:276 (rpc bridge_fulfillment_export), db/core/supabase/schemas/api/bridge.sql:263 (rpc bridge_pph21: reward non-tunai terkirim, §5.4) |
+| `api:fn core/bridge` | writes | `table:finance.fulfillments` | db/core/supabase/schemas/api/bridge.sql:302 (rpc bridge_attach_fulfillment_export: klaim di CSV → processing + export_ref) |
 | `api:fn core/bridge` | reads | `table:finance.ledger_entries` | db/core/supabase/schemas/api/bridge.sql:133 (rpc bridge_close_account: cek saldo) |
-| `api:fn core/bridge` | reads | `table:finance.org_refunds` | db/core/supabase/schemas/api/bridge.sql:179 (rpc bridge_get_refund) |
+| `api:fn core/bridge` | reads | `table:finance.org_refunds` | db/core/supabase/schemas/api/bridge.sql:175 (rpc bridge_get_refund) |
 | `api:fn core/bridge` | reads | `table:finance.payout_batches` | db/core/supabase/schemas/api/bridge.sql:11 (rpc bridge_get_batch) |
 | `api:fn core/bridge` | reads | `table:finance.payouts` | db/core/supabase/schemas/api/bridge.sql:25 (rpc bridge_get_batch) |
 | `api:fn core/bridge` | writes | `table:finance.payout_batches` | db/core/supabase/schemas/api/bridge.sql:78 (rpc bridge_attach_export) |
 | `api:fn core/bridge` | writes | `table:finance.payouts` | db/core/supabase/schemas/api/bridge.sql:67 (hold, bridge_attach_export), db/core/supabase/schemas/api/bridge.sql:101 (bridge_attach_proof) |
 | `api:fn creator/bridge` | writes | `table:bucket.avatars` | db/creator/supabase/functions/bridge/avatars.ts:18 (profile.anonymize: foto profil dihapus lewat Storage API) |
-| `api:fn core/bridge` | writes | `table:market.profiles` | db/core/supabase/schemas/api/bridge.sql:154 (rpc bridge_close_account: closed) |
-| `api:fn core/bridge` | calls | `fn:bus_in.creator` | db/core/supabase/schemas/api/bridge.sql:155 (event profile.anonymize) |
-| `api:fn core/bridge` | writes | `table:tracking.social_accounts` | db/core/supabase/schemas/api/bridge.sql:152 (rpc bridge_close_account) |
+| `api:fn core/bridge` | writes | `table:market.profiles` | db/core/supabase/schemas/api/bridge.sql:149 (rpc bridge_close_account: closed) |
+| `api:fn core/bridge` | calls | `fn:bus_in.creator` | db/core/supabase/schemas/api/bridge.sql:151 (event profile.anonymize: profil, token, akun sosmed) |
 | `api:fn core/bridge` | writes | `table:trust.fraud_flags` | db/core/supabase/schemas/api/bridge.sql:115 (rpc bridge_raise_fraud_flag → trust.raise_flag) |
-| `api:fn core/bridge` | writes | `table:vault.social-tokens` | db/core/supabase/schemas/api/bridge.sql:149 (rpc bridge_close_account: hapus token) |
 | `api:fn core/bridge` | calls | `api:fn identity/bridge` | db/core/supabase/functions/bridge/handler.ts:153 (cron disburse & ban_user → identity) |
 | `api:fn core/fulfill` | calls | `ext:brand-webhook` | db/core/supabase/functions/fulfill/fulfill.ts:115 |
 | `api:fn core/fulfill` | guarded-by | `policy:fn-cron-key` | db/core/supabase/functions/fulfill/index.ts:10 |
-| `api:fn core/fulfill` | reads | `table:finance.fulfillments` | db/core/supabase/schemas/api/worker.sql:567 (rpc worker_fulfillments_due) |
-| `api:fn core/fulfill` | reads | `table:vault.social-tokens` | db/core/supabase/schemas/api/worker.sql:589 (secret webhook reward type di Vault core) |
-| `api:fn core/fulfill` | writes | `table:finance.fulfillments` | db/core/supabase/schemas/api/worker.sql:645 (rpc worker_fulfillment_result) |
-| `api:fn core/fulfill` | writes | `table:finance.reward_codes` | db/core/supabase/schemas/api/worker.sql:624 (rpc worker_assign_code) |
+| `api:fn core/fulfill` | reads | `table:finance.fulfillments` | db/core/supabase/schemas/api/worker.sql:335 (rpc worker_fulfillments_due) |
+| `api:fn core/fulfill` | reads | `table:vault.social-tokens` | db/core/supabase/schemas/api/worker.sql:357 (secret webhook reward type di Vault core) |
+| `api:fn core/fulfill` | writes | `table:finance.fulfillments` | db/core/supabase/schemas/api/worker.sql:413 (rpc worker_fulfillment_result) |
+| `api:fn core/fulfill` | writes | `table:finance.reward_codes` | db/core/supabase/schemas/api/worker.sql:392 (rpc worker_assign_code) |
 | `api:fn core/notify` | calls | `api:fn identity/bridge` | db/core/supabase/functions/notify/notify.ts:94 (send_email; send_push sesuai flag kanal pesan) |
 | `api:fn core/notify` | configured-by | `env:BRIDGE_SECRET_CORE_TO_IDENTITY` | db/core/supabase/functions/_shared/bridge.ts:66 |
 | `api:fn core/notify` | configured-by | `env:SUPABASE_DB_URL` | PRD v0.3.1 §15.8 Queue lewat koneksi Postgres langsung (belum di kode: queue dibaca lewat rpc api.worker_dequeue dengan secret key, bukan koneksi Postgres) |
 | `api:fn core/notify` | guarded-by | `policy:fn-cron-key` | db/core/supabase/functions/notify/index.ts:16 |
 | `api:fn core/notify` | subscribes | `event:queue.email` | db/core/supabase/functions/notify/notify.ts:51 |
-| `api:fn core/refresh-tokens` | calls | `api:rpc core.store_social_token` | db/core/supabase/functions/refresh-tokens/refresh.ts:43 |
-| `api:fn core/refresh-tokens` | calls | `mod:social` | db/core/supabase/functions/refresh-tokens/index.ts:5 |
-| `api:fn core/refresh-tokens` | configured-by | `env:GOOGLE_CLIENT_SECRET` | db/core/supabase/functions/_shared/social/mod.ts:19 |
-| `api:fn core/refresh-tokens` | configured-by | `env:META_APP_SECRET` | db/core/supabase/functions/_shared/social/mod.ts:18 |
-| `api:fn core/refresh-tokens` | configured-by | `env:TIKTOK_CLIENT_SECRET` | db/core/supabase/functions/_shared/social/mod.ts:17 |
-| `api:fn core/refresh-tokens` | guarded-by | `policy:fn-cron-key` | db/core/supabase/functions/refresh-tokens/index.ts:11 |
-| `api:fn core/refresh-tokens` | writes | `table:tracking.social_accounts` | db/core/supabase/schemas/api/worker.sql:325 (rpc worker_account_status) |
-| `api:fn core/refresh-tokens` | writes | `table:vault.social-tokens` | db/core/supabase/functions/refresh-tokens/refresh.ts:43 (store_social_token → Vault) |
-| `api:fn core/social` | calls | `api:rpc core.missing_brief_tags` | db/core/supabase/functions/social/handler.ts:342 |
-| `api:fn core/social` | calls | `api:rpc core.store_social_token` | db/core/supabase/schemas/api/worker.sql:399 (rpc worker_upsert_social_account) |
-| `api:fn core/social` | writes | `table:trust.fraud_flags` | db/core/supabase/schemas/api/worker.sql:522 (FR-07 raise_flag di worker_create_submission, cover_hash dari submit) |
-| `api:fn core/social` | calls | `mod:social` | db/core/supabase/functions/social/handler.ts:22 |
-| `api:fn core/social` | configured-by | `env:GOOGLE_CLIENT_SECRET` | db/core/supabase/functions/_shared/social/mod.ts:19 |
-| `api:fn core/social` | configured-by | `env:META_APP_SECRET` | db/core/supabase/functions/_shared/social/mod.ts:18 |
-| `api:fn core/social` | configured-by | `env:TIKTOK_CLIENT_SECRET` | db/core/supabase/functions/_shared/social/mod.ts:17 |
-| `api:fn core/social` | guarded-by | `policy:fn-verify-jwt` | db/core/supabase/functions/social/handler.ts:329 |
-| `api:fn core/social` | reads | `table:market.claims` | db/core/supabase/functions/social/handler.ts:334 |
-| `api:fn core/social` | writes | `table:tracking.social_accounts` | db/core/supabase/schemas/api/worker.sql:392 (rpc worker_upsert_social_account) |
-| `api:fn core/social` | writes | `table:tracking.submissions` | db/core/supabase/schemas/api/worker.sql:497 (rpc worker_create_submission) |
-| `api:fn core/social` | writes | `table:vault.social-tokens` | db/core/supabase/schemas/api/worker.sql:399 (api.store_social_token) |
-| `api:fn core/track-worker` | calls | `api:rpc core.missing_brief_tags` | db/core/supabase/schemas/api/worker.sql:173 (rpc worker_record_snapshot) |
-| `api:fn core/track-worker` | calls | `fn:accrue_earnings` | db/core/supabase/schemas/api/worker.sql:251 (rpc worker_record_snapshot) |
-| `api:fn core/track-worker` | calls | `fn:reverse_earning` | db/core/supabase/schemas/api/worker.sql:293 (rpc worker_post_gone) |
-| `api:fn core/track-worker` | writes | `table:trust.score_events` | db/core/supabase/schemas/api/worker.sql:290 (rpc worker_post_gone: FR-06 otomatis menurunkan Trust Score, AA-9) |
-| `api:fn core/track-worker` | calls | `mod:social` | db/core/supabase/functions/track-worker/index.ts:6 |
-| `api:fn core/track-worker` | configured-by | `env:SUPABASE_DB_URL` | PRD v0.3.1 §15.8 Queue lewat koneksi Postgres langsung (belum di kode: queue dibaca lewat rpc api.worker_dequeue dengan secret key, bukan koneksi Postgres) |
-| `api:fn core/track-worker` | guarded-by | `policy:fn-cron-key` | db/core/supabase/functions/track-worker/index.ts:12 |
-| `api:fn core/track-worker` | reads | `table:tracking.submissions` | db/core/supabase/schemas/api/worker.sql:66 (rpc worker_submission_context) |
-| `api:fn core/track-worker` | reads | `table:vault.social-tokens` | db/core/supabase/schemas/api/worker.sql:72 (rpc worker_submission_context) |
-| `api:fn core/track-worker` | subscribes | `event:queue.tracking` | db/core/supabase/functions/track-worker/worker.ts:134 |
-| `api:fn core/track-worker` | writes | `table:tracking.view_snapshots` | db/core/supabase/schemas/api/worker.sql:165 (rpc worker_record_snapshot) |
-| `api:fn core/track-worker` | writes | `table:trust.fraud_flags` | db/core/supabase/schemas/api/worker.sql:175 (rpc worker_record_snapshot → trust.raise_flag) |
+| `api:fn creator/refresh-tokens` | calls | `api:rpc creator.store_social_token` | db/creator/supabase/functions/refresh-tokens/refresh.ts:43 |
+| `api:fn creator/refresh-tokens` | calls | `mod:social` | db/creator/supabase/functions/refresh-tokens/index.ts:5 |
+| `api:fn creator/refresh-tokens` | configured-by | `env:GOOGLE_CLIENT_SECRET` | db/creator/supabase/functions/_shared/social/mod.ts:19 |
+| `api:fn creator/refresh-tokens` | configured-by | `env:META_APP_SECRET` | db/creator/supabase/functions/_shared/social/mod.ts:18 |
+| `api:fn creator/refresh-tokens` | configured-by | `env:TIKTOK_CLIENT_SECRET` | db/creator/supabase/functions/_shared/social/mod.ts:17 |
+| `api:fn creator/refresh-tokens` | guarded-by | `policy:fn-cron-key` | db/creator/supabase/functions/refresh-tokens/index.ts:11 |
+| `api:fn creator/refresh-tokens` | writes | `table:creator/tracking.social_accounts` | db/creator/supabase/schemas/api/worker.sql:196 (rpc worker_account_status) |
+| `api:fn creator/refresh-tokens` | writes | `table:vault.social-tokens` | db/creator/supabase/functions/refresh-tokens/refresh.ts:43 (store_social_token → Vault) |
+| `api:fn creator/social` | calls | `api:rpc creator.missing_brief_tags` | db/creator/supabase/functions/social/handler.ts:343 |
+| `api:fn creator/social` | calls | `api:rpc creator.store_social_token` | db/creator/supabase/schemas/api/worker.sql:269 (rpc worker_upsert_social_account) |
+| `api:fn creator/social` | calls | `api:rpc creator.worker_create_submission` | db/creator/supabase/functions/social/handler.ts:294 |
+| `api:rpc creator.worker_create_submission` | writes | `table:creator/tracking.submissions` | db/creator/supabase/schemas/api/worker.sql:364 |
+| `api:rpc creator.worker_create_submission` | reads | `table:creator/market.claims` | db/creator/supabase/schemas/api/worker.sql:297 |
+| `fn:tracking.decide_new_submission` | writes | `table:trust.fraud_flags` | db/core/supabase/schemas/api/worker.sql:259 (FR-07, cover_hash dari submit) |
+| `fn:tracking.decide_new_submission` | writes | `table:market.claims` | db/core/supabase/schemas/api/worker.sql:250 |
+| `api:fn creator/social` | calls | `mod:social` | db/creator/supabase/functions/social/handler.ts:23 |
+| `api:fn creator/social` | configured-by | `env:GOOGLE_CLIENT_SECRET` | db/creator/supabase/functions/_shared/social/mod.ts:19 |
+| `api:fn creator/social` | configured-by | `env:META_APP_SECRET` | db/creator/supabase/functions/_shared/social/mod.ts:18 |
+| `api:fn creator/social` | configured-by | `env:TIKTOK_CLIENT_SECRET` | db/creator/supabase/functions/_shared/social/mod.ts:17 |
+| `api:fn creator/social` | guarded-by | `policy:fn-verify-jwt` | db/creator/supabase/functions/social/handler.ts:330 |
+| `api:fn creator/social` | reads | `table:creator/market.claims` | db/creator/supabase/functions/social/handler.ts:335 |
+| `api:fn creator/social` | writes | `table:creator/tracking.social_accounts` | db/creator/supabase/schemas/api/worker.sql:262 (rpc worker_upsert_social_account) |
+| `api:fn creator/social` | writes | `table:vault.social-tokens` | db/creator/supabase/schemas/api/worker.sql:269 (api.store_social_token) |
+| `fn:tracking.apply_snapshot` | calls | `api:rpc core.missing_brief_tags` | db/core/supabase/schemas/api/worker.sql:101 (FR-06 caption dari raw snapshot) |
+| `fn:tracking.apply_snapshot` | calls | `fn:accrue_earnings` | db/core/supabase/schemas/api/worker.sql:179 |
+| `fn:tracking.post_gone` | calls | `fn:reverse_earning` | db/core/supabase/schemas/api/worker.sql:222 |
+| `api:fn creator/track-worker` | calls | `fn:tracking.post_gone` | db/creator/supabase/schemas/api/worker.sql:170 (event submission.post_gone) |
+| `fn:tracking.post_gone` | writes | `table:trust.score_events` | db/core/supabase/schemas/api/worker.sql:219 (FR-06 otomatis menurunkan Trust Score, AA-9) |
+| `api:fn creator/track-worker` | calls | `mod:social` | db/creator/supabase/functions/track-worker/index.ts:6 |
+| `api:fn creator/track-worker` | configured-by | `env:SUPABASE_DB_URL` | PRD v0.3.1 §15.8 Queue lewat koneksi Postgres langsung (belum di kode: queue dibaca lewat rpc api.worker_dequeue dengan secret key, bukan koneksi Postgres) |
+| `api:fn creator/track-worker` | guarded-by | `policy:fn-cron-key` | db/creator/supabase/functions/track-worker/index.ts:12 |
+| `api:fn creator/track-worker` | reads | `table:creator/tracking.submissions` | db/creator/supabase/schemas/api/worker.sql:69 (rpc worker_submission_context) |
+| `api:fn creator/track-worker` | reads | `table:vault.social-tokens` | db/creator/supabase/schemas/api/worker.sql:75 (rpc worker_submission_context) |
+| `api:fn creator/track-worker` | subscribes | `event:queue.tracking` | db/creator/supabase/functions/track-worker/worker.ts:134 |
+| `api:fn creator/track-worker` | writes | `table:creator/tracking.view_snapshots` | db/creator/supabase/schemas/api/worker.sql:145 (rpc worker_record_snapshot) |
+| `table:creator/tracking.view_snapshots` | replicates-to | `table:tracking.view_snapshots` | db/creator/supabase/schemas/tracking/submissions.sql:66 |
+| `table:tracking.view_snapshots` | calls | `fn:tracking.apply_snapshot` | db/core/supabase/schemas/api/worker.sql:286 (hook bus_in.tracking_view_snapshots_applied) |
+| `table:creator/tracking.submissions` | replicates-to | `table:tracking.submissions` | db/creator/supabase/schemas/tracking/submissions.sql:39 (isi + review_route) |
+| `table:tracking.submissions` | replicates-to | `table:creator/tracking.submissions` | db/core/supabase/schemas/tracking/submissions.sql:40 (status, counted_views, locked_at, next_poll_at) |
+| `table:tracking.submissions` | calls | `fn:tracking.decide_new_submission` | db/core/supabase/schemas/api/worker.sql:275 (hook bus_in.tracking_submissions_applied) |
+| `table:creator/tracking.social_accounts` | replicates-to | `table:tracking.social_accounts` | db/creator/supabase/schemas/tracking/social_accounts.sql:20 (tanpa token_ref) |
+| `table:market.claims` | replicates-to | `table:creator/market.claims` | db/core/supabase/schemas/market/claims.sql:20 |
+| `table:market.campaigns` | replicates-to | `table:creator/market.campaigns` | db/core/supabase/schemas/market/campaigns.sql:91 (status, deadline, view window) |
+| `table:ops.settings` | replicates-to | `table:creator/ops.settings` | db/core/supabase/schemas/ops/settings.sql:12 |
+| `table:creator/tracking.social_accounts` | guarded-by | `policy:core.iss-identity` | db/creator/supabase/schemas/tracking/social_accounts.sql:48 |
+| `table:creator/tracking.social_accounts` | guarded-by | `policy:core.rls-self` | db/creator/supabase/schemas/tracking/social_accounts.sql:50 |
+| `table:creator/tracking.submissions` | guarded-by | `policy:core.rls-self` | db/creator/supabase/schemas/tracking/submissions.sql:45 |
+| `table:creator/tracking.view_snapshots` | guarded-by | `policy:core.inherit-parent` | db/creator/supabase/schemas/tracking/submissions.sql:72 |
+| `table:creator/market.campaigns` | guarded-by | `policy:core.iss-identity` | db/creator/supabase/schemas/market/campaigns.sql:28 |
+| `table:creator/market.claims` | guarded-by | `policy:core.rls-self` | db/creator/supabase/schemas/market/campaigns.sql:46 |
+| `table:creator/ops.settings` | guarded-by | `policy:core.public-read` | db/creator/supabase/schemas/ops/settings.sql:13 |
+| `test:creator.tracking` | tests | `api:rpc creator.worker_create_submission` | db/creator/supabase/tests/creator_tracking.test.sql:1 |
+| `fn:bus_in.creator` | writes | `table:creator/tracking.social_accounts` | db/creator/supabase/schemas/api/profile.sql:93 (social.reset) |
+| `fn:tracking.apply_snapshot` | writes | `table:trust.fraud_flags` | db/core/supabase/schemas/api/worker.sql:111 (trust.raise_flag) |
 | `api:fn identity/admin-auth` | guarded-by | `policy:identity.admin-aal2` | db/identity/supabase/functions/admin-auth/handler.ts:33 |
 | `api:fn identity/admin-auth` | writes | `table:auth.users` | db/identity/supabase/functions/admin-auth/handler.ts:51 (invite; ban_duration lewat _shared/moderation.ts) |
 | `api:fn identity/bridge` | calls | `api:rpc identity.shared_device_groups` | db/identity/supabase/functions/bridge/handler.ts:212 |
@@ -1143,11 +1176,11 @@ Arah: `A --tipe--> B` = A bergantung pada B. `?` = belum terverifikasi.
 | `fn:bus_in.creator` | writes | `table:creator/market.profiles` | db/creator/supabase/schemas/api/profile.sql:60 (profile_ensure; profile_anonymize baris 67) |
 | `mod:auth` | calls | `mod:db-creator` | packages/auth/src/server.ts:7 (creatorServer) |
 | `mod:db-creator` | configured-by | `env:NEXT_PUBLIC_CREATOR_DB_URL` | packages/db-creator/src/index.ts:9 |
-| `mod:db-creator` | configured-by | `config:host.creator-api` | deploy/deploy.sh:345 (apps_env) |
+| `mod:db-creator` | configured-by | `config:host.creator-api` | deploy/deploy.sh:347 (apps_env) |
 | `page:app/profile` | calls | `api:rpc creator.ensure_profile` | apps/clipper/src/features/profile/actions.ts:31 (saveProfile, lalu tunggu replika admin) |
 | `page:app/profile` | writes | `table:bucket.avatars` | apps/clipper/src/features/profile/actions.ts:16 (avatarUploadUrl) |
 | `test:creator.profiles` | tests | `api:rpc creator.ensure_profile` | db/creator/supabase/tests/creator_profiles.test.sql:1 |
-| `test:e2e.roles` | tests | `page:app/profile` | e2e/roles.cjs:448 (ubah nama + foto → creator → replika admin) |
+| `test:e2e.roles` | tests | `page:app/profile` | e2e/roles.cjs:451 (ubah nama + foto → creator → replika admin) |
 | `table:brand/ops.audit_logs` | calls | `fn:bus_in.admin` | db/brand/supabase/schemas/ops/audit_logs.sql:24 (ops.forward_audit) |
 | `api:rpc core.bus_receive` | calls | `fn:bus_in.admin` | db/core/supabase/schemas/bus/bus.sql:130 |
 | `fn:bus_in.admin` | writes | `table:ops.audit_logs` | db/core/supabase/schemas/bus/inbound.sql:7 |
@@ -1164,7 +1197,7 @@ Arah: `A --tipe--> B` = A bergantung pada B. `?` = belum terverifikasi.
 | `table:brand/market.campaigns` | replicates-to | `table:market.campaigns` | db/brand/supabase/schemas/market/campaigns.sql:81 (isi) |
 | `table:market.campaigns` | replicates-to | `table:brand/market.campaigns` | db/core/supabase/schemas/market/campaigns.sql:90 (status, jadwal, pin) |
 | `table:brand/market.campaign_assets` | replicates-to | `table:market.campaign_assets` | db/brand/supabase/schemas/market/campaign_assets.sql:20 |
-| `table:brand/market.campaign_invites` | replicates-to | `table:market.campaign_invites` | db/brand/supabase/schemas/market/campaigns.sql:93 |
+| `table:brand/market.campaign_invites` | replicates-to | `table:market.campaign_invites` | db/brand/supabase/schemas/market/campaigns.sql:94 |
 | `table:market.categories` | replicates-to | `table:brand/market.categories` | db/core/supabase/schemas/market/categories.sql:10 |
 | `table:brand/market.campaigns` | typed-by | `table:brand/market.categories` | db/brand/supabase/schemas/market/campaigns.sql:10 |
 | `table:brand/market.campaigns` | typed-by | `table:brand/market.organizations` | db/brand/supabase/schemas/market/campaigns.sql:6 |
@@ -1177,8 +1210,8 @@ Arah: `A --tipe--> B` = A bergantung pada B. `?` = belum terverifikasi.
 | `api:rpc core.copy_campaign_economics` | writes | `table:market.rate_rules` | db/core/supabase/schemas/api/campaigns.sql:538 |
 | `api:rpc core.save_campaign` | reads | `table:market.campaigns` | db/core/supabase/schemas/api/campaigns.sql:206 (gerbang content_version replika) |
 | `api:rpc core.bus_receive` | calls | `fn:bus_in.market_campaigns_applied` | db/core/supabase/schemas/bus/bus.sql:228 |
-| `fn:bus_in.market_campaigns_applied` | writes | `table:market.campaigns` | db/core/supabase/schemas/market/campaigns.sql:109 |
-| `fn:bus_in.market_campaigns_applied` | writes | `table:finance.invoices` | db/core/supabase/schemas/market/campaigns.sql:113 |
+| `fn:bus_in.market_campaigns_applied` | writes | `table:market.campaigns` | db/core/supabase/schemas/market/campaigns.sql:110 |
+| `fn:bus_in.market_campaigns_applied` | writes | `table:finance.invoices` | db/core/supabase/schemas/market/campaigns.sql:114 |
 | `comp:CampaignBuilder` | calls | `api:rpc brand.save_campaign` | packages/campaign-builder/src/persist.ts:47 (persistCampaign) |
 | `page:brand/[org]/campaigns` | calls | `api:rpc core.copy_campaign_economics` | apps/brand/src/features/campaigns/actions.ts:14 |
 | `page:app/campaigns/[id]` | reads | `table:bucket.campaign-covers` | apps/clipper/src/features/lib/server.ts:49 (publicUrl cover) |
@@ -1199,7 +1232,7 @@ Arah: `A --tipe--> B` = A bergantung pada B. `?` = belum terverifikasi.
 | `api:rpc core.mark_batch_paid` | writes | `table:ops.audit_logs` | db/core/supabase/schemas/finance/payout_flow.sql:269 |
 | `api:rpc core.mark_fulfillment_delivered` | guarded-by | `policy:core.admin-aal2` | db/core/supabase/schemas/finance/fulfillment_admin.sql:9 |
 | `api:rpc core.mark_fulfillment_delivered` | reads | `table:market.reward_types` | db/core/supabase/schemas/finance/fulfillment_admin.sql:21 |
-| `api:rpc core.mark_fulfillment_delivered` | writes | `table:finance.fulfillments` | db/core/supabase/schemas/finance/fulfillment_admin.sql:12, db/core/supabase/schemas/api/worker.sql:645 (api.worker_fulfillment_result, baris 28) |
+| `api:rpc core.mark_fulfillment_delivered` | writes | `table:finance.fulfillments` | db/core/supabase/schemas/finance/fulfillment_admin.sql:12, db/core/supabase/schemas/api/worker.sql:413 (api.worker_fulfillment_result, baris 28) |
 | `api:rpc core.mark_fulfillment_delivered` | writes | `table:ops.audit_logs` | db/core/supabase/schemas/finance/fulfillment_admin.sql:40 |
 | `api:rpc core.cancel_payout` | writes | `table:finance.payouts` | db/core/supabase/schemas/finance/payout_flow.sql:379 |
 | `api:rpc core.cancel_fulfillment` | writes | `table:finance.fulfillments` | db/core/supabase/schemas/finance/payout_flow.sql:430 |
@@ -1267,9 +1300,9 @@ Arah: `A --tipe--> B` = A bergantung pada B. `?` = belum terverifikasi.
 | `api:rpc core.save_reward_type` | guarded-by | `policy:core.org-role` | db/core/supabase/schemas/api/org.sql:73 |
 | `api:rpc core.save_reward_type` | writes | `table:market.reward_types` | db/core/supabase/schemas/api/org.sql:102 |
 | `api:rpc core.send_broadcast` | writes | `table:ops.broadcasts` | db/core/supabase/schemas/api/config.sql:168 |
-| `api:rpc core.store_social_token` | guarded-by | `policy:core.definer-only` | db/core/supabase/schemas/tracking/vault.sql:4 (security definer; EXECUTE hanya service_role, baris 23) |
-| `api:rpc core.store_social_token` | writes | `table:tracking.social_accounts` | db/core/supabase/schemas/tracking/vault.sql:20 |
-| `api:rpc core.store_social_token` | writes | `table:vault.social-tokens` | db/core/supabase/schemas/tracking/vault.sql:19 |
+| `api:rpc creator.store_social_token` | guarded-by | `policy:core.definer-only` | db/creator/supabase/schemas/tracking/vault.sql:4 (security definer; EXECUTE hanya service_role, baris 29) |
+| `api:rpc creator.store_social_token` | writes | `table:creator/tracking.social_accounts` | db/creator/supabase/schemas/tracking/vault.sql:20 |
+| `api:rpc creator.store_social_token` | writes | `table:vault.social-tokens` | db/creator/supabase/schemas/tracking/vault.sql:19 |
 | `api:rpc core.update_config` | guarded-by | `policy:core.admin-aal2` | db/core/supabase/schemas/api/config.sql:23 |
 | `api:rpc core.update_config` | writes | `table:finance.fee_rules` | db/core/supabase/schemas/api/config.sql:64 |
 | `api:rpc core.update_config` | writes | `table:market.campaigns` | db/core/supabase/schemas/api/config.sql:55 |
@@ -1297,10 +1330,8 @@ Arah: `A --tipe--> B` = A bergantung pada B. `?` = belum terverifikasi.
 | `api:rpc identity.admin_set_role` | writes | `table:member.platform_roles` | db/identity/supabase/schemas/api/admin_set_role.sql:23 |
 | `api:rpc identity.admin_set_role` | reads | `table:member.consents` | db/identity/supabase/schemas/api/admin_set_role.sql:19 (akun ber-ToS clipper/brand tidak bisa jadi admin, AA-20) |
 | `api:rpc core.reset_social_account` | guarded-by | `policy:core.admin-aal2` | db/core/supabase/schemas/trust/manage_user.sql:97 |
-| `api:rpc core.reset_social_account` | writes | `table:vault.social-tokens` | db/core/supabase/schemas/trust/manage_user.sql:110 |
-| `api:rpc core.reset_social_account` | writes | `table:tracking.social_accounts` | db/core/supabase/schemas/trust/manage_user.sql:111 |
-| `api:rpc core.reset_social_account` | calls | `fn:enqueue_notification` | db/core/supabase/schemas/trust/manage_user.sql:113 (social.token_expired → sambung ulang) |
-| `api:rpc core.reset_social_account` | writes | `table:ops.audit_logs` | db/core/supabase/schemas/trust/manage_user.sql:116 |
+| `api:rpc core.reset_social_account` | calls | `fn:bus_in.creator` | db/core/supabase/schemas/trust/manage_user.sql:110 (event social.reset) |
+| `api:rpc core.reset_social_account` | writes | `table:ops.audit_logs` | db/core/supabase/schemas/trust/manage_user.sql:111 |
 | `api:rpc identity.my_payout_methods` | guarded-by | `policy:identity.rls-self` | PRD v0.3.1 §15.4 data sendiri; kode: security definer + filter auth.uid() (api/my_payout_methods.sql baris 9) |
 | `api:rpc identity.my_payout_methods` | reads | `table:member.payout_methods` | db/identity/supabase/schemas/api/my_payout_methods.sql:8 |
 | `api:rpc identity.record_consent` | guarded-by | `policy:identity.rls-self` | PRD v0.3.1 §15.4 data sendiri; kode: uid = auth.uid() (api/record_consent.sql baris 10) |
@@ -1343,8 +1374,8 @@ Arah: `A --tipe--> B` = A bergantung pada B. `?` = belum terverifikasi.
 | `job:broadcast-dispatch` | writes | `table:ops.notifications` | db/core/supabase/schemas/ops/broadcast_dispatch.sql:40 (ops.enqueue_notification) |
 | `job:budget-alerts` | calls | `fn:enqueue_notification` | db/core/supabase/schemas/market/_org_helpers.sql:35 (market.notify_org, dipanggil market/jobs.sql baris 92) |
 | `job:budget-alerts` | writes | `table:ops.notifications` | db/core/supabase/schemas/market/_org_helpers.sql:35 (market.notify_org → ops.enqueue_notification) |
-| `job:claim-expiry` | calls | `fn:enqueue_notification` | db/core/supabase/schemas/market/claims.sql:37 |
-| `job:claim-expiry` | writes | `table:market.claims` | db/core/supabase/schemas/market/claims.sql:41 |
+| `job:claim-expiry` | calls | `fn:enqueue_notification` | db/core/supabase/schemas/market/claims.sql:40 |
+| `job:claim-expiry` | writes | `table:market.claims` | db/core/supabase/schemas/market/claims.sql:44 |
 | `job:earning-release` | calls | `fn:enqueue_notification` | db/core/supabase/schemas/finance/earnings.sql:507 |
 | `job:earning-release` | writes | `table:finance.ledger_entries` | db/core/supabase/schemas/finance/earnings.sql:505 (finance.post) |
 | `job:earning-release` | reads | `table:finance.fee_rules` | db/core/supabase/schemas/finance/earnings.sql:474 (fee rule efektif campaign → clipper_fee_pct dipotong saat rilis) |
@@ -1362,7 +1393,7 @@ Arah: `A --tipe--> B` = A bergantung pada B. `?` = belum terverifikasi.
 | `job:lifecycle` | writes | `table:tracking.submissions` | db/core/supabase/schemas/market/lifecycle.sql:80 |
 | `job:lifecycle` | writes | `table:trust.review_decisions` | db/core/supabase/schemas/market/lifecycle.sql:117 (trust.auto_approve_overdue) |
 | `job:alert-notify` | calls | `api:fn core/bridge` | db/core/supabase/schemas/ops/alerts.sql:76 (ops.notify_alerts → invoke bridge notify_admins) |
-| `job:notify-drain` | calls | `api:fn core/notify` | db/core/supabase/schemas/ops/cron.sql:8 |
+| `job:notify-drain` | calls | `api:fn core/notify` | db/core/supabase/schemas/ops/cron.sql:7 |
 | `job:notify-drain` | configured-by | `env:CORE_SECRET_KEY` | db/core/supabase/schemas/ops/enqueue_notification.sql:36 (ops.invoke_function → header apikey) |
 | `job:reconcile-daily` | calls | `api:fn core/bridge` | db/core/supabase/schemas/finance/cron.sql:9 |
 | `job:reconcile-daily` | calls | `api:fn identity/bridge` | db/core/supabase/functions/bridge/handler.ts:118 |
@@ -1371,12 +1402,12 @@ Arah: `A --tipe--> B` = A bergantung pada B. `?` = belum terverifikasi.
 | `job:referral-bonus` | writes | `table:finance.ledger_entries` | db/core/supabase/schemas/finance/referral_bonus.sql:34 (finance.post) |
 | `job:referral-bonus` | reads | `table:market.referrals` | db/core/supabase/schemas/finance/referral_bonus.sql:19 |
 | `job:referral-bonus` | reads | `table:trust.fraud_flags` | db/core/supabase/schemas/finance/referral_bonus.sql:25 (FR-04/FR-05 teman ↔ pengundang → bonus batal) |
-| `job:token-refresh` | calls | `api:fn core/refresh-tokens` | db/core/supabase/schemas/tracking/cron.sql:5 |
-| `job:token-refresh` | configured-by | `env:CORE_SECRET_KEY` | db/core/supabase/schemas/ops/enqueue_notification.sql:36 (ops.invoke_function → header apikey) |
-| `job:track-due` | calls | `api:fn core/track-worker` | db/core/supabase/schemas/tracking/cron.sql:4 |
-| `job:track-due` | configured-by | `env:CORE_SECRET_KEY` | db/core/supabase/schemas/ops/enqueue_notification.sql:36 (ops.invoke_function → header apikey); cron track-worker, tracking/cron.sql baris 4 |
-| `job:track-due` | emits | `event:queue.tracking` | db/core/supabase/schemas/tracking/submissions.sql:63 |
-| `job:track-due` | reads | `table:tracking.submissions` | db/core/supabase/schemas/tracking/submissions.sql:58 |
+| `job:token-refresh` | calls | `api:fn creator/refresh-tokens` | db/creator/supabase/schemas/tracking/jobs.sql:36 |
+| `job:token-refresh` | configured-by | `env:CREATOR_SECRET_KEY` | db/creator/supabase/schemas/ops/helpers.sql:19 (ops.invoke_function → header apikey creator_secret_key) |
+| `job:track-due` | calls | `api:fn creator/track-worker` | db/creator/supabase/schemas/tracking/jobs.sql:35 |
+| `job:track-due` | configured-by | `env:CREATOR_SECRET_KEY` | db/creator/supabase/schemas/ops/helpers.sql:19 (ops.invoke_function → header apikey creator_secret_key) |
+| `job:track-due` | emits | `event:queue.tracking` | db/creator/supabase/schemas/tracking/jobs.sql:18 |
+| `job:track-due` | reads | `table:creator/tracking.submissions` | db/creator/supabase/schemas/tracking/jobs.sql:11 |
 | `job:trust-score` | reads | `table:trust.score_events` | db/core/supabase/schemas/trust/decisions.sql:112 |
 | `job:trust-score` | writes | `table:trust.score_events` | db/core/supabase/schemas/trust/decisions.sql:97 (clean_tenure per 30 hari bersih) |
 | `job:trust-score` | writes | `table:market.profiles` | db/core/supabase/schemas/trust/decisions.sql:110 |
@@ -1455,15 +1486,15 @@ Arah: `A --tipe--> B` = A bergantung pada B. `?` = belum terverifikasi.
 | `table:market.campaign_assets` | typed-by | `table:bucket.campaign-assets` | db/core/supabase/schemas/market/campaign_assets.sql:1 |
 | `table:market.campaign_assets` | typed-by | `table:bucket.campaign-covers` | db/core/supabase/schemas/market/campaign_assets.sql:1 |
 | `table:market.campaign_assets` | typed-by | `table:market.campaigns` | db/core/supabase/schemas/market/campaign_assets.sql:7 |
-| `table:market.campaign_invites` | guarded-by | `policy:core.admin-aal2` | db/core/supabase/schemas/market/campaigns.sql:141 |
-| `table:market.campaign_invites` | guarded-by | `policy:core.iss-identity` | db/core/supabase/schemas/market/campaigns.sql:138 |
-| `table:market.campaign_invites` | guarded-by | `policy:core.rls-org` | db/core/supabase/schemas/market/campaigns.sql:173 |
-| `table:market.campaign_invites` | guarded-by | `policy:core.rls-self` | db/core/supabase/schemas/market/campaigns.sql:140 |
-| `table:market.campaign_invites` | typed-by | `table:market.campaigns` | db/core/supabase/schemas/market/campaigns.sql:129 |
-| `table:market.campaigns` | guarded-by | `policy:core.admin-aal2` | db/core/supabase/schemas/market/campaigns.sql:169 |
-| `table:market.campaigns` | guarded-by | `policy:core.iss-identity` | db/core/supabase/schemas/market/campaigns.sql:155 |
-| `table:market.campaigns` | guarded-by | `policy:core.public-read` | db/core/supabase/schemas/market/campaigns.sql:160 |
-| `table:market.campaigns` | guarded-by | `policy:core.rls-org` | db/core/supabase/schemas/market/campaigns.sql:168 |
+| `table:market.campaign_invites` | guarded-by | `policy:core.admin-aal2` | db/core/supabase/schemas/market/campaigns.sql:142 |
+| `table:market.campaign_invites` | guarded-by | `policy:core.iss-identity` | db/core/supabase/schemas/market/campaigns.sql:139 |
+| `table:market.campaign_invites` | guarded-by | `policy:core.rls-org` | db/core/supabase/schemas/market/campaigns.sql:174 |
+| `table:market.campaign_invites` | guarded-by | `policy:core.rls-self` | db/core/supabase/schemas/market/campaigns.sql:141 |
+| `table:market.campaign_invites` | typed-by | `table:market.campaigns` | db/core/supabase/schemas/market/campaigns.sql:130 |
+| `table:market.campaigns` | guarded-by | `policy:core.admin-aal2` | db/core/supabase/schemas/market/campaigns.sql:170 |
+| `table:market.campaigns` | guarded-by | `policy:core.iss-identity` | db/core/supabase/schemas/market/campaigns.sql:156 |
+| `table:market.campaigns` | guarded-by | `policy:core.public-read` | db/core/supabase/schemas/market/campaigns.sql:161 |
+| `table:market.campaigns` | guarded-by | `policy:core.rls-org` | db/core/supabase/schemas/market/campaigns.sql:169 |
 | `table:market.campaigns` | typed-by | `doc:spec/kg.yaml` | db/core/supabase/schemas/ops/state_triggers.sql:1 |
 | `table:market.campaigns` | typed-by | `table:finance.fee_rules` | db/core/supabase/schemas/market/campaigns.sql:45 |
 | `table:market.campaigns` | typed-by | `table:market.categories` | db/core/supabase/schemas/market/campaigns.sql:11 |
@@ -1471,10 +1502,10 @@ Arah: `A --tipe--> B` = A bergantung pada B. `?` = belum terverifikasi.
 | `table:market.categories` | guarded-by | `policy:core.admin-aal2` | db/core/supabase/schemas/market/categories.sql:17 |
 | `table:market.categories` | guarded-by | `policy:core.iss-identity` | db/core/supabase/schemas/market/categories.sql:14 |
 | `table:market.categories` | guarded-by | `policy:core.public-read` | db/core/supabase/schemas/market/categories.sql:16 |
-| `table:market.claims` | guarded-by | `policy:core.admin-aal2` | db/core/supabase/schemas/market/claims.sql:25 |
-| `table:market.claims` | guarded-by | `policy:core.iss-identity` | db/core/supabase/schemas/market/claims.sql:20 |
-| `table:market.claims` | guarded-by | `policy:core.rls-org` | db/core/supabase/schemas/market/claims.sql:23 |
-| `table:market.claims` | guarded-by | `policy:core.rls-self` | db/core/supabase/schemas/market/claims.sql:22 |
+| `table:market.claims` | guarded-by | `policy:core.admin-aal2` | db/core/supabase/schemas/market/claims.sql:28 |
+| `table:market.claims` | guarded-by | `policy:core.iss-identity` | db/core/supabase/schemas/market/claims.sql:23 |
+| `table:market.claims` | guarded-by | `policy:core.rls-org` | db/core/supabase/schemas/market/claims.sql:26 |
+| `table:market.claims` | guarded-by | `policy:core.rls-self` | db/core/supabase/schemas/market/claims.sql:25 |
 | `table:market.claims` | typed-by | `doc:spec/kg.yaml` | db/core/supabase/schemas/ops/state_triggers.sql:1 |
 | `table:market.claims` | typed-by | `table:market.campaigns` | db/core/supabase/schemas/market/claims.sql:5 |
 | `table:market.claims` | typed-by | `table:market.profiles` | db/core/supabase/schemas/market/claims.sql:6 |
@@ -1547,23 +1578,23 @@ Arah: `A --tipe--> B` = A bergantung pada B. `?` = belum terverifikasi.
 | `table:ops.notifications` | guarded-by | `policy:core.iss-identity` | db/core/supabase/schemas/ops/notifications.sql:16 |
 | `table:ops.notifications` | guarded-by | `policy:core.rls-self` | db/core/supabase/schemas/ops/notifications.sql:19 |
 | `table:ops.notifications` | typed-by | `table:market.profiles` | db/core/supabase/schemas/ops/notifications.sql:4 |
-| `table:ops.settings` | guarded-by | `policy:core.admin-aal2` | db/core/supabase/schemas/ops/settings.sql:14 |
-| `table:ops.settings` | guarded-by | `policy:core.iss-identity` | db/core/supabase/schemas/ops/settings.sql:11 |
-| `table:ops.settings` | guarded-by | `policy:core.public-read` | db/core/supabase/schemas/ops/settings.sql:13 |
-| `table:tracking.social_accounts` | guarded-by | `policy:core.admin-aal2` | db/core/supabase/schemas/tracking/social_accounts.sql:48 |
-| `table:tracking.social_accounts` | guarded-by | `policy:core.iss-identity` | db/core/supabase/schemas/tracking/social_accounts.sql:45 |
-| `table:tracking.social_accounts` | guarded-by | `policy:core.rls-self` | db/core/supabase/schemas/tracking/social_accounts.sql:47 |
+| `table:ops.settings` | guarded-by | `policy:core.admin-aal2` | db/core/supabase/schemas/ops/settings.sql:18 |
+| `table:ops.settings` | guarded-by | `policy:core.iss-identity` | db/core/supabase/schemas/ops/settings.sql:15 |
+| `table:ops.settings` | guarded-by | `policy:core.public-read` | db/core/supabase/schemas/ops/settings.sql:17 |
+| `table:tracking.social_accounts` | guarded-by | `policy:core.admin-aal2` | db/core/supabase/schemas/tracking/social_accounts.sql:23 |
+| `table:tracking.social_accounts` | guarded-by | `policy:core.iss-identity` | db/core/supabase/schemas/tracking/social_accounts.sql:20 |
+| `table:tracking.social_accounts` | guarded-by | `policy:core.rls-self` | db/core/supabase/schemas/tracking/social_accounts.sql:22 |
 | `table:tracking.social_accounts` | typed-by | `table:market.profiles` | db/core/supabase/schemas/tracking/social_accounts.sql:5 |
-| `table:tracking.submissions` | guarded-by | `policy:core.admin-aal2` | db/core/supabase/schemas/tracking/submissions.sql:46 |
-| `table:tracking.submissions` | guarded-by | `policy:core.iss-identity` | db/core/supabase/schemas/tracking/submissions.sql:41 |
-| `table:tracking.submissions` | guarded-by | `policy:core.rls-org` | db/core/supabase/schemas/tracking/submissions.sql:44 |
-| `table:tracking.submissions` | guarded-by | `policy:core.rls-self` | db/core/supabase/schemas/tracking/submissions.sql:43 |
+| `table:tracking.submissions` | guarded-by | `policy:core.admin-aal2` | db/core/supabase/schemas/tracking/submissions.sql:48 |
+| `table:tracking.submissions` | guarded-by | `policy:core.iss-identity` | db/core/supabase/schemas/tracking/submissions.sql:43 |
+| `table:tracking.submissions` | guarded-by | `policy:core.rls-org` | db/core/supabase/schemas/tracking/submissions.sql:46 |
+| `table:tracking.submissions` | guarded-by | `policy:core.rls-self` | db/core/supabase/schemas/tracking/submissions.sql:45 |
 | `table:tracking.submissions` | typed-by | `doc:spec/kg.yaml` | db/core/supabase/schemas/ops/state_triggers.sql:1 |
 | `table:tracking.submissions` | typed-by | `table:market.claims` | db/core/supabase/schemas/tracking/submissions.sql:27 |
 | `table:tracking.submissions` | typed-by | `table:tracking.social_accounts` | db/core/supabase/schemas/tracking/submissions.sql:29 |
-| `table:tracking.view_snapshots` | guarded-by | `policy:core.inherit-parent` | db/core/supabase/schemas/tracking/view_snapshots.sql:22 |
-| `table:tracking.view_snapshots` | guarded-by | `policy:core.iss-identity` | db/core/supabase/schemas/tracking/view_snapshots.sql:20 |
-| `table:tracking.view_snapshots` | typed-by | `table:tracking.submissions` | db/core/supabase/schemas/tracking/view_snapshots.sql:5 |
+| `table:tracking.view_snapshots` | guarded-by | `policy:core.inherit-parent` | db/core/supabase/schemas/tracking/view_snapshots.sql:23 |
+| `table:tracking.view_snapshots` | guarded-by | `policy:core.iss-identity` | db/core/supabase/schemas/tracking/view_snapshots.sql:21 |
+| `table:tracking.view_snapshots` | typed-by | `table:tracking.submissions` | db/core/supabase/schemas/tracking/view_snapshots.sql:6 |
 | `table:trust.sanctions` | guarded-by | `policy:core.admin-aal2` | db/core/supabase/schemas/trust/sanctions.sql:35 |
 | `table:trust.sanctions` | guarded-by | `policy:core.iss-identity` | db/core/supabase/schemas/trust/sanctions.sql:32 |
 | `table:trust.sanctions` | guarded-by | `policy:core.rls-self` | db/core/supabase/schemas/trust/sanctions.sql:34 |
@@ -1588,7 +1619,7 @@ Arah: `A --tipe--> B` = A bergantung pada B. `?` = belum terverifikasi.
 | `table:trust.score_events` | guarded-by | `policy:core.iss-identity` | db/core/supabase/schemas/trust/score_events.sql:19 |
 | `table:trust.score_events` | guarded-by | `policy:core.rls-self` | db/core/supabase/schemas/trust/score_events.sql:21 |
 | `table:trust.score_events` | typed-by | `table:market.profiles` | db/core/supabase/schemas/trust/score_events.sql:5 |
-| `table:vault.social-tokens` | guarded-by | `policy:core.definer-only` | db/core/supabase/schemas/tracking/vault.sql:4 |
+| `table:vault.social-tokens` | guarded-by | `policy:core.definer-only` | db/creator/supabase/schemas/tracking/vault.sql:4 |
 | `table:bus.outbox` | guarded-by | `policy:core.definer-only` | db/core/supabase/schemas/bus/bus.sql:38 |
 | `table:bus.inbox` | guarded-by | `policy:core.definer-only` | db/core/supabase/schemas/bus/bus.sql:39 |
 | `job:bus-relay` | writes | `table:bus.outbox` | db/core/supabase/schemas/bus/bus.sql:106 |
@@ -1630,7 +1661,7 @@ Arah: `A --tipe--> B` = A bergantung pada B. `?` = belum terverifikasi.
 | `ext:supabase-identity` | configured-by | `config:supabase.identity` | PRD v0.3.1 §15.3 |
 | `ext:supabase-identity` | guarded-by | `policy:identity.api-only` | PRD v0.3.1 §15.4 hanya schema api |
 | `ext:tiktok` | configured-by | `config:host.app` | PRD v0.3.1 §15.2 redirect URI per host |
-| `test:accrue.idempotent` | tests | `fn:accrue_earnings` | db/core/supabase/tests/core_contracts_finance.test.sql:163 |
+| `test:accrue.idempotent` | tests | `fn:accrue_earnings` | db/core/supabase/tests/core_contracts_finance.test.sql:199 |
 | `test:core.full-product` | tests | `api:rpc core.missing_brief_tags` | db/core/supabase/tests/core_full_product.test.sql:175 |
 | `test:brand.campaigns` | tests | `table:bucket.campaign-assets` | db/brand/supabase/tests/brand_campaigns.test.sql:199 |
 | `test:core.full-product` | tests | `table:finance.reward_codes` | db/core/supabase/tests/core_full_product.test.sql:132 |
@@ -1645,17 +1676,17 @@ Arah: `A --tipe--> B` = A bergantung pada B. `?` = belum terverifikasi.
 | `test:e2e.bus` | calls | `api:fn creator/bridge` | e2e/bus.sh:3 |
 | `test:e2e.bus` | calls | `api:fn brand/bridge` | e2e/bus.sh:3 |
 | `test:e2e.cross-host` | configured-by | `doc:deploy/deploy.sh` | e2e/journey.cjs:2 (E2E_* menimpa host & DB untuk stack self-hosted) |
-| `test:e2e.cross-host` | tests | `page:accounts/invite/[token]` | e2e/journey.cjs:115 |
-| `test:e2e.cross-host` | tests | `page:accounts/login` | e2e/journey.cjs:56 |
-| `test:e2e.cross-host` | tests | `page:accounts/onboarding` | e2e/journey.cjs:63 |
-| `test:e2e.cross-host` | tests | `page:app/campaigns` | e2e/journey.cjs:76 |
-| `test:e2e.cross-host` | tests | `page:app/campaigns/[id]` | e2e/journey.cjs:87 |
-| `test:e2e.cross-host` | tests | `page:app/tasks` | e2e/journey.cjs:95 |
-| `test:e2e.cross-host` | tests | `page:brand/` | e2e/journey.cjs:129 |
-| `test:e2e.cross-host` | tests | `page:www/` | e2e/journey.cjs:45 |
-| `test:e2e.cross-host` | tests | `page:www/c/[slug]` | e2e/journey.cjs:50 |
+| `test:e2e.cross-host` | tests | `page:accounts/invite/[token]` | e2e/journey.cjs:118 |
+| `test:e2e.cross-host` | tests | `page:accounts/login` | e2e/journey.cjs:57 |
+| `test:e2e.cross-host` | tests | `page:accounts/onboarding` | e2e/journey.cjs:64 |
+| `test:e2e.cross-host` | tests | `page:app/campaigns` | e2e/journey.cjs:77 |
+| `test:e2e.cross-host` | tests | `page:app/campaigns/[id]` | e2e/journey.cjs:90 |
+| `test:e2e.cross-host` | tests | `page:app/tasks` | e2e/journey.cjs:98 |
+| `test:e2e.cross-host` | tests | `page:brand/` | e2e/journey.cjs:132 |
+| `test:e2e.cross-host` | tests | `page:www/` | e2e/journey.cjs:46 |
+| `test:e2e.cross-host` | tests | `page:www/c/[slug]` | e2e/journey.cjs:51 |
 | `test:e2e.mobile` | tests | `layout:mobile` | e2e/mobile.cjs:13 |
-| `test:e2e.mobile` | tests | `page:accounts/onboarding` | e2e/mobile.cjs:77 |
+| `test:e2e.mobile` | tests | `page:accounts/onboarding` | e2e/mobile.cjs:78 |
 | `test:member-data.integrity` | tests | `api:fn identity/member-data` | db/identity/supabase/tests/identity_access.test.sql:69 (SQL di balik member-data; handler dites Deno member-data/handler_test.ts) |
 | `test:member-data.integrity` | tests | `api:rpc identity.store_kyc` | db/identity/supabase/tests/identity_access.test.sql:72 |
 | `test:member-data.integrity` | tests | `fn:custom_access_token_hook` | db/identity/supabase/tests/identity_access.test.sql:46 |
@@ -1663,21 +1694,21 @@ Arah: `A --tipe--> B` = A bergantung pada B. `?` = belum terverifikasi.
 | `test:member-data.integrity` | tests | `table:member.push_subscriptions` | db/identity/supabase/tests/identity_access.test.sql:177 |
 | `test:pwa.ios-login` | tests | `mod:auth` | PRD v0.3.1 R-17 sesi diset dari server |
 | `test:pwa.ios-login` | tests | `page:app/login` | PRD v0.3.1 R-17 |
-| `test:rls.access-matrix` | tests | `job:broadcast-dispatch` | db/core/supabase/tests/core_access.test.sql:276 |
-| `test:rls.access-matrix` | tests | `job:budget-alerts` | db/core/supabase/tests/core_access.test.sql:276 (job terdaftar; perilaku dites core_contracts_market.test.sql) |
-| `test:rls.access-matrix` | tests | `job:earning-release` | db/core/supabase/tests/core_access.test.sql:276 |
-| `test:rls.access-matrix` | tests | `job:lifecycle` | db/core/supabase/tests/core_access.test.sql:276 |
-| `test:rls.access-matrix` | tests | `job:referral-bonus` | db/core/supabase/tests/core_access.test.sql:276 (job terdaftar; perilaku dites core_contracts_finance.test.sql) |
-| `test:rls.access-matrix` | tests | `job:trust-score` | db/core/supabase/tests/core_access.test.sql:276 (job terdaftar; perilaku dites core_contracts_market.test.sql) |
-| `test:rls.access-matrix` | tests | `policy:core.admin-aal2` | db/core/supabase/tests/core_access.test.sql:213 |
-| `test:rls.access-matrix` | tests | `policy:core.iss-identity` | db/core/supabase/tests/core_access.test.sql:181 |
-| `test:rls.access-matrix` | tests | `policy:core.org-role` | db/core/supabase/tests/core_access.test.sql:204 |
-| `test:rls.access-matrix` | tests | `policy:core.rls-org` | db/core/supabase/tests/core_access.test.sql:199 |
-| `test:rls.access-matrix` | tests | `policy:core.rls-self` | db/core/supabase/tests/core_access.test.sql:183 |
+| `test:rls.access-matrix` | tests | `job:broadcast-dispatch` | db/core/supabase/tests/core_access.test.sql:272 |
+| `test:rls.access-matrix` | tests | `job:budget-alerts` | db/core/supabase/tests/core_access.test.sql:272 (job terdaftar; perilaku dites core_contracts_market.test.sql) |
+| `test:rls.access-matrix` | tests | `job:earning-release` | db/core/supabase/tests/core_access.test.sql:272 |
+| `test:rls.access-matrix` | tests | `job:lifecycle` | db/core/supabase/tests/core_access.test.sql:272 |
+| `test:rls.access-matrix` | tests | `job:referral-bonus` | db/core/supabase/tests/core_access.test.sql:272 (job terdaftar; perilaku dites core_contracts_finance.test.sql) |
+| `test:rls.access-matrix` | tests | `job:trust-score` | db/core/supabase/tests/core_access.test.sql:272 (job terdaftar; perilaku dites core_contracts_market.test.sql) |
+| `test:rls.access-matrix` | tests | `policy:core.admin-aal2` | db/core/supabase/tests/core_access.test.sql:209 |
+| `test:rls.access-matrix` | tests | `policy:core.iss-identity` | db/core/supabase/tests/core_access.test.sql:178 |
+| `test:rls.access-matrix` | tests | `policy:core.org-role` | db/core/supabase/tests/core_access.test.sql:200 |
+| `test:rls.access-matrix` | tests | `policy:core.rls-org` | db/core/supabase/tests/core_access.test.sql:195 |
+| `test:rls.access-matrix` | tests | `policy:core.rls-self` | db/core/supabase/tests/core_access.test.sql:180 |
 | `test:rls.access-matrix` | tests | `policy:identity.admin-aal2` | db/identity/supabase/tests/identity_access.test.sql:120 |
 | `test:rls.access-matrix` | tests | `policy:identity.rls-self` | db/identity/supabase/tests/identity_access.test.sql:90 |
-| `test:rls.access-matrix` | tests | `table:finance.ledger_entries` | db/core/supabase/tests/core_access.test.sql:151 |
-| `test:rls.access-matrix` | tests | `table:finance.payout_batches` | db/core/supabase/tests/core_access.test.sql:153 |
+| `test:rls.access-matrix` | tests | `table:finance.ledger_entries` | db/core/supabase/tests/core_access.test.sql:148 |
+| `test:rls.access-matrix` | tests | `table:finance.payout_batches` | db/core/supabase/tests/core_access.test.sql:150 |
 | `test:rls.access-matrix` | tests | `table:market.claims` | db/core/supabase/tests/core_access.test.sql:89 |
 | `test:spike.oidc-cross-project` | tests | `config:tpa-oidc-identity` | PRD v0.3.1 R-14 |
 | `test:spike.oidc-cross-project` | tests | `policy:core.iss-identity` | PRD v0.3.1 R-14 + §15.6 |
@@ -1690,10 +1721,10 @@ Arah: `A --tipe--> B` = A bergantung pada B. `?` = belum terverifikasi.
 | `doc:deploy/deploy.sh` | documents | `env:PII_HMAC_KEY` | deploy/keys.mjs:68 |
 | `doc:deploy/deploy.sh` | documents | `env:PII_ENC_KEY` | deploy/keys.mjs:69 (PII_ENC_KEYS) |
 | `doc:deploy/deploy.sh` | documents | `env:VAPID_PRIVATE_KEY` | deploy/keys.mjs:74 |
-| `doc:deploy/deploy.sh` | documents | `env:IDENTITY_ISSUER` | deploy/deploy.sh:237 |
+| `doc:deploy/deploy.sh` | documents | `env:IDENTITY_ISSUER` | deploy/deploy.sh:245 |
 | `doc:deploy/deploy.sh` | documents | `config:host.brand-api` | deploy/deploy.sh:57 (stack_host: <stack>-api.DOMAIN) |
 | `doc:deploy/deploy.sh` | documents | `config:host.creator-api` | deploy/deploy.sh:57 (stack_host: <stack>-api.DOMAIN) |
-| `mod:db-brand` | configured-by | `config:host.brand-api` | deploy/deploy.sh:344 (apps_env) |
+| `mod:db-brand` | configured-by | `config:host.brand-api` | deploy/deploy.sh:346 (apps_env) |
 | `doc:deploy/deploy.sh` | documents | `fn:custom_access_token_hook` | deploy/supabase/identity.yml:17 (GOTRUE_HOOK_CUSTOM_ACCESS_TOKEN_URI) |
 | `doc:scripts/dev-stack.sh` | documents | `env:BRIDGE_SECRET_IDENTITY_TO_CORE` | scripts/dev-stack.sh:19 |
 | `doc:scripts/dev-stack.sh` | documents | `env:IDENTITY_ISSUER` | scripts/dev-stack.sh:44 |
@@ -1703,9 +1734,9 @@ Arah: `A --tipe--> B` = A bergantung pada B. `?` = belum terverifikasi.
 | `doc:spec/contracts.yaml` | documents | `api:fn core/bridge` | spec/contracts.yaml:45 |
 | `doc:spec/contracts.yaml` | documents | `api:fn core/fulfill` | spec/contracts.yaml:46 |
 | `doc:spec/contracts.yaml` | documents | `api:fn core/notify` | spec/contracts.yaml:44 |
-| `doc:spec/contracts.yaml` | documents | `api:fn core/refresh-tokens` | spec/contracts.yaml:43 |
-| `doc:spec/contracts.yaml` | documents | `api:fn core/social` | spec/contracts.yaml:41 |
-| `doc:spec/contracts.yaml` | documents | `api:fn core/track-worker` | spec/contracts.yaml:42 |
+| `doc:spec/contracts.yaml` | documents | `api:fn creator/refresh-tokens` | spec/contracts.yaml:43 |
+| `doc:spec/contracts.yaml` | documents | `api:fn creator/social` | spec/contracts.yaml:41 |
+| `doc:spec/contracts.yaml` | documents | `api:fn creator/track-worker` | spec/contracts.yaml:42 |
 | `doc:spec/contracts.yaml` | documents | `api:fn identity/admin-auth` | spec/contracts.yaml:51 |
 | `doc:spec/contracts.yaml` | documents | `api:fn identity/bridge` | spec/contracts.yaml:50 |
 | `doc:spec/contracts.yaml` | documents | `api:fn identity/delete-account` | spec/contracts.yaml:49 |
@@ -1903,7 +1934,7 @@ Arah: `A --tipe--> B` = A bergantung pada B. `?` = belum terverifikasi.
 | `page:app/.well-known/apple-app-site-association` | calls | `mod:clipper-lib` | apps/clipper/src/app/.well-known/apple-app-site-association/route.ts:1 |
 | `page:app/.well-known/apple-app-site-association` | configured-by | `env:APPLE_TEAM_ID` | apps/clipper/src/app/.well-known/apple-app-site-association/route.ts:7 |
 | `page:app/.well-known/apple-app-site-association` | configured-by | `env:IOS_BUNDLE_ID` | apps/clipper/src/app/.well-known/apple-app-site-association/route.ts:7 |
-| `doc:deploy/deploy.sh` | documents | `env:APPLE_TEAM_ID` | deploy/deploy.sh:353 |
+| `doc:deploy/deploy.sh` | documents | `env:APPLE_TEAM_ID` | deploy/deploy.sh:355 |
 | `api:fn identity/session-handoff` | writes | `table:member.session_handoffs` | db/identity/supabase/schemas/api/svc.sql:178 (api.svc_create_handoff; redeem = svc_redeem_handoff) |
 | `page:accounts/handoff` | calls | `api:fn identity/session-handoff` | apps/accounts/src/lib/handoff.ts:4 |
 | `api:fn identity/bridge` | calls | `mod:apns` | db/identity/supabase/functions/bridge/handler.ts:5 |
@@ -1922,10 +1953,10 @@ Arah: `A --tipe--> B` = A bergantung pada B. `?` = belum terverifikasi.
 | `test:mobile.unit` | tests | `mod:mobile-widget-ios` | apps/mobile/src/widget-fns.test.ts:53 (string fungsi widget dari babel-preset-expo dijalankan di context terpisah) |
 | `test:mobile.unit` | tests | `mod:live-activity` | apps/mobile/src/widget-fns.test.ts:54 |
 | `test:mobile.unit` | tests | `mod:widget-snapshot` | apps/mobile/src/widget-snapshot.test.ts:8 |
-| `test:e2e.mobile` | tests | `page:mobile/share` | e2e/mobile.cjs:116 |
-| `test:e2e.mobile` | tests | `page:mobile/notifications` | e2e/mobile.cjs:132 |
-| `test:e2e.mobile` | tests | `page:mobile/withdraw` | e2e/mobile.cjs:145 |
-| `test:e2e.mobile` | tests | `page:mobile/social` | e2e/mobile.cjs:162 |
+| `test:e2e.mobile` | tests | `page:mobile/share` | e2e/mobile.cjs:119 |
+| `test:e2e.mobile` | tests | `page:mobile/notifications` | e2e/mobile.cjs:135 |
+| `test:e2e.mobile` | tests | `page:mobile/withdraw` | e2e/mobile.cjs:148 |
+| `test:e2e.mobile` | tests | `page:mobile/social` | e2e/mobile.cjs:165 |
 | `test:mobile.unit` | tests | `mod:live-activity` | apps/mobile/src/device-release.test.ts:43 (gagal DELETE → batal keluar, token tak didaftarkan ulang) |
 | `test:mobile.unit` | tests | `mod:widget-snapshot` | apps/mobile/src/device-release.test.ts:41 (muatan saat keluar dibuang, cadangan per user) |
 
@@ -2093,11 +2124,11 @@ Sumber: `spec/journeys.yaml`, sama dengan PRD §6. Tiap langkah = satu layar; `n
 | C1.2 Login (OTP / Google) | `page:accounts/login` | accounts.{domain}/login?next=… | Lihat: Kolom email, tombol Lanjut dengan Google, CAPTCHA Turnstile (biasanya tidak terlihat), link ToS dan privasi. Lakukan: Isi email → Kirim kode → ketik 6 digit kode dari email. Atau tap Google → pilih akun. | Auth identity: signInWithOtp + token CAPTCHA; user baru dibuat otomatis; kode dikirim lewat SMTP Resend (template {{ .Token }}). verifyOtp → cookie sesi .{domain} diset dari server. Google: PKCE → layar izin Google (domain auth.{domain}) → accounts.{domain}/auth/callback menukar code jadi sesi. next dicek ke allowlist host. `mod:auth`, `ext:supabase-identity`, `ext:turnstile`, `ext:resend`, `ext:google`, `api:GET accounts/auth/callback` | Belum onboarding → accounts.{domain}/onboarding?next=…; sudah → next. Cabang: Kode salah/kedaluwarsa → kirim ulang (jeda sesuai rate limit Auth). Email tidak masuk → cek spam atau pakai Google. Akun ber-role admin → ditolak, diarahkan ke admin.{domain}. |
 | C1.3 Onboarding | `page:accounts/onboarding` | accounts.{domain}/onboarding?role=clipper&next=… | Lihat: Username (dicek unik saat diketik), nama tampilan, foto (opsional, bucket avatars), centang Saya berusia 18 tahun atau lebih, ToS clipper + kebijakan privasi (termasuk data diproses di Singapura). Lakukan: Isi, centang, tap Simpan & mulai. | Urutan: core api.ensure_profile(username, nama, kode referral dari cookie) → E-01 (+ E-39 kalau kodenya sah) → identity api.record_consent untuk tos_clipper, privacy (hanya versi terbaru di E-31) dan age_18_plus → E-28 → refreshSession supaya claim consent_ok.clipper = true. Consent ditulis paling akhir: gagal di tengah jalan = kembali ke onboarding, tidak pernah masuk app tanpa profil. `api:rpc creator.ensure_profile`, `table:market.profiles`, `table:market.referrals`, `table:bucket.avatars`, `api:rpc identity.record_consent`, `table:member.consents`, `table:member.legal_versions`, `fn:custom_access_token_hook` | next (default app.{domain}/campaigns). Target F-C01: landing sampai sini ≤ 2 menit. Cabang: Username dipakai → pesan inline + saran. Belum 18 tahun → tidak bisa lanjut (data anak wajib persetujuan orang tua, UU PDP Pasal 25); umur dicek lagi dari NIK saat KYC. Tutup di tengah jalan → login berikutnya kembali ke onboarding. |
 | C1.4 Daftar campaign | `page:app/campaigns` | app.{domain}/campaigns | Lihat: Banner Hubungkan akun sosmed dulu supaya bisa ambil campaign (selama belum ada akun). List: search, filter platform/status/kategori, sort, card dengan CTA 6 state (F-C03). Nav bawah: Campaign, Tugas, Wallet, Sosmed. Lakukan: Tap banner (ke Sosmed) atau buka card. | proxy.ts membaca cookie SSO dan menyegarkan sesi; client core memakai access token identity (Custom OIDC). Campaign + eligibility per user dari view schema api core (RLS). `mod:auth`, `mod:db-core`, `table:market.campaigns`, `table:tracking.social_accounts` | app.{domain}/social atau app.{domain}/campaigns/[id]. Cabang: Tidak ada sesi / sesi dicabut → app.{domain}/login?next=/campaigns (J-C2). |
-| C1.5 Hubungkan sosmed | `page:app/social` | app.{domain}/social | Lihat: Kartu TikTok, Instagram, Threads, YouTube: Belum terhubung / Terverifikasi / Token kedaluwarsa / Dicabut, tombol Hubungkan atau Reconnect, maks 3 akun per platform. Lakukan: Tap Hubungkan TikTok → login & setujui izin di halaman resmi TikTok. | App membuat state anti-CSRF → halaman izin platform (TikTok Login Kit / Instagram Login / Threads / Google OAuth) → platform redirect ke app.{domain}/api/oauth/[platform]/callback → Edge Function core social menukar code, token ke Vault core, akun ke E-04 (handle, follower, Terverifikasi). `ext:tiktok`, `ext:meta`, `ext:google`, `api:GET app/api/oauth/[platform]/callback`, `api:fn core/social`, `table:vault.social-tokens`, `table:tracking.social_accounts` | Kembali ke app.{domain}/social?connected=tiktok (toast sukses), lalu ke campaign. Cabang: Instagram personal → ditolak + panduan pindah ke Creator. Batal di halaman platform → pesan batal. Akun sosmed sudah terhubung ke clipper lain → ditolak (unik platform + external_id). Akun ke-4 di satu platform → ditolak. |
+| C1.5 Hubungkan sosmed | `page:app/social` | app.{domain}/social | Lihat: Kartu TikTok, Instagram, Threads, YouTube: Belum terhubung / Terverifikasi / Token kedaluwarsa / Dicabut, tombol Hubungkan atau Reconnect, maks 3 akun per platform. Lakukan: Tap Hubungkan TikTok → login & setujui izin di halaman resmi TikTok. | App membuat state anti-CSRF → halaman izin platform (TikTok Login Kit / Instagram Login / Threads / Google OAuth) → platform redirect ke app.{domain}/api/oauth/[platform]/callback → Edge Function core social menukar code, token ke Vault core, akun ke E-04 (handle, follower, Terverifikasi). `ext:tiktok`, `ext:meta`, `ext:google`, `api:GET app/api/oauth/[platform]/callback`, `api:fn creator/social`, `table:vault.social-tokens`, `table:tracking.social_accounts` | Kembali ke app.{domain}/social?connected=tiktok (toast sukses), lalu ke campaign. Cabang: Instagram personal → ditolak + panduan pindah ke Creator. Batal di halaman platform → pesan batal. Akun sosmed sudah terhubung ke clipper lain → ditolak (unik platform + external_id). Akun ke-4 di satu platform → ditolak. |
 | C1.6 Detail & claim | `page:app/campaigns/[id]` | app.{domain}/campaigns/[id] | Lihat: Brief, do/don't, contoh, aset (unduh), hashtag/mention wajib, label konten bersponsor, rate & cap per platform, timeline tanggal absolut, FAQ, tombol Ambil Campaign. Lakukan: Tap Ambil Campaign. | Core api.claim_campaign: cek status E-01, eligibility (akun platform terhubung, follower, umur akun, Trust Score, KYC kalau disyaratkan), slot & kuota, bukan anggota org pemilik campaign, campaign privat hanya untuk yang diundang/levelnya cukup, belum ada claim terbuka → E-11 open, kedaluwarsa 48 jam. Aset brief lewat signed URL bucket campaign-assets; berkas internal brand tidak terlihat. `api:rpc core.claim_campaign`, `table:market.claims`, `table:market.profiles`, `table:bucket.campaign-assets` | Tetap di halaman ini: tombol berubah jadi Submit video + hitung mundur 48 jam. Cabang: Tidak eligible → alasan + aksi: Hubungkan akun (→ /social?next=…) atau Lengkapi KYC (→ accounts.{domain}/kyc?next=…). Slot penuh / budget habis / deadline lewat → tombol nonaktif + alasan. Anggota org pemilik campaign → ditolak (konflik kepentingan). |
 | C1.7 Posting video | `ext:tiktok` | Aplikasi TikTok / Instagram / Threads / YouTube | Lihat: Aplikasi platform milik clipper. Lakukan: Posting klip sesuai brief: hashtag/mention wajib, setelan konten bersponsor/paid promotion. | Belum ada. job:claim-expiry mengirim pengingat sebelum 48 jam habis (in-app + email). `job:claim-expiry`, `fn:enqueue_notification` | Kembali ke app.{domain}/campaigns/[id] (tab yang masih terbuka, notifikasi, atau Tugas). Cabang: Claim kedaluwarsa → slot dilepas (S-02 expired); bisa claim ulang kalau slot masih ada. |
-| C1.8 Submit video | `page:app/campaigns/[id]` | app.{domain}/campaigns/[id] (sheet Submit video) | Lihat: Daftar video dari akun terhubung yang diposting setelah claim (thumbnail, caption, tanggal); video yang captionnya kurang tag wajib sudah ditandai sebelum Submit (mis. kurang #mplid); link Tempel URL sebagai cadangan. Lakukan: Pilih video → Submit. | Edge Function core social mengambil daftar video lewat API platform lalu validasi: milik akun ini, platform diizinkan, diposting setelah claim, hashtag/mention/link wajib ada (api.missing_brief_tags), durasi sesuai brief (API tanpa durasi → review manual), video belum pernah disubmit di campaign ini → E-12 validating → in_review (review manual) atau tracking (auto); E-11 submitted. `api:fn core/social`, `api:rpc core.missing_brief_tags`, `table:tracking.submissions`, `table:market.claims` | app.{domain}/tasks + toast Submisi masuk. Cabang: Tiap gagal punya pesan sendiri: bukan video milikmu, hashtag/mention/link kurang (disebut satu per satu, mis. #mplid), durasi di luar brief, sudah pernah disubmit, diposting sebelum claim, platform tidak diizinkan. |
-| C1.9 Tugas Saya | `page:app/tasks` | app.{domain}/tasks | Lihat: Claim & submisi per status (Validasi, Review, Tracking, Ditolak, Banding, Terkunci), views terakhir + jam update, earning pending per submisi, alasan reject, tombol Banding (1×). Lakukan: Pantau; tap Banding kalau ditolak. | job:track-due (pg_cron 15 menit) → queue → track-worker ambil metrik (jadwal 4/24/72 jam) → E-13 snapshot → accrue_earnings → jurnal E-15 Pending. Review admin (F-A05) atau brand (F-B07, auto-approve 72 jam). Banding → api.appeal_submission (1× per submisi, unique index). Notifikasi in-app E-23 + email/push lewat identity (alur 4). `job:track-due`, `api:fn core/track-worker`, `table:tracking.view_snapshots`, `fn:accrue_earnings`, `table:finance.ledger_entries`, `api:rpc core.record_review`, `table:ops.notifications`, `api:fn core/notify`, `api:fn identity/bridge`, `api:rpc core.appeal_submission` | app.{domain}/wallet. Cabang: Ditolak → Banding → antre moderasi (J-A4). Fraud flag → earning ditahan. Post dihapus/diprivate → earning hangus + notifikasi. Token dicabut → tracking pause + tombol Reconnect → /social. |
+| C1.8 Submit video | `page:app/campaigns/[id]` | app.{domain}/campaigns/[id] (sheet Submit video) | Lihat: Daftar video dari akun terhubung yang diposting setelah claim (thumbnail, caption, tanggal); video yang captionnya kurang tag wajib sudah ditandai sebelum Submit (mis. kurang #mplid); link Tempel URL sebagai cadangan. Lakukan: Pilih video → Submit. | Edge Function core social mengambil daftar video lewat API platform lalu validasi: milik akun ini, platform diizinkan, diposting setelah claim, hashtag/mention/link wajib ada (api.missing_brief_tags), durasi sesuai brief (API tanpa durasi → review manual), video belum pernah disubmit di campaign ini → E-12 validating → in_review (review manual) atau tracking (auto); E-11 submitted. `api:fn creator/social`, `api:rpc core.missing_brief_tags`, `table:tracking.submissions`, `table:market.claims` | app.{domain}/tasks + toast Submisi masuk. Cabang: Tiap gagal punya pesan sendiri: bukan video milikmu, hashtag/mention/link kurang (disebut satu per satu, mis. #mplid), durasi di luar brief, sudah pernah disubmit, diposting sebelum claim, platform tidak diizinkan. |
+| C1.9 Tugas Saya | `page:app/tasks` | app.{domain}/tasks | Lihat: Claim & submisi per status (Validasi, Review, Tracking, Ditolak, Banding, Terkunci), views terakhir + jam update, earning pending per submisi, alasan reject, tombol Banding (1×). Lakukan: Pantau; tap Banding kalau ditolak. | job:track-due (pg_cron 15 menit) → queue → track-worker ambil metrik (jadwal 4/24/72 jam) → E-13 snapshot → accrue_earnings → jurnal E-15 Pending. Review admin (F-A05) atau brand (F-B07, auto-approve 72 jam). Banding → api.appeal_submission (1× per submisi, unique index). Notifikasi in-app E-23 + email/push lewat identity (alur 4). `job:track-due`, `api:fn creator/track-worker`, `table:tracking.view_snapshots`, `fn:accrue_earnings`, `table:finance.ledger_entries`, `api:rpc core.record_review`, `table:ops.notifications`, `api:fn core/notify`, `api:fn identity/bridge`, `api:rpc core.appeal_submission` | app.{domain}/wallet. Cabang: Ditolak → Banding → antre moderasi (J-A4). Fraud flag → earning ditahan. Post dihapus/diprivate → earning hangus + notifikasi. Token dicabut → tracking pause + tombol Reconnect → /social. |
 | C1.10 Wallet | `page:app/wallet` | app.{domain}/wallet | Lihat: Saldo per unit (Rp, Diamonds, dll): Pending / Tersedia / Ditarik + riwayat transaksi. Tab Reward: kode voucher yang sudah dikirim. Lakukan: Tap Tarik saat Tersedia ≥ minimum (Rp100.000, config). | job:lifecycle mengunci submisi di akhir view window; job:earning-release memindah Pending → Tersedia setelah lock + hold 7 hari tanpa fraud flag → notifikasi earning tersedia. `job:lifecycle`, `job:earning-release`, `table:finance.ledger_entries`, `table:finance.reward_codes` | app.{domain}/wallet/withdraw. Cabang: Masih Pending → tampil tanggal perkiraan Tersedia. |
 | C1.11 Withdraw | `page:app/wallet/withdraw` | app.{domain}/wallet/withdraw | Lihat: Checklist: KYC (dari claim kyc), rekening (tersamar ****1234 dari identity), jumlah, pilihan Batch mingguan (gratis) atau Instant (biaya flat, Trust Score ≥ ambang config); tab reward non-tunai. Lakukan: Lengkapi KYC atau rekening kalau belum; pilih rekening + jumlah → Ajukan. | Identity api.my_payout_methods (alur 8: last4 + nama bank saja). Core api.request_payout(method_id, jumlah): cek status E-01, saldo, minimum → E-17 requested + jurnal. Non-tunai: api.request_fulfillment → E-18. Instant → bridge identity disburse ke penyedia disbursement (alur 11), tanpa menunggu batch. `fn:custom_access_token_hook`, `api:rpc identity.my_payout_methods`, `api:rpc core.request_payout`, `table:finance.payouts`, `api:rpc core.request_fulfillment`, `api:fn identity/disburse` | Sukses → app.{domain}/wallet dengan status Menunggu batch (tanggal). Cabang: KYC belum → accounts.{domain}/kyc?next=https://app.{domain}/wallet/withdraw. Rekening belum → accounts.{domain}/payout-methods?next=…. Saldo < minimum → tombol nonaktif + kekurangannya. Akun disuspend → ditolak + kontak bantuan. Instant gagal di penyedia → saldo kembali, bisa pilih batch. |
 | C1.12 KYC (sekali) | `page:accounts/kyc` | accounts.{domain}/kyc?next=… | Lihat: Status (Belum / Menunggu verifikasi / Disetujui / Ditolak + alasan), form nama sesuai KTP, NIK, foto KTP, persetujuan KYC. Lakukan: Isi, unggah foto, Kirim. | Foto ke bucket kyc-docs (folder milik user). Edge Function member-data: cek umur dari NIK (digit 7–12 = tanggal lahir, perempuan +40; < 18 tahun ditolak), HMAC NIK (UNIQUE) + enkripsi → E-05 menunggu; consent kyc (E-28). Admin memutus di J-A2 → notifikasi KYC disetujui/ditolak (in-app + email); claim kyc berubah saat JWT di-refresh (≤ 10 menit). `table:bucket.kyc-docs`, `api:fn identity/member-data`, `table:member.kyc_records`, `table:member.consents` | Tombol Kembali ke app → next (withdraw); bisa langsung lanjut ke rekening. Cabang: NIK sudah dipakai akun lain → ditolak (FR-04) + kontak bantuan. Ditolak admin (foto buram, nama beda) → perbaiki & kirim ulang. Umur dari NIK < 18 tahun → ditolak. |
@@ -2446,7 +2477,7 @@ Masalah sistem yang ditemukan saat menyusun PRD v0.2 dan saat dicek ulang (v0.2.
 | 2026-10-15 | `config:supabase.identity` | v0.2.1: login email OTP (F-C01) tanpa SMTP custom; SMTP bawaan cuma 2 email/jam dan hanya ke anggota tim | diperbaiki v0.2.2: SMTP Resend, rate limit dinaikkan, template {{ .Token }}, DMARC |
 | 2026-10-15 | `mod:auth` | v0.2.1: tanpa CAPTCHA, bot bisa menguras kuota email OTP | diperbaiki v0.2.2: Turnstile di Auth identity |
 | 2026-10-15 | `policy:core.admin-aal2` | v0.2.1: role/kyc dari claim JWT bisa basi sampai 1 jam; token tetap sah setelah ban/hapus akun | diperbaiki v0.2.2: JWT 10 menit, cabut sesi saat ban/hapus, fungsi uang & claim cek status E-01 |
-| 2026-10-15 | `api:fn core/track-worker` | v0.2.1: aturan semua Edge Function verifikasi JWT identity salah untuk worker pg_cron; Queue lewat supabase-js butuh pgmq_public diekspos | diperbaiki v0.2.2: secret key di header apikey + koneksi Postgres langsung |
+| 2026-10-15 | `api:fn creator/track-worker` | v0.2.1: aturan semua Edge Function verifikasi JWT identity salah untuk worker pg_cron; Queue lewat supabase-js butuh pgmq_public diekspos | diperbaiki v0.2.2: secret key di header apikey + koneksi Postgres langsung |
 | 2026-10-15 | `policy:core.api-only` | v0.2.1: Postgres memberi EXECUTE fungsi baru ke PUBLIC; Data API default mengekspos public | diperbaiki v0.2.2: cabut EXECUTE default, ekspos hanya api, advisors di CI |
 | 2026-10-15 | `config:host.app` | v0.2.1: Vercel default region iad1 (AS) dan Hobby dilarang komersial, tidak disebut | diperbaiki v0.2.2: Pro + sin1 |
 | 2026-10-15 | `page:app/login` | v0.2.1: PWA iOS punya cookie terpisah dari Safari, padahal login hanya di accounts.{domain} (di luar scope PWA) | diperbaiki v0.2.2: /login di app.{domain}; uji Fase 0 R-17 open |
@@ -2532,22 +2563,22 @@ Masalah sistem yang ditemukan saat menyusun PRD v0.2 dan saat dicek ulang (v0.2.
 | 2026-10-19 | `api:rpc core.record_review` | Review Claudex R13: campaign managed bisa di-approve & tayang walau invoice managed_service belum lunas; halaman review admin hanya menampilkan invoice budget | diperbaiki: approve butuh managed_service lunas (invoice_unpaid); review-detail admin menampilkan invoice paket managed |
 | 2026-10-19 | `api:rpc core.buy_pin` | Review Claudex R14: invoice pin yang terbit sebelum pin_days ada tetap memakai pin_until absolut → dibayar telat = tanpa pin | diperbaiki: settle_invoice memakai pin_days, atau periode perkiraan invoice (pin_until − issued_at) dibatasi minggu yang dibayar (R15: periode itu memuat sisa pin berjalan), maks 90 hari; selalu sejak lunas |
 | 2026-10-19 | `page:admin/users` | Review Claudex R14: Cabut ban hanya membuka ban login identity; profil core yang di-ban fraud queue tetap banned → user tidak bisa claim/submit/withdraw | diperbaiki: api.manage_user aksi unban (wajib alasan, audit; profil closed ditolak); server action unbanUser memanggil identity lalu core, aman diulang |
-| 2026-10-20 | `api:fn core/social` | Audit PRD (Codex G-17/G-3): submisi review auto langsung tracking tanpa keputusan → tanpa notifikasi submission.approved & tanpa kenaikan Trust Score; clean_tenure tidak pernah diberikan | diperbaiki: worker_create_submission melewati trust.apply_submission_decision('auto_approve'); job trust-score memberi clean_tenure tiap 30 hari bersih |
-| 2026-10-20 | `api:fn core/track-worker` | Audit PRD (G-6, G-16): FR-03 hanya untuk akun baru (cabang follower sangat sedikit hilang); error API/rate limit diulang tiap 5 menit tetap tanpa backoff | diperbaiki: FR-03 juga follower < trust.fraud.low_followers (100); backoff 5 mnt × 2^(n−1) maks 6 jam lewat api.worker_retry_later (pgmq set_vt), Retry-After penyedia didahulukan |
+| 2026-10-20 | `api:fn creator/social` | Audit PRD (Codex G-17/G-3): submisi review auto langsung tracking tanpa keputusan → tanpa notifikasi submission.approved & tanpa kenaikan Trust Score; clean_tenure tidak pernah diberikan | diperbaiki: worker_create_submission melewati trust.apply_submission_decision('auto_approve'); job trust-score memberi clean_tenure tiap 30 hari bersih |
+| 2026-10-20 | `api:fn creator/track-worker` | Audit PRD (G-6, G-16): FR-03 hanya untuk akun baru (cabang follower sangat sedikit hilang); error API/rate limit diulang tiap 5 menit tetap tanpa backoff | diperbaiki: FR-03 juga follower < trust.fraud.low_followers (100); backoff 5 mnt × 2^(n−1) maks 6 jam lewat api.worker_retry_later (pgmq set_vt), Retry-After penyedia didahulukan |
 | 2026-10-20 | `job:referral-bonus` | Audit PRD (G-7, C5.3): teman satu NIK/rekening/perangkat dengan pengundang tetap dibayar bonus | diperbaiki: bonus dilewati selama ada flag FR-04/FR-05 (belum dismissed) yang menghubungkan keduanya |
 | 2026-10-20 | `fn:enqueue_notification` | Audit PRD (G-13, A6.1/C2.5): kanal broadcast diabaikan (selalu email + push + in-app); mematikan email promosi ikut mematikan push | diperbaiki: payload.channels menentukan in_app/email/push (kolom ops.notifications.in_app, view menyaring); preferensi email promosi hanya untuk email; worker notify menghormati flag pesan |
 | 2026-10-20 | `page:admin/users` | Audit PRD (G-14, F-A07): ban dari manajemen user hanya ban login → JWT yang masih berlaku tetap bisa claim/submit, status core salah | diperbaiki: banUser juga manage_user core (≤ 365 hari = suspend durasi sama, lebih = ban); unban mencabut ban & suspend; dialog ban wajib alasan |
-| 2026-10-20 | `api:fn core/track-worker` | Review Claudex R16: backoff tertunda tapi penjadwal (lease next_poll_at 1 jam) membuat pesan baru yang memanggil API lebih awal; follower null (YouTube hidden / Threads) dianggap "sedikit" → FR-03 palsu menahan earning | diperbaiki: retry juga worker_defer next_poll_at (penundaan + 1 jam); FR-03 cabang follower hanya bila follower diketahui |
+| 2026-10-20 | `api:fn creator/track-worker` | Review Claudex R16: backoff tertunda tapi penjadwal (lease next_poll_at 1 jam) membuat pesan baru yang memanggil API lebih awal; follower null (YouTube hidden / Threads) dianggap "sedikit" → FR-03 palsu menahan earning | diperbaiki: retry juga worker_defer next_poll_at (penundaan + 1 jam); FR-03 cabang follower hanya bila follower diketahui |
 | 2026-10-20 | `page:admin/users` | Review Claudex R16: ban login berdurasi dibulatkan ke hari & > 365 hari jadi ban core permanen | diperbaiki: suspend core sampai banned_until identity persis (manage_user suspend {until}); permanen → ban |
 | 2026-10-20 | `page:brand/[org]/campaigns/[id]` | Audit PRD (G-8, §3): eCPM = spend kreator saja (dashboard) / pool Rupiah saja (laporan), bukan total bayar brand | diperbaiki: market.campaign_report menghitung ecpm_idr = (nilai Rp semua pool terpakai × (1 + fee manajemen + admin)) ÷ views valid × 1.000 — satu sumber untuk dashboard & link laporan |
 | 2026-10-20 | `page:brand/[org]/campaigns/[id]` | Audit PRD (G-9, F-B08): tidak ada intervensi "notif ke clipper eligible" untuk campaign yang underspend | diperbaiki: control_campaign notify_eligible + tombol & saran di dashboard; announce_campaign sekali per clipper per campaign |
 | 2026-10-20 | `page:admin/finance` | Audit PRD (G-10, F-A08): ledger tidak bisa diperiksa dari back-office | diperbaiki: api.admin_ledger (admin_finance) + tab Ledger dengan pencarian transaksi/referensi/pemilik |
-| 2026-10-20 | `api:fn core/track-worker` | Review Claudex R17: di ujung view window worker_defer mentok batas window → penjadwal tetap membuat pesan baru, backoff terpotong | diperbaiki: tracking.submissions.retry_after diisi worker_retry_later; enqueue_due_submissions menunggu retry_after |
+| 2026-10-20 | `api:fn creator/track-worker` | Review Claudex R17: di ujung view window worker_defer mentok batas window → penjadwal tetap membuat pesan baru, backoff terpotong | diperbaiki: tracking.submissions.retry_after diisi worker_retry_later; enqueue_due_submissions menunggu retry_after |
 | 2026-10-20 | `page:www/` | Audit PRD (G-15, A6.2): banner beranda disimpan admin (public.home.banners) tapi tidak pernah dirender | diperbaiki: HomeBanners + parser aman di @clipper/ui (subpath ./banners tanpa JSX) — landing web & daftar campaign clipper; path tanpa "/" dinormalkan supaya sama dengan validasi admin |
 | 2026-10-20 | `api:fn identity/bridge` | Audit PRD (G-12, F-X01 admin): alert operasional (tracking gagal, lonjakan fraud, payout gagal, selisih rekonsiliasi) hanya tercatat di dashboard, tanpa email ke admin | diperbaiki: ops.raise_alert → bridge core notify_admins → identity: email ke admin ber-role terkait + admin_super (svc_admin_ids), maks 1 per jenis per jam, idempoten per alert & admin; ADMIN_URL opsional supaya email lain tidak ikut gagal |
 | 2026-10-20 | `fn:accrue_earnings` | Audit PRD (G-2/G-4, §12 & C4.1): Trust Score tidak memengaruhi cap/hold; TikTok tidak punya cap lebih rendah & hold lebih panjang (satu max_per_clip & satu hold global) | diperbaiki: finance.clip_terms(trust, platform) dari public.finance.trust_tiers & public.finance.platform_rules → cap = max_per_clip × cap_pct tier × cap_pct platform (accrue), hold = hold tier minimal hold platform (release); default kode netral, nilai awal di seed; profil clipper menampilkan tier yang berlaku |
 | 2026-10-20 | `page:admin/finance` | Review interim (subagent, kuota Codex habis) C18: pencarian ledger dengan UUID submisi/refund tidak menemukan ref "<id>:…"; query OR lintas join tanpa indeks (scan penuh); dedupe announce tanpa indeks; eCPM memakai fee rule hari ini, bukan fee yang ditagih; margin retry_after 5 menit < lease penjadwal | diperbaiki: pencarian dipecah per kolom terindeks + awalan ref untuk UUID, indeks ledger_entries(ref_id text_pattern_ops), indeks parsial notifications campaign.new, eCPM = spend + fee invoice lunas diprorata ke spend, retry_after + 1 jam |
-| 2026-10-20 | `api:fn core/social` | Audit PRD (G-5, F-A06/FR-07): sinyal konten duplikat lintas akun (hash cover) tidak ada | diperbaiki: submit menghitung dHash 64-bit cover (thumbnail JPEG platform, jpeg-js; cover polos/format lain → null) → tracking.submissions.cover_hash; worker_create_submission mem-flag FR-07 bila cover berjarak Hamming ≤ trust.fraud.cover_distance (6) dengan submisi akun sosmed lain ≤ 90 hari |
+| 2026-10-20 | `api:fn creator/social` | Audit PRD (G-5, F-A06/FR-07): sinyal konten duplikat lintas akun (hash cover) tidak ada | diperbaiki: submit menghitung dHash 64-bit cover (thumbnail JPEG platform, jpeg-js; cover polos/format lain → null) → tracking.submissions.cover_hash; worker_create_submission mem-flag FR-07 bila cover berjarak Hamming ≤ trust.fraud.cover_distance (6) dengan submisi akun sosmed lain ≤ 90 hari |
 | 2026-10-20 | `api:rpc core.pay_invoice_with_credit` | Audit PRD ulang (brand AB-2, §5.3 D-09): kredit rollover dipakai membayar invoice campaign berikutnya tetap dikenai fee mgmt/admin + pajak penuh, padahal dijanjikan "tanpa fee baru" | diperbaiki: finance.rollover_available (jurnal rollover − invoices.fee_exempt non-void, dibatasi kredit tersedia); pay_invoice_with_credit menghitung ulang fee & pajak invoice campaign/top-up tanpa porsi rollover, tercatat di fee_exempt dan tampil di invoice brand |
 | 2026-10-20 | `page:admin/finance` | Review Claudex R21: sanksi di antara get_batch dan attach_export → CSV basi berisi clipper yang di-ban tetap diterima | diperbaiki: bridge_attach_export mengunci profil di CSV (FOR SHARE) dan menolak export_stale bila finance.payout_block berlaku |
 | 2026-10-20 | `page:brand/[org]/campaigns/new` | Audit PRD ulang (brand AB-3): ringkasan biaya builder menjumlahkan nilai pool non-tunai ke Total dibayar (contoh MPL Rp39,7 jt vs invoice Rp27,2 jt) | diperbaiki: costSummary meniru issue_invoice — budgetIdr = pool Rupiah ditagih, nonCashIdr dasar fee saja, creatorValueIdr untuk total budget creator |
@@ -2555,7 +2586,7 @@ Masalah sistem yang ditemukan saat menyusun PRD v0.2 dan saat dicek ulang (v0.2.
 | 2026-10-20 | `page:app/wallet/withdraw` | Audit PRD ulang per langkah journey (Codex, clipper AC-1…6): klaim reward ber-PII tetap jalan setelah share_with_brand dicabut (saldo terpotong, tertahan di export); rekening baru dari accounts tidak terpilih (method_id vs method); Tugas Saya menampilkan counted_views (0 sebelum min_views / beku saat flagged) sebagai views terakhir; "Hubungi bantuan" tanpa kontak; leaderboard "Minggu ini" menampilkan minggu terakhir yang ada datanya & per campaign hanya dari submisi sendiri | diperbaiki: claim consent_ok.share_with_brand (hook identity) + request_fulfillment menolak consent_required, form reward menonaktifkan & mengarahkan ke izin, refresh sesi setelah izin; initialMethod membaca method_id; tracking.submissions.last_views dari worker_record_snapshot; public.community.links.support → menu Bantuan + link di profil, withdraw, KYC, keamanan; minggu berjalan (weekStartUtc) + campaign mana pun yang terlihat + link dari detail campaign |
 | 2026-10-20 | `job:reconcile-daily` | Review Claudex R19: unggah bukti refund gagal lalu diulang dengan referensi lain → invalid:note tanpa jalan keluar di UI; dua transaksi paralel sama-sama mengirim email alert sejenis; retur bank (payout paid → failed) tidak membuka baris mutasi sampai rekonsiliasi harian | diperbaiki: refund approved boleh ganti referensi tanpa catatan + dialog terisi referensi tersimpan (api.org_refunds.bank_ref); pg_try_advisory_xact_lock per jenis alert (uji 2 sesi: 2 → 1 email); mark_batch_paid, pay_refund, confirm_invoice_payment menjalankan finance.reconcile_bank |
 | 2026-10-20 | `job:reconcile-daily` | Review interim C20: refund dibayar tak pernah punya bank_ref & payout boleh tanpa referensi → selamanya "tanpa mutasi" tanpa jalan koreksi; tab Mutasi bank membaca payload alert basi dan dedupe 20 jam menyembunyikan selisih baru; throttle email alert dari notified_at (asinkron) → N alert sejenis dalam satu transaksi = N email per admin (regresi C19) | diperbaiki: referensi wajib (mark_batch_paid; pay_refund setelah api.set_bank_ref yang diisi dialog bukti refund), api.set_bank_ref untuk koreksi (catatan + audit); api.bank_issues dibaca langsung; alert baru hanya untuk selisih yang belum termuat alert terbuka; ops.alerts.notify_requested_at menahan alert beruntun ≤ 15 menit (terlihat di transaksi yang sama) |
-| 2026-10-20 | `api:fn core/social` | Review interim C20-5: thumbnail Shorts YouTube (320×180, pillarbox hitam) hanya menyisakan ±16 bit dHash informatif → Shorts berbeda berjarak 0–4 bit → FR-07 palsu menahan earning | diperbaiki: bingkai polos di tepi dibuang sebelum dHash (Shorts berbeda kini 29–38 bit, re-encode ≤ 2); tes pillarbox membuktikan kode lama memberi jarak 4/4/0 |
+| 2026-10-20 | `api:fn creator/social` | Review interim C20-5: thumbnail Shorts YouTube (320×180, pillarbox hitam) hanya menyisakan ±16 bit dHash informatif → Shorts berbeda berjarak 0–4 bit → FR-07 palsu menahan earning | diperbaiki: bingkai polos di tepi dibuang sebelum dHash (Shorts berbeda kini 29–38 bit, re-encode ≤ 2); tes pillarbox membuktikan kode lama memberi jarak 4/4/0 |
 | 2026-10-20 | `table:finance.bank_lines` | Review Claudex R18: baris mutasi identik dari dua potongan file (tanggal sama) mendapat nomor urut sama → yang kedua dibuang diam-diam (debit ganda asli bisa tersembunyi); tab Mutasi bank memotong 200 baris terbaru sebelum mengurutkan → baris selisih lama tidak terjangkau | diperbaiki: unggahan wajib sehari penuh — file yang tidak memuat semua baris tersimpan untuk tanggalnya ditolak bank_partial_day, jumlah baris yang sudah ada dilaporkan; baris selisih diambil query sendiri (terlama dulu, 500 + jumlah total) |
 | 2026-10-20 | `job:reconcile-daily` | Audit PRD (G-11, F-A08/A3.5/§16): rekonsiliasi harian hanya invarian ledger & ID lintas DB; mutasi rekening bank tidak pernah masuk sistem, jadi "selisih ledger vs mutasi ≠ 0 = alert" tidak bisa terjadi | diperbaiki: finance.bank_lines + api.import_bank_lines (CSV internet banking, idempoten per hash baris) + finance.reconcile_bank (total per referensi bank = kas sistem: invoice +paid_amount, payout batch & refund −nett) di job reconcile-daily dan tiap unggahan → alert reconcile.bank (email admin_finance); tab Mutasi bank di admin finance + tutup manual dengan catatan |
 | 2026-10-20 | `api:fn identity/bridge` | Review interim C19-2: email alert admin berhenti di admin pertama yang gagal (tanpa try/catch, tanpa retry); batas 1/jam dihitung dari alert yang dibuat, jadi email gagal membungkam alert sejenis sejam | diperbaiki: identity mengirim ke semua admin lalu 503 bila ada yang gagal; core bridge mengisi ops.alerts.notified_at hanya saat sukses; batas 1/jam dari notified_at; job alert-notify (15 menit) mengulang alert ≤ 1 hari yang belum terkirim |
@@ -2580,18 +2611,18 @@ Masalah sistem yang ditemukan saat menyusun PRD v0.2 dan saat dicek ulang (v0.2.
 | 2026-10-20 | `table:trust.sanctions` | Audit PRD ulang (AA-8, §12 "sanksi bertingkat: peringatan → tahan → suspend 30 hari → ban; semua sanksi bisa dibanding sekali"): tidak ada sanksi peringatan dan sanksi akun tidak bisa dibanding (hanya submisi ditolak) | diperbaiki: trust.sanctions dicatat resolve_fraud_flag (aksi baru warn, −5) & manage_user; api.appeal_sanction (sekali) + api.decide_sanction_appeal (dikabulkan → suspend/ban dicabut + unban identity, hold di-dismiss, penalti skor kembali; earning hangus tidak dijurnal ulang); notifikasi account.warned & sanction.appeal_decided; Profil clipper (Sanksi akun + Banding) dan antrean banding di Fraud admin |
 | 2026-10-20 | `job:track-due` | Review Claudex R29: lagging_count menghitung pesan antrean milik submisi yang sudah berhenti dilacak (akun dihapus) — juga pesan yang sengaja ditunda retry_later — sebagai macet | diperbaiki: cabang antrean hanya pesan yang sudah bisa diambil (vt ≤ now) > 1 jam dan submisinya masih tracking/flagged |
 | 2026-10-20 | `page:admin/broadcast` | Audit PRD ulang (AA-15, §16 UU PDP "notifikasi kebocoran ke subjek data maks 3 × 24 jam"): satu-satunya jalur massal = broadcast promo — hanya ke profil aktif dan emailnya dilewati bagi yang mematikan email promosi, jadi subjek data yang disuspend/diban/unsubscribe tidak dikabari | diperbaiki: ops.broadcasts.kind security (send_broadcast p_kind, admin_super, tanpa segmen, selalu in-app + email) → dispatch ke semua profil kecuali closed dengan event transaksional security.notice (template identity, clipper & brand); pilihan di form broadcast admin |
-| 2026-10-20 | `api:fn core/social` | Audit PRD (G-1, F-C02/D-11): YouTube hanya bisa dihubungkan lewat OAuth Google; fallback kode di deskripsi channel tidak ada (YOUTUBE_API_KEY tak dipakai) | diperbaiki: aksi youtube_code / youtube_verify (kode CLIP-… per user+channel harus ada di deskripsi) → akun terverifikasi dengan token mode api_key; adapter memakai ?key= (tanpa Analytics, tanpa refresh); dialog di halaman Akun sosmed |
+| 2026-10-20 | `api:fn creator/social` | Audit PRD (G-1, F-C02/D-11): YouTube hanya bisa dihubungkan lewat OAuth Google; fallback kode di deskripsi channel tidak ada (YOUTUBE_API_KEY tak dipakai) | diperbaiki: aksi youtube_code / youtube_verify (kode CLIP-… per user+channel harus ada di deskripsi) → akun terverifikasi dengan token mode api_key; adapter memakai ?key= (tanpa Analytics, tanpa refresh); dialog di halaman Akun sosmed |
 | 2026-10-20 | `api:rpc core.decide_sanction_appeal` | Review Claudex R30: (1) clipper ban/suspend-login tidak bisa membanding (login diblokir); (2) bridge identity menolak unban dari core; (3) banding dikabulkan tidak menyamakan ban login identity; (4) satu sanksi dibatalkan langsung membuat akun active walau sanksi lain masih berlaku; (5) warn atas flag submisi yang ditahan membiarkan submisi flagged | diperbaiki: api.record_sanction_appeal (admin_support, Catat banding di detail user); identity bridge ban_user unban:true → unbanUser; sanksi menyimpan until/login_blocked/lifted_at, overturn menghitung ulang status (ban lain / suspend terjauh) dan login identity (sisa durasi atau dibuka); warn melanjutkan tracking bila tak ada flag lain |
 | 2026-10-20 | `page:accounts/kyc` | Verifikasi final `pnpm build`: app accounts gagal build — supportUrl (coreServer, next/headers) ditaruh di lib/url.ts yang juga diimpor komponen client account-nav | diperbaiki: supportUrl dipindah ke lib/support.ts (server-only); kyc & security mengimpor dari sana |
 | 2026-10-20 | `api:rpc core.send_broadcast` | Review Claudex R31-2: lonceng brand hanya menampilkan judul pemberitahuan keamanan, isi (langkah yang harus dilakukan) hilang. R31-1 (backfill sanksi pra-R30) ditolak: tabel trust.sanctions baru ada di branch ini, origin/main = initial commit dan ci.yml tanpa db push, jadi tidak ada lingkungan berisi baris lama | diperbaiki: brand notif security.notice = "{title}: {body}" + notificationValues.body |
 | 2026-10-20 | `api:fn identity/bridge` | Review Claudex R32-1: perbaikan R30-2 memakai kontrak yang salah — core bridge meneruskan unban sebagai duration "none" (handler.ts ban_user), identity mengecek unban:true sehingga jatuh ke banUser dan ditolak 400; login tetap terblokir walau banding dikabulkan | diperbaiki: identity bridge ban_user duration "none" → unbanUser; tes identity memakai payload yang sama dengan yang diasersikan tes core bridge |
 | 2026-10-20 | `api:rpc core.reset_social_account` | Audit PRD ulang AA-10 (§4 "admin_support … reset koneksi akun"): admin_support hanya bisa membaca akun sosmed | diperbaiki: api.reset_social_account (token Vault dihapus, status revoked, tracking di-pause, notifikasi social.token_expired, audit) + tombol Reset koneksi di detail user admin; pemilik menyambung ulang akun yang sama |
-| 2026-10-20 | `api:fn core/track-worker` | Audit PRD ulang AA-9/AA-11/AA-12 (§12 Trust Score "turun dari … fraud flag"; §11 "Campaign musik/sound: … verifikasi manual"; FR-11 "Sumber traffic … tidak wajar"): FR-06 otomatis tanpa penalti skor, campaign musik TikTok langsung tracking, FR-11 hanya memeriksa negara | diperbaiki: worker_post_gone menulis score_events fraud_flag (trust.score_deltas.post_gone, default −10); campaign musik di TikTok → in_review; FR-11 juga dari porsi views sumber trust.fraud.offsite_traffic_sources > trust.fraud.max_offsite_traffic_share (tahan earning) |
+| 2026-10-20 | `api:fn creator/track-worker` | Audit PRD ulang AA-9/AA-11/AA-12 (§12 Trust Score "turun dari … fraud flag"; §11 "Campaign musik/sound: … verifikasi manual"; FR-11 "Sumber traffic … tidak wajar"): FR-06 otomatis tanpa penalti skor, campaign musik TikTok langsung tracking, FR-11 hanya memeriksa negara | diperbaiki: worker_post_gone menulis score_events fraud_flag (trust.score_deltas.post_gone, default −10); campaign musik di TikTok → in_review; FR-11 juga dari porsi views sumber trust.fraud.offsite_traffic_sources > trust.fraud.max_offsite_traffic_share (tahan earning) |
 | 2026-10-20 | `api:fn identity/bridge` | Audit PRD ulang AA-13 (§12 "Semua ambang di bawah ada di config"): ambang FR-05 (jendela, minimum akun) hard-code di identity dan trust.fraud.cover_distance (FR-07) tidak di-seed sehingga tidak bisa diubah admin | diperbaiki: identity membaca ambang lewat core bridge fraud_device_params (trust.fraud.shared_device_window_hours / _min_accounts); seed cover_distance & kunci FR-11 baru |
 | 2026-10-20 | `api:rpc identity.admin_set_role` | Audit PRD ulang AA-20 (§4 "Akun admin dibuat terpisah dari akun clipper/brand"): set role by user ID bisa menjadikan akun clipper/brand admin | diperbaiki: grant role admin ditolak (admin_account_must_be_separate) untuk akun yang punya consent tos_clipper/tos_brand dan belum admin |
 | 2026-10-20 | `api:rpc core.resolve_fraud_flag` | Audit PRD ulang AA-22 (A4.2 "Tahan, reverse earning, suspend, atau ban → Clipper menerima notifikasi"): tahan tidak mengabari; reverse atas submisi locked diam; salinan submission.forfeited selalu menyebut video tidak bisa diakses walau penyebabnya fraud | diperbaiki: event earning.held (template identity + render clipper + i18n); reverse mengabari submisi locked yang earning-nya belum rilis; copy forfeited dibedakan reason fraud:* |
 | 2026-10-20 | `api:rpc core.reset_social_account` | Review Claudex R34: (1) refresh token yang sedang jalan saat admin mereset menulis token baru (store_social_token) lalu worker_account_status('verified') menghidupkan akun revoked; (2) campaign musik review brand yang tidak direview 72 jam di-auto-approve tanpa verifikasi sound | diperbaiki: store_social_token menolak akun selain verified/token_expired, worker_account_status tidak memverifikasi ulang akun revoked (hanya sambung ulang pemilik); trust.auto_approve_overdue melewati submisi musik TikTok |
-| 2026-10-20 | `api:fn core/track-worker` | Review Claudex R35: hasil polling lama (401 → worker_account_status('expired')) mengubah akun revoked menjadi token_expired sehingga refresh yang sedang jalan bisa menulis token lagi dan menghidupkan akun yang direset | diperbaiki: worker_account_status tidak mengubah akun revoked/disconnected sama sekali; hanya sambung ulang pemilik yang memulihkan |
+| 2026-10-20 | `api:fn creator/track-worker` | Review Claudex R35: hasil polling lama (401 → worker_account_status('expired')) mengubah akun revoked menjadi token_expired sehingga refresh yang sedang jalan bisa menulis token lagi dan menghidupkan akun yang direset | diperbaiki: worker_account_status tidak mengubah akun revoked/disconnected sama sekali; hanya sambung ulang pemilik yang memulihkan |
 | 2026-10-20 | `table:tracking.social_accounts` | Review Claudex R36: trigger batas akun per platform ikut memeriksa setiap perubahan status, jadi setelah admin menurunkan public.market.max_accounts_per_platform semua polling 401, refresh, reset admin, dan sambung ulang akun lama gagal 23514 | diperbaiki: tracking.check_account_limit hanya membatasi insert, disconnected → aktif, dan pindah user/platform |
 | 2026-10-20 | `doc:deploy/deploy.sh` | Deploy self-hosted (permintaan user: server sendiri): compose resmi Supabase mengisi SUPABASE_SECRET_KEYS={"default":""} → firstKey core mengembalikan "" (?? tidak jatuh ke service_role) sehingga semua Edge Function core gagal misconfigured; migration init `CREATE EXTENSION "pg_net"` tanpa IF NOT EXISTS gagal di image yang sudah memasang pg_net (self-hosted webhooks.sql, juga project hosted yang mengaktifkan pg_net) | diperbaiki: firstKey core mengabaikan key kosong (+ tes); CREATE EXTENSION IF NOT EXISTS di kedua init migration. Deploy diuji di sandbox: 18 container sehat, pgTAP core 972 + identity 119 di DB self-hosted, e2e lintas host 9/9 lewat Caddy, bridge identity↔core, service key core ditolak identity (401) |
 | 2026-10-20 | `doc:deploy/deploy.sh` | Review Claudex R38 + cek sendiri: (1) .dockerignore hanya mengecualikan .env di root → apps/*/.env.local ikut ke image; (2) setenv membuat file .env sementara 0644 → secret stack terbaca user lain selama deploy, config.env tidak dibatasi; (3) login Google identity tidak dikonfigurasi di GoTrue self-hosted; (4) .env stack disalin sekali → variabel baru compose resmi hilang saat SUPABASE_REF dinaikkan; (5) migration baru dijalankan tanpa backup | diperbaiki: **/.env*; umask 077 di setenv + chmod 600 config.env; GOTRUE_EXTERNAL_GOOGLE_* dari GOOGLE_LOGIN_CLIENT_ID/SECRET; kunci baru .env.example ditambahkan tiap deploy; pg_dump -Fc ke deploy/stack/<p>/backups sebelum migration pertama yang tertunda (diuji: backup 84 tabel, hanya stack yang punya migration baru) |
@@ -2660,15 +2691,16 @@ Keputusan yang sudah diambil — jangan dibahas ulang tanpa alasan baru.
 | Tanggal | Keputusan | Alasan | Node terdampak |
 |---|---|---|---|
 | 2026-10-20 | S-05 ditambah on_hold → requested (lepas tahan) | Penahanan sebelum CSV (checkpoint §12) butuh jalan kembali ke antrean batch; PRD hanya punya on_hold → processing (untuk payout di batch yang sedang diekspor) | `table:finance.payouts`, `api:rpc core.release_payout` |
-| 2026-10-20 | FR-07 memakai dHash perseptual (bukan sha256 byte) dengan ambang Hamming 6 dari 64 bit | Tiap unggahan ulang di-encode ulang platform (byte beda); uji: re-encode berjarak 0–5, cover lain 28–35; hanya flag untuk review manual | `api:fn core/social`, `table:trust.fraud_flags` |
+| 2026-10-20 | FR-07 memakai dHash perseptual (bukan sha256 byte) dengan ambang Hamming 6 dari 64 bit | Tiap unggahan ulang di-encode ulang platform (byte beda); uji: re-encode berjarak 0–5, cover lain 28–35; hanya flag untuk review manual | `api:fn creator/social`, `table:trust.fraud_flags` |
 | 2026-10-20 | Rekonsiliasi bank dicocokkan per nomor referensi (jumlah per referensi), bukan per baris; invoice QRIS tidak dicek "tanpa mutasi" | Transfer massal bisa satu referensi per batch atau per payout; jumlah per referensi juga menangkap dana masuk dua kali; acquirer QRIS menyetor gabungan sehingga barisnya ditutup manual dengan catatan | `table:finance.bank_lines`, `job:reconcile-daily` |
-| 2026-10-20 | Kode verifikasi deskripsi YouTube deterministik sha256(user:channel) tanpa secret | Yang dibuktikan kendali atas deskripsi channel, bukan kerahasiaan kode; kode user lain tidak berguna tanpa akses edit channel; tanpa state/secret baru | `api:fn core/social`, `mod:social` |
+| 2026-10-20 | Kode verifikasi deskripsi YouTube deterministik sha256(user:channel) tanpa secret | Yang dibuktikan kendali atas deskripsi channel, bukan kerahasiaan kode; kode user lain tidak berguna tanpa akses edit channel; tanpa state/secret baru | `api:fn creator/social`, `mod:social` |
 | 2026-10-20 | Nilai awal tier Trust Score: skor ≥ 80 → cap 120% & hold 3 hari, ≥ 60 → cap 100% & hold 5 hari; TikTok cap 80% & hold minimal 10 hari | PRD tidak memberi angka; nilai konservatif, bisa diubah admin (ops.settings) | `fn:accrue_earnings`, `job:earning-release`, `page:app/profile` |
 | 2026-10-15 | D-12: DB dipisah jadi identity (login + PII) dan core (campaign, tracking, uang) | Permintaan owner: database member terpisah; core bocor tidak membuka PII | `ext:supabase-identity`, `ext:supabase-core`, semua `table:member.*` |
 | 2026-10-22 | DIGANTI owner: core dipecah jadi 3 database fisik — creator, brand, admin (identity tetap) | Permintaan owner (data admin, creator, brand harus terpisah fisik). Syarat §10.5 #4 tetap: ledger + aturan bayar + pool + accrual di satu DB (admin); domain lain bertukar event lewat outbox (lihat Arsitektur 4 database) | semua `table:*` core, `fn:accrue_earnings`, `api:fn */bus` |
 | 2026-10-22 | Campaign dibelah per kolom: isi + aset + undangan milik brand; status, jadwal (start, deadline, window), fee, pin, pool, rule, invoice milik admin. Report link & budget alert tetap admin | Jadwal ikut lifecycle (perpanjang deadline vs job tracking harus satu transaksi di admin); isi beku sejak diajukan sehingga replika satu arah cukup; report/alert dihitung dari uang & views | `table:brand/market.campaigns`, `api:rpc brand.save_campaign`, `api:rpc core.save_campaign`, `fn:bus_in.market_campaigns_applied` |
 | 2026-10-22 | Org/tim/undangan/agency ditulis di DB brand; admin & creator hanya replika. Fee org tetap kolom milik admin di replika | Pemilik data = tempat ditulis; fee = aturan uang (admin). Verifikasi org oleh admin memanggil DB brand langsung (JWT admin), keputusan + notifikasi + audit dikirim ke admin sebagai event | `table:brand/market.organizations`, `api:rpc brand.manage_org`, `api:rpc core.manage_org`, `fn:bus_in.admin` |
 | 2026-10-23 | Profil E-01 + bucket avatars ditulis di DB creator; admin & brand replika isi. Status, sanksi, trust score, kode referral tetap milik admin (fraud, sanksi, uang) dan direplika ke creator & brand. Referral & hapus akun lewat event; FK admin ke profil dari replika antar-sumber dihapus | Pemilik data = tempat ditulis; FK lintas sumber bisa memacetkan bus (urutan replika brand vs creator tidak dijamin). App membaca profil dari replika admin, jadi penulis menunggu replika (read-your-writes) |
+| 2026-10-23 | DIAMANDEMEN (bantah rencana awal "claim → creator"): claim tetap milik admin; pipeline tracking (akun sosmed + token, isi submisi, snapshot, antrean poll, Edge Function sosmed) milik creator; status submisi, counted_views, lock, jadwal poll (next_poll_at), fraud, accrual milik admin | Fakta kode: claim_check & claim_campaign memeriksa kuota clipper + sisa pool (uang) dalam satu transaksi — di DB lain butuh reservasi terdistribusi; token harus dipegang pihak yang memanggil API platform (social submit & track-worker), jadi token + worker + snapshot harus satu DB; admin tetap satu-satunya penulis uang. Jadwal poll milik admin (10 penulis next_poll_at di admin tetap), lease/backoff antrean milik creator |
 | 2026-10-15 | (diganti 2026-10-22) Core tidak dipecah per fitur; pemisahan di core per schema | accrue_earnings wajib satu transaksi (§10.5 #4) | `fn:accrue_earnings`, `table:finance.*` |
 | 2026-10-15 | D-13: subdomain per kelompok user (5 app), bukan per fitur | 45 fitur di satu trust level; scope PWA satu origin; redirect URI TikTok maks 10 | `config:host.*`, `layout:*` |
 | 2026-10-15 | Satu monorepo, folder per fitur, 1 project Vercel per app | Kode bersama tanpa disalin; deploy & env terpisah | `mod:*`, `comp:CampaignBuilder` |

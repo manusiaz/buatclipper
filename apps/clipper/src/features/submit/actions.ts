@@ -17,11 +17,11 @@ export interface VideoItem {
 
 type RawVideo = Omit<VideoItem, 'missingTags'> & { missing_tags: string[] | null };
 
-/** C1.8: video akun terhubung yang diposting setelah claim + tag wajib yang kurang (Edge Function core/social). */
+/** C1.8: video akun terhubung yang diposting setelah claim + tag wajib yang kurang (Edge Function creator/social). */
 export async function listVideos(accountId: string, claimId: string): Promise<Result<VideoItem[]>> {
   await requireClipper();
   if (!isUuid(accountId) || !isUuid(claimId)) return fail('bad_request');
-  const r = await invokeFunction<{ platform: string; videos: RawVideo[] }>('core', 'social', {
+  const r = await invokeFunction<{ platform: string; videos: RawVideo[] }>('creator', 'social', {
     action: 'list_videos',
     account_id: accountId,
     claim_id: claimId,
@@ -54,7 +54,7 @@ export async function submitVideo(input: {
   const postId = input.postId?.trim().slice(0, 64);
   const url = input.url ? httpsUrl(input.url.trim()) : null;
   if (!postId && !url) return fail('bad_url');
-  const r = await invokeFunction<{ submission_id: string; status: string }>('core', 'social', {
+  const r = await invokeFunction<{ submission_id: string; status: string }>('creator', 'social', {
     action: 'submit',
     claim_id: claimId,
     account_id: accountId,

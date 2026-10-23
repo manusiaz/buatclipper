@@ -219,7 +219,7 @@ export async function claimCampaign(id: string): Promise<{ ok: true } | { ok: fa
   return error ? { ok: false, code: error.message } : { ok: true };
 }
 
-// ── Submit (F-C06): Edge Function core/social (list_videos / submit), sama dengan Server Action web ──
+// ── Submit (F-C06): Edge Function creator/social (list_videos / submit), sama dengan Server Action web ──
 export interface VideoItem {
   postId: string;
   url: string;
@@ -234,7 +234,7 @@ const https = (v: unknown) => (typeof v === 'string' && /^https:\/\//.test(v) ? 
 
 export async function listVideos(accountId: string, claimId: string) {
   if (!isUuid(accountId) || !isUuid(claimId)) return { ok: false as const, error: 'bad_request', status: 400 };
-  const r = await invoke<{ videos: (Omit<VideoItem, 'missingTags'> & { missing_tags: string[] | null })[] }>('core', 'social', {
+  const r = await invoke<{ videos: (Omit<VideoItem, 'missingTags'> & { missing_tags: string[] | null })[] }>('creator', 'social', {
     action: 'list_videos',
     account_id: accountId,
     claim_id: claimId,
@@ -260,7 +260,7 @@ export async function submitVideo(input: { claimId: string; accountId: string; p
   const url = input.url ? httpsUrl(input.url.trim()) : null;
   if (!isUuid(input.claimId) || !isUuid(input.accountId)) return { ok: false as const, error: 'bad_request', status: 400 };
   if (!postId && !url) return { ok: false as const, error: 'invalid:url', status: 400 };
-  return invoke<{ submission_id: string; status: string }>('core', 'social', {
+  return invoke<{ submission_id: string; status: string }>('creator', 'social', {
     action: 'submit',
     claim_id: input.claimId,
     account_id: input.accountId,
@@ -272,13 +272,13 @@ export async function submitVideo(input: { claimId: string; accountId: string; p
 export function youtubeCode(channel: string) {
   const ch = channel.trim().slice(0, 200);
   if (!ch) return Promise.resolve({ ok: false as const, error: 'bad_channel', status: 400 });
-  return invoke<{ handle: string; code: string }>('core', 'social', { action: 'youtube_code', channel: ch });
+  return invoke<{ handle: string; code: string }>('creator', 'social', { action: 'youtube_code', channel: ch });
 }
 
 export function youtubeVerify(channel: string) {
   const ch = channel.trim().slice(0, 200);
   if (!ch) return Promise.resolve({ ok: false as const, error: 'bad_channel', status: 400 });
-  return invoke<{ handle: string }>('core', 'social', { action: 'youtube_verify', channel: ch });
+  return invoke<{ handle: string }>('creator', 'social', { action: 'youtube_verify', channel: ch });
 }
 
 // ── Tugas (F-C07) — query sama dengan app/tasks/page.tsx web ──

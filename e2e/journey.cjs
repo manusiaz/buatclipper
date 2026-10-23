@@ -11,6 +11,7 @@ const env = (k, d) => process.env[k] || d;
 const WEB = env('E2E_WEB', 'http://clipper.localhost:3000'), ACC = env('E2E_ACC', 'http://accounts.clipper.localhost:3001'),
   APP = env('E2E_APP', 'http://app.clipper.localhost:3002'), BRAND = env('E2E_BRAND', 'http://brand.clipper.localhost:3003');
 const CORE_DB = env('E2E_CORE_DB', 'postgresql://postgres:postgres@127.0.0.1:55322/postgres');
+const CREATOR_DB = env('E2E_CREATOR_DB', 'postgresql://postgres:postgres@127.0.0.1:56322/postgres');
 const MAILPIT = env('E2E_MAILPIT', 'http://127.0.0.1:54324');
 const BRAND_DB = env('E2E_BRAND_DB', 'postgresql://postgres:postgres@127.0.0.1:57322/postgres');
 const sql = (q, db = CORE_DB) => execFileSync('psql', [db, '-X', '-tAqc', q], { encoding: 'utf8' }).trim();
@@ -82,8 +83,10 @@ async function otp(addr, since) {
     await page.getByText('E2E Journey Campaign').first().waitFor({ timeout: 20000 });
     await shot('03-app-campaigns');
     const uid = sql(`select id from market.profiles where username = '${username}'`);
-    sql(`insert into tracking.social_accounts (user_id, platform, external_id, handle, followers, platform_created_at)
-         values ('${uid}', 'tiktok', 'tt-${username}', '@${username}', 5000, now() - interval '400 days')`);
+    // akun sosmed milik DB creator (worker_upsert_social_account); claim di admin membaca replikanya
+    const acc = sql(`insert into tracking.social_accounts (user_id, platform, external_id, handle, followers, platform_created_at)
+         values ('${uid}', 'tiktok', 'tt-${username}', '@${username}', 5000, now() - interval '400 days') returning id`, CREATOR_DB);
+    for (let i = 0; i < 40 && !sql(`select 1 from tracking.social_accounts where id = '${acc}'`); i++) await new Promise((r) => setTimeout(r, 500));
     await page.goto(APP + '/campaigns/e2e00000-0000-0000-0000-0000000000c0');
     await page.getByText('E2E Studio').first().waitFor();
     await page.getByRole('button', { name: /^(Ambil|Claim)/ }).first().click();

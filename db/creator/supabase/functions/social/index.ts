@@ -1,4 +1,4 @@
-// core/social — lihat handler.ts. verify_jwt = false: JWT identity diverifikasi di kode (PRD §15.6).
+// creator/social — lihat handler.ts. verify_jwt = false: JWT identity diverifikasi di kode (PRD §15.6).
 import { errorResponse } from "../_shared/http.ts";
 import { createSocialHandler, defaultSocialDeps } from "./handler.ts";
 

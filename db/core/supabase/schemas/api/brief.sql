@@ -1,6 +1,6 @@
 -- Cek caption terhadap brief (F-C06, §11): mengembalikan yang kurang, mis. {'#mplid','@studiosatu','https://studio.id/promo'};
--- '{}' = lengkap; NULL = campaign tidak terlihat oleh pemanggil. Dipakai Edge Function core/social saat submit, core/track-worker
--- tiap snapshot (caption diedit → flag), dan app clipper untuk cek sebelum submit. Hashtag & mention tidak peka huruf besar;
+-- '{}' = lengkap; NULL = campaign tidak terlihat oleh pemanggil. Dipakai app clipper untuk cek sebelum submit dan hook snapshot
+-- (FR-06, caption diedit → flag); creator punya salinan atas replika campaign untuk creator/social. Hashtag & mention tidak peka huruf besar;
 -- link cukup muncul tanpa https:// dan www. Security invoker lewat api.campaigns, jadi RLS campaign tetap berlaku.
 create function api.missing_brief_tags(p_campaign uuid, p_caption text) returns text[]
 language plpgsql stable set search_path = '' as $$

@@ -4,7 +4,7 @@ import { invokeFunction, requireClipper } from '@clipper/auth/server';
 import { isPlatform } from '@clipper/clipper-lib/pure';
 import { APP_RETURN, cookieOptions, decodeState, redirectUri, STATE_COOKIE, verifyState } from '@/features/social/oauth';
 
-// Platform → app.{domain}/api/oauth/[platform]/callback: cek state (constant-time) → core/social connect → /social.
+// Platform → app.{domain}/api/oauth/[platform]/callback: cek state (constant-time) → creator/social connect → /social.
 export async function GET(request: NextRequest, { params }: { params: Promise<{ platform: string }> }) {
   await requireClipper();
   const { platform } = await params;
@@ -25,7 +25,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
   const code = sp.get('code');
   if (!code || code.length > 2048) return done(new URLSearchParams({ error: 'oauth_failed', platform }));
 
-  const r = await invokeFunction<{ platform: string; handle: string }>('core', 'social', {
+  const r = await invokeFunction<{ platform: string; handle: string }>('creator', 'social', {
     action: 'connect',
     platform,
     code,

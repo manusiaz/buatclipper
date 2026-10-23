@@ -438,10 +438,13 @@ step('clipper-signup', ['clipper'], async ({ clipper }) => {
   check(!stuckAfterOnboarding, 'bus antar DB tidak macet setelah onboarding: ' + stuckAfterOnboarding);
   await clipper.getByText(S.title).first().waitFor({ timeout: 30000 });
   await shot(clipper, 'app-campaigns');
-  // SIMULASI C1.5: OAuth TikTok tidak bisa offline → akun sosmed terverifikasi ditulis seperti worker_upsert_social_account
-  S.accountId = core(`insert into tracking.social_accounts (user_id, platform, external_id, handle, followers, platform_created_at)
+  // SIMULASI C1.5: OAuth TikTok tidak bisa offline → akun sosmed terverifikasi ditulis di DB creator seperti
+  // worker_upsert_social_account; admin menerima replikanya (claim_check)
+  S.accountId = psql(CREATOR_DB, `insert into tracking.social_accounts (user_id, platform, external_id, handle, followers, platform_created_at)
                       values ('${S.clipperId}', 'tiktok', 'tt-${S.clipperUser}', '${S.clipperUser}', 5000, now() - interval '400 days')
                       returning id`);
+  const accRep = await replicated(`select status from tracking.social_accounts where id = '${S.accountId}'`, 'verified');
+  check(accRep === 'verified', 'akun sosmed (milik creator) tereplika ke admin: ' + accRep);
   log('clipper: onboarding → app/campaigns menampilkan campaign; akun TikTok (SQL)');
 });
 
@@ -475,14 +478,21 @@ async function claimOnce(clipper, n) {
   return claim;
 }
 
-// SIMULASI C1.8: Edge Function core/social memvalidasi lewat API platform (offline tidak bisa) lalu memanggil
-// api.worker_create_submission dengan service role — fungsi yang sama dipanggil di sini.
-function createSubmission(claimId, n) {
+// SIMULASI C1.8: Edge Function creator/social memvalidasi lewat API platform (offline tidak bisa) lalu memanggil
+// api.worker_create_submission (DB creator) dengan service role — fungsi yang sama dipanggil di sini. Claim = replika admin;
+// keputusan status diambil admin saat replika submisi tiba.
+async function createSubmission(claimId, n) {
+  const claimRep = await replicated(`select status from market.claims where id = '${claimId}'`, 'open', 20000, CREATOR_DB);
+  check(claimRep === 'open', 'claim (milik admin) tereplika ke creator: ' + claimRep);
   const post = `7392${Date.now()}${n}`;
   const url = `https://www.tiktok.com/@${S.clipperUser}/video/${post}`;
-  const r = core(`select api.worker_create_submission('${S.clipperId}', '${claimId}', '${S.accountId}', '${post}', '${url}',
-                   now(), 'klip QA #${S.hashtag}', 30, null)::text`);
-  return { ...JSON.parse(r), url };
+  const r = JSON.parse(psql(CREATOR_DB, `select api.worker_create_submission('${S.clipperId}', '${claimId}', '${S.accountId}', '${post}', '${url}',
+                   now(), 'klip QA #${S.hashtag}', 30, null)::text`));
+  const adminSt = await replicated(`select status from tracking.submissions where id = '${r.submission_id}'`, r.status);
+  check(adminSt === r.status, `keputusan admin atas submisi = ${r.status}: ` + adminSt);
+  const claimSt = await replicated(`select status from market.claims where id = '${claimId}'`, 'submitted');
+  check(claimSt === 'submitted', 'claim → submitted (admin): ' + claimSt);
+  return { ...r, url };
 }
 
 step('clipper-claim-submit', ['clipper'], async ({ clipper }) => {
@@ -509,13 +519,16 @@ step('clipper-claim-submit', ['clipper'], async ({ clipper }) => {
     const toastText = (await clipper.locator('[data-sonner-toast]').allTextContents().catch(() => [])).join(' | ');
     note('submit UI offline → alert:', alertText || '(none)', 'toast:', toastText || '(none)');
     S.submitUiError = alertText || toastText;
+    // Edge Function creator/social harus sampai ke API platform (offline → platform_unavailable); "Layanan sedang sibuk" =
+    // config/flag platform tidak terbaca di DB creator.
+    check(!/Layanan sedang sibuk/.test(S.submitUiError), 'creator/social membaca flag platform (bukan settings_unavailable): ' + S.submitUiError);
   } else note('sheet submit tanpa tombol Tempel URL video');
   await clipper.keyboard.press('Escape');
-  const s1 = createSubmission(claim1, 1);
+  const s1 = await createSubmission(claim1, 1);
   check(s1.status === 'in_review', 'submisi #1 in_review (review brand): ' + JSON.stringify(s1));
   // claim kedua (submisi pertama menutup claim) → submisi #2
   const claim2 = await claimOnce(clipper, 2);
-  const s2 = createSubmission(claim2, 2);
+  const s2 = await createSubmission(claim2, 2);
   check(s2.status === 'in_review', 'submisi #2 in_review');
   Object.assign(S, { sub1: s1.submission_id, sub2: s2.submission_id, url1: s1.url, url2: s2.url });
   await clipper.goto(APP + '/tasks');
@@ -602,12 +615,20 @@ step('admin-decide-appeal', ['admin'], async ({ admin }) => {
 });
 
 step('tracking-earnings', ['clipper'], async ({ clipper }) => {
-  // SIMULASI track-worker: API platform offline → api.worker_record_snapshot (RPC yang dipanggil track-worker) dengan views palsu
+  // SIMULASI creator/track-worker: API platform offline → api.worker_record_snapshot (DB creator) dengan views palsu; snapshot
+  // direplika ke admin → fraud + accrual + jadwal poll di sana. Status tracking dari admin harus sudah tiba di creator.
+  for (const sid of [S.sub1, S.sub2]) {
+    const st = await replicated(`select status from tracking.submissions where id = '${sid}'`, 'tracking', 20000, CREATOR_DB);
+    check(st === 'tracking', 'status tracking (admin) tereplika ke creator: ' + st);
+  }
   const snap = (sid, views) =>
-    JSON.parse(core(`select api.worker_record_snapshot('${sid}', ${views}, ${Math.round(views * 0.05)}, 10, 5, 'klip QA #${S.hashtag}', '{}'::jsonb)::text`));
+    JSON.parse(psql(CREATOR_DB, `select api.worker_record_snapshot('${sid}', ${views}, ${Math.round(views * 0.05)}, 10, 5, 'klip QA #${S.hashtag}', '{}'::jsonb)::text`));
   const r1 = snap(S.sub1, 15000);
   const r2 = snap(S.sub2, 3000);
-  check(r1.snapshot_id && !r1.flagged && r2.snapshot_id && !r2.flagged, 'snapshot tercatat tanpa flag: ' + JSON.stringify([r1, r2]));
+  check(r1.snapshot_id && r2.snapshot_id, 'snapshot tercatat di creator: ' + JSON.stringify([r1, r2]));
+  const counted = await replicated(`select string_agg(status::text || ':' || counted_views, ',' order by created_at) from tracking.submissions
+                                    where id in ('${S.sub1}', '${S.sub2}')`, 'tracking:15000,tracking:3000');
+  check(counted === 'tracking:15000,tracking:3000', 'admin menerapkan snapshot tanpa flag (counted_views): ' + counted);
   // Harapan: #1 15.000 views × Rp10.000/1K = 150.000 + milestone 20.000 = 170.000 (cap 500.000 × 80% TikTok); #2 3.000 → 30.000
   const pend = core(`select coalesce(sum(e.amount), 0) from finance.ledger_entries e join finance.ledger_accounts a on a.id = e.account_id
                      where a.owner_type = 'user_wallet' and a.owner_id = '${S.clipperId}' and e.state = 'pending'`);
@@ -621,10 +642,13 @@ step('tracking-earnings', ['clipper'], async ({ clipper }) => {
   await clipper.getByText(/15\.000/).first().waitFor({ timeout: 20000 });
   await shot(clipper, 'app-tasks-tracking');
   // SIMULASI waktu: view window (30 hari) lewat → snapshot final (lock) → hold 10 hari lewat → job earning-release
-  core(`update tracking.submissions set posted_at = now() - interval '31 days' where id in ('${S.sub1}', '${S.sub2}')`);
+  psql(CREATOR_DB, `update tracking.submissions set posted_at = now() - interval '31 days' where id in ('${S.sub1}', '${S.sub2}')`);
+  await replicated(`select count(*) from tracking.submissions where id in ('${S.sub1}', '${S.sub2}') and posted_at < now() - interval '30 days'`, '2');
   const f1 = snap(S.sub1, 15000);
   const f2 = snap(S.sub2, 3000);
-  check(f1.locked && f2.locked, 'snapshot final → locked: ' + JSON.stringify([f1, f2]));
+  check(f1.locked && f2.locked, 'snapshot final di creator: ' + JSON.stringify([f1, f2]));
+  const locked = await replicated(`select string_agg(status::text, ',') from tracking.submissions where id in ('${S.sub1}', '${S.sub2}')`, 'locked,locked');
+  check(locked === 'locked,locked', 'admin mengunci submisi dari snapshot final: ' + locked);
   core(`update tracking.submissions set locked_at = now() - interval '11 days' where id in ('${S.sub1}', '${S.sub2}')`);
   core('select finance.release_earnings()');
   const st = core(`select string_agg(status::text, ',') from tracking.submissions where id in ('${S.sub1}', '${S.sub2}')`);

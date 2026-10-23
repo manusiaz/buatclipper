@@ -87,8 +87,8 @@ end $$;
 revoke execute on function api.manage_user(uuid, text, jsonb) from public;
 grant execute on function api.manage_user(uuid, text, jsonb) to authenticated;
 
--- §4 admin_support "reset koneksi akun": token OAuth dicabut (Vault dihapus, status revoked), tracking submisinya di-pause,
--- clipper dikabari untuk menyambung ulang akun yang sama (upsert → verified, polling lanjut). Bukan pemutusan permanen.
+-- §4 admin_support "reset koneksi akun": event social.reset ke project creator (pemilik akun & token: Vault dihapus, status
+-- revoked, tracking berhenti, clipper dikabari untuk menyambung ulang akun yang sama). Bukan pemutusan permanen. Audit di sini.
 create function api.reset_social_account(p_account uuid, p_note text) returns void
 language plpgsql security definer set search_path = '' as $$
 declare
@@ -107,12 +107,7 @@ begin
   if a.status = 'disconnected' then
     perform market.fail('invalid_state:' || a.status);
   end if;
-  delete from vault.secrets v where v.id = a.token_ref;
-  update tracking.social_accounts set status = 'revoked', token_ref = null where id = a.id;
-  update tracking.submissions set next_poll_at = null where social_account_id = a.id and status in ('tracking', 'flagged');
-  perform ops.enqueue_notification(a.user_id, 'social.token_expired',
-                                   jsonb_build_object('account_id', a.id, 'platform', a.platform, 'handle', a.handle,
-                                                      'paused_count', tracking.paused_count(a.id)));
+  perform bus.emit('creator', 'social.reset', jsonb_build_object('account_id', a.id));
   insert into ops.audit_logs (actor_id, action, target, before, after)
   values ((select auth.uid()), 'social.reset', 'social_account:' || a.id, jsonb_build_object('status', a.status, 'user_id', a.user_id),
           jsonb_build_object('status', 'revoked', 'note', left(btrim(p_note), 500)));

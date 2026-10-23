@@ -7,6 +7,10 @@ create table ops.settings (
   updated_at timestamptz not null default now()
 );
 
+-- Replika ke creator (batas akun sosmed, flag platform, jadwal poll, auth.identity_issuer sama di semua project).
+create trigger settings_replicate after insert or update or delete on ops.settings for each row
+  execute function bus.replicate('creator:value,updated_by,updated_at');
+
 alter table ops.settings enable row level security;
 create policy settings_iss on ops.settings as restrictive for all to authenticated  -- policy:core.iss-identity
   using ((select ops.iss_ok())) with check ((select ops.iss_ok()));

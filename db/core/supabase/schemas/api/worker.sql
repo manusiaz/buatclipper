@@ -1,4 +1,5 @@
--- RPC service_role untuk Edge Function core (track-worker, social, refresh-tokens, notify, fulfill). Edge Function memakai
+-- RPC service_role untuk Edge Function core (notify, fulfill) + penerapan replika tracking dari creator (snapshot, submisi baru,
+-- post hilang). Edge Function tracking (social, track-worker, refresh-tokens) ada di project creator. Edge Function memakai
 -- secret key core (policy:fn-cron-key), jadi fungsi ini tidak membaca JWT; aman karena EXECUTE hanya untuk service_role.
 -- Error: errcode P0001 + kode stabil di message (worker memetakan kode), P0002 not_found:<objek>.
 
@@ -7,36 +8,17 @@ create function api.worker_dequeue(p_queue text, p_qty int default 20, p_vt_seco
 returns table (msg_id bigint, message jsonb, read_ct int)
 language plpgsql security definer set search_path = '' as $$
 begin
-  if p_queue is null or p_queue not in ('tracking', 'email') then
+  if p_queue is null or p_queue not in ('email') then
     raise exception 'invalid:queue' using errcode = 'P0001';
   end if;
   return query select q.msg_id, q.message, q.read_ct
                  from pgmq.read(p_queue, greatest(coalesce(p_vt_seconds, 300), 1), least(greatest(coalesce(p_qty, 20), 1), 100)) q;
 end $$;
 
--- §11: API error / rate limit → coba lagi dengan backoff (bukan visibility timeout tetap). 1 detik–6 jam. p_submission:
--- penjadwal (enqueue_due_submissions) menahan pesan baru untuk submisi itu sampai pesan yang ditunda muncul lagi (+1 jam = lease
--- penjadwal, supaya pembacaan ulang yang tidak di-ack pun tetap tertutup),
--- termasuk poll final di ujung view window.
-create function api.worker_retry_later(p_queue text, p_msg_id bigint, p_seconds int, p_submission uuid default null) returns void
-language plpgsql security definer set search_path = '' as $$
-declare
-  sec int := least(greatest(coalesce(p_seconds, 300), 1), 21600);
-begin
-  if p_queue is null or p_queue not in ('tracking', 'email') then
-    raise exception 'invalid:queue' using errcode = 'P0001';
-  end if;
-  perform pgmq.set_vt(p_queue, p_msg_id, sec);
-  if p_submission is not null then
-    update tracking.submissions set retry_after = greatest(coalesce(retry_after, now()), now() + make_interval(secs => sec + 3600))
-     where id = p_submission;
-  end if;
-end $$;
-
 create function api.worker_ack(p_queue text, p_msg_id bigint) returns void
 language plpgsql security definer set search_path = '' as $$
 begin
-  if p_queue is null or p_queue not in ('tracking', 'email') then
+  if p_queue is null or p_queue not in ('email') then
     raise exception 'invalid:queue' using errcode = 'P0001';
   end if;
   perform pgmq.delete(p_queue, p_msg_id);
@@ -55,76 +37,22 @@ begin
      and not exists (select 1 from tracking.view_snapshots v where v.submission_id = p_submission and v.is_final);
 end $$;
 
-create function api.worker_submission_context(p_submission uuid) returns jsonb
-language plpgsql stable security definer set search_path = '' as $$
-declare
-  s tracking.submissions;
-  a tracking.social_accounts;
-  c market.campaigns;
-  tok text;
-begin
-  select * into s from tracking.submissions t where t.id = p_submission;
-  if not found then
-    raise exception 'not_found:submission' using errcode = 'P0002';
-  end if;
-  select * into a from tracking.social_accounts x where x.id = s.social_account_id;
-  select * into c from market.campaigns k where k.id = s.campaign_id;
-  select ds.decrypted_secret into tok from vault.decrypted_secrets ds where ds.id = a.token_ref;
-  return jsonb_build_object(
-    'submission', jsonb_build_object('id', s.id, 'platform', s.platform, 'post_id', s.post_id, 'url', s.url, 'posted_at', s.posted_at,
-                                     'status', s.status, 'user_id', s.user_id, 'campaign_id', s.campaign_id,
-                                     'counted_views', s.counted_views, 'last_snapshot_at', s.last_snapshot_at),
-    'account', jsonb_build_object('id', a.id, 'external_id', a.external_id, 'handle', a.handle, 'status', a.status),
-    'token', tok,
-    'campaign', jsonb_build_object('required_hashtags', c.required_hashtags, 'required_mentions', c.required_mentions,
-                                   'required_links', c.required_links, 'min_duration_sec', c.min_duration_sec,
-                                   'max_duration_sec', c.max_duration_sec, 'view_window_days', c.view_window_days,
-                                   'status', c.status),
-    'final', tracking.final_due(s.id));
-end $$;
-
--- Akun sosmed + token Vault (core/social: daftar video & submit atas nama akun itu).
-create function api.worker_account_token(p_account uuid) returns jsonb
-language plpgsql stable security definer set search_path = '' as $$
-declare
-  a tracking.social_accounts;
-begin
-  select * into a from tracking.social_accounts x where x.id = p_account;
-  if not found then
-    raise exception 'not_found:social_account' using errcode = 'P0002';
-  end if;
-  return jsonb_build_object('id', a.id, 'user_id', a.user_id, 'platform', a.platform, 'external_id', a.external_id, 'handle', a.handle,
-                            'status', a.status,
-                            'token', (select ds.decrypted_secret from vault.decrypted_secrets ds where ds.id = a.token_ref));
-end $$;
-
--- Poll dilewati (mis. X hanya dicek di 24 jam, 7 hari, dan lock): jadwal berikutnya = p_until, tidak melewati akhir view window.
-create function api.worker_defer(p_submission uuid, p_until timestamptz) returns void
-language plpgsql security definer set search_path = '' as $$
-begin
-  if p_until is null then
-    raise exception 'invalid:until' using errcode = 'P0001';
-  end if;
-  update tracking.submissions t
-     set next_poll_at = least(p_until, t.posted_at + make_interval(days => (select c.view_window_days from market.campaigns c
-                                                                            where c.id = t.campaign_id)))
-   where t.id = p_submission and t.status in ('tracking', 'flagged');
-  if not found and not exists (select 1 from tracking.submissions t where t.id = p_submission) then
-    raise exception 'not_found:submission' using errcode = 'P0002';
-  end if;
-end $$;
-
--- Satu snapshot dari worker (API sukses; error/rate limit tidak pernah dipanggil ke sini, §11). Urutan: simpan snapshot
--- (p_extra ikut di raw.extra) → sinyal fraud (FR-06 caption, FR-01 engagement, FR-02 lonjakan vs median akun, FR-03 akun baru,
--- FR-09 durasi tonton/skip rate, FR-10 views/reach, FR-11 negara penonton, FR-08 turun saat lock; FR-09/11 hanya kalau ambangnya
--- ada di config) → accrue_earnings → lock kalau final → jadwal poll berikutnya (tracking.poll_schedule per umur posting, tidak
--- melewati akhir view window supaya poll final tepat waktu). avg_watch_time Instagram dalam milidetik, platform lain detik.
-create function api.worker_record_snapshot(p_submission uuid, p_views bigint, p_likes bigint, p_comments bigint, p_shares bigint,
-                                           p_caption text, p_raw jsonb, p_extra jsonb default '{}')
-returns jsonb
+-- Snapshot dari creator tiba (replika, hook bus_in.tracking_view_snapshots_applied). Urutan: sinyal fraud (FR-06 caption,
+-- FR-01 engagement, FR-02 lonjakan vs median akun, FR-03 akun baru, FR-09 durasi tonton/skip rate, FR-10 views/reach, FR-11
+-- negara/sumber penonton, FR-08 turun saat lock; FR-09/11 hanya kalau ambangnya ada di config) → accrue_earnings → lock kalau
+-- final → jadwal poll berikutnya (tracking.poll_schedule per umur posting, tidak melewati akhir view window supaya poll final
+-- tepat waktu; next_poll_at direplika ke creator). avg_watch_time Instagram dalam milidetik, platform lain detik.
+create function tracking.apply_snapshot(p_snapshot bigint) returns jsonb
 language plpgsql security definer set search_path = '' as $$
 declare
+  v tracking.view_snapshots;
   s tracking.submissions;
+  p_views bigint;
+  p_likes bigint;
+  p_comments bigint;
+  p_shares bigint;
+  p_caption text;
+  p_extra jsonb;
   c market.campaigns;
   a tracking.social_accounts;
   fin boolean;
@@ -147,27 +75,27 @@ declare
   nxt timestamptz;
   st tracking.submission_status;
 begin
-  select * into s from tracking.submissions t where t.id = p_submission for update;
+  select * into v from tracking.view_snapshots x where x.id = p_snapshot;
+  if not found then
+    raise exception 'not_found:snapshot' using errcode = 'P0002';
+  end if;
+  select * into s from tracking.submissions t where t.id = v.submission_id for update;
   if not found then
     raise exception 'not_found:submission' using errcode = 'P0002';
   end if;
   if s.status not in ('tracking', 'flagged') then
-    return jsonb_build_object('snapshot_id', null, 'flagged', s.status = 'flagged', 'next_poll_at', null,
+    return jsonb_build_object('snapshot_id', v.id, 'flagged', s.status = 'flagged', 'next_poll_at', null,
                               'locked', s.status in ('locked', 'settled'));
   end if;
-  if p_views is null or p_views < 0 then
-    raise exception 'invalid:views' using errcode = 'P0001';
-  end if;
+  p_views := v.views; p_likes := v.likes; p_comments := v.comments; p_shares := v.shares;
+  p_caption := v.raw ->> 'caption';
+  p_extra := case when jsonb_typeof(v.raw -> 'extra') = 'object' then v.raw -> 'extra' else '{}' end;
+  sid := v.id;
+  taken := v.taken_at;
+  fin := v.is_final;
   select * into c from market.campaigns k where k.id = s.campaign_id;
   select * into a from tracking.social_accounts x where x.id = s.social_account_id;
   window_end := s.posted_at + make_interval(days => c.view_window_days);
-  fin := tracking.final_due(s.id);
-  insert into tracking.view_snapshots (submission_id, taken_at, views, likes, comments, shares, is_final, raw)
-  values (s.id, clock_timestamp(), p_views, p_likes, p_comments, p_shares, fin,
-          nullif(case when jsonb_typeof(p_raw) = 'object' then p_raw when p_raw is null then '{}' else jsonb_build_object('response', p_raw) end
-                 || case when jsonb_typeof(p_extra) = 'object' and p_extra <> '{}' then jsonb_build_object('extra', p_extra) else '{}' end,
-                 '{}'))
-  returning id, taken_at into sid, taken;
 
   if p_caption is not null then
     missing := api.missing_brief_tags(c.id, p_caption);
@@ -269,8 +197,9 @@ begin
   return jsonb_build_object('snapshot_id', sid, 'flagged', raised or st = 'flagged', 'next_poll_at', nxt, 'locked', st = 'locked');
 end $$;
 
--- Post dihapus/diprivate sebelum lock (§11, FR-06): earning pending hangus + notifikasi. Setelah lock tidak berpengaruh.
-create function api.worker_post_gone(p_submission uuid, p_reason text) returns void
+-- Post dihapus/diprivate sebelum lock (§11, FR-06; event submission.post_gone dari creator/track-worker): earning pending hangus
+-- + notifikasi. Setelah lock tidak berpengaruh.
+create function tracking.post_gone(p_submission uuid, p_reason text) returns void
 language plpgsql security definer set search_path = '' as $$
 declare
   s tracking.submissions;
@@ -297,238 +226,77 @@ begin
                                                          'amounts', lost));
 end $$;
 
--- Status token akun sosmed: expired/revoked → tracking submisinya di-pause (next_poll_at NULL) + notifikasi sekali;
--- verified (reconnect) → polling lanjut, views kumulatif tetap terhitung selama dalam view window.
-create function api.worker_account_status(p_account uuid, p_status text) returns void
+-- Submisi baru dari creator (replika, status validating; validasi claim/akun/video di creator api.worker_create_submission):
+-- review_route auto → tracking (keputusan tercatat seperti review biasa: Trust Score, notifikasi submission.approved), manual →
+-- in_review; claim → submitted; FR-07 (§12) cover hampir identik dengan submisi akun sosmed lain dalam 90 hari = konten duplikat
+-- lintas akun → flag (review manual; earning tertahan selama flag terbuka; jarak Hamming dHash ≤ trust.fraud.cover_distance,
+-- default 6: re-encode ≤ 5, cover lain ≥ 28); campaign review brand → notifikasi brand.
+create function tracking.decide_new_submission(p_submission uuid) returns void
 language plpgsql security definer set search_path = '' as $$
 declare
-  a tracking.social_accounts;
-  new_status text := case p_status when 'expired' then 'token_expired' when 'revoked' then 'revoked' when 'verified' then 'verified' end;
-begin
-  if new_status is null then
-    raise exception 'invalid:status' using errcode = 'P0001';
-  end if;
-  select * into a from tracking.social_accounts x where x.id = p_account for update;
-  if not found then
-    raise exception 'not_found:social_account' using errcode = 'P0002';
-  end if;
-  -- revoked lengket: hanya pulih lewat sambung ulang pemilik (worker_upsert_social_account), bukan hasil refresh/polling yang
-  -- sedang jalan — termasuk 'expired' yang akan membuka jalan refresh menulis token lagi (R34-1, R35-1)
-  if a.status in ('disconnected', 'revoked') then
-    return;
-  end if;
-  if new_status = 'verified' then
-    update tracking.social_accounts set status = 'verified', verified_at = now() where id = a.id;
-    update tracking.submissions set next_poll_at = now()
-     where social_account_id = a.id and status in ('tracking', 'flagged') and next_poll_at is null;
-  else
-    update tracking.social_accounts set status = new_status where id = a.id and status <> new_status;
-    if a.status = 'verified' then
-      perform ops.enqueue_notification(a.user_id, 'social.token_expired',
-                                       jsonb_build_object('account_id', a.id, 'platform', a.platform, 'handle', a.handle,
-                                                          'paused_count', tracking.paused_count(a.id)));
-    end if;
-    update tracking.submissions set next_poll_at = null where social_account_id = a.id and status in ('tracking', 'flagged');
-  end if;
-end $$;
-
--- Token yang kedaluwarsa dalam p_within (JSON Vault berisi expires_at). Token rusak/tanpa expires_at dilewati.
-create function api.worker_accounts_to_refresh(p_within interval)
-returns table (account_id uuid, platform market.platform, token text)
-language plpgsql stable security definer set search_path = '' as $$
-declare
-  r record;
-  exp timestamptz;
-begin
-  for r in select a.id, a.platform as pf, ds.decrypted_secret as tok
-             from tracking.social_accounts a join vault.decrypted_secrets ds on ds.id = a.token_ref
-            where a.status in ('verified', 'token_expired') order by a.id loop
-    exp := null;
-    if ltrim(r.tok) like '{%' then
-      begin
-        exp := (r.tok::jsonb ->> 'expires_at')::timestamptz;
-      exception when others then
-        exp := null;
-      end;
-    end if;
-    if exp < now() + p_within then
-      account_id := r.id;
-      platform := r.pf;
-      token := r.tok;
-      return next;
-    end if;
-  end loop;
-end $$;
-
--- Connect OAuth (F-C02): satu akun sosmed = satu clipper selamanya (social_taken); batas 3 akun/platform dari trigger.
--- Parameter text (bukan enum member/market): PostgREST meng-cast argumen RPC ke tipe deklarasi, dan role API tidak
--- punya USAGE ke schema internal → enum di parameter = 42501. Cast di dalam fungsi definer.
-create function api.worker_upsert_social_account(p_user uuid, p_platform text, p_external_id text, p_handle text,
-                                                 p_followers int, p_platform_created_at timestamptz, p_token text)
-returns uuid
-language plpgsql security definer set search_path = '' as $$
-declare
-  pf market.platform := p_platform::market.platform;
-  a tracking.social_accounts;
-  aid uuid;
-begin
-  -- Aktif efektif (sama dengan claim_check / require_active_clipper): suspend yang sudah lewat tidak menunggu job lifecycle.
-  if not exists (select 1 from market.profiles pr where pr.id = p_user
-                  and (pr.status = 'active' or (pr.status = 'suspended' and pr.suspended_until <= now()))) then
-    raise exception 'profile_inactive' using errcode = 'P0001';
-  end if;
-  select * into a from tracking.social_accounts x where x.platform = pf and x.external_id = p_external_id for update;
-  if found then
-    if a.user_id <> p_user then
-      raise exception 'social_taken' using errcode = 'P0001';
-    end if;
-    update tracking.social_accounts
-       set handle = p_handle, followers = coalesce(p_followers, followers),
-           platform_created_at = coalesce(p_platform_created_at, platform_created_at), status = 'verified', verified_at = now()
-     where id = a.id;
-    aid := a.id;
-  else
-    begin
-      insert into tracking.social_accounts (user_id, platform, external_id, handle, followers, platform_created_at)
-      values (p_user, pf, p_external_id, p_handle, p_followers, p_platform_created_at) returning id into aid;
-    exception when unique_violation then
-      raise exception 'social_taken' using errcode = 'P0001';
-    end;
-  end if;
-  if p_token is not null then
-    perform api.store_social_token(aid, p_token);
-  end if;
-  update tracking.submissions set next_poll_at = now()
-   where social_account_id = aid and status in ('tracking', 'flagged') and next_poll_at is null;
-  return aid;
-end $$;
-
--- Submit video (E-12, F-C06) setelah core/social memverifikasi kepemilikan lewat API platform. Kode error (P0001):
--- profile_inactive, claim_not_open, not_your_claim, campaign_closed, account_not_yours, account_inactive, platform_not_allowed,
--- posted_before_claim, missing_tags:<daftar>, duration_out_of_range, already_submitted, reused_video, invalid:url.
--- Status: validating → in_review (review manual/brand, atau campaign berbatas durasi tapi API tidak memberi durasi) atau
--- tracking (auto; langsung masuk jadwal poll). Claim → submitted.
-create function api.worker_create_submission(p_user uuid, p_claim uuid, p_account uuid, p_post_id text, p_url text,
-                                             p_posted_at timestamptz, p_caption text, p_duration_sec int,
-                                             p_cover_hash bigint default null)
-returns jsonb
-language plpgsql security definer set search_path = '' as $$
-declare
-  cl market.claims;
+  s tracking.submissions;
   c market.campaigns;
-  a tracking.social_accounts;
-  missing text[];
-  sid uuid;
-  st tracking.submission_status;
   dup record;
 begin
-  -- Aktif efektif (sama dengan claim_check / require_active_clipper): suspend yang sudah lewat tidak menunggu job lifecycle.
-  if not exists (select 1 from market.profiles pr where pr.id = p_user
-                  and (pr.status = 'active' or (pr.status = 'suspended' and pr.suspended_until <= now()))) then
-    raise exception 'profile_inactive' using errcode = 'P0001';
+  select * into s from tracking.submissions t where t.id = p_submission for update;
+  if not found or s.status <> 'validating' then
+    return;
   end if;
-  select * into cl from market.claims k where k.id = p_claim for update;
-  if not found then
-    raise exception 'claim_not_open' using errcode = 'P0001';
+  select * into c from market.campaigns k where k.id = s.campaign_id;
+  update tracking.submissions set status = 'in_review' where id = s.id;
+  if s.review_route = 'auto' then
+    perform trust.apply_submission_decision(s.id, 'auto_approve', null, null, null, 'auto');
   end if;
-  if cl.user_id <> p_user then
-    raise exception 'not_your_claim' using errcode = 'P0001';
-  end if;
-  if cl.status <> 'open' or cl.expires_at <= now() then
-    raise exception 'claim_not_open' using errcode = 'P0001';
-  end if;
-  select * into c from market.campaigns k where k.id = cl.campaign_id;
-  if c.status <> 'live' or c.submit_deadline <= now() then
-    raise exception 'campaign_closed' using errcode = 'P0001';
-  end if;
-  select * into a from tracking.social_accounts x where x.id = p_account;
-  if not found or a.user_id <> p_user then
-    raise exception 'account_not_yours' using errcode = 'P0001';
-  end if;
-  if a.status <> 'verified' then
-    raise exception 'account_inactive' using errcode = 'P0001';
-  end if;
-  if not (a.platform = any (c.platforms)) then
-    raise exception 'platform_not_allowed' using errcode = 'P0001';
-  end if;
-  -- own_org dicek ulang: bergabung ke org pemilik (langsung / lewat agency) setelah claim tidak boleh lolos (R67).
-  if exists (select 1 from market.org_members m where m.org_id = c.org_id and m.user_id = p_user)
-     or exists (select 1 from market.org_links l join market.org_members m on m.org_id = l.agency_org_id
-                 where l.client_org_id = c.org_id and l.approved_at is not null and l.revoked_at is null and m.user_id = p_user) then
-    raise exception 'not_eligible:own_org' using errcode = 'P0001';
-  end if;
-  -- Syarat akun dicek per akun yang dipakai submit, bukan cukup satu akun lolos saat claim (claim_check).
-  if coalesce(a.followers, 0) < c.min_followers then
-    raise exception 'not_eligible:min_followers' using errcode = 'P0001';
-  end if;
-  if c.min_account_age_days > 0 and (a.platform_created_at is null or a.platform_created_at > now() - make_interval(days => c.min_account_age_days)) then
-    raise exception 'not_eligible:min_account_age' using errcode = 'P0001';
-  end if;
-  if p_posted_at is null or p_posted_at < cl.created_at then
-    raise exception 'posted_before_claim' using errcode = 'P0001';
-  end if;
-  missing := api.missing_brief_tags(c.id, p_caption);
-  if cardinality(missing) > 0 then
-    raise exception 'missing_tags:%', array_to_string(missing, ',') using errcode = 'P0001';
-  end if;
-  if p_duration_sec < c.min_duration_sec or p_duration_sec > c.max_duration_sec then
-    raise exception 'duration_out_of_range' using errcode = 'P0001';
-  end if;
-  -- Claim pengganti yang dibuka sebelum banding clip lama: kuota dicek ulang saat submit (serial dengan appeal_submission).
-  perform pg_advisory_xact_lock(hashtextextended('clip_quota:' || c.id || ':' || p_user, 0));
-  if (select count(*) from tracking.submissions t where t.campaign_id = c.id and t.user_id = p_user
-        and t.status not in ('rejected', 'rejected_final')) >= c.max_clips_per_clipper then
-    raise exception 'not_eligible:max_clips' using errcode = 'P0001';
-  end if;
-  -- Serial per video: dua submit bersamaan video yang sama (campaign berbeda) tidak sama-sama lolos cek pakai-ulang.
-  perform pg_advisory_xact_lock(hashtextextended('submission_post:' || a.platform || ':' || coalesce(p_post_id, ''), 0));
-  if exists (select 1 from tracking.submissions t where t.campaign_id = c.id and t.platform = a.platform and t.post_id = p_post_id) then
-    raise exception 'already_submitted' using errcode = 'P0001';
-  end if;
-  if not c.allow_video_reuse and exists (select 1 from tracking.submissions t
-                                         where t.platform = a.platform and t.post_id = p_post_id and t.campaign_id <> c.id) then
-    raise exception 'reused_video' using errcode = 'P0001';
-  end if;
-  if p_post_id is null or btrim(p_post_id) = '' or p_url is null or p_url !~ '^https://' then
-    raise exception 'invalid:url' using errcode = 'P0001';
-  end if;
-
-  begin
-    insert into tracking.submissions (claim_id, user_id, campaign_id, social_account_id, platform, post_id, url, posted_at, duration_sec, cover_hash)
-    values (cl.id, p_user, c.id, a.id, a.platform, p_post_id, p_url, p_posted_at, p_duration_sec, p_cover_hash) returning id into sid;
-  exception when unique_violation then
-    raise exception 'already_submitted' using errcode = 'P0001';
-  end;
-  -- §11: API TikTok tidak memberi info sound → campaign musik/sound di TikTok selalu diverifikasi manual di moderasi.
-  st := case when c.review_mode in ('manual', 'brand')
-                  or (p_duration_sec is null and (c.min_duration_sec is not null or c.max_duration_sec is not null))
-                  or (c.type = 'music' and a.platform = 'tiktok')
-             then 'in_review' else 'tracking' end;
-  update tracking.submissions set status = 'in_review' where id = sid;
-  if st = 'tracking' then  -- review auto: keputusan tercatat seperti review biasa (Trust Score naik, notifikasi submission.approved)
-    perform trust.apply_submission_decision(sid, 'auto_approve', null, null, null, 'auto');
-  end if;
-  update market.claims set status = 'submitted' where id = cl.id;
-  -- FR-07 (§12): cover hampir identik dengan submisi akun sosmed lain dalam 90 hari = konten duplikat lintas akun → flag (review
-  -- manual; earning tertahan selama flag terbuka). Jarak Hamming dHash ≤ trust.fraud.cover_distance (default 6: re-encode ≤ 5,
-  -- cover lain ≥ 28).
-  if p_cover_hash is not null then
+  update market.claims set status = 'submitted' where id = s.claim_id and status = 'open';
+  if s.cover_hash is not null then
     select array_agg(t.id order by t.created_at) ids, array_agg(distinct t.user_id) users into dup
       from (select t.id, t.user_id, t.created_at from tracking.submissions t
-             where t.cover_hash is not null and t.created_at > now() - interval '90 days' and t.social_account_id <> a.id
-               and bit_count((t.cover_hash # p_cover_hash)::bit(64)) <= (ops.cfg('trust.fraud.cover_distance', '6'))::int
+             where t.cover_hash is not null and t.created_at > now() - interval '90 days' and t.social_account_id <> s.social_account_id
+               and t.id <> s.id
+               and bit_count((t.cover_hash # s.cover_hash)::bit(64)) <= (ops.cfg('trust.fraud.cover_distance', '6'))::int
              order by t.created_at limit 20) t;
     if dup.ids is not null then
-      perform trust.raise_flag('submission', sid, 'FR-07', 60,
+      perform trust.raise_flag('submission', s.id, 'FR-07', 60,
                                jsonb_build_object('duplicates', to_jsonb(dup.ids),
-                                                  'related_user_ids', to_jsonb(array_remove(dup.users, p_user))));
+                                                  'related_user_ids', to_jsonb(array_remove(dup.users, s.user_id))));
     end if;
   end if;
-  if c.review_mode = 'brand' and st = 'in_review' then
+  if c.review_mode = 'brand' and s.review_route = 'manual' then
     perform market.notify_org(c.org_id, array['brand_owner', 'brand_manager']::market.org_role[], 'submission.pending_review',
-                              market.campaign_ref(c.id) || jsonb_build_object('submission_id', sid));
+                              market.campaign_ref(c.id) || jsonb_build_object('submission_id', s.id));
   end if;
-  return jsonb_build_object('submission_id', sid, 'status', st);
+end $$;
+
+-- Hook replika (tidak pernah raise: batch bus macet). Gagal → alert untuk ops, baris replika tetap tersimpan.
+create function bus_in.tracking_submissions_applied(p_op text, p_row jsonb) returns void
+language plpgsql set search_path = '' as $$
+begin
+  if p_op = 'upsert' then
+    perform tracking.decide_new_submission((p_row ->> 'id')::uuid);
+  end if;
+exception when others then
+  perform ops.raise_alert('tracking.apply_failed', 'critical', jsonb_build_object('submission_id', p_row ->> 'id', 'step', 'decide',
+                                                                               'error', sqlerrm));
+end $$;
+
+create function bus_in.tracking_view_snapshots_applied(p_op text, p_row jsonb) returns void
+language plpgsql set search_path = '' as $$
+begin
+  if p_op = 'upsert' then
+    perform tracking.apply_snapshot((p_row ->> 'id')::bigint);
+  end if;
+exception when others then
+  perform ops.raise_alert('tracking.apply_failed', 'critical', jsonb_build_object('snapshot_id', p_row ->> 'id', 'step', 'snapshot',
+                                                                               'error', sqlerrm));
+end $$;
+
+create function bus_in.submission_post_gone(p jsonb) returns void
+language plpgsql set search_path = '' as $$
+begin
+  perform tracking.post_gone((p ->> 'submission_id')::uuid, p ->> 'reason');
+exception when others then
+  perform ops.raise_alert('tracking.apply_failed', 'critical', jsonb_build_object('submission_id', p ->> 'submission_id', 'step', 'post_gone',
+                                                                               'error', sqlerrm));
 end $$;
 
 -- ---------- notifikasi (worker notify, alur 4) ----------
@@ -661,22 +429,13 @@ begin
   end if;
 end $$;
 
-revoke execute on function api.worker_dequeue(text, int, int), api.worker_ack(text, bigint), api.worker_retry_later(text, bigint, int, uuid),
-  tracking.final_due(uuid),
-  api.worker_account_token(uuid), api.worker_defer(uuid, timestamptz),
-  api.worker_submission_context(uuid), api.worker_record_snapshot(uuid, bigint, bigint, bigint, bigint, text, jsonb, jsonb),
-  api.worker_post_gone(uuid, text), api.worker_account_status(uuid, text), api.worker_accounts_to_refresh(interval),
-  api.worker_upsert_social_account(uuid, text, text, text, int, timestamptz, text),
-  api.worker_create_submission(uuid, uuid, uuid, text, text, timestamptz, text, int, bigint), api.worker_notification(bigint),
-  api.worker_unsubscribe(uuid), api.worker_fulfillments_due(int), api.worker_assign_code(uuid),
+revoke execute on function api.worker_dequeue(text, int, int), api.worker_ack(text, bigint),
+  tracking.final_due(uuid), tracking.apply_snapshot(bigint), tracking.post_gone(uuid, text), tracking.decide_new_submission(uuid),
+  bus_in.tracking_submissions_applied(text, jsonb), bus_in.tracking_view_snapshots_applied(text, jsonb), bus_in.submission_post_gone(jsonb),
+  api.worker_notification(bigint), api.worker_unsubscribe(uuid), api.worker_fulfillments_due(int), api.worker_assign_code(uuid),
   api.worker_fulfillment_result(uuid, boolean, text, text)
   from public, anon, authenticated;
-grant execute on function api.worker_dequeue(text, int, int), api.worker_ack(text, bigint), api.worker_retry_later(text, bigint, int, uuid),
-  api.worker_account_token(uuid), api.worker_defer(uuid, timestamptz),
-  api.worker_submission_context(uuid), api.worker_record_snapshot(uuid, bigint, bigint, bigint, bigint, text, jsonb, jsonb),
-  api.worker_post_gone(uuid, text), api.worker_account_status(uuid, text), api.worker_accounts_to_refresh(interval),
-  api.worker_upsert_social_account(uuid, text, text, text, int, timestamptz, text),
-  api.worker_create_submission(uuid, uuid, uuid, text, text, timestamptz, text, int, bigint), api.worker_notification(bigint),
-  api.worker_unsubscribe(uuid), api.worker_fulfillments_due(int), api.worker_assign_code(uuid),
+grant execute on function api.worker_dequeue(text, int, int), api.worker_ack(text, bigint),
+  api.worker_notification(bigint), api.worker_unsubscribe(uuid), api.worker_fulfillments_due(int), api.worker_assign_code(uuid),
   api.worker_fulfillment_result(uuid, boolean, text, text)
   to service_role;

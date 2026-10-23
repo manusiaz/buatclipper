@@ -61,10 +61,37 @@ begin
   values (v_user, uname, coalesce(nullif(left(btrim(p ->> 'display_name'), 50), ''), 'Anggota brand'));
 end $$;
 
--- Event profile.anonymize (hapus akun, alur 12 — status closed diset admin): isi profil dikosongkan.
+-- Event profile.anonymize (hapus akun, alur 12 — status closed & submisi diputus admin): isi profil dikosongkan, token sosmed
+-- dihapus dari Vault, akun sosmed tanpa submisi dihapus, sisanya diputus permanen (UNIQUE platform+external_id tetap
+-- mencegah akun yang sama dipakai ulang). File avatar dihapus creator/bridge.
 create function bus_in.profile_anonymize(p jsonb) returns void
-language sql set search_path = '' as $$
+language plpgsql set search_path = '' as $$
+declare
+  v_user uuid := (p ->> 'user_id')::uuid;
+begin
   update market.profiles set username = 'deleted_' || substr(md5(id::text), 1, 12), display_name = 'Akun dihapus', avatar_path = null
-   where id = (p ->> 'user_id')::uuid;
-$$;
-revoke execute on function bus_in.profile_ensure(jsonb), bus_in.profile_anonymize(jsonb) from public;
+   where id = v_user;
+  delete from vault.secrets v where v.id in (select a.token_ref from tracking.social_accounts a where a.user_id = v_user);
+  delete from tracking.social_accounts a
+   where a.user_id = v_user and not exists (select 1 from tracking.submissions s where s.social_account_id = a.id);
+  update tracking.social_accounts set status = 'disconnected', token_ref = null, handle = 'deleted', followers = null
+   where user_id = v_user;
+end $$;
+
+-- Event social.reset (§4 admin_support "reset koneksi akun", audit di admin): token dicabut (Vault dihapus, status revoked),
+-- tracking berhenti, clipper dikabari untuk menyambung ulang akun yang sama. Akun yang sudah diputus tidak diubah.
+create function bus_in.social_reset(p jsonb) returns void
+language plpgsql set search_path = '' as $$
+declare
+  a tracking.social_accounts;
+begin
+  select * into a from tracking.social_accounts x where x.id = (p ->> 'account_id')::uuid for update;
+  if not found or a.status = 'disconnected' then
+    return;
+  end if;
+  delete from vault.secrets v where v.id = a.token_ref;
+  update tracking.social_accounts set status = 'revoked', token_ref = null where id = a.id;
+  perform ops.notify(a.user_id, 'social.token_expired', jsonb_build_object('account_id', a.id, 'platform', a.platform,
+                                                                          'handle', a.handle, 'paused_count', tracking.paused_count(a.id)));
+end $$;
+revoke execute on function bus_in.profile_ensure(jsonb), bus_in.profile_anonymize(jsonb), bus_in.social_reset(jsonb) from public;
