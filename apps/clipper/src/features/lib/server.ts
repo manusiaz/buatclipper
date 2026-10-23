@@ -1,6 +1,6 @@
 // Akses data server-side bersama semua halaman clipper (RSC & Server Action).
 import { getLocale, getTranslations } from 'next-intl/server';
-import { coreServer } from '@clipper/auth/server';
+import { coreServer, creatorServer } from '@clipper/auth/server';
 import { platformLabel, type Platform, type UiLocale } from '@clipper/ui';
 import { errorKey, isPlatform } from '@clipper/clipper-lib/pure';
 
@@ -10,6 +10,7 @@ export type Result<T = null> = { ok: true; data: T } | Fail;
 export const ok = <T,>(data: T): Result<T> => ({ ok: true, data });
 
 export const core = () => coreServer('sso');
+export const creator = () => creatorServer('sso');
 
 export async function uiLocale(): Promise<UiLocale> {
   return (await getLocale()) === 'en' ? 'en' : 'id';
@@ -42,10 +43,10 @@ export async function readSettings(keys: string[]): Promise<Record<string, unkno
   return Object.fromEntries((data ?? []).map((r) => [r.key, r.value]));
 }
 
-/** Bucket publik: campaign-covers (storage brand), avatars (storage admin). */
+/** Bucket publik: campaign-covers (storage brand), avatars (storage creator). */
 export function publicUrl(bucket: 'campaign-covers' | 'avatars', path: string | null | undefined): string | null {
   if (!path) return null;
-  const base = bucket === 'campaign-covers' ? process.env.NEXT_PUBLIC_BRAND_DB_URL : process.env.NEXT_PUBLIC_CORE_URL;
+  const base = bucket === 'campaign-covers' ? process.env.NEXT_PUBLIC_BRAND_DB_URL : process.env.NEXT_PUBLIC_CREATOR_DB_URL;
   return `${base}/storage/v1/object/public/${bucket}/${path.split('/').map(encodeURIComponent).join('/')}`;
 }
 

@@ -28,12 +28,15 @@ begin
   perform ops.enqueue_notification((p ->> 'user_id')::uuid, p ->> 'event', body, coalesce((p ->> 'email')::boolean, true));
 end $$;
 
--- Profil minimal anggota brand yang belum onboarding; dikirim brand sebelum replika anggotanya (FK org_members → profiles).
-create function bus_in.profile_ensure(p jsonb) returns void
-language plpgsql set search_path = '' as $$
-begin
-  perform market.ensure_member_profile((p ->> 'user_id')::uuid, p ->> 'username', p ->> 'display_name');
-end $$;
+-- Referral (F-C16) dari profil baru di project creator: kode milik admin (market.profiles.referral_code); kode tidak dikenal
+-- atau milik sendiri diabaikan. Replika profil yang dirujuk tiba lebih dulu (event dikirim setelah insert profil, satu sumber).
+create function bus_in.referral_record(p jsonb) returns void
+language sql set search_path = '' as $$
+  insert into market.referrals (referred_id, referrer_id, code)
+  select (p ->> 'user_id')::uuid, r.id, r.referral_code from market.profiles r
+   where r.referral_code = p ->> 'code' and r.id <> (p ->> 'user_id')::uuid
+  on conflict do nothing;
+$$;
 
 -- Owner org dikeluarkan/diturunkan di brand (R25-1/R26-1): refund yang memakai rekening pribadinya dikosongkan + persetujuannya
 -- batal (owner sekarang memilih ulang), kecuali transfernya sudah dimulai. Baris anggota (replika, masih ada: event ini dikirim
@@ -57,4 +60,4 @@ begin
 end $$;
 
 revoke execute on function bus_in.audit_log(jsonb), bus_in.review_decision(jsonb), bus_in.notify_user(jsonb),
-  bus_in.profile_ensure(jsonb), bus_in.org_owner_lost(jsonb) from public;
+  bus_in.referral_record(jsonb), bus_in.org_owner_lost(jsonb) from public;

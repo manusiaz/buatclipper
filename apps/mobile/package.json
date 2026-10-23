@@ -14,6 +14,7 @@
     "@clipper/auth": "workspace:*",
     "@clipper/clipper-lib": "workspace:*",
     "@clipper/db-core": "workspace:*",
+    "@clipper/db-creator": "workspace:*",
     "@clipper/db-identity": "workspace:*",
     "@clipper/i18n": "workspace:*",
     "@clipper/ui": "workspace:*",

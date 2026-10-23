@@ -151,9 +151,8 @@ begin
    where a.user_id = p_user and not exists (select 1 from tracking.submissions s where s.social_account_id = a.id);
   update tracking.social_accounts set status = 'disconnected', token_ref = null, handle = 'deleted', followers = null
    where user_id = p_user;
-  update market.profiles set username = 'deleted_' || substr(md5(id::text), 1, 12), display_name = 'Akun dihapus',
-         avatar_path = null, referral_code = null, suspended_until = null, status = 'closed'
-   where id = p_user;
+  update market.profiles set referral_code = null, suspended_until = null, status = 'closed' where id = p_user;
+  perform bus.emit('creator', 'profile.anonymize', jsonb_build_object('user_id', p_user));  -- isi profil milik creator
   return jsonb_build_object('ok', true, 'reason', null);
 end $$;
 

@@ -13,7 +13,8 @@ const EMBEDS = [
 /** CSP ber-nonce per request (R-16): hanya script milik sendiri + Turnstile; frame hanya embed resmi platform. */
 export function buildCsp(nonce: string): string {
   const dev = process.env.NODE_ENV !== 'production';
-  const supabase = [process.env.NEXT_PUBLIC_IDENTITY_URL, process.env.NEXT_PUBLIC_CORE_URL, process.env.NEXT_PUBLIC_BRAND_DB_URL]
+  const supabase = [process.env.NEXT_PUBLIC_IDENTITY_URL, process.env.NEXT_PUBLIC_CORE_URL, process.env.NEXT_PUBLIC_BRAND_DB_URL,
+    process.env.NEXT_PUBLIC_CREATOR_DB_URL]
     .filter((u): u is string => !!u)
     .map((u) => new URL(u).origin);
   return [

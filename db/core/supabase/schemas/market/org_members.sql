@@ -1,7 +1,7 @@
 -- E-03 anggota org + role brand: replika dari project brand (pemilik data; aturan ≥ 1 brand_owner di sana). Kolom milik admin: tidak ada.
 create table market.org_members (
   org_id uuid not null references market.organizations (id),
-  user_id uuid not null references market.profiles (id),
+  user_id uuid not null,  -- tanpa FK: replika dari brand, profilnya dari creator (urutan antar sumber tidak dijamin)
   role market.org_role not null,
   added_by uuid,
   created_at timestamptz not null default now(),

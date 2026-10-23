@@ -725,11 +725,6 @@ export type Database = {
 "decide_sanction_appeal":
 { Args: { "p_decision": string,"p_note": string,"p_sanction": string }; Returns: undefined
                            },
-"ensure_profile":
-{ Args: { "p_avatar_path"?: string,"p_display_name": string,"p_referral_code"?: string,"p_username": string }; Returns: {
-              "created": boolean,"display_name": string,"id": string,"username": string
-            }[]
-                           },
 "hold_payout":
 { Args: { "p_payout": string,"p_reason": string }; Returns: undefined
                            },

@@ -4,6 +4,7 @@ import { redirect } from 'next/navigation';
 import { createServerClient } from '@supabase/ssr';
 import { createCoreClient } from '@clipper/db-core';
 import { createBrandClient } from '@clipper/db-brand';
+import { createCreatorClient } from '@clipper/db-creator';
 import { cookieOptions, identityKey, identityUrl } from './cookies';
 import {
   hasRole, hosts, isAdmin, loginUrl, onboardingUrl, securityUrl,
@@ -45,6 +46,12 @@ export async function coreServer(kind: SessionKind = 'sso') {
 export async function brandServer(kind: SessionKind = 'sso') {
   const { supabase } = await getAuth(kind);
   return createBrandClient(async () => (await supabase.auth.getSession()).data.session?.access_token ?? null);
+}
+
+/** Client project creator (profil, storage avatar) dengan JWT identity. */
+export async function creatorServer(kind: SessionKind = 'sso') {
+  const { supabase } = await getAuth(kind);
+  return createCreatorClient(async () => (await supabase.auth.getSession()).data.session?.access_token ?? null);
 }
 
 /** Access token mentah untuk memanggil Edge Function dari server. */

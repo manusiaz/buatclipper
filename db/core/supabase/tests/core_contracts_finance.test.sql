@@ -1586,8 +1586,10 @@ select is(api.bridge_fraud_device_params(), '{"window_hours":24,"min_accounts":5
 select is(api.bridge_close_account('11111111-0000-0000-0000-00000000000a'), '{"ok":false,"reason":"balance_remaining"}'::jsonb,
           'tutup akun ditolak selama masih ada saldo');
 select is(api.bridge_close_account('11111111-0000-0000-0000-00000000000f') ->> 'ok', 'true', 'tutup akun tanpa saldo');
-select ok((select status = 'closed' and username like 'deleted\_%' and display_name = 'Akun dihapus' from market.profiles
-           where id = '11111111-0000-0000-0000-00000000000f'), 'profil dianonimkan + closed');
+select ok((select status = 'closed' and referral_code is null from market.profiles where id = '11111111-0000-0000-0000-00000000000f'),
+          'profil closed di admin');
+select ok(exists (select 1 from bus.outbox where target = 'creator' and topic = 'profile.anonymize'
+                   and payload ->> 'user_id' = '11111111-0000-0000-0000-00000000000f'), 'isi profil dianonimkan lewat event ke creator');
 select is((select count(*)::int from tracking.social_accounts where user_id = '11111111-0000-0000-0000-00000000000f' and status <> 'disconnected'), 0,
           'akun sosmed diputus/dihapus');
 select ok(not exists (select 1 from vault.secrets where name like 'social:' || (select v from t_ids where k = 'acc_fani_ig')),

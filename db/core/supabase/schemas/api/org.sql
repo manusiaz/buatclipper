@@ -1,25 +1,4 @@
--- Bagian org milik admin: fee org (F-A07 set_fee), reward type (F-B03), dan profil anggota dari event brand. Org/tim/agency/undangan di db/brand.
-
--- Profil E-01 minimal untuk anggota brand yang belum onboarding (event profile.ensure dari brand, sebelum replika anggota). Username sementara
--- m_<12 hex id> bila tidak diberikan/terpakai; ensure_profile memperbaruinya saat onboarding. Profil yang ada tidak diubah.
-create function market.ensure_member_profile(p_user uuid, p_username text default null, p_display_name text default null)
-returns void
-language plpgsql security definer set search_path = '' as $$
-declare
-  uname text := lower(btrim(p_username));
-begin
-  if exists (select 1 from market.profiles p where p.id = p_user) then
-    return;
-  end if;
-  if uname is null or uname !~ '^[a-z0-9_.]{3,30}$' or exists (select 1 from market.profiles p where p.username = uname) then
-    uname := 'm_' || substr(replace(p_user::text, '-', ''), 1, 12);
-  end if;
-  while exists (select 1 from market.profiles p where p.username = uname) loop
-    uname := 'm_' || substr(md5(random()::text), 1, 12);
-  end loop;
-  insert into market.profiles (id, username, display_name)
-  values (p_user, uname, coalesce(nullif(left(btrim(p_display_name), 50), ''), 'Anggota brand'));
-end $$;
+-- Bagian org milik admin: fee org (F-A07 set_fee) dan reward type (F-B03). Org/tim/agency/undangan di db/brand, profil di db/creator.
 
 -- F-A07 admin_super/admin_ops aal2: set_fee {mgmt_fee_pct, admin_fee_pct, clipper_fee_pct, instant_withdraw_fee} atau null untuk
 -- kembali ke global. Aksi org lain (verify/reject/suspend/add_member) di api.manage_org project brand. Tercatat audit log.
@@ -188,6 +167,5 @@ begin
   return n;
 end $$;
 
-revoke execute on function market.ensure_member_profile(uuid, text, text) from public;
 revoke execute on function api.manage_org(uuid, text, jsonb), api.save_reward_type(jsonb), api.upload_reward_codes(uuid, text[]) from public;
 grant execute on function api.manage_org(uuid, text, jsonb), api.save_reward_type(jsonb), api.upload_reward_codes(uuid, text[]) to authenticated;

@@ -1,12 +1,12 @@
 -- Org brand, tim, agency (F-B01, F-B12, F-A07, alur 5) — pemilik: project brand. Reward type & fee org ada di admin. Kode error: kepala api/_helpers.sql.
 
--- Profil E-01 minimal untuk anggota brand yang belum onboarding (alur 5). Profil dimiliki project profil: di sini hanya event
+-- Profil E-01 minimal untuk anggota brand yang belum onboarding (alur 5). Profil dimiliki project creator: di sini hanya event
 -- profile.ensure (pemilik membuat profil bila belum ada, username sementara m_<hex>; profil yang ada tidak diubah).
 create function market.ensure_member_profile(p_user uuid, p_username text default null, p_display_name text default null)
 returns void
 language plpgsql security definer set search_path = '' as $$
 begin
-  perform bus.emit('admin', 'profile.ensure', jsonb_build_object('user_id', p_user, 'username', p_username, 'display_name', p_display_name));
+  perform bus.emit('creator', 'profile.ensure', jsonb_build_object('user_id', p_user, 'username', p_username, 'display_name', p_display_name));
 end $$;
 
 -- Keputusan verifikasi org (J-A2): dipakai manage_org (verify/reject) dan record_review target org.

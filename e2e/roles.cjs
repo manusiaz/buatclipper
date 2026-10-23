@@ -24,6 +24,7 @@ const psql = (db, q) => execFileSync('psql', [db, '-X', '-v', 'ON_ERROR_STOP=1',
 const core = (q) => psql(CORE_DB, q);
 const brandDb = (q) => psql(BRAND_DB, q);
 const CREATOR_DB = env('E2E_CREATOR_DB', 'postgresql://postgres:postgres@127.0.0.1:56322/postgres');
+const CREATOR_API = env('E2E_CREATOR_API', 'http://127.0.0.1:56321');
 /** Bus antar DB tidak macet: tidak ada event gagal yang belum terkirim di outbox ketiga project. */
 const busStuck = () =>
   [['admin', CORE_DB], ['brand', BRAND_DB], ['creator', CREATOR_DB]]
@@ -431,6 +432,10 @@ step('clipper-signup', ['clipper'], async ({ clipper }) => {
   await clipper.waitForURL(APP + '/campaigns**', { timeout: 30000 });
   S.clipperId = core(`select id from market.profiles where username = ${lit(S.clipperUser)}`);
   check(S.clipperId, 'profil clipper');
+  const owned = psql(CREATOR_DB, `select username from market.profiles where id = '${S.clipperId}'`);
+  check(owned === S.clipperUser, 'profil milik creator, admin = replika: ' + owned);
+  const stuckAfterOnboarding = busStuck();
+  check(!stuckAfterOnboarding, 'bus antar DB tidak macet setelah onboarding: ' + stuckAfterOnboarding);
   await clipper.getByText(S.title).first().waitFor({ timeout: 30000 });
   await shot(clipper, 'app-campaigns');
   // SIMULASI C1.5: OAuth TikTok tidak bisa offline → akun sosmed terverifikasi ditulis seperti worker_upsert_social_account
@@ -438,6 +443,26 @@ step('clipper-signup', ['clipper'], async ({ clipper }) => {
                       values ('${S.clipperId}', 'tiktok', 'tt-${S.clipperUser}', '${S.clipperUser}', 5000, now() - interval '400 days')
                       returning id`);
   log('clipper: onboarding → app/campaigns menampilkan campaign; akun TikTok (SQL)');
+});
+
+step('clipper-profile-edit', ['clipper'], async ({ clipper }) => {
+  // F-C01: nama & foto ditulis ke project creator (ensure_profile + storage avatar); halaman membaca replika admin.
+  await clipper.goto(`${APP}/profile`);
+  await clipper.getByRole('button', { name: 'Ubah' }).click();
+  await clipper.locator('input[type=file]').setInputFiles(PNG);
+  await clipper.getByLabel('Nama tampilan').fill('QA Clipper Baru');
+  await clipper.getByRole('button', { name: 'Simpan' }).click();
+  await clipper.getByText('Profil diperbarui').waitFor({ timeout: 20000 });
+  await clipper.reload();
+  await clipper.getByText('QA Clipper Baru').first().waitFor({ timeout: 5000 });
+  const own = psql(CREATOR_DB, `select display_name || '|' || avatar_path from market.profiles where id = '${S.clipperId}'`);
+  check(own === core(`select display_name || '|' || avatar_path from market.profiles where id = '${S.clipperId}'`),
+    'nama & avatar di creator = replika admin: ' + own);
+  const src = await clipper.locator(`img[src*="/avatars/"]`).first().getAttribute('src');
+  check(src && src.startsWith(CREATOR_API), 'avatar disajikan storage creator: ' + src);
+  check((await clipper.request.get(src)).ok(), 'file avatar ada di storage creator');
+  await shot(clipper, 'clipper-profile-edit');
+  log('clipper: ubah nama + foto → creator, halaman langsung menampilkan versi baru');
 });
 
 async function claimOnce(clipper, n) {

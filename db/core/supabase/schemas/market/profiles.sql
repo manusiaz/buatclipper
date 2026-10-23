@@ -1,5 +1,6 @@
--- E-01 profil publik clipper/anggota brand. id = sub JWT identity (auth.users.id di project identity), tanpa FK lintas DB.
--- Tanpa PII: tidak ada email, HP, nama KTP. Dibuat/diubah lewat api.ensure_profile (alur 1); status diubah fraud queue.
+-- E-01 profil publik clipper/anggota brand. id = sub JWT identity, tanpa FK lintas DB. Tanpa PII. Isi (username, nama
+-- tampilan, avatar, created_at) = replika project creator (api.ensure_profile di sana); kolom milik admin: trust_score,
+-- status, suspended_until (fraud queue, sanksi, manage_user), referral_code.
 create table market.profiles (
   id uuid primary key,
   username text not null check (username ~ '^[a-z0-9_.]{3,30}$'),
@@ -16,9 +17,9 @@ create table market.profiles (
   constraint profiles_suspend_has_until check (status <> 'suspended' or suspended_until is not null)
 );
 
--- Replika profil publik ke brand (anggota tim, nama clipper di review, trust_score untuk visibilitas campaign level). Referral tetap di admin.
+-- Status & trust score ke creator (cek akun aktif, onboarding) dan brand (visibilitas campaign level). Referral tetap di admin.
 create trigger profiles_replicate after insert or update or delete on market.profiles for each row
-  execute function bus.replicate('brand:username,display_name,avatar_path,status,suspended_until,trust_score');
+  execute function bus.replicate('brand:status,suspended_until,trust_score', 'creator:status,suspended_until,trust_score');
 
 alter table market.profiles enable row level security;
 create policy profiles_iss on market.profiles as restrictive for all to authenticated  -- policy:core.iss-identity

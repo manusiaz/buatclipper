@@ -11,7 +11,7 @@
     }
   },
   "tasks": {
-    "test": "deno test --allow-env --allow-net=localhost",
+    "test": "deno test --allow-env --allow-net=localhost --permit-no-files",
     "check": "deno check */index.ts"
   },
   "fmt": {

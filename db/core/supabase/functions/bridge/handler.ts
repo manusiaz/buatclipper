@@ -18,8 +18,6 @@ export interface BridgeDeps {
   busSecret?: (from: string) => string;
   requireApiKey: (req: Request) => Promise<void>;
   identity: (action: string, payload: Payload) => Promise<unknown>;
-  /** Hapus foto profil di bucket publik avatars/{user_id}/ lewat Storage API (alur 7, AA-16). */
-  removeAvatars: (userId: string) => Promise<void>;
   /** Jalankan aksi cron di latar (pg_net menunggu maks 5 detik). */
   background: <T>(task: Promise<T>, sync: boolean) => Promise<{ result?: T; accepted: boolean }>;
 }
@@ -179,12 +177,8 @@ export function createBridgeHandler(deps: BridgeDeps): (req: Request) => Promise
         const msg = await verifyBridge(req, deps.inboundSecret());
         const a = Object.hasOwn(INBOUND, msg.action) ? INBOUND[msg.action] : undefined;
         if (!a) throw new HttpError(400, "unknown_action", msg.action);
+        // close_account: foto profil dihapus project creator saat event profile.anonymize tiba (creator/bridge).
         const data = (await deps.rpc(a.fn, a.args(msg.payload))) ?? null;
-        // Akun tertutup (baru atau sudah): foto profil di bucket publik ikut dihapus; gagal → error, identity mengulang
-        // (close_account idempoten).
-        if (msg.action === "close_account" && (data as { ok?: boolean } | null)?.ok) {
-          await deps.removeAvatars(String(msg.payload.user_id));
-        }
         return json(200, { ok: true, data });
       }
       await deps.requireApiKey(req);

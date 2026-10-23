@@ -1,5 +1,5 @@
 -- test:brand.org — org, tim, undangan, agency di project brand (F-B01, F-B12, F-A07, alur 5). Efek ke project lain diperiksa
--- sebagai event outbox: notify.user / audit.log / review.decision / profile.ensure / org.owner_lost ke admin, rep.row ke
+-- sebagai event outbox: notify.user / audit.log / review.decision / org.owner_lost ke admin, profile.ensure ke creator, rep.row ke
 -- admin & creator. Jalankan: supabase test db --workdir db/brand
 begin;
 do $$ begin execute (select 'truncate ' || string_agg(format('%I.%I', schemaname, tablename), ', ') || ' cascade'
@@ -77,7 +77,7 @@ select is((select status::text || ':' || npwp from market.organizations where id
           'pending_verification:012345678901234', 'org baru pending_verification, NPWP dinormalisasi angka');
 select is((select role::text from market.org_members where org_id = (select id from t_ids where k = 'org_new')
              and user_id = '22222222-0000-0000-0000-0000000000a2'), 'brand_owner', 'pembuat org = brand_owner');
-select ok(exists (select 1 from pg_temp.events('admin', 'profile.ensure') e where e ->> 'user_id' = '22222222-0000-0000-0000-0000000000f0'),
+select ok(exists (select 1 from pg_temp.events('creator', 'profile.ensure') e where e ->> 'user_id' = '22222222-0000-0000-0000-0000000000f0'),
           'pembuat org memastikan profil ada di project profil (event profile.ensure)');
 
 -- manage_org: admin_ops aal1 ditolak; aal2 verify → verified + keputusan review + notifikasi + audit (event ke admin)
@@ -141,7 +141,7 @@ select is((select count(*)::int from pg_temp.events('admin', 'notify.user') e wh
           'notifikasi org.rejected + alasan');
 select is((select array_agg(action order by id) from ops.audit_logs where target = 'org:44444444-0000-0000-0000-000000000002'),
           array['org.verify', 'org.add_member'], 'aksi manage_org tercatat di audit log');
-select is((select e ->> 'username' from pg_temp.events('admin', 'profile.ensure') e where e ->> 'user_id' = '11111111-0000-0000-0000-0000000000f1'),
+select is((select e ->> 'username' from pg_temp.events('creator', 'profile.ensure') e where e ->> 'user_id' = '11111111-0000-0000-0000-0000000000f1'),
           'pic_toko', 'add_member: profil dipastikan di project profil dengan username pilihan admin');
 select is((select role::text from market.org_members where user_id = '11111111-0000-0000-0000-0000000000f1'), 'brand_manager',
           'add_member: anggota dengan role');
@@ -174,7 +174,7 @@ select is((select used from api.invite_preview((select tok from t_ids where k = 
 reset role;
 select is((select m.role::text from market.org_members m where m.user_id = '11111111-0000-0000-0000-0000000000f2'), 'brand_viewer',
           'anggota dengan role undangan');
-select ok(exists (select 1 from pg_temp.events('admin', 'profile.ensure') e where e ->> 'user_id' = '11111111-0000-0000-0000-0000000000f2'),
+select ok(exists (select 1 from pg_temp.events('creator', 'profile.ensure') e where e ->> 'user_id' = '11111111-0000-0000-0000-0000000000f2'),
           'profil penerima dipastikan di project profil');
 update market.org_invites set accepted_by = null, accepted_at = null, created_at = now() - interval '8 days',
        expires_at = now() - interval '1 day';

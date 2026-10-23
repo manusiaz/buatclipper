@@ -21,7 +21,8 @@
     "@clipper/ui": "workspace:*",
     "@clipper/i18n": "workspace:*",
     "@clipper/db-core": "workspace:*",
-    "@clipper/db-brand": "workspace:*"
+    "@clipper/db-brand": "workspace:*",
+    "@clipper/db-creator": "workspace:*"
   },
   "peerDependencies": {
     "next": "catalog:",

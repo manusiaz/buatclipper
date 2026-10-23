@@ -11,8 +11,8 @@
     "typecheck": "pnpm -r --no-bail typecheck",
     "test": "pnpm -r --if-present test",
     "build": "pnpm -r --filter \"./apps/*\" build",
-    "e2e": "psql postgresql://postgres:postgres@127.0.0.1:55322/postgres -X -q -f e2e/seed.sql && psql postgresql://postgres:postgres@127.0.0.1:57322/postgres -X -q -f e2e/seed-brand.sql && node e2e/journey.cjs",
-    "e2e:mobile": "psql postgresql://postgres:postgres@127.0.0.1:55322/postgres -X -q -f e2e/seed.sql && psql postgresql://postgres:postgres@127.0.0.1:57322/postgres -X -q -f e2e/seed-brand.sql && pnpm --filter @clipper/mobile export:web && node e2e/mobile.cjs"
+    "e2e": "psql postgresql://postgres:postgres@127.0.0.1:55322/postgres -X -q -f e2e/seed.sql && psql postgresql://postgres:postgres@127.0.0.1:57322/postgres -X -q -f e2e/seed-brand.sql && psql postgresql://postgres:postgres@127.0.0.1:56322/postgres -X -q -f e2e/seed-creator.sql && node e2e/journey.cjs",
+    "e2e:mobile": "psql postgresql://postgres:postgres@127.0.0.1:55322/postgres -X -q -f e2e/seed.sql && psql postgresql://postgres:postgres@127.0.0.1:57322/postgres -X -q -f e2e/seed-brand.sql && psql postgresql://postgres:postgres@127.0.0.1:56322/postgres -X -q -f e2e/seed-creator.sql && pnpm --filter @clipper/mobile export:web && node e2e/mobile.cjs"
   },
   "devDependencies": {
     "playwright": "1.56.1"

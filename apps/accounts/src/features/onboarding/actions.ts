@@ -3,7 +3,8 @@
 import { cookies } from 'next/headers';
 import { safeNext } from '@clipper/auth';
 import { refreshSession } from '@clipper/auth/actions';
-import { coreServer, getAuth } from '@clipper/auth/server';
+import { coreServer, creatorServer, getAuth } from '@clipper/auth/server';
+import { untilReplicated } from '@clipper/db-creator';
 import { dbCode } from '@/lib/errors';
 import { identityDb } from '@/lib/identity';
 import { extOf, IMAGE_TYPES } from '@/lib/upload';
@@ -11,24 +12,24 @@ import { DISPLAY_NAME_MAX, normalizeUsername, USERNAME_RE, usernameCandidates, t
 
 export type UsernameCheck = { status: 'ok' | 'taken' | 'invalid'; suggestions: string[] };
 
-/** Cek unik saat diketik (C1.3). Username milik sendiri dianggap tersedia. */
+/** Cek unik saat diketik (C1.3) di project creator (pemilik profil). Username milik sendiri dianggap tersedia. */
 export async function checkUsername(raw: string): Promise<UsernameCheck> {
   const username = normalizeUsername(raw);
   if (!USERNAME_RE.test(username)) return { status: 'invalid', suggestions: [] };
-  const [{ claims }, core] = await Promise.all([getAuth('sso'), coreServer()]);
+  const [{ claims }, creator] = await Promise.all([getAuth('sso'), creatorServer()]);
   const candidates = usernameCandidates(username);
-  const { data } = await core.from('profiles').select('id, username').in('username', [username, ...candidates]);
+  const { data } = await creator.from('profiles').select('id, username').in('username', [username, ...candidates]);
   const taken = new Set((data ?? []).filter((p) => p.id !== claims?.sub).map((p) => p.username));
   if (!taken.has(username)) return { status: 'ok', suggestions: [] };
   return { status: 'taken', suggestions: candidates.filter((c) => !taken.has(c)).slice(0, 3) };
 }
 
-/** Signed upload URL foto profil: bucket core avatars (publik, ≤ 1 MB), folder milik user (policy avatars_own_write). */
+/** Signed upload URL foto profil: bucket creator avatars (publik, ≤ 1 MB), folder milik user (policy avatars_own_write). */
 export async function avatarUploadUrl(type: string): Promise<{ ok: true; path: string; signedUrl: string } | { ok: false; error: string }> {
   if (!IMAGE_TYPES.includes(type)) return { ok: false, error: 'file_type' };
-  const [{ claims }, core] = await Promise.all([getAuth('sso'), coreServer()]);
+  const [{ claims }, creator] = await Promise.all([getAuth('sso'), creatorServer()]);
   if (!claims) return { ok: false, error: 'auth:no_session' };
-  const { data, error } = await core.storage.from('avatars').createSignedUploadUrl(`${claims.sub}/${crypto.randomUUID()}.${extOf(type)}`);
+  const { data, error } = await creator.storage.from('avatars').createSignedUploadUrl(`${claims.sub}/${crypto.randomUUID()}.${extOf(type)}`);
   if (error || !data) return { ok: false, error: 'upload_failed' };
   return { ok: true, path: data.path, signedUrl: data.signedUrl };
 }
@@ -49,8 +50,9 @@ export interface OnboardingInput {
 export type OnboardingResult = { ok: true; redirect: string } | { ok: false; error: string };
 
 /**
- * Urutan §15.6 / C1.3: ensure_profile (core) → record_consent (identity) → refreshSession. Consent paling akhir: gagal di
- * tengah = claim consent_ok tetap false, user kembali ke onboarding, tidak pernah masuk app tanpa profil.
+ * Urutan §15.6 / C1.3: ensure_profile (creator) → replika profil sampai di admin → record_consent (identity) → refreshSession.
+ * Consent paling akhir: gagal di tengah = claim consent_ok tetap false, user kembali ke onboarding, tidak pernah masuk app
+ * tanpa profil (app membaca profil dari replika admin).
  */
 export async function completeOnboarding(input: OnboardingInput): Promise<OnboardingResult> {
   const { claims } = await getAuth('sso');
@@ -63,14 +65,16 @@ export async function completeOnboarding(input: OnboardingInput): Promise<Onboar
 
   // Kode referral dari cookie .{domain} (F-C16); ensure_profile hanya memakainya untuk profil baru.
   const ref = input.role === 'clipper' ? (await cookies()).get('clipper_ref')?.value?.toLowerCase() : undefined;
-  const core = await coreServer();
-  const { error: profileError } = await core.rpc('ensure_profile', {
+  const [creator, core] = await Promise.all([creatorServer(), coreServer()]);
+  const { error: profileError } = await creator.rpc('ensure_profile', {
     p_username: username,
     p_display_name: displayName,
     p_referral_code: ref && /^[a-z0-9]{8}$/.test(ref) ? ref : undefined,
     p_avatar_path: input.avatarPath,
   });
   if (profileError) return { ok: false, error: dbCode(profileError, { '23514': 'username_invalid' }) };
+  const synced = await untilReplicated(async () => (await core.from('my_profile').select('username').maybeSingle()).data?.username === username);
+  if (!synced) return { ok: false, error: 'profile_syncing' };
 
   const id = await identityDb();
   const consents =

@@ -273,6 +273,7 @@
     "file_type": "Format foto tidak didukung. Pakai JPG, PNG, atau WebP.",
     "file_too_large": "Foto terlalu besar. Pakai foto maksimal 5 MB.",
     "upload_failed": "Foto gagal diunggah. Periksa koneksi lalu coba lagi.",
+    "profile_syncing": "Profil sedang disiapkan. Tunggu sebentar lalu coba lagi.",
     "payload_too_large": "Data terlalu panjang. Persingkat isian.",
     "balance_remaining": "Masih ada saldo di wallet. Tarik saldo dulu sebelum menghapus akun.",
     "payout_in_progress": "Masih ada penarikan yang berjalan. Tunggu sampai selesai.",

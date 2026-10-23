@@ -68,7 +68,7 @@ role_keys() {
     core) echo '^(CORE_[A-Z0-9_]+|BRIDGE_SECRET_[A-Z_]+|UNSUBSCRIBE_SECRET|BUS_ADMIN_TO_[A-Z]+|BUS_[A-Z]+_TO_ADMIN)=' ;;
     creator) echo '^(CREATOR_[A-Z0-9_]+|BUS_CREATOR_TO_[A-Z]+|BUS_[A-Z]+_TO_CREATOR)=' ;;
     brand) echo '^(BRAND_[A-Z0-9_]+|BUS_BRAND_TO_[A-Z]+|BUS_[A-Z]+_TO_BRAND)=' ;;
-    apps) echo '^(IDENTITY_ANON_KEY|CORE_ANON_KEY|BRAND_ANON_KEY|VAPID_PUBLIC_KEY)=' ;;
+    apps) echo '^(IDENTITY_ANON_KEY|CORE_ANON_KEY|BRAND_ANON_KEY|CREATOR_ANON_KEY|VAPID_PUBLIC_KEY)=' ;;
   esac
 }
 make_secrets() {
@@ -100,7 +100,7 @@ load_secrets() {
                       PII_HMAC_KEY PII_ENC_KEYS PII_ENC_KEY_VERSION VAPID_PUBLIC_KEY VAPID_PRIVATE_KEY DISBURSE_CALLBACK_TOKEN" ;;
       core) need="$(printf 'CORE_%s ' $stack_keys) BRIDGE_SECRET_CORE_TO_IDENTITY BRIDGE_SECRET_IDENTITY_TO_CORE UNSUBSCRIBE_SECRET$bus_in$bus_out" ;;
       creator | brand) need="$(printf "${r^^}_%s " $stack_keys)$bus_in$bus_out" ;;
-      apps) need="IDENTITY_ANON_KEY CORE_ANON_KEY BRAND_ANON_KEY VAPID_PUBLIC_KEY" ;;
+      apps) need="IDENTITY_ANON_KEY CORE_ANON_KEY BRAND_ANON_KEY CREATOR_ANON_KEY VAPID_PUBLIC_KEY" ;;
     esac
     for k in $need; do [ -n "${!k:-}" ] || { echo "secrets.env kurang $k untuk peran $r"; exit 1; }; done
   done
@@ -342,6 +342,7 @@ apps_env() {
     echo "NEXT_PUBLIC_IDENTITY_URL=$AUTH"; echo "NEXT_PUBLIC_IDENTITY_PUBLISHABLE_KEY=$IDENTITY_ANON_KEY"
     echo "NEXT_PUBLIC_CORE_URL=$API"; echo "NEXT_PUBLIC_CORE_PUBLISHABLE_KEY=$CORE_ANON_KEY"
     echo "NEXT_PUBLIC_BRAND_DB_URL=$BRAND_API"; echo "NEXT_PUBLIC_BRAND_DB_PUBLISHABLE_KEY=$BRAND_ANON_KEY"
+    echo "NEXT_PUBLIC_CREATOR_DB_URL=$CREATOR_API"; echo "NEXT_PUBLIC_CREATOR_DB_PUBLISHABLE_KEY=$CREATOR_ANON_KEY"
     echo "NEXT_PUBLIC_COOKIE_DOMAIN=.$DOMAIN"
     echo "NEXT_PUBLIC_WEB_URL=$WEB"; echo "NEXT_PUBLIC_ACCOUNTS_URL=$ACC"; echo "NEXT_PUBLIC_APP_URL=$APP"
     echo "NEXT_PUBLIC_BRAND_URL=$BRAND"; echo "NEXT_PUBLIC_ADMIN_URL=$ADMIN"

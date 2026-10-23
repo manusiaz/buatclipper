@@ -80,8 +80,20 @@ reset role;
 grant select on t_ref to authenticated;
 select ok((select code ~ '^[a-z0-9]{8}$' from t_ref), 'kode referral 8 karakter dibuat saat diminta');
 set local role authenticated;
-set local request.jwt.claims = '{"sub":"11111111-0000-0000-0000-0000000000cc","role":"authenticated","aal":"aal1","iss":"https://auth.contoh.id/auth/v1"}';
-select is((select created from api.ensure_profile('citra', 'Citra', (select code from t_ref))), true, 'profil baru dari link referral');
+reset role;
+-- Profil baru di creator: replika tiba di admin, lalu event referral.record (kode tak dikenal / milik sendiri diabaikan).
+insert into market.profiles (id, username, display_name) values ('11111111-0000-0000-0000-0000000000cc', 'citra', 'Citra');
+select lives_ok($$ select bus_in.referral_record(jsonb_build_object('user_id', '11111111-0000-0000-0000-0000000000cc', 'code', 'zzzzzzzz')) $$,
+                'kode referral tidak dikenal diabaikan tanpa error');
+select lives_ok($$ select bus_in.referral_record(jsonb_build_object('user_id', '11111111-0000-0000-0000-00000000000a', 'code', (select code from t_ref))) $$,
+                'kode referral milik sendiri diabaikan tanpa error');
+select is((select count(*)::int from market.referrals where referred_id in ('11111111-0000-0000-0000-0000000000cc', '11111111-0000-0000-0000-00000000000a')),
+          0, 'referral tidak dicatat dari kode tak dikenal / milik sendiri');
+select bus_in.referral_record(jsonb_build_object('user_id', '11111111-0000-0000-0000-0000000000cc', 'code', (select code from t_ref)));
+select bus_in.referral_record(jsonb_build_object('user_id', '11111111-0000-0000-0000-0000000000cc', 'code', (select code from t_ref)));
+select is((select count(*)::int from market.referrals where referred_id = '11111111-0000-0000-0000-0000000000cc'), 1,
+          'profil baru dari link referral (event ulang idempoten)');
+set local role authenticated;
 set local request.jwt.claims = '{"sub":"11111111-0000-0000-0000-00000000000a","role":"authenticated","aal":"aal1","iss":"https://auth.contoh.id/auth/v1"}';
 select is((select referred_username from api.referrals), 'citra', 'pengundang melihat teman yang mendaftar');
 reset role;

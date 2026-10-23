@@ -321,7 +321,7 @@ select is((select f.mgmt_fee_pct from market.organizations o join finance.fee_ru
 select ok(not exists (select 1 from bus.outbox where payload ->> 'table' = 'market.organizations'),
           'org = replika dari brand: perubahan fee di admin tidak dikirim balik');
 
--- Event dari brand (bus_in.*): keputusan review, notifikasi, audit, profil anggota, owner hilang
+-- Event dari brand (bus_in.*): keputusan review, notifikasi, audit, owner hilang
 select api.bus_receive('brand', jsonb_build_array(
   jsonb_build_object('id', gen_random_uuid(), 'topic', 'review.decision', 'payload', jsonb_build_object('target_type', 'org',
     'target_id', '44444444-0000-0000-0000-000000000002', 'actor_id', '33333333-0000-0000-0000-0000000000ad', 'decision', 'approve')),
@@ -329,17 +329,13 @@ select api.bus_receive('brand', jsonb_build_array(
     'event', 'org.verified', 'payload', jsonb_build_object('org_id', '44444444-0000-0000-0000-000000000002', 'org_name', 'Toko Dua'), 'email', true)),
   jsonb_build_object('id', gen_random_uuid(), 'topic', 'audit.log', 'payload', jsonb_build_object('actor_id', '33333333-0000-0000-0000-0000000000ad',
     'action', 'org.verify', 'target', 'org:44444444-0000-0000-0000-000000000002', 'before', '{"status":"pending_verification"}'::jsonb,
-    'after', '{"status":"verified"}'::jsonb, 'at', '2026-01-02T03:04:05+00:00')),
-  jsonb_build_object('id', gen_random_uuid(), 'topic', 'profile.ensure', 'payload', jsonb_build_object('user_id', '11111111-0000-0000-0000-0000000000f4',
-    'username', 'pic_baru'))));
+    'after', '{"status":"verified"}'::jsonb, 'at', '2026-01-02T03:04:05+00:00'))));
 select is((select count(*)::int from trust.review_decisions where target_type = 'org'), 1, 'keputusan org dari brand tercatat di E-19');
 select is((select count(*)::int from ops.notifications where event = 'org.verified' and user_id = '22222222-0000-0000-0000-0000000000a2'
              and payload ->> 'org_id' = '44444444-0000-0000-0000-000000000002'), 1, 'notifikasi dari brand masuk inbox admin');
 select is((select at from ops.audit_logs where action = 'org.verify'), '2026-01-02T03:04:05+00:00'::timestamptz,
           'audit dari brand masuk pusat audit dengan waktu asli');
-select is((select username from market.profiles where id = '11111111-0000-0000-0000-0000000000f4'), 'pic_baru',
-          'profile.ensure membuat profil anggota (sebelum replika anggotanya)');
-delete from market.profiles where id = '11111111-0000-0000-0000-0000000000f4';
+select ok(to_regprocedure('bus_in.profile_ensure(jsonb)') is null, 'profile.ensure bukan urusan admin (brand mengirimnya ke creator)');
 
 -- Agency (replika org_links): draft klien terlihat hanya selama tautan disetujui & belum dicabut
 insert into market.org_links (agency_org_id, client_org_id) values ('44444444-0000-0000-0000-0000000000a9', '44444444-0000-0000-0000-000000000001');

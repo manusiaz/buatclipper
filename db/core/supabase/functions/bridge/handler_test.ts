@@ -10,7 +10,6 @@ const SECRET = "identity-to-core";
 function handler(
   rpcHandlers: Record<string, (a: Record<string, unknown>) => unknown>,
   identity: BridgeDeps["identity"] = () => Promise.resolve(null),
-  removeAvatars: BridgeDeps["removeAvatars"] = () => Promise.resolve(),
 ) {
   const f = fakeRpc(rpcHandlers);
   const h = createBridgeHandler({
@@ -21,7 +20,6 @@ function handler(
         ? Promise.resolve()
         : Promise.reject(new HttpError(401, "unauthorized")),
     identity,
-    removeAvatars,
     background: async (task) => ({ result: await task, accepted: false }),
   });
   return { h, calls: f.calls };
@@ -169,29 +167,4 @@ Deno.test("bridge: reconcile_ids → check_ids (dipecah per 1000) → bridge_rep
     p_missing: { user_ids: ["u7", "u2400"], method_ids: ["m1"], recipient_refs: [] },
   });
   assert.deepEqual(out.missing, { user_ids: 2, method_ids: 1, recipient_refs: 0 });
-});
-
-Deno.test("bridge close_account: akun tertutup → foto profil publik dihapus; ditolak → tidak; hapus gagal → error (diulang)", async () => {
-  const removed: string[] = [];
-  const ok = handler({ bridge_close_account: () => ({ ok: true }) }, undefined, (u) => {
-    removed.push(u);
-    return Promise.resolve();
-  });
-  assert.deepEqual(await (await ok.h(await inbound("close_account", { user_id: "u1" }))).json(), {
-    ok: true,
-    data: { ok: true },
-  });
-  assert.deepEqual(removed, ["u1"]);
-  const kept = handler({ bridge_close_account: () => ({ ok: false, reason: "balance_remaining" }) }, undefined, (u) => {
-    removed.push(u);
-    return Promise.resolve();
-  });
-  await kept.h(await inbound("close_account", { user_id: "u2" }));
-  assert.deepEqual(removed, ["u1"]);
-  const broken = handler(
-    { bridge_close_account: () => ({ ok: true }) },
-    undefined,
-    () => Promise.reject(new Error("storage down")),
-  );
-  assert.notEqual((await broken.h(await inbound("close_account", { user_id: "u3" }))).status, 200);
 });

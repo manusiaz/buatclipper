@@ -168,12 +168,12 @@ select throws_ok($$ insert into market.organizations (name, org_type, npwp, crea
                     '33333333-0000-0000-0000-0000000000ad') $$, '23514', null, 'org perorangan tidak boleh menyimpan NPWP/NIK di core');
 
 -- ---------- RLS per role ----------
+select ok(to_regprocedure('api.ensure_profile(text,text,text,text)') is null, 'ensure_profile tidak ada di admin (pemilik profil = creator)');
 set local role anon;
 select is((select array_agg(slug::text) from api.campaigns), array['film-satu'], 'anon hanya melihat campaign yang tayang');
 select is((select remaining from api.reward_pools), 1000000::numeric, 'anon melihat sisa budget campaign tayang');
 select throws_ok($$ select * from api.claims $$, '42501', null, 'anon tidak bisa membaca claim');
 select is((select array_agg(scope order by scope) from api.fee_rules), array['global'], 'anon hanya melihat fee rule global (harga publik)');
-select throws_ok($$ select api.ensure_profile('anon', 'Anon') $$, '42501', null, 'anon tidak bisa memanggil ensure_profile');
 reset role;
 
 set local role authenticated;
@@ -187,17 +187,10 @@ select is((select count(*)::int from api.invoices), 0, 'clipper tidak melihat in
 select throws_ok($$ select token_ref from tracking.social_accounts $$, '42501', null, 'token_ref tidak bisa dibaca browser');
 select throws_ok($$ select note from trust.review_decisions $$, '42501', null, 'catatan internal moderator tidak bisa dibaca browser');
 select is((select count(*)::int from api.review_decisions), 1, 'clipper melihat banding miliknya');
-select throws_ok($$ select api.ensure_profile('budi', 'Andi') $$, '23505', 'username_taken', 'username milik orang lain ditolak');
-select is((select created from api.ensure_profile('andi_baru', 'Andi B')), false, 'ensure_profile memperbarui profil yang sudah ada');
 select is((select count(*)::int from api.admin_profiles), 0, 'non-admin tidak melihat status/Trust Score user lain');
 select is((select count(*)::int from api.managed_briefs), 0, 'clipper tidak melihat brief mentah paket managed');
-select throws_ok($$ select api.ensure_profile('andi_baru', 'Andi B', null, '11111111-0000-0000-0000-00000000000b/a.webp') $$,
-                 '22023', 'invalid:avatar_path', 'avatar di folder user lain ditolak');
-select lives_ok($$ select api.ensure_profile('andi_baru', 'Andi B', null, '11111111-0000-0000-0000-00000000000a/a.webp') $$,
-                'avatar milik sendiri diterima');
-select lives_ok($$ select api.ensure_profile('andi_baru', 'Andi B') $$, 'update tanpa p_avatar_path');
-select is((select avatar_path from api.profiles where id = '11111111-0000-0000-0000-00000000000a'),
-          '11111111-0000-0000-0000-00000000000a/a.webp', 'avatar tersimpan & dipertahankan saat update tanpa avatar');
+select throws_ok($$ update market.profiles set display_name = 'Andi B' where id = '11111111-0000-0000-0000-00000000000a' $$, '42501', null,
+                 'isi profil tidak bisa ditulis dari browser di admin (milik project creator)');
 set local request.jwt.claims = '{"sub":"11111111-0000-0000-0000-00000000000b","role":"authenticated","aal":"aal1","iss":"https://auth.contoh.id/auth/v1"}';
 select is((select count(*)::int from api.claims), 0, 'clipper B tidak melihat claim A');
 select is((select count(*)::int from api.wallet_balances), 0, 'clipper B tidak melihat saldo A');
@@ -241,7 +234,7 @@ set local role anon;
 select is(api.report_by_token((select tok from t_tok)), null, 'link yang dicabut tidak bisa dibuka lagi');
 reset role;
 
--- ---------- storage admin (cover & aset campaign di storage project brand) ----------
+-- ---------- storage admin (cover & aset campaign di storage brand, avatar di storage creator) ----------
 insert into storage.buckets (id, name, public) values ('campaign-covers', 'campaign-covers', true), ('avatars', 'avatars', true) on conflict (id) do nothing;
 set local role authenticated;
 set local request.jwt.claims = '{"sub":"22222222-0000-0000-0000-0000000000b1","role":"authenticated","aal":"aal1","iss":"https://auth.contoh.id/auth/v1"}';
@@ -249,10 +242,8 @@ select throws_ok($$ insert into storage.objects (bucket_id, name) values ('campa
                     '44444444-0000-0000-0000-000000000001/55555555-0000-0000-0000-000000000001/cover.webp') $$, '42501', null,
                  'storage admin tidak menerima cover campaign (rumahnya storage brand)');
 set local request.jwt.claims = '{"sub":"22222222-0000-0000-0000-0000000000a2","role":"authenticated","aal":"aal1","iss":"https://auth.contoh.id/auth/v1"}';
-select lives_ok($$ insert into storage.objects (bucket_id, name) values ('avatars', '22222222-0000-0000-0000-0000000000a2/a.webp') $$,
-                'user unggah avatar ke foldernya');
-select throws_ok($$ insert into storage.objects (bucket_id, name) values ('avatars', '11111111-0000-0000-0000-00000000000a/a.webp') $$,
-                 '42501', null, 'user tidak bisa unggah avatar ke folder orang lain');
+select throws_ok($$ insert into storage.objects (bucket_id, name) values ('avatars', '22222222-0000-0000-0000-0000000000a2/a.webp') $$,
+                 '42501', null, 'storage admin tidak menerima avatar, juga di folder sendiri (rumahnya storage creator)');
 reset role;
 
 -- ---------- notifikasi & job ----------

@@ -33,7 +33,7 @@ export default async function HubPage({ searchParams }: { searchParams: SearchPa
   const consentCount = consentSummary(consents.data ?? []).filter((c) => c.active).length;
   const p = profile.data;
   const name = p?.display_name || claims.email || '';
-  const avatar = p?.avatar_path ? `${process.env.NEXT_PUBLIC_CORE_URL}/storage/v1/object/public/avatars/${p.avatar_path}` : null;
+  const avatar = p?.avatar_path ? `${process.env.NEXT_PUBLIC_CREATOR_DB_URL}/storage/v1/object/public/avatars/${p.avatar_path}` : null;
 
   const kycBody =
     kycStatus === 'approved'

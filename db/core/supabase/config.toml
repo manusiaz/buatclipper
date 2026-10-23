@@ -35,11 +35,6 @@ signing_keys_path = "./dev-keys/signing_keys.json"
 [auth.email]
 enable_signup = false
 
-[storage.buckets.avatars]
-public = true
-file_size_limit = "1MiB"
-allowed_mime_types = ["image/jpeg", "image/png", "image/webp"]
-
 [storage.buckets.invoice-docs]
 public = false
 file_size_limit = "5MiB"

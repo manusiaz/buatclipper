@@ -3,6 +3,7 @@
 import { createClient } from '@supabase/supabase-js';
 import { AppState, Platform } from 'react-native';
 import type { Database as CoreDb } from '@clipper/db-core';
+import type { Database as CreatorDb } from '@clipper/db-creator';
 import type { Database as IdentityDb } from '@clipper/db-identity';
 import { env } from './env';
 import { secureStorage } from './storage';
@@ -21,6 +22,8 @@ export const accessToken = async (): Promise<string | null> => (await identity.a
 export const core = createClient<CoreDb, 'api'>(env.coreUrl, env.coreKey, { db: { schema: 'api' }, accessToken });
 // Storage project brand: aset brief campaign (signed URL, policy campaign_assets_read).
 export const brandStorage = createClient(env.brandDbUrl, env.brandDbKey, { accessToken }).storage;
+// Project creator: profil (ensure_profile) + storage avatar.
+export const creator = createClient<CreatorDb, 'api'>(env.creatorDbUrl, env.creatorDbKey, { db: { schema: 'api' }, accessToken });
 export const identityApi = identity.schema('api');
 
 export type FnResult<T> = { ok: true; data: T } | { ok: false; error: string; detail?: unknown; status: number };
@@ -50,8 +53,8 @@ export async function invoke<T = unknown>(project: 'core' | 'identity', name: st
   return { ok: true, data: json as T };
 }
 
-/** URL publik bucket: campaign-covers (storage brand), avatars (storage admin) — sama dengan publicUrl app Next. */
+/** URL publik bucket: campaign-covers (storage brand), avatars (storage creator) — sama dengan publicUrl app Next. */
 export function publicUrl(bucket: 'campaign-covers' | 'avatars', path: string | null | undefined): string | null {
   if (!path) return null;
-  return `${bucket === 'campaign-covers' ? env.brandDbUrl : env.coreUrl}/storage/v1/object/public/${bucket}/${path.split('/').map(encodeURIComponent).join('/')}`;
+  return `${bucket === 'campaign-covers' ? env.brandDbUrl : env.creatorDbUrl}/storage/v1/object/public/${bucket}/${path.split('/').map(encodeURIComponent).join('/')}`;
 }

@@ -8,7 +8,8 @@ import { earningsBySubmission, type EarningRow } from '@clipper/clipper-lib/unit
 import type { Platform } from '@clipper/ui/platform-paths';
 import { readCache, writeCache } from './cache';
 import type { WidgetInput } from './widget-snapshot';
-import { brandStorage, core, identityApi, invoke, publicUrl } from './supabase';
+import { untilReplicated } from '@clipper/db-creator';
+import { brandStorage, core, creator, identityApi, invoke, publicUrl } from './supabase';
 
 export type Loaded<T> = {
   data: T | null;
@@ -458,11 +459,17 @@ export async function saveProfile(uid: string, input: { displayName: string; pho
     const body = await (await fetch(input.photo.uri)).arrayBuffer();
     if (body.byteLength > 1_000_000) return { ok: false, code: 'invalid:avatar_size' };
     avatarPath = `${uid}/${randomId()}.${ext}`;
-    const up = await core.storage.from('avatars').upload(avatarPath, body, { contentType: input.photo.mime, upsert: false });
+    const up = await creator.storage.from('avatars').upload(avatarPath, body, { contentType: input.photo.mime, upsert: false });
     if (up.error) return { ok: false, code: up.error.message };
   }
-  const { error } = await core.rpc('ensure_profile', { p_username: mine.data.username, p_display_name: name, ...(avatarPath ? { p_avatar_path: avatarPath } : {}) });
-  return error ? { ok: false, code: error.message } : { ok: true };
+  const { error } = await creator.rpc('ensure_profile', { p_username: mine.data.username, p_display_name: name, ...(avatarPath ? { p_avatar_path: avatarPath } : {}) });
+  if (error) return { ok: false, code: error.message };
+  // Layar membaca replika admin: tunggu sampai (read-your-writes).
+  await untilReplicated(async () => {
+    const { data } = await core.from('my_profile').select('display_name,avatar_path').maybeSingle();
+    return data?.display_name === name && data.avatar_path === avatarPath;
+  });
+  return { ok: true };
 }
 
 export async function appealSanction(id: string, message: string): Promise<{ ok: true } | { ok: false; code: string }> {

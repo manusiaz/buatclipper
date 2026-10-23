@@ -1,5 +1,5 @@
 // Link referral {domain}/?ref=<kode> (J-C5): kode disimpan 30 hari di cookie .{domain}; onboarding accounts mengirimnya ke
-// api.ensure_profile (hanya profil baru). Kode = 8 karakter dari api.my_referral_code.
+// api.ensure_profile project creator (hanya profil baru). Kode = 8 karakter dari api.my_referral_code.
 export const REF_COOKIE = 'clipper_ref';
 export const REF_MAX_AGE = 60 * 60 * 24 * 30;
 

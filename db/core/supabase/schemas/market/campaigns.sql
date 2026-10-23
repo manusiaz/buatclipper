@@ -127,7 +127,7 @@ revoke execute on function bus_in.market_campaigns_applied(text, jsonb) from pub
 -- E-37 undangan campaign privat (F-B11). Satu file dengan campaigns karena policy baca campaign memakainya.
 create table market.campaign_invites (
   campaign_id uuid not null references market.campaigns (id) on delete cascade,
-  user_id uuid not null references market.profiles (id),
+  user_id uuid not null,  -- tanpa FK: replika dari brand, profilnya dari creator (urutan antar sumber tidak dijamin)
   invited_by uuid not null,
   created_at timestamptz not null default now(),
   primary key (campaign_id, user_id)

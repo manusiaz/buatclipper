@@ -273,6 +273,7 @@
     "file_type": "Unsupported photo format. Use JPG, PNG, or WebP.",
     "file_too_large": "Photo is too large. Use a photo of at most 5 MB.",
     "upload_failed": "Photo upload failed. Check your connection and try again.",
+    "profile_syncing": "Your profile is still being set up. Wait a moment and try again.",
     "payload_too_large": "Too much data. Shorten your input.",
     "balance_remaining": "Your wallet still has a balance. Withdraw it before deleting your account.",
     "payout_in_progress": "A withdrawal is still in progress. Wait until it finishes.",
