@@ -1458,6 +1458,12 @@ select api.bus_receive('creator', jsonb_build_array(jsonb_build_object('id', gen
                               'is_final', false, 'raw', '{"caption":"halo"}')))));
 select is((select counted_views from tracking.submissions where id = (select v::uuid from t_ids where k = 's5')), 7000::bigint,
           'snapshot replika lewat bus → fraud + accrue_earnings (counted_views naik)');
+create temp table t_le as select count(*) n from finance.ledger_entries;
+select lives_ok($$ select api.bus_receive('creator', jsonb_build_array(jsonb_build_object('id', gen_random_uuid(), 'topic', 'rep.row', 'payload',
+  jsonb_build_object('table', 'tracking.view_snapshots', 'op', 'upsert', 'key', '{"id":900001}',
+    'row', (select to_jsonb(v) - 'created_at' from tracking.view_snapshots v where id = 900001))))) $$,
+  'R84-1: snapshot yang sama dikirim ulang (bus.resync, id event baru) tidak ditolak trigger append-only');
+select is((select count(*) from finance.ledger_entries), (select n from t_le), 'R84-1: kiriman ulang tidak menjalankan hook (tanpa accrual ganda)');
 
 -- Pemantauan bus (ops.watch_bus, job bus-watch)
 insert into ops.bus_peers (source, pinged_at) values ('creator', now()), ('brand', now()) on conflict (source) do update set pinged_at = now(), stuck = '[]';
@@ -1558,6 +1564,15 @@ select ok((select status = 'closed' and referral_code is null from market.profil
           'profil closed di admin');
 select ok(exists (select 1 from bus.outbox where target = 'creator' and topic = 'profile.anonymize'
                    and payload ->> 'user_id' = '11111111-0000-0000-0000-00000000000f'), 'isi profil dianonimkan lewat event ke creator');
+select is(api.bridge_close_account('11111111-0000-0000-0000-0000000000e7') ->> 'reason', 'no_profile', 'R84-2: replika profil belum tiba');
+select ok(exists (select 1 from bus.outbox where target = 'creator' and topic = 'profile.anonymize'
+                   and payload ->> 'user_id' = '11111111-0000-0000-0000-0000000000e7'), 'R84-2: isi di creator tetap dianonimkan');
+select api.bus_receive('creator', jsonb_build_array(jsonb_build_object('id', gen_random_uuid(), 'topic', 'rep.row', 'payload',
+  jsonb_build_object('table', 'market.profiles', 'op', 'upsert', 'key', '{"id":"11111111-0000-0000-0000-0000000000e7"}',
+    'row', jsonb_build_object('id', '11111111-0000-0000-0000-0000000000e7', 'username', 'telat', 'display_name', 'Telat',
+                              'avatar_path', null, 'created_at', now())))));
+select is((select username || ':' || status from market.profiles where id = '11111111-0000-0000-0000-0000000000e7'), 'telat:closed',
+          'R84-2: replika profil yang telat tidak menghidupkan akun yang sudah ditutup');
 select is((select status::text from tracking.submissions where user_id = '11111111-0000-0000-0000-00000000000f'), 'rejected',
           'submisi yang menunggu review dihentikan');
 

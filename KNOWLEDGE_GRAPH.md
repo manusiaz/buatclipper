@@ -3,7 +3,7 @@
 > Everything is one system. Every page is a node; every line is a real data or design dependency.
 > Dikelola oleh skill `alaconnect`. Edit inkremental — jangan generate ulang.
 
-Last verified: f1c7064+ (2026-10-23) — 4 DB (identity, admin = folder `db/core`, creator, brand): `db reset` keempat DB dari rantai migrasi (declarative sync: no changes), pgTAP identity 172 + admin 990 + creator 93 + brand 123, deno identity 133 + core 28 + creator 57, lint (check-arch 4 DB), typecheck 15 workspace, unit test semua, e2e bus 6/6 + roles 21/21 + journey 10/10 + mobile 12/12; simulasi VPS `deploy.sh up all` dari nol → roles 21/21, bus 6/6. Katalog endpoint per DB: docs/endpoints/*.md (`pnpm endpoints`).
+Last verified: f1c7064+ (2026-10-23) — 4 DB (identity, admin = folder `db/core`, creator, brand): `db reset` keempat DB dari rantai migrasi (declarative sync: no changes), pgTAP identity 172 + admin 995 + creator 93 + brand 123, deno identity 133 + core 28 + creator 57, lint (check-arch 4 DB), typecheck 15 workspace, unit test semua, e2e bus 6/6 + roles 21/21 + journey 10/10 + mobile 12/12; simulasi VPS `deploy.sh up all` dari nol → roles 21/21, bus 6/6. Katalog endpoint per DB: docs/endpoints/*.md (`pnpm endpoints`).
 
 **Status:** sistem sudah dibangun dan dites. 5 app Next.js 16 (`apps/web`, `apps/accounts`, `apps/clipper`, `apps/brand`, `apps/admin`) di atas `packages/{ui,campaign-builder,clipper-lib,auth,db-core,db-identity,i18n,config}`, plus app native Expo `apps/mobile` (Android + iOS, satu kode). 4 project Supabase (`db/identity`, `db/core` = admin, `db/creator`, `db/brand`): schema deklaratif, `migrations/` (pg-delta), config.toml, seed; bus event antar DB. Endpoint per DB: docs/endpoints/{identity,admin,creator,brand}.md.sql. 12 Edge Function: core `bridge`, `fulfill`, `notify`, `refresh-tokens`, `social`, `track-worker`; identity `admin-auth`, `bridge`, `delete-account`, `disburse`, `member-data`, `pii-export`. Tes: pgTAP 6 file (`db/core/supabase/tests` 4, `db/identity/supabase/tests` 2), unit test app/package (`pnpm test`, 38 file `*.test.ts(x)`), unit test Deno (29 file `*_test.ts` di `db/*/supabase/functions`), journey E2E lintas host `e2e/journey.cjs` (Playwright: web → accounts → app → undangan → brand), CI `.github/workflows/ci.yml` (job apps, functions, db per project). Diverifikasi di 7408318: `pnpm lint` ok, `pnpm typecheck` ok, `pnpm test` 197 tes lulus (campaign-builder 69, accounts 32, web 29, admin 24, brand 22, clipper 21), `pnpm build` 5 app ok, Deno fmt/lint/check ok + tes core 70 & identity 82, pgTAP core 727 & identity 107 (stub Postgres 16 dan `supabase test db`), `supabase db lint` (schema app) & `db advisors --type security` bersih, `pnpm e2e` 9/9 langkah 2× di build produksi. Node yang filenya ada punya kolom Path; bukti edge = `file:line` (dicek `check_graph.py`). Bukti yang masih rujukan PRD v0.3.1 = belum ada satu baris kode yang menyebut target, atau kodenya ada di folder route group `(account)`, `(auth)`, `(console)`: regex checker tidak menerima tanda kurung, jadi baris kodenya ditulis `kode baris N` (dicek manual). `(belum di kode)` = edge PRD yang tidak dibangun begitu. Edge `reads` page → table = dependency data logis; di kode jalannya lewat view/fungsi schema `api` (`policy:core.api-only`). Rujukan lintas DB (`table → table` antar project) tidak punya foreign key.
 
@@ -971,17 +971,17 @@ Arah: `A --tipe--> B` = A bergantung pada B. `?` = belum terverifikasi.
 | `api:GET identity/.well-known/openid-configuration` | reads | `config:identity-signing-key` | PRD v0.3.1 §15.6 public key di JWKS |
 | `api:fn core/bridge` | configured-by | `env:BRIDGE_SECRET_IDENTITY_TO_CORE` | db/core/supabase/functions/bridge/index.ts:10 |
 | `api:fn core/bridge` | guarded-by | `policy:bridge-hmac` | db/core/supabase/functions/bridge/handler.ts:177 |
-| `api:fn core/bridge` | reads | `table:finance.fulfillments` | db/core/supabase/schemas/api/bridge.sql:276 (rpc bridge_fulfillment_export), db/core/supabase/schemas/api/bridge.sql:263 (rpc bridge_pph21: reward non-tunai terkirim, §5.4) |
-| `api:fn core/bridge` | writes | `table:finance.fulfillments` | db/core/supabase/schemas/api/bridge.sql:302 (rpc bridge_attach_fulfillment_export: klaim di CSV → processing + export_ref) |
-| `api:fn core/bridge` | reads | `table:finance.ledger_entries` | db/core/supabase/schemas/api/bridge.sql:133 (rpc bridge_close_account: cek saldo) |
-| `api:fn core/bridge` | reads | `table:finance.org_refunds` | db/core/supabase/schemas/api/bridge.sql:175 (rpc bridge_get_refund) |
+| `api:fn core/bridge` | reads | `table:finance.fulfillments` | db/core/supabase/schemas/api/bridge.sql:282 (rpc bridge_fulfillment_export), db/core/supabase/schemas/api/bridge.sql:269 (rpc bridge_pph21: reward non-tunai terkirim, §5.4) |
+| `api:fn core/bridge` | writes | `table:finance.fulfillments` | db/core/supabase/schemas/api/bridge.sql:308 (rpc bridge_attach_fulfillment_export: klaim di CSV → processing + export_ref) |
+| `api:fn core/bridge` | reads | `table:finance.ledger_entries` | db/core/supabase/schemas/api/bridge.sql:139 (rpc bridge_close_account: cek saldo) |
+| `api:fn core/bridge` | reads | `table:finance.org_refunds` | db/core/supabase/schemas/api/bridge.sql:181 (rpc bridge_get_refund) |
 | `api:fn core/bridge` | reads | `table:finance.payout_batches` | db/core/supabase/schemas/api/bridge.sql:11 (rpc bridge_get_batch) |
 | `api:fn core/bridge` | reads | `table:finance.payouts` | db/core/supabase/schemas/api/bridge.sql:25 (rpc bridge_get_batch) |
 | `api:fn core/bridge` | writes | `table:finance.payout_batches` | db/core/supabase/schemas/api/bridge.sql:78 (rpc bridge_attach_export) |
 | `api:fn core/bridge` | writes | `table:finance.payouts` | db/core/supabase/schemas/api/bridge.sql:67 (hold, bridge_attach_export), db/core/supabase/schemas/api/bridge.sql:101 (bridge_attach_proof) |
 | `api:fn creator/bridge` | writes | `table:bucket.avatars` | db/creator/supabase/functions/bridge/avatars.ts:18 (profile.anonymize: foto profil dihapus lewat Storage API) |
-| `api:fn core/bridge` | writes | `table:market.profiles` | db/core/supabase/schemas/api/bridge.sql:149 (rpc bridge_close_account: closed) |
-| `api:fn core/bridge` | calls | `fn:bus_in.creator` | db/core/supabase/schemas/api/bridge.sql:151 (event profile.anonymize: profil, token, akun sosmed) |
+| `api:fn core/bridge` | writes | `table:market.profiles` | db/core/supabase/schemas/api/bridge.sql:155 (rpc bridge_close_account: closed) |
+| `api:fn core/bridge` | calls | `fn:bus_in.creator` | db/core/supabase/schemas/api/bridge.sql:157 (event profile.anonymize: profil, token, akun sosmed) |
 | `api:fn core/bridge` | writes | `table:trust.fraud_flags` | db/core/supabase/schemas/api/bridge.sql:115 (rpc bridge_raise_fraud_flag → trust.raise_flag) |
 | `api:fn core/bridge` | calls | `api:fn identity/bridge` | db/core/supabase/functions/bridge/handler.ts:153 (cron disburse & ban_user → identity) |
 | `api:fn core/fulfill` | calls | `ext:brand-webhook` | db/core/supabase/functions/fulfill/fulfill.ts:115 |
@@ -1199,7 +1199,7 @@ Arah: `A --tipe--> B` = A bergantung pada B. `?` = belum terverifikasi.
 | `table:ops.bus_peers` | guarded-by | `policy:core.admin-aal2` | db/core/supabase/schemas/bus/inbound.sql:74 |
 | `api:rpc core.health` | reads | `table:bus.outbox` | db/core/supabase/schemas/bus/bus.sql:167 |
 | `doc:docs/endpoints` | documents | `api:rpc core.health` | docs/endpoints/admin.md:13 |
-| `test:core.full-product` | tests | `job:bus-watch` | db/core/supabase/tests/core_contracts_finance.test.sql:1464 |
+| `test:core.full-product` | tests | `job:bus-watch` | db/core/supabase/tests/core_contracts_finance.test.sql:1470 |
 | `test:creator.tracking` | tests | `api:rpc creator.health` | db/creator/supabase/tests/creator_tracking.test.sql:229 |
 | `fn:bus_in.admin` | writes | `table:ops.audit_logs` | db/core/supabase/schemas/bus/inbound.sql:7 |
 | `fn:bus_in.admin` | writes | `table:trust.review_decisions` | db/core/supabase/schemas/bus/inbound.sql:14 |
@@ -1227,7 +1227,7 @@ Arah: `A --tipe--> B` = A bergantung pada B. `?` = belum terverifikasi.
 | `api:rpc core.copy_campaign_economics` | writes | `table:finance.reward_pools` | db/core/supabase/schemas/api/campaigns.sql:535 |
 | `api:rpc core.copy_campaign_economics` | writes | `table:market.rate_rules` | db/core/supabase/schemas/api/campaigns.sql:538 |
 | `api:rpc core.save_campaign` | reads | `table:market.campaigns` | db/core/supabase/schemas/api/campaigns.sql:206 (gerbang content_version replika) |
-| `api:rpc core.bus_receive` | calls | `fn:bus_in.market_campaigns_applied` | db/core/supabase/schemas/bus/bus.sql:254 |
+| `api:rpc core.bus_receive` | calls | `fn:bus_in.market_campaigns_applied` | db/core/supabase/schemas/bus/bus.sql:261 |
 | `fn:bus_in.market_campaigns_applied` | writes | `table:market.campaigns` | db/core/supabase/schemas/market/campaigns.sql:110 |
 | `fn:bus_in.market_campaigns_applied` | writes | `table:finance.invoices` | db/core/supabase/schemas/market/campaigns.sql:114 |
 | `comp:CampaignBuilder` | calls | `api:rpc brand.save_campaign` | packages/campaign-builder/src/persist.ts:47 (persistCampaign) |
@@ -2706,6 +2706,8 @@ Masalah sistem yang ditemukan saat menyusun PRD v0.2 dan saat dicek ulang (v0.2.
 | 2026-10-23 | `api:fn creator/social` | View api.settings creator tidak ikut migration → flag platform tak terbaca → submit UI "Layanan sedang sibuk" | diperbaiki: migration tracking_settings_view; e2e roles memeriksa pesan submit bukan settings_unavailable |
 | 2026-10-23 | `job:lifecycle` | Review Codex R83-1: submisi diterima creator sesaat sebelum deadline tapi replikanya belum tiba → lifecycle admin langsung settle campaign (sisa dana bisa di-refund) lalu submisi masuk tracking tanpa hak bayar | diperbaiki: campaign tracking baru settle setelah ping creator yang dikirim > 1 menit sesudah deadline tiba (FIFO bus); submisi yang tetap tiba untuk campaign selesai/batal → rejected tanpa penalti Trust Score + notifikasi final (banding ditutup appeal_closed); template submission.rejected final tidak menawarkan banding |
 | 2026-10-23 | `table:bus.outbox` | Review Codex R83-2: bus.resync membaca snapshot lama tanpa kunci → tulisan baru yang commit di tengah resync bisa tersalip event resync lama di penerima | diperbaiki: resync mengunci tabel sumber (share mode) sampai commit. R83-3 (alarm untuk peer yang belum pernah ping) tidak berlaku: seed.sql mengisi baris creator/brand tiap deploy sehingga ping pertama yang tak datang terdeteksi telat |
+| 2026-10-23 | `table:bus.outbox` | Review Codex R84-1: bus.resync tabel append-only (view_snapshots) ke admin → apply_row meng-UPDATE baris yang sama → trigger append-only raise → antrean creator→admin macet selamanya; hook snapshot juga akan jalan dua kali | diperbaiki: apply_row hanya meng-UPDATE kolom yang berbeda dan tidak menjalankan hook bila baris sudah ada dengan nilai sama (tes terbukti merah di kode lama) |
+| 2026-10-23 | `api:fn identity/delete-account` | Review Codex R84-2: hapus akun saat replika profil creator belum tiba di admin → bridge_close_account no_profile tanpa event → profil, avatar & token sosmed di creator tertinggal; replika telat membuat profil aktif di admin | diperbaiki: no_profile tetap mengirim profile.anonymize ke creator dan menulis nisan profil closed di admin (replika telat hanya mengisi kolom isi, status tetap closed) |
 
 ## Keputusan
 

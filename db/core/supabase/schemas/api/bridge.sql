@@ -125,6 +125,12 @@ declare
 begin
   select * into pr from market.profiles p where p.id = p_user for update;
   if not found then
+    -- belum onboarding atau replika profil dari creator belum tiba: nisan closed (replika telat hanya mengisi kolom isi, status
+    -- tetap closed) dan isi di creator tetap dianonimkan.
+    insert into market.profiles (id, username, display_name, status)
+    values (p_user, 'deleted_' || substr(md5(p_user::text), 1, 12), 'Akun dihapus', 'closed')
+    on conflict (id) do update set status = 'closed', referral_code = null, suspended_until = null;
+    perform bus.emit('creator', 'profile.anonymize', jsonb_build_object('user_id', p_user));
     return jsonb_build_object('ok', true, 'reason', 'no_profile');
   end if;
   if pr.status = 'closed' then
