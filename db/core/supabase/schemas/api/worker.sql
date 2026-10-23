@@ -243,11 +243,20 @@ begin
     return;
   end if;
   select * into c from market.campaigns k where k.id = s.campaign_id;
+  update market.claims set status = 'submitted' where id = s.claim_id and status = 'open';
+  -- Creator menerima submisi dari replika status campaign yang bisa tertinggal (mis. dibatalkan / sudah settle saat bus telat):
+  -- campaign yang tidak lagi menerima klip → ditolak tanpa penalti Trust Score (bukan kesalahan clipper) + kabar.
+  if c.status not in ('live', 'paused', 'tracking', 'exhausted') then
+    update tracking.submissions set status = 'rejected' where id = s.id;  -- banding ditolak appeal_closed (campaign selesai)
+    perform ops.enqueue_notification(s.user_id, 'submission.rejected', market.campaign_ref(c.id)
+                                     || jsonb_build_object('submission_id', s.id, 'url', s.url, 'platform', s.platform, 'final', true,
+                                                           'reason', 'Campaign sudah tidak menerima klip saat submisi kamu tercatat.'));
+    return;
+  end if;
   update tracking.submissions set status = 'in_review' where id = s.id;
   if s.review_route = 'auto' then
     perform trust.apply_submission_decision(s.id, 'auto_approve', null, null, null, 'auto');
   end if;
-  update market.claims set status = 'submitted' where id = s.claim_id and status = 'open';
   if s.cover_hash is not null then
     select array_agg(t.id order by t.created_at) ids, array_agg(distinct t.user_id) users into dup
       from (select t.id, t.user_id, t.created_at from tracking.submissions t

@@ -314,3 +314,8 @@ Deno.test("templates angka: nilai payload baru tetap di-escape", () => {
   const f = render("fulfillment.delivered", { amount: 1, reward_type: "V", unit_label: evil, reward_name: evil }, L);
   assert(!f.html.includes("<img"));
 });
+
+Deno.test("templates: submission.rejected final (banding ditolak / campaign tutup) tidak menawarkan banding", () => {
+  assertStringIncludes(render("submission.rejected", { reason: "x" }, L).text, "banding");
+  assert(!render("submission.rejected", { reason: "x", final: true }, L).text.includes("banding"));
+});

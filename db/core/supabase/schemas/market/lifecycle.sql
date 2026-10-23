@@ -89,8 +89,12 @@ begin
     end if;
   end loop;
 
+  -- Submisi dibuat di project creator dan tiba lewat bus (FIFO). Campaign yang tutup karena deadline baru settle setelah ping
+  -- creator yang dikirim > 1 menit sesudah deadline tiba: semua submisi yang diterima creator sebelum deadline sudah di sini (R83-1).
   update market.campaigns c set status = 'settling'
    where c.status in ('tracking', 'exhausted')
+     and (c.status <> 'tracking'
+          or coalesce((select p.pinged_at from ops.bus_peers p where p.source = 'creator'), '-infinity') > c.submit_deadline + interval '1 minute')
      and not exists (select 1 from tracking.submissions s where s.campaign_id = c.id and s.status = any (active))
      and not exists (select 1 from finance.pool_settlements ps join finance.reward_pools rp on rp.id = ps.pool_id
                      where rp.campaign_id = c.id);

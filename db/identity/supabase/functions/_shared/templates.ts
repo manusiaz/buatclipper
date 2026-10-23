@@ -399,11 +399,12 @@ const DEFS: Record<NotificationEvent, Def> = {
   },
   "submission.rejected": {
     title: () => "Submisi kamu ditolak",
-    lines: (p) => [
-      `${video(p)} ditolak.`,
-      reason(p),
-      "Kamu bisa mengajukan banding satu kali dari halaman Tugas.",
-    ],
+    lines: (p) =>
+      [
+        `${video(p)} ditolak.`,
+        reason(p),
+        p.final === true ? "" : "Kamu bisa mengajukan banding satu kali dari halaman Tugas.",
+      ].filter(Boolean),
     cta: "Lihat tugas",
     url: (_p, l) => join(l.app, "tasks"),
   },

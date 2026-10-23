@@ -274,6 +274,8 @@ begin
   if cols is null then
     raise exception 'bus_no_replica:%:%', p_table, p_target using errcode = 'P0001';
   end if;
+  -- Tulisan baru menunggu sampai resync commit: event resync (snapshot lama) tidak bisa menyalip event tulisan yang lebih baru (R83-2).
+  execute format('lock table %s in share mode', p_table);
   for r in execute format('select to_jsonb(t) from %s t', p_table) loop
     perform bus.emit(p_target, 'rep.row', jsonb_build_object('table', p_table::text, 'op', 'upsert',
       'key', (select jsonb_object_agg(k, r -> k) from unnest(pk) k),

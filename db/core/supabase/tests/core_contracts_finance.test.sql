@@ -1480,6 +1480,33 @@ select ok((select payload -> 'peer_stuck' -> 0 ->> 'target' = 'brand' from ops.a
 update ops.alerts set resolved_at = now(), resolved_by = '33333333-0000-0000-0000-0000000000ad' where kind = 'bus.stuck';
 select bus_in.bus_ping('{"source":"creator","stuck":[]}');
 
+-- Regresi R83-1: submisi dibuat di creator dan tiba lewat bus → campaign yang tutup karena deadline baru settle setelah ping
+-- creator yang dikirim > 1 menit sesudah deadline tiba (FIFO: semua submisi sebelum deadline sudah di admin).
+select pg_temp.mk_campaign('55555555-0000-0000-0000-0000000000d1', 'r83-settle');
+set local session_replication_role = replica;
+update market.campaigns set status = 'tracking', submit_deadline = now() - interval '30 seconds' where id = '55555555-0000-0000-0000-0000000000d1';
+set local session_replication_role = origin;
+update ops.bus_peers set pinged_at = now() where source = 'creator';
+select market.run_lifecycle();
+select is((select status::text from market.campaigns where id = '55555555-0000-0000-0000-0000000000d1'), 'tracking',
+          'regresi R83-1: ping creator belum melewati deadline + 1 menit → campaign belum settle (submisi bisa masih di jalan)');
+update ops.bus_peers set pinged_at = now() + interval '2 minutes' where source = 'creator';
+select market.run_lifecycle();
+select ok((select status::text in ('settling', 'settled') from market.campaigns where id = '55555555-0000-0000-0000-0000000000d1'),
+          'regresi R83-1: ping creator sesudah deadline + 1 menit tiba → settle');
+update ops.bus_peers set pinged_at = now() where source = 'creator';
+-- Submisi yang tiba untuk campaign yang sudah tutup → ditolak final tanpa penalti Trust Score + kabar ke clipper.
+insert into market.claims (id, campaign_id, user_id, expires_at, created_at) values
+  ('88888888-0000-0000-0000-0000000000d1', '55555555-0000-0000-0000-0000000000d1', '11111111-0000-0000-0000-00000000000a',
+   now() + interval '46 hours', now() - interval '2 hours');
+create temp table t_late as select pg_temp.create_submission('11111111-0000-0000-0000-00000000000a', '88888888-0000-0000-0000-0000000000d1',
+  '99999999-0000-0000-0000-00000000000a', 'v-late', 'https://tiktok.com/@andi/video/late', now() - interval '1 hour', '#x', 30) as r;
+select is((select r ->> 'status' from t_late), 'rejected', 'regresi R83-1: submisi telat ke campaign tutup → rejected (tanpa banding: appeal_closed)');
+select ok(not exists (select 1 from trust.score_events where ref_id = (select r ->> 'submission_id' from t_late)),
+          'campaign tutup bukan kesalahan clipper: tanpa penalti Trust Score');
+select ok((select (payload ->> 'final')::boolean from ops.notifications where event = 'submission.rejected'
+             and payload ->> 'submission_id' = (select r ->> 'submission_id' from t_late)), 'clipper dikabari (final, tanpa tawaran banding)');
+
 -- ========== K. Post hilang, status token, akun sosmed ==========
 insert into t_ids select 'lost_s1', jsonb_build_object('amount', trunc(sum(ce.amount)), 'views', max(s.counted_views))::text
   from finance.clip_earnings ce join tracking.submissions s on s.id = ce.submission_id
