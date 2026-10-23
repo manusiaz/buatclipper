@@ -122,7 +122,10 @@ begin
     raise exception 'invalid:events' using errcode = 'P0001';
   end if;
   for e in select x from jsonb_array_elements(p_events) x loop
-    if exists (select 1 from bus.inbox i where i.id = (e ->> 'id')::uuid) then
+    -- klaim event dulu: kiriman kembar yang berjalan bersamaan (relay mengulang saat request pertama masih di DB) menunggu
+    -- transaksi pertama lalu dilewati, bukan gagal duplicate key → 500 → backoff. Handler raise → klaim ikut batal.
+    insert into bus.inbox (id, source, topic) values ((e ->> 'id')::uuid, p_source, e ->> 'topic') on conflict (id) do nothing;
+    if not found then
       skipped := skipped + 1;
       continue;
     end if;
@@ -132,7 +135,6 @@ begin
       raise exception 'bus_no_handler:%', e ->> 'topic' using errcode = 'P0001';
     end if;
     execute format('select %s($1)', h::regproc) using e -> 'payload';
-    insert into bus.inbox (id, source, topic) values ((e ->> 'id')::uuid, p_source, e ->> 'topic');
     applied := applied + 1;
   end loop;
   return jsonb_build_object('applied', applied, 'skipped', skipped);

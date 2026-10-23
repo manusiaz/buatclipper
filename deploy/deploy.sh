@@ -418,9 +418,10 @@ case "$CMD" in
       apps up -d --no-build --remove-orphans
     fi
     caddy_up
-    # Event bus yang gagal selama deploy (stack/Caddy tujuan belum hidup) tertahan backoff s.d. 1 jam → kirim ulang sekarang.
+    # Event bus yang gagal selama deploy (stack/Caddy tujuan belum hidup) tertahan backoff s.d. 1 jam → kirim ulang sekarang;
+    # hitungan gagal dinolkan supaya kegagalan akibat deploy tidak terbaca bus.stuck (alert) dan tidak memperpanjang backoff.
     for p in $STACKS; do
-      [ "$p" = identity ] || psql_db "$p" -c "update bus.outbox set next_at = now() where sent_at is null and request_id is null and next_at > now()"
+      [ "$p" = identity ] || psql_db "$p" -c "update bus.outbox set next_at = now(), attempts = 0 where sent_at is null and request_id is null and attempts > 0"
     done
     echo "siap ($ROLE): $(served_hosts)"
     ;;

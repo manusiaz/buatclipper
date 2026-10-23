@@ -38,6 +38,14 @@ for pr in $PAIRS; do
   if [ "$got" = "1,2" ] && [ "$acked" = t ]; then echo "✓ $f → $t"; else
     echo "✗ $f → $t (diterima: '${got}', terkirim: '${acked}', error: $(q "$f" -c "select last_error from bus.outbox where topic = 'uji.ping' and target = '$t' and last_error is not null limit 1"))"; fail=1; fi
 done
+# Kiriman kembar bersamaan (relay mengulang saat request pertama masih berjalan di DB): yang kedua menunggu lalu dilewati, bukan 500.
+ev="[{\"id\":\"$(cat /proc/sys/kernel/random/uuid)\",\"topic\":\"uji.ping\",\"payload\":{\"src\":\"race\",\"v\":\"r\"}}]"
+q admin -c "begin; select api.bus_receive('brand', '$ev'); select pg_sleep(2); commit;" >/dev/null &
+sleep 0.5
+race=$(q admin -c "select api.bus_receive('brand', '$ev') ->> 'skipped'" 2>&1) || true
+wait
+if [ "$race" = 1 ] && [ "$(q admin -c "select count(*) from public.bus_e2e_log where src = 'race'")" = 1 ]; then echo "✓ kiriman kembar bersamaan dilewati"
+else echo "✗ kiriman kembar bersamaan: $race"; fail=1; fi
 for t in admin creator brand; do
   q "$t" -c "delete from bus.outbox where topic = 'uji.ping'" -c "delete from bus.inbox where topic = 'uji.ping'" \
          -c "drop function bus_in.uji_ping(jsonb)" -c "drop table public.bus_e2e_log" >/dev/null
