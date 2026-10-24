@@ -1882,6 +1882,23 @@ update ops.settings set value = (select value from t_cx11) where key = 'trust.fr
 select is((select status::text from tracking.submissions where id = (select v::uuid from t_ids where k = 's15h')), 'locked',
           'CX15: applied_snapshot_id melewati final = final sudah diproses → locked tanpa apply_snapshot ulang');
 
+-- Review CL20: snapshot lama (id < penanda) yang dipulihkan bus.resync tiba lagi lewat hook → no-op: penanda tidak mundur, tidak
+-- ada flag/accrual baru dari bukti lama.
+create temp table t_cl20 as
+  select t.applied_snapshot_id m,
+         (select max(g) from generate_series(1, t.applied_snapshot_id - 1) g where not exists (select 1 from tracking.view_snapshots x where x.id = g)) old_id,
+         (select count(*) from trust.fraud_flags f where f.target_id = t.id) flags,
+         (select count(*) from finance.ledger_entries) le
+    from tracking.submissions t where t.id = (select v::uuid from t_ids where k = 's16a');
+select lives_ok(format($$ select api.bus_receive('creator', '[{"id":"%s","topic":"rep.row","payload":{"table":"tracking.view_snapshots","op":"upsert","key":{"id":%s},
+   "row":{"id":%s,"submission_id":"%s","taken_at":"%s","views":1,"likes":0,"comments":0,"shares":0,"is_final":false,"raw":{}}}}]') $$,
+  gen_random_uuid(), (select old_id from t_cl20), (select old_id from t_cl20), (select v from t_ids where k = 's16a'), now() - interval '20 days'),
+  'CL20: snapshot lama dipulihkan resync diterima');
+select is((select applied_snapshot_id from tracking.submissions where id = (select v::uuid from t_ids where k = 's16a')), (select m from t_cl20),
+          'CL20: penanda tidak mundur');
+select ok((select count(*) from trust.fraud_flags f where f.target_id = (select v::uuid from t_ids where k = 's16a')) = (select flags from t_cl20)
+          and (select count(*) from finance.ledger_entries) = (select le from t_cl20), 'CL20: tidak ada flag/accrual baru dari snapshot lama');
+
 -- ========== N2. Sisa budget campaign settled: rollover vs refund (D-09) ==========
 set local role authenticated;
 select pg_temp.jwt('22222222-0000-0000-0000-0000000000c1');

@@ -80,6 +80,11 @@ begin
   if not found then
     raise exception 'not_found:snapshot' using errcode = 'P0002';
   end if;
+  -- Sudah diproses (id ≤ penanda; mis. snapshot lama yang dipulihkan bus.resync tiba lagi lewat hook): no-op — tidak memproses
+  -- ulang bukti fraud lama dan penanda tidak mundur (CL20).
+  if v.id <= coalesce((select t.applied_snapshot_id from tracking.submissions t where t.id = v.submission_id), 0) then
+    return jsonb_build_object('snapshot_id', v.id, 'flagged', null, 'next_poll_at', null, 'locked', null, 'applied', true);
+  end if;
   -- Snapshot sebelumnya yang belum diproses (hook replika gagal → alert) diproses dulu, berurutan: jatah settlement (snapshot
   -- pertama setelah cut-off, R76) dan cek fraud tidak terlewat oleh snapshot berikutnya (CL16/CX13). Masih gagal → snapshot ini
   -- ikut gagal (alert), tidak ada yang diproses melompati. applied_snapshot_id naik berurutan, jadi id ≤ itu = sudah diproses.
@@ -206,7 +211,7 @@ begin
      order by e.i limit 1;
     nxt := least(now() + coalesce(every_h, 24) * interval '1 hour', window_end);
   end if;
-  update tracking.submissions set applied_snapshot_id = sid, next_poll_at = nxt where id = s.id;
+  update tracking.submissions set applied_snapshot_id = greatest(coalesce(applied_snapshot_id, 0), sid), next_poll_at = nxt where id = s.id;
   return jsonb_build_object('snapshot_id', sid, 'flagged', raised or st = 'flagged', 'next_poll_at', nxt, 'locked', st = 'locked');
 end $$;
 
