@@ -237,13 +237,18 @@ declare
   s tracking.submissions;
   c market.campaigns;
   dup record;
+  claim_ok boolean;
 begin
   select * into s from tracking.submissions t where t.id = p_submission for update;
   if not found or s.status <> 'validating' then
     return;
   end if;
   select * into c from market.campaigns k where k.id = s.campaign_id;
-  update market.claims set status = 'submitted' where id = s.claim_id and status = 'open';
+  -- Claim & keanggotaan org dicek creator dari replika yang bisa tertinggal: released (end_early, ban, tutup akun) tidak diterima;
+  -- expired diterima bila submisi tercatat di creator sebelum kedaluwarsa (job expire di sini bisa lebih dulu dari replika).
+  update market.claims set status = 'submitted'
+   where id = s.claim_id and (status = 'open' or (status = 'expired' and expires_at > s.created_at));
+  claim_ok := found;
   -- Creator menerima submisi dari replika status campaign yang bisa tertinggal (mis. dibatalkan / sudah settle saat bus telat):
   -- campaign yang tidak lagi menerima klip → ditolak tanpa penalti Trust Score (bukan kesalahan clipper) + kabar.
   if c.status not in ('live', 'paused', 'tracking', 'exhausted') then
@@ -251,6 +256,29 @@ begin
     perform ops.enqueue_notification(s.user_id, 'submission.rejected', market.campaign_ref(c.id)
                                      || jsonb_build_object('submission_id', s.id, 'url', s.url, 'platform', s.platform, 'final', true,
                                                            'reason', 'Campaign sudah tidak menerima klip saat submisi kamu tercatat.'));
+    return;
+  end if;
+  -- R67: anggota org pemilik (langsung / lewat agency) tidak boleh mengklip campaign org sendiri — bergabung setelah claim pun.
+  if not claim_ok
+     or exists (select 1 from market.org_members m where m.org_id = c.org_id and m.user_id = s.user_id)
+     or exists (select 1 from market.org_links l join market.org_members m on m.org_id = l.agency_org_id
+                 where l.client_org_id = c.org_id and l.approved_at is not null and l.revoked_at is null and m.user_id = s.user_id) then
+    update tracking.submissions set status = 'rejected' where id = s.id;
+    perform ops.enqueue_notification(s.user_id, 'submission.rejected', market.campaign_ref(c.id)
+                                     || jsonb_build_object('submission_id', s.id, 'url', s.url, 'platform', s.platform, 'final', true,
+                                                           'reason', case when claim_ok then 'Kamu anggota organisasi pemilik campaign ini.'
+                                                                          else 'Claim kamu sudah tidak aktif saat submisi tercatat.' end));
+    return;
+  end if;
+  -- Kuota clip per (campaign, clipper) dicek creator dari replika; banding clip lama di sini bisa berjalan bersamaan (advisory lock
+  -- hanya mengunci di satu DB) → dicek ulang di bawah lock yang sama dengan appeal_submission; yang tiba belakangan ditolak.
+  perform pg_advisory_xact_lock(hashtextextended('clip_quota:' || s.campaign_id || ':' || s.user_id, 0));
+  if (select count(*) from tracking.submissions t where t.campaign_id = s.campaign_id and t.user_id = s.user_id and t.id <> s.id
+        and t.status not in ('rejected', 'rejected_final')) >= c.max_clips_per_clipper then
+    update tracking.submissions set status = 'rejected' where id = s.id;
+    perform ops.enqueue_notification(s.user_id, 'submission.rejected', market.campaign_ref(c.id)
+                                     || jsonb_build_object('submission_id', s.id, 'url', s.url, 'platform', s.platform, 'final', true,
+                                                           'reason', 'Batas clip per clipper di campaign ini sudah terpenuhi.'));
     return;
   end if;
   -- Profil diblokir/ditutup selagi submisi di jalan (replika status di creator tertinggal; ban & tutup akun hanya menyapu submisi

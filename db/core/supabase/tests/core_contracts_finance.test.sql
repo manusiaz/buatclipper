@@ -1337,6 +1337,31 @@ values ('00000000-0000-0000-0000-0000000000c4', '88888888-0000-0000-0000-0000000
 select tracking.decide_new_submission('00000000-0000-0000-0000-0000000000c4');
 select is((select status::text from tracking.submissions where id = '00000000-0000-0000-0000-0000000000c4'), 'in_review',
           'R89-1: route auto dari replika basi di campaign review brand → in_review (tidak auto-approve)');
+-- Review C8: claim sudah released (end_early) / clipper sudah anggota org pemilik saat replika submisi tiba → ditolak tanpa penalti
+insert into market.claims (id, campaign_id, user_id, expires_at, created_at) values
+  ('88888888-0000-0000-0000-0000000000c5', '55555555-0000-0000-0000-0000000000b0', '11111111-0000-0000-0000-00000000000d', now() + interval '46 hours', now() - interval '2 hours');
+update market.claims set status = 'released' where id = '88888888-0000-0000-0000-0000000000c5';
+select is(pg_temp.create_submission('11111111-0000-0000-0000-00000000000d', '88888888-0000-0000-0000-0000000000c5',
+            '99999999-0000-0000-0000-00000000000d', 'vid-c5', 'https://tiktok.com/@dedi/video/c5', now() - interval '1 hour', '#mplid', 30)
+          ->> 'status', 'rejected', 'C8: claim released (end_early) → submisi ditolak');
+insert into market.claims (id, campaign_id, user_id, expires_at, created_at) values
+  ('88888888-0000-0000-0000-0000000000c6', '55555555-0000-0000-0000-0000000000b0', '11111111-0000-0000-0000-00000000000f', now() + interval '46 hours', now() - interval '2 hours');
+insert into market.org_members (org_id, user_id, role) values ('44444444-0000-0000-0000-000000000001', '11111111-0000-0000-0000-00000000000f', 'brand_viewer');
+select is(pg_temp.create_submission('11111111-0000-0000-0000-00000000000f', '88888888-0000-0000-0000-0000000000c6',
+            '99999999-0000-0000-0000-00000000000f', 'vid-c6', 'https://tiktok.com/@fani/video/c6', now() - interval '1 hour', '#mplid', 30)
+          ->> 'status', 'rejected', 'C8: bergabung ke org pemilik setelah claim (R67) → submisi ditolak');
+select ok(not exists (select 1 from trust.score_events e join tracking.submissions t on t.id::text = e.ref_id where t.post_id in ('vid-c5', 'vid-c6')),
+          'C8: tanpa penalti Trust Score');
+delete from market.org_members where org_id = '44444444-0000-0000-0000-000000000001' and user_id = '11111111-0000-0000-0000-00000000000f';
+-- Review R90-1: kuota max_clips_per_clipper dicek ulang di admin (banding clip lama bisa lolos bersamaan di DB lain)
+create temp table t_r90 as select max_clips_per_clipper m from market.campaigns where id = '55555555-0000-0000-0000-0000000000b0';
+update market.campaigns set max_clips_per_clipper = 1 where id = '55555555-0000-0000-0000-0000000000b0';
+insert into market.claims (id, campaign_id, user_id, expires_at, created_at) values
+  ('88888888-0000-0000-0000-0000000000c7', '55555555-0000-0000-0000-0000000000b0', '11111111-0000-0000-0000-00000000000a', now() + interval '46 hours', now() - interval '2 hours');
+select is(pg_temp.create_submission('11111111-0000-0000-0000-00000000000a', '88888888-0000-0000-0000-0000000000c7',
+            '99999999-0000-0000-0000-00000000000a', 'vid-c7', 'https://tiktok.com/@andi/video/c7', now() - interval '1 hour', '#mplid', 30)
+          ->> 'status', 'rejected', 'R90-1: clip melebihi max_clips_per_clipper (clip lain masih aktif) → ditolak');
+update market.campaigns set max_clips_per_clipper = (select m from t_r90) where id = '55555555-0000-0000-0000-0000000000b0';
 -- Regresi audit AA-11 (§11): API TikTok tidak memberi info sound → campaign musik di TikTok selalu review manual.
 insert into market.campaigns (id, org_id, slug, title, type, platforms, start_at, submit_deadline, created_by, review_mode)
 values ('55555555-0000-0000-0000-0000000000b9', '44444444-0000-0000-0000-000000000001', 'k10-music', 'Lagu baru', 'music', '{tiktok}',
@@ -1602,7 +1627,7 @@ select api.bus_receive('creator', jsonb_build_array(jsonb_build_object('id', gen
                               'avatar_path', null, 'created_at', now())))));
 select is((select username || ':' || status from market.profiles where id = '11111111-0000-0000-0000-0000000000e7'), 'telat:closed',
           'R84-2: replika profil yang telat tidak menghidupkan akun yang sudah ditutup');
-select is((select status::text from tracking.submissions where user_id = '11111111-0000-0000-0000-00000000000f'), 'rejected',
+select is((select status::text from tracking.submissions where user_id = '11111111-0000-0000-0000-00000000000f' and post_id = 'vid-12'), 'rejected',
           'submisi yang menunggu review dihentikan');
 
 -- ========== M. Hak akses RPC service_role ==========
