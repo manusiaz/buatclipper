@@ -86,6 +86,27 @@ end $$;
 create trigger campaigns_template_stays_draft before insert or update of status on market.campaigns
   for each row execute function market.template_stays_draft();
 
+-- Isi yang sudah disetujui (status sesudah in_review) tidak berubah lewat replika: brand mengunci brief dari replika status yang bisa
+-- tertinggal (admin → brand macet) — kolom isi milik brand selain FAQ dipertahankan + alert (event tidak ditolak, antrean jalan);
+-- FAQ tetap boleh (sama dengan kunci brand). Uang, fraud & syarat submisi memakai isi yang disetujui.
+create function market.campaign_content_frozen() returns trigger
+language plpgsql set search_path = '' as $$
+declare
+  frozen jsonb;
+begin
+  if current_setting('bus.applying', true) is distinct from 'on' or old.status in ('draft', 'in_review', 'rejected') then
+    return new;
+  end if;
+  select jsonb_object_agg(k, to_jsonb(old) -> k) into frozen from unnest(bus.accepts('brand', 'market.campaigns')) k where k <> 'faq';
+  if (select jsonb_object_agg(k, to_jsonb(new) -> k) from jsonb_object_keys(frozen) k) is distinct from frozen then
+    new := jsonb_populate_record(new, frozen);
+    perform ops.raise_alert('campaign.content_drift', 'critical', jsonb_build_object('campaign_id', old.id, 'status', old.status));
+  end if;
+  return new;
+end $$;
+create trigger campaigns_content_frozen before update on market.campaigns
+  for each row execute function market.campaign_content_frozen();
+
 -- Status, jadwal, pin ke brand (tampilan builder/dashboard; kunci brief di brand membaca status ini).
 create trigger campaigns_replicate after insert or update or delete on market.campaigns for each row
   execute function bus.replicate('brand:status,start_at,submit_deadline,view_window_days,pinned_until',
@@ -118,11 +139,7 @@ begin
     insert into ops.audit_logs (actor_id, action, target, before, after)
     values (null, 'campaign.resubmit_required', 'campaign:' || c.id, jsonb_build_object('submitted_version', c.submitted_version),
             jsonb_build_object('content_version', c.content_version));
-  elsif c.status <> 'draft' then
-    insert into ops.audit_logs (actor_id, action, target, before, after)
-    values (null, 'campaign.content_drift', 'campaign:' || c.id, jsonb_build_object('submitted_version', c.submitted_version),
-            jsonb_build_object('content_version', c.content_version, 'status', c.status));
-  end if;
+  end if;  -- status sesudah disetujui: isi dibekukan (market.campaign_content_frozen), versi tidak naik
 exception when others then
   perform ops.raise_alert('campaign.apply_failed', 'critical', jsonb_build_object('campaign_id', p_row ->> 'id', 'error', sqlerrm));
 end $$;

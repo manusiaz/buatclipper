@@ -3,7 +3,7 @@
 > Everything is one system. Every page is a node; every line is a real data or design dependency.
 > Dikelola oleh skill `alaconnect`. Edit inkremental — jangan generate ulang.
 
-Last verified: f1c7064+ (2026-10-23) — 4 DB (identity, admin = folder `db/core`, creator, brand): `db reset` keempat DB dari rantai migrasi (declarative sync: no changes), pgTAP identity 172 + admin 1028 + creator 97 + brand 123, deno identity 133 + core 28 + creator 58, lint (check-arch 4 DB), typecheck 15 workspace, unit test semua, e2e bus 8/8 + roles 21/21 + journey 10/10 + mobile 13/13; simulasi VPS `deploy.sh up all` dari nol → roles 21/21, bus 6/6. Katalog endpoint per DB: docs/endpoints/*.md (`pnpm endpoints`).
+Last verified: f1c7064+ (2026-10-23) — 4 DB (identity, admin = folder `db/core`, creator, brand): `db reset` keempat DB dari rantai migrasi (declarative sync: no changes), pgTAP identity 172 + admin 1029 + creator 97 + brand 123, deno identity 133 + core 28 + creator 58, lint (check-arch 4 DB), typecheck 15 workspace, unit test semua, e2e bus 8/8 + roles 21/21 + journey 10/10 + mobile 13/13; simulasi VPS `deploy.sh up all` dari nol → roles 21/21, bus 6/6. Katalog endpoint per DB: docs/endpoints/*.md (`pnpm endpoints`).
 
 **Status:** sistem sudah dibangun dan dites. 5 app Next.js 16 (`apps/web`, `apps/accounts`, `apps/clipper`, `apps/brand`, `apps/admin`) di atas `packages/{ui,campaign-builder,clipper-lib,auth,db-core,db-identity,i18n,config}`, plus app native Expo `apps/mobile` (Android + iOS, satu kode). 4 project Supabase (`db/identity`, `db/core` = admin, `db/creator`, `db/brand`): schema deklaratif, `migrations/` (pg-delta), config.toml, seed; bus event antar DB. Endpoint per DB: docs/endpoints/{identity,admin,creator,brand}.md.sql. 12 Edge Function: core `bridge`, `fulfill`, `notify`, `refresh-tokens`, `social`, `track-worker`; identity `admin-auth`, `bridge`, `delete-account`, `disburse`, `member-data`, `pii-export`. Tes: pgTAP 6 file (`db/core/supabase/tests` 4, `db/identity/supabase/tests` 2), unit test app/package (`pnpm test`, 38 file `*.test.ts(x)`), unit test Deno (29 file `*_test.ts` di `db/*/supabase/functions`), journey E2E lintas host `e2e/journey.cjs` (Playwright: web → accounts → app → undangan → brand), CI `.github/workflows/ci.yml` (job apps, functions, db per project). Diverifikasi di 7408318: `pnpm lint` ok, `pnpm typecheck` ok, `pnpm test` 197 tes lulus (campaign-builder 69, accounts 32, web 29, admin 24, brand 22, clipper 21), `pnpm build` 5 app ok, Deno fmt/lint/check ok + tes core 70 & identity 82, pgTAP core 727 & identity 107 (stub Postgres 16 dan `supabase test db`), `supabase db lint` (schema app) & `db advisors --type security` bersih, `pnpm e2e` 9/9 langkah 2× di build produksi. Node yang filenya ada punya kolom Path; bukti edge = `file:line` (dicek `check_graph.py`). Bukti yang masih rujukan PRD v0.3.1 = belum ada satu baris kode yang menyebut target, atau kodenya ada di folder route group `(account)`, `(auth)`, `(console)`: regex checker tidak menerima tanda kurung, jadi baris kodenya ditulis `kode baris N` (dicek manual). `(belum di kode)` = edge PRD yang tidak dibangun begitu. Edge `reads` page → table = dependency data logis; di kode jalannya lewat view/fungsi schema `api` (`policy:core.api-only`). Rujukan lintas DB (`table → table` antar project) tidak punya foreign key.
 
@@ -1039,7 +1039,7 @@ Arah: `A --tipe--> B` = A bergantung pada B. `?` = belum terverifikasi.
 | `table:tracking.submissions` | calls | `fn:tracking.decide_new_submission` | db/core/supabase/schemas/api/worker.sql:362 (hook bus_in.tracking_submissions_applied) |
 | `table:creator/tracking.social_accounts` | replicates-to | `table:tracking.social_accounts` | db/creator/supabase/schemas/tracking/social_accounts.sql:20 (tanpa token_ref) |
 | `table:market.claims` | replicates-to | `table:creator/market.claims` | db/core/supabase/schemas/market/claims.sql:20 |
-| `table:market.campaigns` | replicates-to | `table:creator/market.campaigns` | db/core/supabase/schemas/market/campaigns.sql:92 (status, deadline, view window) |
+| `table:market.campaigns` | replicates-to | `table:creator/market.campaigns` | db/core/supabase/schemas/market/campaigns.sql:113 (status, deadline, view window) |
 | `table:ops.settings` | replicates-to | `table:creator/ops.settings` | db/core/supabase/schemas/ops/settings.sql:12 |
 | `table:creator/tracking.social_accounts` | guarded-by | `policy:core.iss-identity` | db/creator/supabase/schemas/tracking/social_accounts.sql:48 |
 | `table:creator/tracking.social_accounts` | guarded-by | `policy:core.rls-self` | db/creator/supabase/schemas/tracking/social_accounts.sql:50 |
@@ -1216,7 +1216,7 @@ Arah: `A --tipe--> B` = A bergantung pada B. `?` = belum terverifikasi.
 | `page:brand/[org]/team` | reads | `table:brand/market.org_invites` | apps/brand/src/app/[org]/team/page.tsx:20 |
 | `page:brand/[org]/team` | reads | `table:brand/market.profiles` | apps/brand/src/app/[org]/team/page.tsx:26 |
 | `table:brand/market.campaigns` | replicates-to | `table:market.campaigns` | db/brand/supabase/schemas/market/campaigns.sql:81 (isi) |
-| `table:market.campaigns` | replicates-to | `table:brand/market.campaigns` | db/core/supabase/schemas/market/campaigns.sql:91 (status, jadwal, pin) |
+| `table:market.campaigns` | replicates-to | `table:brand/market.campaigns` | db/core/supabase/schemas/market/campaigns.sql:112 (status, jadwal, pin) |
 | `table:brand/market.campaign_assets` | replicates-to | `table:market.campaign_assets` | db/brand/supabase/schemas/market/campaign_assets.sql:20 |
 | `table:brand/market.campaign_invites` | replicates-to | `table:market.campaign_invites` | db/brand/supabase/schemas/market/campaigns.sql:94 |
 | `table:market.categories` | replicates-to | `table:brand/market.categories` | db/core/supabase/schemas/market/categories.sql:10 |
@@ -1231,8 +1231,8 @@ Arah: `A --tipe--> B` = A bergantung pada B. `?` = belum terverifikasi.
 | `api:rpc core.copy_campaign_economics` | writes | `table:market.rate_rules` | db/core/supabase/schemas/api/campaigns.sql:539 |
 | `api:rpc core.save_campaign` | reads | `table:market.campaigns` | db/core/supabase/schemas/api/campaigns.sql:206 (gerbang content_version replika) |
 | `api:rpc core.bus_receive` | calls | `fn:bus_in.market_campaigns_applied` | db/core/supabase/schemas/bus/bus.sql:297 |
-| `fn:bus_in.market_campaigns_applied` | writes | `table:market.campaigns` | db/core/supabase/schemas/market/campaigns.sql:111 |
-| `fn:bus_in.market_campaigns_applied` | writes | `table:finance.invoices` | db/core/supabase/schemas/market/campaigns.sql:115 |
+| `fn:bus_in.market_campaigns_applied` | writes | `table:market.campaigns` | db/core/supabase/schemas/market/campaigns.sql:132 |
+| `fn:bus_in.market_campaigns_applied` | writes | `table:finance.invoices` | db/core/supabase/schemas/market/campaigns.sql:136 |
 | `comp:CampaignBuilder` | calls | `api:rpc brand.save_campaign` | packages/campaign-builder/src/persist.ts:47 (persistCampaign) |
 | `page:brand/[org]/campaigns` | calls | `api:rpc core.copy_campaign_economics` | apps/brand/src/features/campaigns/actions.ts:14 |
 | `page:app/campaigns/[id]` | reads | `table:bucket.campaign-covers` | apps/clipper/src/features/lib/server.ts:49 (publicUrl cover) |
@@ -1507,15 +1507,15 @@ Arah: `A --tipe--> B` = A bergantung pada B. `?` = belum terverifikasi.
 | `table:market.campaign_assets` | typed-by | `table:bucket.campaign-assets` | db/core/supabase/schemas/market/campaign_assets.sql:1 |
 | `table:market.campaign_assets` | typed-by | `table:bucket.campaign-covers` | db/core/supabase/schemas/market/campaign_assets.sql:1 |
 | `table:market.campaign_assets` | typed-by | `table:market.campaigns` | db/core/supabase/schemas/market/campaign_assets.sql:7 |
-| `table:market.campaign_invites` | guarded-by | `policy:core.admin-aal2` | db/core/supabase/schemas/market/campaigns.sql:145 |
-| `table:market.campaign_invites` | guarded-by | `policy:core.iss-identity` | db/core/supabase/schemas/market/campaigns.sql:142 |
-| `table:market.campaign_invites` | guarded-by | `policy:core.rls-org` | db/core/supabase/schemas/market/campaigns.sql:177 |
-| `table:market.campaign_invites` | guarded-by | `policy:core.rls-self` | db/core/supabase/schemas/market/campaigns.sql:144 |
-| `table:market.campaign_invites` | typed-by | `table:market.campaigns` | db/core/supabase/schemas/market/campaigns.sql:133 |
-| `table:market.campaigns` | guarded-by | `policy:core.admin-aal2` | db/core/supabase/schemas/market/campaigns.sql:173 |
-| `table:market.campaigns` | guarded-by | `policy:core.iss-identity` | db/core/supabase/schemas/market/campaigns.sql:159 |
-| `table:market.campaigns` | guarded-by | `policy:core.public-read` | db/core/supabase/schemas/market/campaigns.sql:164 |
-| `table:market.campaigns` | guarded-by | `policy:core.rls-org` | db/core/supabase/schemas/market/campaigns.sql:172 |
+| `table:market.campaign_invites` | guarded-by | `policy:core.admin-aal2` | db/core/supabase/schemas/market/campaigns.sql:162 |
+| `table:market.campaign_invites` | guarded-by | `policy:core.iss-identity` | db/core/supabase/schemas/market/campaigns.sql:159 |
+| `table:market.campaign_invites` | guarded-by | `policy:core.rls-org` | db/core/supabase/schemas/market/campaigns.sql:194 |
+| `table:market.campaign_invites` | guarded-by | `policy:core.rls-self` | db/core/supabase/schemas/market/campaigns.sql:161 |
+| `table:market.campaign_invites` | typed-by | `table:market.campaigns` | db/core/supabase/schemas/market/campaigns.sql:150 |
+| `table:market.campaigns` | guarded-by | `policy:core.admin-aal2` | db/core/supabase/schemas/market/campaigns.sql:190 |
+| `table:market.campaigns` | guarded-by | `policy:core.iss-identity` | db/core/supabase/schemas/market/campaigns.sql:176 |
+| `table:market.campaigns` | guarded-by | `policy:core.public-read` | db/core/supabase/schemas/market/campaigns.sql:181 |
+| `table:market.campaigns` | guarded-by | `policy:core.rls-org` | db/core/supabase/schemas/market/campaigns.sql:189 |
 | `table:market.campaigns` | typed-by | `doc:spec/kg.yaml` | db/core/supabase/schemas/ops/state_triggers.sql:1 |
 | `table:market.campaigns` | typed-by | `table:finance.fee_rules` | db/core/supabase/schemas/market/campaigns.sql:45 |
 | `table:market.campaigns` | typed-by | `table:market.categories` | db/core/supabase/schemas/market/campaigns.sql:11 |
@@ -1685,7 +1685,7 @@ Arah: `A --tipe--> B` = A bergantung pada B. `?` = belum terverifikasi.
 | `test:core.full-product` | tests | `api:rpc core.missing_brief_tags` | db/core/supabase/tests/core_full_product.test.sql:175 |
 | `test:brand.campaigns` | tests | `table:bucket.campaign-assets` | db/brand/supabase/tests/brand_campaigns.test.sql:199 |
 | `test:core.full-product` | tests | `table:finance.reward_codes` | db/core/supabase/tests/core_full_product.test.sql:132 |
-| `test:core.full-product` | tests | `table:market.campaign_assets` | db/core/supabase/tests/core_full_product.test.sql:206 |
+| `test:core.full-product` | tests | `table:market.campaign_assets` | db/core/supabase/tests/core_full_product.test.sql:210 |
 | `test:core.full-product` | tests | `table:market.campaign_invites` | db/core/supabase/tests/core_full_product.test.sql:36 |
 | `test:core.full-product` | tests | `table:market.leaderboard_campaign` | db/core/supabase/tests/core_full_product.test.sql:115 |
 | `test:core.full-product` | tests | `table:market.org_links` | db/core/supabase/tests/core_full_product.test.sql:59 |
@@ -2739,6 +2739,7 @@ Masalah sistem yang ditemukan saat menyusun PRD v0.2 dan saat dicek ulang (v0.2.
 | 2026-10-24 | `page:app/tasks` | Review Claude ronde 7 D6 (bug di fix D4): submit kini mengembalikan keputusan admin yang bisa langsung rejected, tapi toast & banner tetap "Submisi masuk … direview dulu" | diperbaiki: status rejected → toast galat "Submisi ditolak — lihat alasannya di Tugas" tanpa banner sukses (web & mobile, i18n id/en). typecheck + unit test |
 | 2026-10-24 | `fn:tracking.decide_new_submission` | Codex R93-1 (kelas R89-1): durasi video dicek creator terhadap replika brief basi → video di luar batas durasi baru di-auto-approve dan dibayar | diperbaiki menyeluruh untuk kelasnya: admin mengecek ulang semua syarat isi campaign yang dicek creator — platform, min followers, umur akun, durasi, pakai ulang video — terhadap campaign miliknya; melanggar → ditolak tanpa penalti dengan alasan spesifik. Batasan: tag wajib caption tidak bisa dicek ulang (caption tiba bersama snapshot). Tes merah di kode lama |
 | 2026-10-24 | `fn:tracking.decide_new_submission` | Review Claude ronde 8 D7: penolakan otomatis admin (claim dilepas, org sendiri, kuota, syarat campaign, campaign tutup) tidak menulis review_decisions → alasan tidak tampil di Tugas (bertentangan dengan toast D6) dan tombol banding tetap ada; overturn banding melewati semua cek otomatis itu | diperbaiki: tracking.reject_auto mencatat keputusan reject dengan reason_code system:<kode> + pesan; appeal_submission menolak banding atas penolakan system:* (appeal_closed); Tugas web & mobile menyembunyikan tombol banding. Tes merah di kode lama. Codex R94 = [] pada b404fd0 |
+| 2026-10-24 | `fn:bus_in.market_campaigns_applied` | Codex R95-1: antrean admin → brand macet → brand masih melihat draft dan bisa mengubah isi campaign yang sudah disetujui; replika menimpa isi di admin (dulu hanya dicatat content_drift) → min_views / tag wajib berubah di tengah jalan, earning & FR-06 ikut berubah | diperbaiki: trigger market.campaign_content_frozen membekukan kolom isi milik brand (selain FAQ) setelah campaign disetujui — nilai lama dipertahankan + alert campaign.content_drift, event tidak ditolak. Claude ronde 9 = [] pada 3e9f002. Tes merah di kode lama; e2e tanpa alert palsu |
 
 ## Keputusan
 

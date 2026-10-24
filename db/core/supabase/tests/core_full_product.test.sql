@@ -178,16 +178,20 @@ select is(api.missing_brief_tags('55555555-0000-0000-0000-000000000014', 'cuma #
           array['#clipper', '@studiosatu', 'https://studio.id/promo'], 'yang kurang disebut satu per satu');
 select is(api.missing_brief_tags('55555555-0000-0000-0000-000000000013', '#film'), null, 'campaign yang tidak terlihat: NULL');
 reset role;
--- Brief dikunci di project brand; isi baru yang tetap tiba setelah tayang tidak mengubah status, hanya tercatat (event tidak ditolak).
+-- Brief dikunci di project brand dari replika status yang bisa tertinggal (admin → brand macet); isi baru yang tetap tiba setelah
+-- disetujui dibekukan di admin (R95-1): isi lama dipertahankan + alert, event tidak ditolak.
 update market.campaigns set submitted_version = content_version where id = '55555555-0000-0000-0000-000000000014';
+create temp table t_r95 as select required_hashtags h, content_version v from market.campaigns where id = '55555555-0000-0000-0000-000000000014';
 select lives_ok($$ select api.bus_receive('brand', jsonb_build_array(jsonb_build_object('id', gen_random_uuid(), 'topic', 'rep.row',
                    'payload', jsonb_build_object('table', 'market.campaigns', 'op', 'upsert', 'key', '{"id":"55555555-0000-0000-0000-000000000014"}'::jsonb,
                    'row', jsonb_build_object('id', '55555555-0000-0000-0000-000000000014', 'required_hashtags', array['baru'],
                      'content_version', (select content_version + 1 from market.campaigns where id = '55555555-0000-0000-0000-000000000014')))))) $$,
                 'replika isi tiba walau campaign tayang (antrean bus tidak macet)');
 select is((select status::text from market.campaigns where id = '55555555-0000-0000-0000-000000000014'), 'live', 'status tetap');
-select ok(exists (select 1 from ops.audit_logs where action = 'campaign.content_drift' and target = 'campaign:55555555-0000-0000-0000-000000000014'),
-          'isi berubah setelah diajukan tercatat untuk admin');
+select ok((select required_hashtags = (select h from t_r95) and content_version = (select v from t_r95) from market.campaigns
+            where id = '55555555-0000-0000-0000-000000000014'), 'R95-1: isi yang disetujui tidak berubah lewat replika (tag wajib & versi tetap)');
+select ok(exists (select 1 from ops.alerts where kind = 'campaign.content_drift' and payload ->> 'campaign_id' = '55555555-0000-0000-0000-000000000014'),
+          'R95-1: isi baru setelah disetujui → alert untuk admin');
 select lives_ok($$ update market.campaigns set faq = '[{"q":"Boleh pakai musik?","a":"Yang bebas lisensi"}]'
                    where id = '55555555-0000-0000-0000-000000000014' $$, 'FAQ tetap bisa ditambah saat tayang');
 select lives_ok($$ update market.campaigns set required_hashtags = '{film}' where id = '55555555-0000-0000-0000-000000000013' $$,
