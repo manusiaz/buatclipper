@@ -1313,6 +1313,21 @@ select is((select payload -> 'row' ->> 'status' from bus.outbox where target = '
           'R98-1: status draft ikut direplika ke brand (event terakhir)');
 select is((select string_agg(status, ',') from finance.invoices where campaign_id = (select id from t_ids where k = 'c_asset') and kind = 'campaign'),
           'void', 'R98-1: invoice campaign yang belum lunas batal');
+-- Review D10: aset yang diputar ulang identik (bus.resync) bukan perubahan → review in_review tidak dibatalkan
+set local role authenticated;
+select pg_temp.jwt('22222222-0000-0000-0000-0000000000a1');
+insert into t_ids (k, id) select 'c_replay', pg_temp.save_campaign($j${
+  "org_id":"44444444-0000-0000-0000-000000000001","title":"Aset Diputar Ulang","type":"clipping","platforms":["tiktok"],
+  "start_at":"2099-01-01T00:00:00Z","submit_deadline":"2099-01-20T00:00:00Z","assets":[{"kind":"link","url":"https://contoh.id/aset-tetap"}],
+  "pools":[{"key":"idr","reward_type_id":"77777777-0000-0000-0000-000000000001","total":1000000,"max_per_clip":100000}],
+  "rules":[{"kind":"per_1k_views","pool":"idr","params":{"rate":2000}}]}$j$::jsonb, true);
+reset role;
+select is((select status::text from market.campaigns where id = (select id from t_ids where k = 'c_replay')), 'in_review', 'D10: prasyarat in_review');
+select api.bus_receive('brand', (select jsonb_agg(jsonb_build_object('id', gen_random_uuid(), 'topic', 'rep.row', 'payload',
+  jsonb_build_object('table', 'market.campaign_assets', 'op', 'upsert', 'key', jsonb_build_object('id', a.id), 'row', to_jsonb(a))))
+  from market.campaign_assets a where a.campaign_id = (select id from t_ids where k = 'c_replay')));
+select is((select status::text from market.campaigns where id = (select id from t_ids where k = 'c_replay')), 'in_review',
+          'D10: aset identik diputar ulang tidak membatalkan review');
 -- Review Claude C1: is_template tiba lewat replika sesudah diajukan (status replika di brand tertinggal) → kembali draft; penjaga
 -- template tidak boleh membuat hook raise (batch bus brand → admin macet selamanya).
 set local role authenticated;

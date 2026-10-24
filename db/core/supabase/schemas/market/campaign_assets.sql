@@ -28,7 +28,9 @@ language plpgsql set search_path = '' as $$
 declare
   c market.campaigns;
 begin
-  if current_setting('bus.applying', true) is distinct from 'on' then
+  -- BEFORE INSERT jalan sebelum ON CONFLICT: aset yang sudah ada (putar ulang identik, mis. bus.resync) bukan perubahan
+  if current_setting('bus.applying', true) is distinct from 'on'
+     or (tg_op = 'INSERT' and exists (select 1 from market.campaign_assets x where x.id = new.id)) then
     return coalesce(new, old);
   end if;
   select * into c from market.campaigns k where k.id = coalesce(new.campaign_id, old.campaign_id) for update;
