@@ -6,7 +6,7 @@ export interface LegalDoc {
   url: string;
 }
 
-export const USERNAME_RE = /^[a-z0-9_.]{3,30}$/;
+export const USERNAME_RE = /^(?!deleted_)[a-z0-9_.]{3,30}$/; // deleted_ = profil yang dihapus (direservasi DB creator)
 export const DISPLAY_NAME_MAX = 50;
 
 export const normalizeUsername = (s: string) => s.trim().toLowerCase();

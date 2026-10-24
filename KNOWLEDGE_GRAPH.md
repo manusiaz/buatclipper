@@ -3,7 +3,7 @@
 > Everything is one system. Every page is a node; every line is a real data or design dependency.
 > Dikelola oleh skill `alaconnect`. Edit inkremental — jangan generate ulang.
 
-Last verified: f1c7064+ (2026-10-23) — 4 DB (identity, admin = folder `db/core`, creator, brand): `db reset` keempat DB dari rantai migrasi (declarative sync: no changes), pgTAP identity 172 + admin 1005 + creator 93 + brand 123, deno identity 133 + core 28 + creator 58, lint (check-arch 4 DB), typecheck 15 workspace, unit test semua, e2e bus 7/7 + roles 21/21 + journey 10/10 + mobile 13/13; simulasi VPS `deploy.sh up all` dari nol → roles 21/21, bus 6/6. Katalog endpoint per DB: docs/endpoints/*.md (`pnpm endpoints`).
+Last verified: f1c7064+ (2026-10-23) — 4 DB (identity, admin = folder `db/core`, creator, brand): `db reset` keempat DB dari rantai migrasi (declarative sync: no changes), pgTAP identity 172 + admin 1009 + creator 95 + brand 123, deno identity 133 + core 28 + creator 58, lint (check-arch 4 DB), typecheck 15 workspace, unit test semua, e2e bus 7/7 + roles 21/21 + journey 10/10 + mobile 13/13; simulasi VPS `deploy.sh up all` dari nol → roles 21/21, bus 6/6. Katalog endpoint per DB: docs/endpoints/*.md (`pnpm endpoints`).
 
 **Status:** sistem sudah dibangun dan dites. 5 app Next.js 16 (`apps/web`, `apps/accounts`, `apps/clipper`, `apps/brand`, `apps/admin`) di atas `packages/{ui,campaign-builder,clipper-lib,auth,db-core,db-identity,i18n,config}`, plus app native Expo `apps/mobile` (Android + iOS, satu kode). 4 project Supabase (`db/identity`, `db/core` = admin, `db/creator`, `db/brand`): schema deklaratif, `migrations/` (pg-delta), config.toml, seed; bus event antar DB. Endpoint per DB: docs/endpoints/{identity,admin,creator,brand}.md.sql. 12 Edge Function: core `bridge`, `fulfill`, `notify`, `refresh-tokens`, `social`, `track-worker`; identity `admin-auth`, `bridge`, `delete-account`, `disburse`, `member-data`, `pii-export`. Tes: pgTAP 6 file (`db/core/supabase/tests` 4, `db/identity/supabase/tests` 2), unit test app/package (`pnpm test`, 38 file `*.test.ts(x)`), unit test Deno (29 file `*_test.ts` di `db/*/supabase/functions`), journey E2E lintas host `e2e/journey.cjs` (Playwright: web → accounts → app → undangan → brand), CI `.github/workflows/ci.yml` (job apps, functions, db per project). Diverifikasi di 7408318: `pnpm lint` ok, `pnpm typecheck` ok, `pnpm test` 197 tes lulus (campaign-builder 69, accounts 32, web 29, admin 24, brand 22, clipper 21), `pnpm build` 5 app ok, Deno fmt/lint/check ok + tes core 70 & identity 82, pgTAP core 727 & identity 107 (stub Postgres 16 dan `supabase test db`), `supabase db lint` (schema app) & `db advisors --type security` bersih, `pnpm e2e` 9/9 langkah 2× di build produksi. Node yang filenya ada punya kolom Path; bukti edge = `file:line` (dicek `check_graph.py`). Bukti yang masih rujukan PRD v0.3.1 = belum ada satu baris kode yang menyebut target, atau kodenya ada di folder route group `(account)`, `(auth)`, `(console)`: regex checker tidak menerima tanda kurung, jadi baris kodenya ditulis `kode baris N` (dicek manual). `(belum di kode)` = edge PRD yang tidak dibangun begitu. Edge `reads` page → table = dependency data logis; di kode jalannya lewat view/fungsi schema `api` (`policy:core.api-only`). Rujukan lintas DB (`table → table` antar project) tidak punya foreign key.
 
@@ -327,7 +327,7 @@ Wajib tetap benar setiap perubahan (dicek otomatis saat graph ini dibuat; cek ul
 | `table:brand/market.campaign_assets` | table | db/brand/supabase/schemas/market/campaign_assets.sql | E-10 aset campaign (pemilik) | `db/brand` |
 | `table:brand/market.campaign_invites` | table | db/brand/supabase/schemas/market/campaigns.sql | E-37 undangan campaign (pemilik) | `db/brand` |
 | `table:brand/market.categories` | table | db/brand/supabase/schemas/market/categories.sql | Replika kategori dari admin | `db/brand` |
-| `fn:bus.accepts` | fn | db/core/supabase/schemas/bus/accept.sql | Allowlist rep.row per penerima: (pengirim, tabel) → kolom yang boleh ditulis; dibangkitkan scripts/gen-bus-accept.mjs dari trigger bus.replicate pengirim, dicek `pnpm lint` | per DB (admin/creator/brand) |
+| `fn:bus.accepts` | fn | db/core/supabase/schemas/bus/accept.sql | Allowlist bus per penerima: rep.row (pengirim, tabel) → kolom yang boleh ditulis (dari trigger bus.replicate pengirim) + bus.accepts_topic (pengirim, topik) dari bus.emit pengirim; dibangkitkan scripts/gen-bus-accept.mjs, dicek `pnpm lint` | per DB (admin/creator/brand) |
 | `fn:bus_in.market_campaigns_applied` | fn | db/core/supabase/schemas/market/campaigns.sql | Isi campaign tiba setelah diajukan → kembali draft (invoice belum lunas batal) / tercatat; tidak pernah menolak event |  |
 | `test:brand.campaigns` | test | db/brand/supabase/tests/brand_campaigns.test.sql | pgTAP isi campaign brand: normalisasi, slug, aset, kunci brief, versi isi, duplikat, undangan, visibilitas, storage | `db/brand` |
 | `table:brand/market.org_invites` | table | db/brand/supabase/schemas/market/org_invites.sql | E-30 token undangan tanpa email (DB brand; dulu core) | `db/brand` |
@@ -1049,7 +1049,7 @@ Arah: `A --tipe--> B` = A bergantung pada B. `?` = belum terverifikasi.
 | `table:creator/market.claims` | guarded-by | `policy:core.rls-self` | db/creator/supabase/schemas/market/campaigns.sql:46 |
 | `table:creator/ops.settings` | guarded-by | `policy:core.public-read` | db/creator/supabase/schemas/ops/settings.sql:13 |
 | `test:creator.tracking` | tests | `api:rpc creator.worker_create_submission` | db/creator/supabase/tests/creator_tracking.test.sql:1 |
-| `fn:bus_in.creator` | writes | `table:creator/tracking.social_accounts` | db/creator/supabase/schemas/api/profile.sql:93 (social.reset) |
+| `fn:bus_in.creator` | writes | `table:creator/tracking.social_accounts` | db/creator/supabase/schemas/api/profile.sql:98 (social.reset) |
 | `fn:tracking.apply_snapshot` | writes | `table:trust.fraud_flags` | db/core/supabase/schemas/api/worker.sql:111 (trust.raise_flag) |
 | `api:fn identity/admin-auth` | guarded-by | `policy:identity.admin-aal2` | db/identity/supabase/functions/admin-auth/handler.ts:33 |
 | `api:fn identity/admin-auth` | writes | `table:auth.users` | db/identity/supabase/functions/admin-auth/handler.ts:51 (invite; ban_duration lewat _shared/moderation.ts) |
@@ -1181,9 +1181,9 @@ Arah: `A --tipe--> B` = A bergantung pada B. `?` = belum terverifikasi.
 | `table:market.profiles` | replicates-to | `table:creator/market.profiles` | db/core/supabase/schemas/market/profiles.sql:22 (status, sanksi, trust score) |
 | `table:creator/market.profiles` | replicates-to | `table:market.profiles` | db/creator/supabase/schemas/market/profiles.sql:17 (username, nama, avatar, created_at) |
 | `table:creator/market.profiles` | replicates-to | `table:brand/market.profiles` | db/creator/supabase/schemas/market/profiles.sql:17 (username, nama, avatar) |
-| `api:rpc creator.ensure_profile` | writes | `table:creator/market.profiles` | db/creator/supabase/schemas/api/profile.sql:23 |
-| `api:rpc creator.ensure_profile` | calls | `fn:bus_in.admin` | db/creator/supabase/schemas/api/profile.sql:36 (event referral.record) |
-| `fn:bus_in.creator` | writes | `table:creator/market.profiles` | db/creator/supabase/schemas/api/profile.sql:60 (profile_ensure; profile_anonymize baris 67) |
+| `api:rpc creator.ensure_profile` | writes | `table:creator/market.profiles` | db/creator/supabase/schemas/api/profile.sql:28 |
+| `api:rpc creator.ensure_profile` | calls | `fn:bus_in.admin` | db/creator/supabase/schemas/api/profile.sql:41 (event referral.record) |
+| `fn:bus_in.creator` | writes | `table:creator/market.profiles` | db/creator/supabase/schemas/api/profile.sql:65 (profile_ensure; profile_anonymize baris 67) |
 | `mod:auth` | calls | `mod:db-creator` | packages/auth/src/server.ts:7 (creatorServer) |
 | `mod:db-creator` | configured-by | `env:NEXT_PUBLIC_CREATOR_DB_URL` | packages/db-creator/src/index.ts:9 |
 | `mod:db-creator` | configured-by | `config:host.creator-api` | deploy/deploy.sh:347 (apps_env) |
@@ -1192,17 +1192,17 @@ Arah: `A --tipe--> B` = A bergantung pada B. `?` = belum terverifikasi.
 | `test:creator.profiles` | tests | `api:rpc creator.ensure_profile` | db/creator/supabase/tests/creator_profiles.test.sql:1 |
 | `test:e2e.roles` | tests | `page:app/profile` | e2e/roles.cjs:451 (ubah nama + foto → creator → replika admin) |
 | `table:brand/ops.audit_logs` | calls | `fn:bus_in.admin` | db/brand/supabase/schemas/ops/audit_logs.sql:24 (ops.forward_audit) |
-| `api:rpc core.bus_receive` | calls | `fn:bus_in.admin` | db/core/supabase/schemas/bus/bus.sql:137 |
-| `api:rpc core.bus_receive` | calls | `fn:bus.accepts` | db/core/supabase/schemas/bus/bus.sql:223 (apply_row menolak tabel/kolom di luar allowlist pengirim) |
+| `api:rpc core.bus_receive` | calls | `fn:bus_in.admin` | db/core/supabase/schemas/bus/bus.sql:142 |
+| `api:rpc core.bus_receive` | calls | `fn:bus.accepts` | db/core/supabase/schemas/bus/bus.sql:229 (apply_row menolak tabel/kolom di luar allowlist pengirim) |
 | `job:bus-ping` | emits | `fn:bus_in.admin` | db/creator/supabase/schemas/bus/self.sql:6 (bus.ping; brand: db/brand/supabase/schemas/bus/self.sql baris 6) |
 | `fn:bus_in.admin` | writes | `table:ops.bus_peers` | db/core/supabase/schemas/bus/inbound.sql:79 (bus_ping) |
 | `job:bus-watch` | reads | `table:ops.bus_peers` | db/core/supabase/schemas/bus/inbound.sql:95 |
 | `job:bus-watch` | calls | `job:alert-notify` | db/core/supabase/schemas/bus/inbound.sql:100 (ops.raise_alert bus.stuck → email admin) |
 | `table:ops.bus_peers` | guarded-by | `policy:core.iss-identity` | db/core/supabase/schemas/bus/inbound.sql:72 |
 | `table:ops.bus_peers` | guarded-by | `policy:core.admin-aal2` | db/core/supabase/schemas/bus/inbound.sql:74 |
-| `api:rpc core.health` | reads | `table:bus.outbox` | db/core/supabase/schemas/bus/bus.sql:173 |
+| `api:rpc core.health` | reads | `table:bus.outbox` | db/core/supabase/schemas/bus/bus.sql:179 |
 | `doc:docs/endpoints` | documents | `api:rpc core.health` | docs/endpoints/admin.md:13 |
-| `test:core.full-product` | tests | `job:bus-watch` | db/core/supabase/tests/core_contracts_finance.test.sql:1488 |
+| `test:core.full-product` | tests | `job:bus-watch` | db/core/supabase/tests/core_contracts_finance.test.sql:1489 |
 | `test:creator.tracking` | tests | `api:rpc creator.health` | db/creator/supabase/tests/creator_tracking.test.sql:229 |
 | `fn:bus_in.admin` | writes | `table:ops.audit_logs` | db/core/supabase/schemas/bus/inbound.sql:7 |
 | `fn:bus_in.admin` | writes | `table:trust.review_decisions` | db/core/supabase/schemas/bus/inbound.sql:14 |
@@ -1230,7 +1230,7 @@ Arah: `A --tipe--> B` = A bergantung pada B. `?` = belum terverifikasi.
 | `api:rpc core.copy_campaign_economics` | writes | `table:finance.reward_pools` | db/core/supabase/schemas/api/campaigns.sql:535 |
 | `api:rpc core.copy_campaign_economics` | writes | `table:market.rate_rules` | db/core/supabase/schemas/api/campaigns.sql:538 |
 | `api:rpc core.save_campaign` | reads | `table:market.campaigns` | db/core/supabase/schemas/api/campaigns.sql:206 (gerbang content_version replika) |
-| `api:rpc core.bus_receive` | calls | `fn:bus_in.market_campaigns_applied` | db/core/supabase/schemas/bus/bus.sql:280 |
+| `api:rpc core.bus_receive` | calls | `fn:bus_in.market_campaigns_applied` | db/core/supabase/schemas/bus/bus.sql:286 |
 | `fn:bus_in.market_campaigns_applied` | writes | `table:market.campaigns` | db/core/supabase/schemas/market/campaigns.sql:111 |
 | `fn:bus_in.market_campaigns_applied` | writes | `table:finance.invoices` | db/core/supabase/schemas/market/campaigns.sql:115 |
 | `comp:CampaignBuilder` | calls | `api:rpc brand.save_campaign` | packages/campaign-builder/src/persist.ts:47 (persistCampaign) |
@@ -1593,12 +1593,11 @@ Arah: `A --tipe--> B` = A bergantung pada B. `?` = belum terverifikasi.
 | `table:ops.audit_logs` | guarded-by | `policy:core.iss-identity` | db/core/supabase/schemas/ops/audit_logs.sql:17 |
 | `table:ops.broadcasts` | guarded-by | `policy:core.admin-aal2` | db/core/supabase/schemas/ops/broadcasts.sql:23 |
 | `table:ops.broadcasts` | guarded-by | `policy:core.iss-identity` | db/core/supabase/schemas/ops/broadcasts.sql:21 |
-| `table:ops.notification_prefs` | guarded-by | `policy:core.iss-identity` | db/core/supabase/schemas/ops/notifications.sql:31 |
-| `table:ops.notification_prefs` | guarded-by | `policy:core.rls-self` | db/core/supabase/schemas/ops/notifications.sql:33 |
-| `table:ops.notification_prefs` | typed-by | `table:market.profiles` | db/core/supabase/schemas/ops/notifications.sql:4 |
-| `table:ops.notifications` | guarded-by | `policy:core.iss-identity` | db/core/supabase/schemas/ops/notifications.sql:16 |
-| `table:ops.notifications` | guarded-by | `policy:core.rls-self` | db/core/supabase/schemas/ops/notifications.sql:19 |
-| `table:ops.notifications` | typed-by | `table:market.profiles` | db/core/supabase/schemas/ops/notifications.sql:4 |
+| `table:ops.notification_prefs` | guarded-by | `policy:core.iss-identity` | db/core/supabase/schemas/ops/notifications.sql:32 |
+| `table:ops.notification_prefs` | guarded-by | `policy:core.rls-self` | db/core/supabase/schemas/ops/notifications.sql:34 |
+| `table:ops.notification_prefs` | typed-by | `table:market.profiles` | db/core/supabase/schemas/ops/notifications.sql:26 |
+| `table:ops.notifications` | guarded-by | `policy:core.iss-identity` | db/core/supabase/schemas/ops/notifications.sql:17 |
+| `table:ops.notifications` | guarded-by | `policy:core.rls-self` | db/core/supabase/schemas/ops/notifications.sql:20 |
 | `table:ops.settings` | guarded-by | `policy:core.admin-aal2` | db/core/supabase/schemas/ops/settings.sql:18 |
 | `table:ops.settings` | guarded-by | `policy:core.iss-identity` | db/core/supabase/schemas/ops/settings.sql:15 |
 | `table:ops.settings` | guarded-by | `policy:core.public-read` | db/core/supabase/schemas/ops/settings.sql:17 |
@@ -1696,7 +1695,7 @@ Arah: `A --tipe--> B` = A bergantung pada B. `?` = belum terverifikasi.
 | `test:e2e.bus` | configured-by | `doc:scripts/dev-stack.sh` | e2e/bus.sh:2 |
 | `test:e2e.bus` | calls | `api:fn creator/bridge` | e2e/bus.sh:3 |
 | `test:e2e.bus` | tests | `api:rpc core.bus_receive` | e2e/bus.sh:43 |
-| `test:core.full-product` | tests | `fn:bus.accepts` | db/core/supabase/tests/bus.test.sql:82 |
+| `test:core.full-product` | tests | `fn:bus.accepts` | db/core/supabase/tests/bus.test.sql:6 |
 | `test:e2e.bus` | calls | `api:fn brand/bridge` | e2e/bus.sh:3 |
 | `test:e2e.cross-host` | configured-by | `doc:deploy/deploy.sh` | e2e/journey.cjs:2 (E2E_* menimpa host & DB untuk stack self-hosted) |
 | `test:e2e.cross-host` | tests | `page:accounts/invite/[token]` | e2e/journey.cjs:118 |
@@ -2721,6 +2720,9 @@ Masalah sistem yang ditemukan saat menyusun PRD v0.2 dan saat dicek ulang (v0.2.
 | 2026-10-24 | `fn:bus_in.market_campaigns_applied` | Review Claude independen C1 (lolos 5 putaran Codex): brand menyetel is_template tepat setelah campaign diajukan (replika status di brand masih draft) → hook admin in_review → rejected → trigger template_stays_draft raise → batch brand→admin macet selamanya; varian scheduled → live membatalkan seluruh run_lifecycle | diperbaiki: penjaga template hanya di titik pengajuan (→ in_review); hook dibungkus exception + alert campaign.apply_failed. Tes merah di kode lama (invalid:template) |
 | 2026-10-24 | `fn:tracking.decide_new_submission` | Review Claude independen C2: profil di-ban/ditutup selagi submisi review auto di jalan → apply_submission_decision raise not_eligible:profile_inactive, hook menelan error → submisi tertahan validating selamanya → campaign tidak pernah settle; juga notifikasi ke anggota brand yang profilnya belum tiba di admin (FK) | diperbaiki: profil banned/closed → rejected tanpa penalti; notifikasi review brand tidak fatal (alert tracking.notify_failed); hook gagal → submisi jatuh ke in_review (antre moderator). Tes merah di kode lama (not_eligible:profile_inactive). notify.user dari brand yang kena FK tidak diubah: batch di-retry sampai profil tiba (benar) |
 | 2026-10-24 | `fn:bus.accepts` | Review Claude independen C3: rep.row menerima tabel & kolom apa pun dari peer mana pun → secret bus satu peer yang bocor = tulis uang/sanksi di penerima (terbukti: kode lama creator bisa mem-ban user di admin), bertentangan dengan "kolom milik penerima tidak tersentuh" | diperbaiki: apply_row(p, source) menolak (42501 bus_not_allowed) tabel/kolom di luar bus.accepts; allowlist dibangkitkan dari trigger bus.replicate pengirim (scripts/gen-bus-accept.mjs), `pnpm lint` gagal bila basi. Bukti trafik sah tidak tertolak: e2e roles 21/21, journey 10/10, mobile 13/13, bus 7/7, outbox kosong |
+| 2026-10-24 | `fn:bus.accepts` | Cek silang ronde 2 — Codex R88-1 = Claude C5 (ditemukan independen keduanya): topik selain rep.row tidak dibatasi pengirim → secret brand yang bocor bisa memanggil post_gone (forfeit earning + penalti), profile.anonymize, referral.record; bus.ping memakai payload.source → brand memalsukan ping creator dan membuka gerbang settle R83-1 (terbukti di kode lama) | diperbaiki: bus.accepts_topic dari bus.emit literal pengirim, bus_receive menolak 42501; sumber bus.ping = pengirim terautentikasi; uji.ping (handler e2e/bus.sh) dikecualikan |
+| 2026-10-24 | `fn:bus_in.creator` | Cek silang ronde 2 — Codex R88-2 = Claude C4: username deleted_<md5[:12]> bisa didaftarkan orang → profile.anonymize kena unik → antrean admin→creator macet; nisan admin bentrok juga | diperbaiki: prefix deleted_ direservasi (api.ensure_profile → username_taken, profile.ensure → m_<hex>, regex onboarding), nama anonim 22 hex. Tes merah di kode lama |
+| 2026-10-24 | `table:ops.notifications` | Cek silang ronde 2 — Claude C6 (mengoreksi argumen Claude utama bahwa notify.user brand pulih lewat retry): FK user_id → profiles lintas sumber; anggota brand yang profilnya belum tiba dari creator membuat notify.user brand menolak batch dan notify_org di run_lifecycle (campaign.live/settled) membatalkan seluruh job lifecycle | diperbaiki: FK dilepas (sama dengan org_members), notifikasi tetap terbaca lewat user_id. Terbukti di kode lama (notifications_user_id_fkey) |
 
 ## Keputusan
 

@@ -15,4 +15,19 @@ language sql immutable set search_path = '' as $$
     ('creator', 'tracking.view_snapshots', array['submission_id', 'taken_at', 'views', 'likes', 'comments', 'shares', 'is_final', 'raw'])
   ) v(source, tbl, cols) where v.source = p_source and v.tbl = p_table;
 $$;
-revoke execute on function bus.accepts(text, text) from public;
+-- Topik selain rep.row yang boleh dikirim tiap pengirim ke DB ini (bus.emit di kode pengirim).
+create function bus.accepts_topic(p_source text, p_topic text) returns boolean
+language sql immutable set search_path = '' as $$
+  select (p_source, p_topic) in (
+    ('brand', 'audit.log'),
+    ('brand', 'bus.ping'),
+    ('brand', 'notify.user'),
+    ('brand', 'org.owner_lost'),
+    ('brand', 'review.decision'),
+    ('creator', 'bus.ping'),
+    ('creator', 'notify.user'),
+    ('creator', 'referral.record'),
+    ('creator', 'submission.post_gone')
+  );
+$$;
+revoke execute on function bus.accepts(text, text), bus.accepts_topic(text, text) from public;

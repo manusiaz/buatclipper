@@ -19,6 +19,11 @@ begin
   if p_avatar_path is not null and (p_avatar_path not like uid::text || '/%' or p_avatar_path like '%..%') then
     perform market.fail('invalid:avatar_path', 'avatar harus di folder {uid}/', '22023');
   end if;
+  -- deleted_ = nama profil yang dihapus (profile.anonymize): direservasi, kalau tidak anonimisasi bentrok unik dan antrean
+  -- admin → creator macet
+  if lower(btrim(p_username)) like 'deleted\_%' then
+    perform market.fail('username_taken', lower(btrim(p_username)), '23505');
+  end if;
   begin
     insert into market.profiles as p (id, username, display_name, avatar_path)
     values (uid, lower(btrim(p_username)), btrim(p_display_name), p_avatar_path)
@@ -51,7 +56,7 @@ begin
   if exists (select 1 from market.profiles x where x.id = v_user) then
     return;
   end if;
-  if uname is null or uname !~ '^[a-z0-9_.]{3,30}$' or exists (select 1 from market.profiles x where x.username = uname) then
+  if uname is null or uname !~ '^[a-z0-9_.]{3,30}$' or uname like 'deleted\_%' or exists (select 1 from market.profiles x where x.username = uname) then
     uname := 'm_' || substr(replace(v_user::text, '-', ''), 1, 12);
   end if;
   while exists (select 1 from market.profiles x where x.username = uname) loop
@@ -69,7 +74,7 @@ language plpgsql set search_path = '' as $$
 declare
   v_user uuid := (p ->> 'user_id')::uuid;
 begin
-  update market.profiles set username = 'deleted_' || substr(md5(id::text), 1, 12), display_name = 'Akun dihapus', avatar_path = null
+  update market.profiles set username = 'deleted_' || substr(md5(id::text), 1, 22), display_name = 'Akun dihapus', avatar_path = null
    where id = v_user;
   delete from vault.secrets v where v.id in (select a.token_ref from tracking.social_accounts a where a.user_id = v_user);
   delete from tracking.social_accounts a

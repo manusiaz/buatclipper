@@ -1384,7 +1384,8 @@ select is((select array[f.details -> 'duplicates' ->> 0, f.details -> 'related_u
 select ok(not exists (select 1 from trust.fraud_flags f join tracking.submissions s on s.id = f.target_id
                        where f.signal = 'FR-07' and s.post_id in ('vid-10', 'vid-12')),
           'cover berbeda / submisi pertama tidak di-flag FR-07');
-select is((select count(*)::int from ops.notifications where event = 'submission.pending_review' and user_id = '22222222-0000-0000-0000-0000000000a1'),
+select is((select count(*)::int from ops.notifications where event = 'submission.pending_review' and user_id = '22222222-0000-0000-0000-0000000000a1'
+             and payload ->> 'submission_id' = (select id::text from tracking.submissions where post_id = 'vid-12')),
           1, 'review brand: org dinotifikasi submisi menunggu review');
 
 -- ========== J. snapshot dari creator (§11): fraud, accrual, lock, jadwal poll ==========

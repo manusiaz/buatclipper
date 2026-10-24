@@ -1,7 +1,8 @@
 -- E-23 notifikasi in-app (clipper, brand, admin). User hanya membaca miliknya dan menandai sudah dibaca.
 create table ops.notifications (
   id bigint generated always as identity primary key,
-  user_id uuid not null references market.profiles (id),
+  user_id uuid not null,  -- tanpa FK: penerima bisa anggota brand yang profilnya belum tiba dari creator (urutan antar sumber
+                          -- tidak dijamin); FK membuat notify.user brand dan run_lifecycle (notify_org) gagal
   event text not null check (event ~ '^[a-z_]+(\.[a-z_]+)+$'),
   payload jsonb not null default '{}',
   read_at timestamptz,

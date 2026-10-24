@@ -31,6 +31,8 @@ select throws_ok($$ select api.ensure_profile('andi', 'Andi') $$, '42501', 'auth
 select pg_temp.jwt('11111111-0000-0000-0000-00000000000a');
 select is((select created from api.ensure_profile(' Andi ', ' Andi A ', 'KODEREF1')), true, 'profil baru (username dinormalkan)');
 select throws_ok($$ select api.ensure_profile('budi', 'Andi') $$, '23505', 'username_taken', 'username milik orang lain ditolak');
+select throws_ok($$ select api.ensure_profile('Deleted_abc', 'Andi') $$, '23505', 'username_taken',
+                 'C4: prefix deleted_ direservasi (nama profil yang dihapus)');
 select is((select created from api.ensure_profile('andi_baru', 'Andi B', 'kodelain')), false, 'profil yang ada diperbarui');
 select throws_ok($$ select api.ensure_profile('andi_baru', 'Andi B', null, '11111111-0000-0000-0000-0000000000b0/a.webp') $$,
                  '22023', 'invalid:avatar_path', 'avatar di folder user lain ditolak');
@@ -59,6 +61,9 @@ select ok(exists (select 1 from bus.outbox where target = 'brand' and topic = 'r
 select bus_in.profile_ensure('{"user_id":"11111111-0000-0000-0000-0000000000f1","username":"budi","display_name":"PIC"}');
 select ok((select username ~ '^m_[0-9a-f]{12}$' and display_name = 'PIC' from market.profiles where id = '11111111-0000-0000-0000-0000000000f1'),
           'profile.ensure: username terpakai → m_<hex>');
+select bus_in.profile_ensure('{"user_id":"11111111-0000-0000-0000-0000000000f3","username":"deleted_abc"}');
+select ok((select username ~ '^m_[0-9a-f]{12}$' from market.profiles where id = '11111111-0000-0000-0000-0000000000f3'),
+          'C4: profile.ensure dengan username deleted_ → m_<hex>');
 select bus_in.profile_ensure('{"user_id":"11111111-0000-0000-0000-0000000000f2","username":"pic_toko"}');
 select bus_in.profile_ensure('{"user_id":"11111111-0000-0000-0000-0000000000f2","username":"lain"}');
 select is((select username || ' ' || display_name from market.profiles where id = '11111111-0000-0000-0000-0000000000f2'),
