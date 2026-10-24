@@ -100,6 +100,17 @@ for _ in $(seq 1 50); do [ "$(q admin -c "select count(*) from pg_stat_activity 
 q admin -c "select bus.reconcile_apply()" >/dev/null; wait
 if [ "$(q admin -c "select exists (select 1 from market.org_members where user_id = '$G2')")" = t ]; then echo "✓ rekonsiliasi tertunda tidak menghapus baris yang sedang dikirim ulang (kunci job ↔ replikasi)"
 else echo "✗ job bus-reconcile menghapus baris yang dikirim ulang bersamaan"; fail=1; fi
+# O6-1: dua pemanggil job bersamaan — yang menunggu kunci tidak memproses run yang sudah diselesaikan pemanggil pertama
+# (daftar kuncinya sudah dihapus → tanpa baca ulang semua anggota org terhapus).
+q admin -c "insert into bus.reconcile_keys (source, tbl, epoch, key) select 'brand', 'market.org_members', '$E', jsonb_build_object('org_id', org_id, 'user_id', user_id) from market.org_members on conflict do nothing" \
+        -c "insert into bus.reconcile_runs (source, tbl, epoch, total) values ('brand', 'market.org_members', '$E', 0) on conflict do nothing" >/dev/null
+before=$(q admin -c "select count(*) from market.org_members")
+q admin -c "begin" -c "select bus.reconcile_apply()" -c "select pg_sleep(2)" -c "commit" >/dev/null &
+for _ in $(seq 1 50); do [ "$(q admin -c "select count(*) from pg_stat_activity where query like '%pg_sleep(2)%' and pid <> pg_backend_pid()")" = 1 ] && break; sleep 0.1; done
+q admin -c "select bus.reconcile_apply()" >/dev/null; wait
+after=$(q admin -c "select count(*) from market.org_members")
+if [ "$before" = "$after" ]; then echo "✓ dua pemanggil job bersamaan: run yang sudah selesai tidak diproses ulang ($after anggota org tetap)"
+else echo "✗ pemanggil kedua memproses run basi: anggota org $before → $after"; fail=1; fi
 q admin -c "select set_config('bus.applying', 'on', false)" -c "delete from market.org_members where user_id = '$G2'" \
         -c "delete from bus.reconcile_runs where epoch = '$E'" -c "delete from bus.reconcile_keys where epoch = '$E'" >/dev/null
 for t in admin creator brand; do

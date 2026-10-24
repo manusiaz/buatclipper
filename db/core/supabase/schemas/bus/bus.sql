@@ -571,6 +571,9 @@ begin
     m := 0;
     -- kunci dipegang sampai job commit: upsert yang tiba bersamaan menunggu, lalu menulis ulang barisnya (O5-1)
     perform pg_advisory_xact_lock(hashtextextended('bus_reconcile:' || r.source, 0));
+    -- dibaca ulang sesudah kunci: pemanggil lain (cron + manual) bisa sudah menyelesaikan run ini dan menghapus daftarnya —
+    -- run basi + daftar kosong = hapus massal (O6-1)
+    continue when not exists (select 1 from bus.reconcile_runs x where x.source = r.source and x.tbl = r.tbl and x.epoch = r.epoch);
     if t is not null then
       pk := bus.pk_columns(t);
       for k in execute format('select jsonb_build_object(%s) from %s x where not exists (select 1 from bus.reconcile_keys r
