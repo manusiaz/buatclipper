@@ -111,6 +111,19 @@ q admin -c "select bus.reconcile_apply()" >/dev/null; wait
 after=$(q admin -c "select count(*) from market.org_members")
 if [ "$before" = "$after" ]; then echo "✓ dua pemanggil job bersamaan: run yang sudah selesai tidak diproses ulang ($after anggota org tetap)"
 else echo "✗ pemanggil kedua memproses run basi: anggota org $before → $after"; fail=1; fi
+# O7-1: bus.prune bersamaan dengan potongan terakhir dari daftar kunci yang sudah > 7 hari ditampung — prune menunggu, daftar yang
+# sudah terdaftar sebagai run tidak dipangkas (tanpa kunci: run terdaftar dengan daftar kosong → hapus massal).
+E3=00000000-0000-0000-0000-0000000005e3
+q admin -c "insert into bus.reconcile_keys (source, tbl, epoch, key, created_at) select 'brand', 'market.org_members', '$E3', jsonb_build_object('org_id', org_id, 'user_id', user_id), now() - interval '8 days' from market.org_members" >/dev/null
+n3=$(q admin -c "select count(*) from bus.reconcile_keys where epoch = '$E3'")
+q admin -c "begin" -c "select bus.apply_keys(jsonb_build_object('table', 'market.org_members', 'epoch', '$E3', 'keys', '[]'::jsonb, 'last', true, 'total', $n3), 'brand')" \
+        -c "select pg_sleep(2)" -c "commit" >/dev/null &
+for _ in $(seq 1 50); do [ "$(q admin -c "select count(*) from pg_stat_activity where query like '%pg_sleep(2)%' and pid <> pg_backend_pid()")" = 1 ] && break; sleep 0.1; done
+q admin -c "select bus.prune()" >/dev/null; wait
+k3=$(q admin -c "select count(*) from bus.reconcile_keys where epoch = '$E3'")
+if [ "$k3" = "$n3" ]; then echo "✓ bus.prune bersamaan potongan terakhir: daftar kunci run tidak dipangkas ($k3 kunci)"
+else echo "✗ bus.prune memangkas daftar kunci run yang baru terdaftar: $n3 → $k3"; fail=1; fi
+q admin -c "delete from bus.reconcile_runs where epoch = '$E3'" -c "delete from bus.reconcile_keys where epoch = '$E3'" >/dev/null
 q admin -c "select set_config('bus.applying', 'on', false)" -c "delete from market.org_members where user_id = '$G2'" \
         -c "delete from bus.reconcile_runs where epoch = '$E'" -c "delete from bus.reconcile_keys where epoch = '$E'" >/dev/null
 for t in admin creator brand; do

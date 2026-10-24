@@ -141,7 +141,11 @@ end $$;
 create function bus.prune() returns void
 language sql security definer set search_path = '' as $$
   delete from bus.outbox where sent_at < now() - interval '14 days';
-  -- rekonsiliasi yang terputus (potongan terakhir tak tiba); daftar lengkap yang masih diproses bus.reconcile_apply tidak disentuh
+  -- rekonsiliasi yang terputus (potongan terakhir tak tiba); daftar lengkap yang masih diproses bus.reconcile_apply tidak disentuh.
+  -- Kunci pengirim (urut nama, sama dengan bus.reconcile_apply): potongan terakhir yang sedang diterima apply_keys menghitung &
+  -- mendaftarkan run-nya utuh sebelum/sesudah pemangkasan ini, tidak di tengahnya (O7-1).
+  select pg_advisory_xact_lock(hashtextextended('bus_reconcile:' || x.source, 0))
+    from (select distinct k.source from bus.reconcile_keys k order by 1) x;
   delete from bus.reconcile_keys k where k.created_at < now() - interval '7 days'
      and not exists (select 1 from bus.reconcile_runs r where r.source = k.source and r.tbl = k.tbl and r.epoch = k.epoch);
 $$;
@@ -539,7 +543,8 @@ begin
     return;
   end if;
   -- Daftar tidak lengkap (potongan dipangkas bus.prune saat antrean macet > 7 hari, atau dilewati bus.skip) → tidak ada yang
-  -- dihapus; dilaporkan, jalankan reconcile ulang (O1-3).
+  -- dihapus; dilaporkan, jalankan reconcile ulang (O1-3). Hitung + daftar di bawah kunci pengirim (serial dengan bus.prune, O7-1).
+  perform pg_advisory_xact_lock(hashtextextended('bus_reconcile:' || p_source, 0));
   if (select count(*) from bus.reconcile_keys r where r.source = p_source and r.tbl = t::text and r.epoch = (p ->> 'epoch')::uuid)
      is distinct from (p ->> 'total')::bigint then
     perform bus.reject(jsonb_build_object('reason', 'reconcile_incomplete', 'table', t::text, 'total', p -> 'total'));
@@ -564,7 +569,7 @@ declare
   budget int;
   m int;
 begin
-  for r in select * from bus.reconcile_runs x order by x.created_at loop
+  for r in select * from bus.reconcile_runs x order by x.source, x.created_at loop  -- urut kunci pengirim sama dengan bus.prune
     budget := p_limit - n;
     exit when budget <= 0;
     t := to_regclass(r.tbl);

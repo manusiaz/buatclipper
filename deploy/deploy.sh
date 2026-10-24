@@ -16,7 +16,8 @@
 #   Pra-cek sebelum up:    deploy/deploy.sh check [peran]   (compose, secret, DNS, koneksi ke server lain)
 #   Backup harian (cron):  15 2 * * * /path/deploy/deploy.sh backup [peran] >> /var/log/clipper-backup.log 2>&1
 #                          → deploy/stack/*/backups (dump DB + file Storage, BACKUP_KEEP_DAYS); salin ke luar server
-#   deploy/deploy.sh down [peran] · deploy/deploy.sh status
+#   deploy/deploy.sh down [peran] · deploy/deploy.sh status · pause|resume (container app saja, Caddy tetap) · migrate <stack>
+#                          (migration ke satu stack yang jalan, tanpa menyentuh Caddy — dipakai runbook restore)
 #   Bus antar-DB (stack di server ini): deploy/deploy.sh bus status  → antrean keluar per target, kepala antrean yang macet
 #                          (seq, topik, error), ping creator/brand di admin · bus kick → coba kirim ulang sekarang (reset backoff)
 #                          · bus skip <stack> <target> <seq> → lewati kepala antrean yang macet permanen (event hilang untuk
@@ -26,14 +27,15 @@
 #                          replika dari stack di server ini ke target + hapus di target baris yang sudah tidak ada di sini
 #                          · bus jobs <hold|off|on> → hold: pg_cron tidak menjalankan job apa pun (bertahan melewati pg_restore);
 #                          off: job bisnis nonaktif, job bus-* jalan; on: semua jalan (stack di server ini)
-#   Restore SATU DB (core|creator|brand) ke backup lama — runbook (CX2): 1) `deploy.sh down apps` di server app dan `deploy.sh bus
-#                          jobs off` di SETIAP server stack (hentikan semua tulisan user, uang & worker) 2) di server stack yang
+#   Restore SATU DB (core|creator|brand) ke backup lama — runbook (CX2): 1) `deploy.sh pause` di server app (container app berhenti, Caddy
+#                          tetap) dan `deploy.sh bus jobs off` di SETIAP server stack (hentikan semua tulisan user, uang & worker) 2) di server stack yang
 #                          dipulihkan: `deploy.sh bus jobs hold` → pulihkan dump (pg_restore dari deploy/stack/<stack>/backups; dump
 #                          membawa job cron yang aktif, hold mencegahnya jalan di atas data setengah dimuat) → khusus creator: id
 #                          snapshot dimajukan melewati yang sudah dilihat admin MAUPUN yang ada di backup — N = `select max(id) from
 #                          tracking.view_snapshots` di core-db, lalu di creator-db `select setval(pg_get_serial_sequence(
 #                          'tracking.view_snapshots', 'id'), greatest(N, (select coalesce(max(id), 1) from tracking.view_snapshots)))`
-#                          → `deploy.sh up <stack>` MASIH dalam hold (migrasi yang lebih baru dari backup membuat job aktif) →
+#                          → `deploy.sh migrate <stack>` MASIH dalam hold (migrasi yang lebih baru dari backup membuat job aktif; bukan
+#                          `up <stack>`, yang menulis ulang Caddy server ini hanya untuk stack itu) →
 #                          `deploy.sh bus jobs off` (semua job bisnis — dari dump maupun migrasi — dimatikan, bus jalan lagi)
 #                          3) di SETIAP server stack, termasuk server yang dipulihkan (stack lain yang satu server ikut):
 #                          `deploy.sh bus reconcile <nama bus stack yang dipulihkan>` (state yang hilang dikirim ulang, baris yang dicabut sesudah backup — mis. anggota org — dihapus; penghapusan oleh job
@@ -49,7 +51,7 @@
 #                          (ulangi reconcile); kepala antrean yang macet foreign key (event biasa yang induknya ikut hilang, sudah
 #                          antre sebelum resync) → `deploy.sh bus skip` (barisnya dikirim ulang resync di belakangnya lalu dilaporkan
 #                          orphan); perintah/event non-replika di jendela backup hilang: cek audit 6) `deploy.sh bus jobs on` di
-#                          SETIAP server stack, lalu `deploy.sh up apps`.
+#                          SETIAP server stack, lalu `deploy.sh resume` di server app.
 #
 # DNS A: auth.{DOMAIN} → server identity, api.{DOMAIN} → server core (admin), creator-api.{DOMAIN} → server creator,
 # brand-api.{DOMAIN} → server brand, {DOMAIN} + accounts./app./brand./admin. → server app. Satu server: semua ke IP yang sama.
@@ -66,6 +68,7 @@ SUPABASE_REF=${SUPABASE_REF:-d897e1462ad33ee9c7daba8cfee8f14e303c0cf5}
 CMD=${1:-} ROLE=${2:-all}
 [ "$CMD" = admin ] && { ADMIN_EMAIL=${2:-}; ROLE=identity; }
 [ "$CMD" = bus ] && { BUS_OP=${2:-status}; BUS_ARGS=("${@:3}"); ROLE=all; }
+[[ "$CMD" =~ ^(pause|resume)$ ]] && ROLE=apps
 ALL_STACKS="identity core creator brand"
 case "$ROLE" in all | identity | core | creator | brand | apps) ;; *) echo "peran tidak dikenal: $ROLE (all|identity|core|creator|brand|apps)"; exit 1 ;; esac
 case "$ROLE" in all) STACKS=$ALL_STACKS SITES="apps $ALL_STACKS" ;; apps) STACKS="" SITES=apps ;; *) STACKS=$ROLE SITES=$ROLE ;; esac
@@ -460,6 +463,22 @@ case "$CMD" in
       [ "$p" = identity ] || psql_db "$p" -c "update bus.outbox set next_at = now(), attempts = 0 where sent_at is null and request_id is null and attempts > 0"
     done
     echo "siap ($ROLE): $(served_hosts)"
+    ;;
+  migrate)
+    # Restore: terapkan migration yang lebih baru dari backup ke SATU stack yang sudah jalan, tanpa menulis ulang Caddy (up <stack>
+    # di server satu-mesin akan membuang situs stack lain dari Caddyfile → bridge bus tidak terjangkau, O7-2).
+    [[ " core creator brand identity " == *" $ROLE "* ]] || { echo "pakai: deploy.sh migrate <identity|core|creator|brand>"; exit 1; }
+    load_config
+    load_secrets
+    migrate "$ROLE"
+    compose "$ROLE" restart functions rest >/dev/null
+    echo "$ROLE: migration diterapkan"
+    ;;
+  pause | resume)
+    # Hentikan/jalankan container app saja; Caddy (dipakai bersama stack di server satu-mesin) tetap jalan.
+    load_config
+    [ -f .generated/apps.hosts.yml ] || { echo "app tidak di-deploy di server ini"; exit 1; }
+    if [ "$CMD" = pause ]; then apps stop; else apps start; fi
     ;;
   down)
     load_config
