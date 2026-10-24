@@ -1,12 +1,14 @@
 import { NextResponse, type NextRequest } from 'next/server';
 import { hosts } from '@clipper/auth';
 import { invokeFunction, requireClipper } from '@clipper/auth/server';
+import { untilReplicated } from '@clipper/db-creator';
+import { core } from '@/features/lib/server';
 import { isPlatform } from '@clipper/clipper-lib/pure';
 import { APP_RETURN, cookieOptions, decodeState, redirectUri, STATE_COOKIE, verifyState } from '@/features/social/oauth';
 
 // Platform → app.{domain}/api/oauth/[platform]/callback: cek state (constant-time) → creator/social connect → /social.
 export async function GET(request: NextRequest, { params }: { params: Promise<{ platform: string }> }) {
-  await requireClipper();
+  const uid = (await requireClipper()).claims.sub;
   const { platform } = await params;
   const sp = request.nextUrl.searchParams;
   const saved = decodeState(request.cookies.get(STATE_COOKIE)?.value);
@@ -33,7 +35,13 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     ...(saved.verifier ? { code_verifier: saved.verifier } : {}),
     ...(saved.pageId ? { page_id: saved.pageId } : {}),
   });
-  if (r.ok) return done(new URLSearchParams({ connected: platform, handle: r.data.handle ?? '' }));
+  if (r.ok) {
+    // /social membaca akun dari admin: tunggu replika akun terverifikasi (habis waktu = tetap tersambung di creator)
+    const db = await core();
+    await untilReplicated(async () => !!(await db.from('social_accounts').select('id').eq('user_id', uid).eq('platform', platform)
+      .eq('status', 'verified').maybeSingle()).data);
+    return done(new URLSearchParams({ connected: platform, handle: r.data.handle ?? '' }));
+  }
   const q = new URLSearchParams({ error: r.error, platform });
   // Facebook dengan >1 Page: daftar Page (id, nama) dikirim ke picker; pilih → authorize ulang dengan page_id.
   if (r.error === 'page_ambiguous' && Array.isArray(r.detail)) {

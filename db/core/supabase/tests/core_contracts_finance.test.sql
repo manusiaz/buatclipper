@@ -1353,6 +1353,18 @@ select is(pg_temp.create_submission('11111111-0000-0000-0000-00000000000f', '888
 select ok(not exists (select 1 from trust.score_events e join tracking.submissions t on t.id::text = e.ref_id where t.post_id in ('vid-c5', 'vid-c6')),
           'C8: tanpa penalti Trust Score');
 delete from market.org_members where org_id = '44444444-0000-0000-0000-000000000001' and user_id = '11111111-0000-0000-0000-00000000000f';
+-- Review D1: claim kedaluwarsa (job expire) sebelum replika submisi tiba, submisi tercatat sebelum kedaluwarsa → tetap diputus normal
+-- (expired → submitted bukan transisi S-02; dulu raise → fallback in_review + alert, semua cek sesudahnya terlewati)
+insert into market.claims (id, campaign_id, user_id, expires_at, created_at) values
+  ('88888888-0000-0000-0000-0000000000c8', '55555555-0000-0000-0000-0000000000b1', '11111111-0000-0000-0000-00000000000d', now() + interval '1 hour', now() - interval '2 hours');
+update market.claims set status = 'expired' where id = '88888888-0000-0000-0000-0000000000c8';
+create temp table t_d1 as select count(*) n from ops.alerts where kind = 'tracking.apply_failed';
+select bus_in.tracking_submissions_applied('upsert', jsonb_build_object('id', (select (pg_temp.create_submission('11111111-0000-0000-0000-00000000000d',
+  '88888888-0000-0000-0000-0000000000c8', '99999999-0000-0000-0000-00000000000d', 'vid-c8', 'https://tiktok.com/@dedi/video/c8',
+  now() - interval '1 hour', 'halo', 30)) ->> 'submission_id')));
+select is((select status::text from tracking.submissions where post_id = 'vid-c8'), 'in_review',
+          'D1: claim expired sesudah submisi tercatat → diputus normal (review brand → in_review)');
+select is((select count(*) from ops.alerts where kind = 'tracking.apply_failed'), (select n from t_d1), 'D1: tanpa alert tracking.apply_failed');
 -- Review R90-1: kuota max_clips_per_clipper dicek ulang di admin (banding clip lama bisa lolos bersamaan di DB lain)
 create temp table t_r90 as select max_clips_per_clipper m from market.campaigns where id = '55555555-0000-0000-0000-0000000000b0';
 update market.campaigns set max_clips_per_clipper = 1 where id = '55555555-0000-0000-0000-0000000000b0';

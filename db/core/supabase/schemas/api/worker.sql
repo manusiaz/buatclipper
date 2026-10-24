@@ -246,9 +246,9 @@ begin
   select * into c from market.campaigns k where k.id = s.campaign_id;
   -- Claim & keanggotaan org dicek creator dari replika yang bisa tertinggal: released (end_early, ban, tutup akun) tidak diterima;
   -- expired diterima bila submisi tercatat di creator sebelum kedaluwarsa (job expire di sini bisa lebih dulu dari replika).
-  update market.claims set status = 'submitted'
-   where id = s.claim_id and (status = 'open' or (status = 'expired' and expires_at > s.created_at));
-  claim_ok := found;
+  update market.claims set status = 'submitted' where id = s.claim_id and status = 'open';
+  claim_ok := found or exists (select 1 from market.claims k  -- expired → submitted bukan transisi S-02: claim dibiarkan expired
+                                where k.id = s.claim_id and k.status = 'expired' and k.expires_at > s.created_at);
   -- Creator menerima submisi dari replika status campaign yang bisa tertinggal (mis. dibatalkan / sudah settle saat bus telat):
   -- campaign yang tidak lagi menerima klip → ditolak tanpa penalti Trust Score (bukan kesalahan clipper) + kabar.
   if c.status not in ('live', 'paused', 'tracking', 'exhausted') then

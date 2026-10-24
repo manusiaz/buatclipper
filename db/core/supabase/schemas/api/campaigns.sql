@@ -493,7 +493,8 @@ begin
     perform finance.issue_invoice(c.org_id, c.id, 'topup', sub, 0, null, items);
   elsif p_action = 'end_early' then
     if c.status in ('live', 'paused') then
-      update market.campaigns set status = 'tracking' where id = c.id;
+      -- deadline ikut maju (replika ke creator & brand: submit ditutup; settle tidak menunggu deadline asli, lihat run_lifecycle)
+      update market.campaigns set status = 'tracking', submit_deadline = least(submit_deadline, clock_timestamp()) where id = c.id;
     elsif c.status in ('draft', 'in_review', 'scheduled') then
       update market.campaigns set status = 'cancelled' where id = c.id;
       update finance.invoices set status = 'void' where campaign_id = c.id and status = 'issued';

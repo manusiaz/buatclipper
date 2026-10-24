@@ -664,6 +664,8 @@ select lives_ok($$ select api.control_campaign((select id from t_ids where k = '
 select throws_ok($$ select api.control_campaign('55555555-0000-0000-0000-000000000001', 'hapus') $$, 'P0001', 'invalid:action',
                  'aksi tidak dikenal ditolak');
 reset role;
+select ok((select status = 'tracking' and submit_deadline <= clock_timestamp() from market.campaigns where id = '55555555-0000-0000-0000-00000000000e'),
+          'D2: akhiri lebih awal → deadline submit maju ke sekarang (settle tidak menunggu deadline asli; replika menutup submit)');
 select is((select array[(select submit_deadline > now() + interval '20 days' from market.campaigns where id = '55555555-0000-0000-0000-000000000001'),
                         (select effective_to is not null from market.rate_rules where id = '67676767-0000-0000-0000-000000000001'),
                         (select effective_to is null and params ->> 'rate' = '3000' from market.rate_rules

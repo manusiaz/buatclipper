@@ -3,7 +3,8 @@
 import { revalidatePath } from 'next/cache';
 import { invokeFunction, requireClipper } from '@clipper/auth/server';
 import { httpsUrl, isUuid, safeThumb } from '@clipper/clipper-lib/pure';
-import { fail, ok, type Result } from '../lib/server';
+import { untilReplicated } from '@clipper/db-creator';
+import { core, fail, ok, type Result } from '../lib/server';
 
 export interface VideoItem {
   postId: string;
@@ -61,8 +62,18 @@ export async function submitVideo(input: {
     ...(postId ? { post_id: postId } : { url }),
   });
   if (!r.ok) return fail(r.error, r.detail);
+  // Tugas & campaign dibaca dari admin: tunggu keputusan admin atas replika submisi (bisa beda dari tebakan creator, mis. claim
+  // sudah dilepas) supaya halaman berikut tidak menawarkan submit lagi. Habis waktu = tetap tercatat di creator.
+  let status = r.data.status;
+  const db = await core();
+  await untilReplicated(async () => {
+    const d = (await db.from('submissions').select('status').eq('id', r.data.submission_id).maybeSingle()).data;
+    if (!d?.status || d.status === 'validating') return false;
+    status = d.status;
+    return true;
+  });
   revalidatePath('/tasks');
   revalidatePath(`/campaigns/${campaignId}`);
   revalidatePath('/campaigns');
-  return ok({ status: r.data.status });
+  return ok({ status });
 }

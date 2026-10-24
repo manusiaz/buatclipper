@@ -260,12 +260,21 @@ export async function submitVideo(input: { claimId: string; accountId: string; p
   const url = input.url ? httpsUrl(input.url.trim()) : null;
   if (!isUuid(input.claimId) || !isUuid(input.accountId)) return { ok: false as const, error: 'bad_request', status: 400 };
   if (!postId && !url) return { ok: false as const, error: 'invalid:url', status: 400 };
-  return invoke<{ submission_id: string; status: string }>('creator', 'social', {
+  const r = await invoke<{ submission_id: string; status: string }>('creator', 'social', {
     action: 'submit',
     claim_id: input.claimId,
     account_id: input.accountId,
     ...(postId ? { post_id: postId } : { url }),
   });
+  if (!r.ok) return r;
+  // Sama dengan web: tunggu keputusan admin atas replika submisi (layar Tugas membaca admin)
+  await untilReplicated(async () => {
+    const d = (await core.from('submissions').select('status').eq('id', r.data.submission_id).maybeSingle()).data;
+    if (!d?.status || d.status === 'validating') return false;
+    r.data.status = d.status;
+    return true;
+  });
+  return r;
 }
 
 // ── Verifikasi YouTube tanpa OAuth (D-11): kode di deskripsi channel → akun terverifikasi (data publik) ──

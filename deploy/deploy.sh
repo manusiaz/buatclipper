@@ -184,8 +184,10 @@ prepare_stack() { # identity|core|creator|brand
   setenv "$e" POOLER_TENANT_ID "clipper-$p"
   setenv "$e" APP_ORIGINS "$ACC,$APP,$BRAND,$ADMIN"
   setenv "$e" IDENTITY_PUBLIC_URL "$AUTH"; setenv "$e" CORE_PUBLIC_URL "$API"
-  setenv "$e" BRIDGE_SECRET_CORE_TO_IDENTITY "$BRIDGE_SECRET_CORE_TO_IDENTITY"
-  setenv "$e" BRIDGE_SECRET_IDENTITY_TO_CORE "$BRIDGE_SECRET_IDENTITY_TO_CORE"
+  if [[ $p =~ ^(identity|core)$ ]]; then  # bridge identity ↔ admin; file secret creator/brand tidak memuatnya (role_keys)
+    setenv "$e" BRIDGE_SECRET_CORE_TO_IDENTITY "$BRIDGE_SECRET_CORE_TO_IDENTITY"
+    setenv "$e" BRIDGE_SECRET_IDENTITY_TO_CORE "$BRIDGE_SECRET_IDENTITY_TO_CORE"
+  fi
   # Penerima bus (fungsi bridge): secret dari tiap pengirim → BUS_SECRET_FROM_<PENGIRIM> (deploy/supabase/<stack>.yml).
   if [[ $p =~ ^(core|creator|brand)$ ]]; then
     local me=$(bus_name "$p") o v
