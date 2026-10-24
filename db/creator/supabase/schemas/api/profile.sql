@@ -80,6 +80,9 @@ begin
   values (v_user, 'deleted_' || substr(md5(v_user::text), 1, 22), 'Akun dihapus', 'closed')
   on conflict (id) do update set username = excluded.username, display_name = excluded.display_name, avatar_path = null,
                                  status = 'closed';
+  -- salinan lama di outbox yang sudah terkirim (username, nama, handle, caption) ikut dihapus — tidak menunggu retensi bus.prune
+  delete from bus.outbox o where o.sent_at is not null
+     and (o.payload -> 'key' ->> 'id' = v_user::text or o.payload -> 'row' ->> 'user_id' = v_user::text);
   delete from vault.secrets v where v.id in (select a.token_ref from tracking.social_accounts a where a.user_id = v_user);
   delete from tracking.social_accounts a
    where a.user_id = v_user and not exists (select 1 from tracking.submissions s where s.social_account_id = a.id);

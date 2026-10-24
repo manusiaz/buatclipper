@@ -23,6 +23,12 @@ begin
     from jsonb_populate_record(null::trust.review_decisions, p) r;
 end $$;
 
+-- Event yang dilewati creator/brand karena tidak sesuai kontrak (bus.reject) → alert di admin (email ops).
+create function bus_in.bus_rejected(p jsonb) returns void
+language sql set search_path = '' as $$
+  select ops.raise_alert('bus.rejected_payload', 'critical', p - '_source' || jsonb_build_object('receiver', p ->> '_source'));
+$$;
+
 -- Inbox & pengiriman email/push satu pintu di admin. Undangan campaign dilengkapi rate per 1.000 views (rule milik admin).
 create function bus_in.notify_user(p jsonb) returns void
 language plpgsql set search_path = '' as $$
@@ -115,6 +121,6 @@ begin
                                                                                          'admin_stuck', own_stuck)), interval '1 hour');
   end if;
 end $$;
-revoke execute on function bus_in.bus_ping(jsonb), ops.watch_bus() from public;
+revoke execute on function bus_in.bus_ping(jsonb), bus_in.bus_rejected(jsonb), ops.watch_bus() from public;
 select cron.schedule('bus-watch', '*/5 * * * *', $$select ops.watch_bus()$$);
 

@@ -79,9 +79,12 @@ begin
       perform finance.accrue_earnings(r.id, fin);
       update tracking.submissions set status = 'locked', locked_at = now(), next_poll_at = null where id = r.id and status = 'tracking';
     -- Grace dihitung dari yang terakhir: akhir window atau masuk tracking (approve/overturn telat) → poll final sempat jalan (R69).
+    -- Lock tanpa snapshot final hanya bila antrean creator → admin sudah melewati batas itu (ping creator yang dikirim sesudahnya
+    -- sudah tiba, FIFO): bus macet bukan berarti snapshot final tidak ada — earning tidak dikunci dari data yang tertinggal.
     elsif greatest(r.window_end, coalesce((select max(d.created_at) from trust.review_decisions d
                                             where d.target_type = 'submission' and d.target_id = r.id
-                                              and d.decision in ('approve', 'auto_approve', 'overturn')), r.window_end)) + grace <= now() then
+                                              and d.decision in ('approve', 'auto_approve', 'overturn')), r.window_end)) + grace
+          < least(now(), coalesce((select p.pinged_at from ops.bus_peers p where p.source = 'creator'), '-infinity')) then
       update tracking.submissions set status = 'locked', locked_at = now(), next_poll_at = null where id = r.id;
       perform ops.raise_alert('tracking.final_missing', 'warning', jsonb_build_object('submission_id', r.id));
     elsif r.next_poll_at is null or r.next_poll_at > now() + interval '1 hour' then

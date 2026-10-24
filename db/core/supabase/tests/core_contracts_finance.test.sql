@@ -1777,6 +1777,18 @@ select ok(exists (select 1 from ops.notifications where event = 'campaign.settle
                   and payload ->> 'campaign_title' = 'Selesai' and payload -> 'leftover' -> 0 ->> 'amount' = '995000'
                   and payload -> 'leftover' -> 0 ->> 'unit_label' = 'Rp'), 'campaign.settled ke org dengan judul & sisa budget');
 
+-- Review CX3: bus creator → admin macet melewati masa tenggang → submisi tidak dikunci dari data tertinggal; dikunci setelah ping creator
+-- yang dikirim sesudah batas itu tiba (snapshot final yang dikirim sebelumnya pasti sudah diterapkan, FIFO).
+insert into t_ids select 's15e', pg_temp.mk_sub('55555555-0000-0000-0000-0000000000b5', '11111111-0000-0000-0000-00000000000d', 'v15e', now() - interval '40 days');
+update ops.bus_peers set pinged_at = now() - interval '30 days' where source = 'creator';
+select market.run_lifecycle();
+select is((select status::text || ':' || (next_poll_at = now())::text from tracking.submissions where id = (select v::uuid from t_ids where k = 's15e')),
+          'tracking:true', 'CX3: ping creator lebih lama dari batas grace → tidak dikunci tanpa snapshot final, poll final diantrekan');
+update ops.bus_peers set pinged_at = now() where source = 'creator';
+select market.run_lifecycle();
+select is((select status::text from tracking.submissions where id = (select v::uuid from t_ids where k = 's15e')), 'locked',
+          'CX3: ping creator sesudah batas tiba → dikunci dengan views terakhir');
+
 -- ========== N2. Sisa budget campaign settled: rollover vs refund (D-09) ==========
 set local role authenticated;
 select pg_temp.jwt('22222222-0000-0000-0000-0000000000c1');

@@ -68,7 +68,12 @@ select bus_in.profile_ensure('{"user_id":"11111111-0000-0000-0000-0000000000f2",
 select bus_in.profile_ensure('{"user_id":"11111111-0000-0000-0000-0000000000f2","username":"lain"}');
 select is((select username || ' ' || display_name from market.profiles where id = '11111111-0000-0000-0000-0000000000f2'),
           'pic_toko Anggota brand', 'profile.ensure: username pilihan dipakai, event ulang tidak mengubah profil');
+update bus.outbox set sent_at = now() where payload -> 'key' ->> 'id' = '11111111-0000-0000-0000-00000000000a';
+select ok(exists (select 1 from bus.outbox where sent_at is not null and payload -> 'row' ->> 'username' = 'andi_baru'),
+          'prasyarat: salinan username lama ada di outbox terkirim');
 select bus_in.profile_anonymize('{"user_id":"11111111-0000-0000-0000-00000000000a"}');
+select ok(not exists (select 1 from bus.outbox where sent_at is not null and payload -> 'key' ->> 'id' = '11111111-0000-0000-0000-00000000000a'),
+          'CL4: hapus akun menghapus salinan profil lama di outbox (UU PDP), tidak menunggu retensi');
 select ok((select username like 'deleted\_%' and display_name = 'Akun dihapus' and avatar_path is null from market.profiles
            where id = '11111111-0000-0000-0000-00000000000a'), 'profile.anonymize mengosongkan isi profil');
 -- Review R89-2: hapus akun sebelum profil creator ada → nisan closed; JWT yang belum kedaluwarsa tidak bisa membuat profil lagi

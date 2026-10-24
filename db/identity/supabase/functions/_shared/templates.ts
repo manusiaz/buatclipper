@@ -335,6 +335,11 @@ const ALERT_LABEL: Record<string, string> = {
   "reconcile.ledger": "selisih rekonsiliasi ledger",
   "reconcile.orphans": "selisih rekonsiliasi ID lintas DB",
   "reconcile.bank": "selisih rekonsiliasi mutasi bank",
+  "bus.stuck": "antrean antar-database macet",
+  "bus.rejected_payload": "event antar-database ditolak",
+  "tracking.apply_failed": "keputusan submisi dari replika gagal",
+  "campaign.apply_failed": "replika campaign gagal diterapkan",
+  "campaign.content_drift": "isi campaign yang disetujui berubah di brand",
 };
 
 const DEFS: Record<NotificationEvent, Def> = {

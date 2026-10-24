@@ -21,10 +21,12 @@ language sql immutable set search_path = '' as $$
   select (p_source, p_topic) in (
     ('brand', 'audit.log'),
     ('brand', 'bus.ping'),
+    ('brand', 'bus.rejected'),
     ('brand', 'notify.user'),
     ('brand', 'org.owner_lost'),
     ('brand', 'review.decision'),
     ('creator', 'bus.ping'),
+    ('creator', 'bus.rejected'),
     ('creator', 'notify.user'),
     ('creator', 'referral.record'),
     ('creator', 'submission.post_gone')

@@ -24,7 +24,9 @@ function setup(over: Partial<BridgeDeps> = {}) {
     svc_platform_roles: (a) => (a.p_user === "00000000-0000-0000-0000-0000000000ad" ? ["admin_super"] : []),
     svc_audit: () => null,
     svc_admin_ids: (a) =>
-      (a.p_roles as string[]).includes("admin_finance") ? [USER, "00000000-0000-0000-0000-0000000000ad"] : [],
+      ["admin_finance", "admin_ops"].some((r) => (a.p_roles as string[]).includes(r))
+        ? [USER, "00000000-0000-0000-0000-0000000000ad"]
+        : [],
     shared_device_groups: () => [
       {
         ip: "203.0.113.7",
@@ -231,6 +233,13 @@ Deno.test("bridge notify_admins: alert payout → admin_finance + admin_super, i
   assert(String(s.emails[0].body.html).includes("https://admin.clipper.test"));
   const bad = await json(await s.handler(await signed("notify_admins", { kind: "budget.used", alert_id: 1 })));
   assertEquals([bad.status, bad.body.error.code], [400, "invalid_kind"]);
+  // CX4: alarm antar-DB sampai ke admin_ops (dulu ditolak → hanya tercatat di dashboard)
+  const busAlert = await json(
+    await s.handler(await signed("notify_admins", { kind: "bus.stuck", severity: "critical", alert_id: 43 })),
+  );
+  assertEquals(busAlert.status, 200);
+  assertEquals(s.rpc.named("svc_admin_ids").at(-1)!.args, { p_roles: ["admin_ops", "admin_super"] });
+  assert(String(s.emails.at(-1)!.body.subject).includes("antrean antar-database macet"));
 });
 
 Deno.test("bridge notify_admins: satu email gagal → admin lain tetap dikirimi, respons 503 supaya core mengulang", async () => {

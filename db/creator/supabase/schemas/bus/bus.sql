@@ -110,6 +110,29 @@ begin
 end $$;
 
 -- Dipanggil Edge Function bridge (service role) setelah HMAC sumber terverifikasi. Satu transaksi untuk seluruh batch.
+-- Retensi (job bus-prune): outbox terkirim 14 hari (cukup untuk kirim ulang / restore & jejak pengiriman), inbox 30 hari (id
+-- saja; kiriman ulang hanya terjadi sebelum ditandai terkirim). Payload memuat data user (profil, caption) — tidak disimpan
+-- selamanya (UU PDP); hapus akun juga menghapus salinannya lebih awal (creator profile.anonymize).
+create function bus.prune() returns void
+language sql security definer set search_path = '' as $$
+  delete from bus.outbox where sent_at < now() - interval '14 days';
+  delete from bus.inbox where received_at < now() - interval '30 days';
+$$;
+revoke execute on function bus.prune() from public;
+
+-- Event yang tidak sesuai kontrak (allowlist pengirim) dilewati — tidak menahan antrean: replika berupa state (pulih lewat
+-- bus.resync), dan kontrak lama yang masih antre sesudah upgrade (kolom/topik dipensiunkan) tidak boleh memacetkan pengirim.
+-- Laporan ke ops: di admin langsung alert; di creator/brand dikirim ke admin (topik bus.rejected).
+create function bus.reject(p_detail jsonb) returns void
+language plpgsql security definer set search_path = '' as $$
+begin
+  if bus.me() = 'admin' then
+    execute 'select ops.raise_alert($1, $2, $3)' using 'bus.rejected_payload', 'critical', p_detail;
+  else
+    perform bus.emit('admin', 'bus.rejected', p_detail || jsonb_build_object('at', bus.me()));
+  end if;
+end $$;
+
 create function api.bus_receive(p_source text, p_events jsonb) returns jsonb
 language plpgsql security definer set search_path = '' as $$
 declare
@@ -134,14 +157,17 @@ begin
       applied := applied + 1;
       continue;
     end if;
-    -- topik hanya dari pengirim yang memang memanggil bus.emit-nya (bus.accepts_topic); uji.ping = handler e2e/bus.sh yang
-    -- hanya ada selama uji berjalan
-    if not bus.accepts_topic(p_source, e ->> 'topic') and e ->> 'topic' <> 'uji.ping' then
-      raise exception 'bus_not_allowed:% %', p_source, e ->> 'topic' using errcode = '42501';
-    end if;
+    -- Handler belum ada (penerima belum di-deploy) → tahan antrean sampai upgrade: perintah (mis. profile.anonymize) tidak boleh
+    -- hilang. Handler ada tapi pengirim tidak memanggil bus.emit-nya (bus.accepts_topic) → dilewati + dilaporkan (bus.reject).
+    -- uji.ping = handler e2e/bus.sh yang hanya ada selama uji berjalan.
     h := to_regprocedure(format('bus_in.%s(jsonb)', replace(e ->> 'topic', '.', '_')));
     if h is null then
       raise exception 'bus_no_handler:%', e ->> 'topic' using errcode = 'P0001';
+    end if;
+    if not bus.accepts_topic(p_source, e ->> 'topic') and e ->> 'topic' <> 'uji.ping' then
+      perform bus.reject(jsonb_build_object('reason', 'topic', 'source', p_source, 'topic', e ->> 'topic'));
+      skipped := skipped + 1;
+      continue;
     end if;
     execute format('select %s($1)', h::regproc)  -- _source = pengirim terautentikasi (handler memvalidasi isi per pengirim)
       using e -> 'payload' || jsonb_build_object('_source', p_source);
@@ -227,6 +253,7 @@ create function bus.apply_row(p jsonb, p_source text) returns void
 language plpgsql security definer set search_path = '' as $$
 declare
   allowed text[] := bus.accepts(p_source, p ->> 'table');
+  bad text[];
   t regclass;
   pk text[];
   cols text[];
@@ -237,24 +264,24 @@ begin
   -- Hanya tabel & kolom yang dikirim pemiliknya (bus/accept.sql, dari trigger bus.replicate pengirim): secret bus satu peer
   -- yang bocor tidak bisa menulis tabel lain di sini (uang, sanksi) atau kolom milik penerima.
   if allowed is null then
-    raise exception 'bus_not_allowed:% %', p_source, p ->> 'table' using errcode = '42501';
+    perform bus.reject(jsonb_build_object('reason', 'table', 'source', p_source, 'table', p ->> 'table', 'op', p ->> 'op'));
+    return;
   end if;
   t := (p ->> 'table')::regclass;
   pk := bus.pk_columns(t);
-  if exists (select 1 from jsonb_object_keys(case when jsonb_typeof(p -> 'row') = 'object' then p -> 'row' else '{}' end) k
-             where not k = any (allowed || pk)) then
-    raise exception 'bus_not_allowed:% %', p_source, p ->> 'table' using errcode = '42501',
-      detail = (select string_agg(k, ',') from jsonb_object_keys(p -> 'row') k where not k = any (allowed || pk));
+  -- kolom di luar allowlist (milik penerima / dipensiunkan) dibuang, sisanya tetap diterapkan
+  bad := array(select k from jsonb_object_keys(case when jsonb_typeof(p -> 'row') = 'object' then p -> 'row' else '{}' end) k
+                where not k = any (allowed || pk));
+  if cardinality(bad) > 0 then
+    perform bus.reject(jsonb_build_object('reason', 'columns', 'source', p_source, 'table', p ->> 'table', 'columns', to_jsonb(bad)));
+    p := jsonb_set(p, '{row}', (p -> 'row') - bad);
   end if;
   -- delete hanya untuk tabel yang seluruh kolomnya milik pengirim: baris campuran (mis. profil dengan status/sanksi admin, org
   -- dengan fee admin) yang dihapus lalu dikirim ulang akan mengembalikan kolom milik penerima ke default. Dilewati + alert (tidak
   -- raise): delete baris campuran di pengirim (mis. hapus manual) tidak boleh menahan antrean selamanya.
   if p ->> 'op' = 'delete' and exists (select 1 from pg_attribute a where a.attrelid = t and a.attnum > 0 and not a.attisdropped
                                                                     and not a.attname = any (allowed || pk)) then
-    if to_regprocedure('ops.raise_alert(text, text, jsonb, interval)') is not null then
-      execute 'select ops.raise_alert($1, $2, $3)' using 'bus.rejected_payload', 'critical',
-        jsonb_build_object('topic', 'rep.row', 'op', 'delete', 'source', p_source, 'table', p ->> 'table', 'key', p -> 'key');
-    end if;
+    perform bus.reject(jsonb_build_object('reason', 'delete', 'source', p_source, 'table', p ->> 'table', 'key', p -> 'key'));
     return;
   end if;
   perform set_config('bus.applying', 'on', true);
@@ -329,6 +356,7 @@ begin
 end $$;
 
 revoke all on bus.outbox, bus.inbox from anon, authenticated;
+revoke execute on function bus.reject(jsonb) from public;
 revoke execute on function bus.emit(text, text, jsonb), bus.relay(), bus.stuck(), api.bus_receive(text, jsonb), bus.pk_columns(regclass),
   bus.replicate(), bus.apply_row(jsonb, text), bus.resync(regclass, text) from public;
 grant execute on function api.bus_receive(text, jsonb) to service_role;

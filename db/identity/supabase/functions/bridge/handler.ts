@@ -129,6 +129,8 @@ const ALERT_ROLE: Record<string, string> = {
   fraud: "admin_moderator",
   payout: "admin_finance",
   reconcile: "admin_finance",
+  bus: "admin_ops", // antar-DB: antrean macet / payload ditolak
+  campaign: "admin_ops", // hook replika campaign gagal / isi yang disetujui berubah
 };
 export async function notifyAdmins(
   deps: Pick<BridgeDeps, "rpc" | "authAdmin" | "email" | "links">,
