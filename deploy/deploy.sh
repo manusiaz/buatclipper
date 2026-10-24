@@ -31,10 +31,11 @@
 #                          dipulihkan: `deploy.sh bus jobs hold` → pulihkan dump (pg_restore dari deploy/stack/<stack>/backups; dump
 #                          membawa job cron yang aktif, hold mencegahnya jalan di atas data setengah dimuat) → `deploy.sh bus jobs off`
 #                          (job bisnis dari dump dimatikan, bus jalan lagi); khusus creator, sebelum jobs off: id snapshot dimajukan
-#                          melewati yang sudah dilihat admin — `select max(id) from tracking.view_snapshots` di core-db, lalu di
-#                          creator-db `alter table tracking.view_snapshots alter column id restart with <max+1>`; lalu `deploy.sh up
-#                          <stack>` 3) di SETIAP server stack lain: `deploy.sh bus reconcile <nama bus stack yang dipulihkan>` (state
-#                          yang hilang dikirim ulang, baris yang dicabut sesudah backup — mis. anggota org — dihapus) 4) di server
+#                          melewati yang sudah dilihat admin MAUPUN yang ada di backup — N = `select max(id) from tracking.view_snapshots`
+#                          di core-db, lalu di creator-db `select setval(pg_get_serial_sequence('tracking.view_snapshots', 'id'),
+#                          greatest(N, (select coalesce(max(id), 1) from tracking.view_snapshots)))`; lalu `deploy.sh up <stack>`
+#                          3) di SETIAP server stack, termasuk server yang dipulihkan (stack lain yang satu server ikut):
+#                          `deploy.sh bus reconcile <nama bus stack yang dipulihkan>` (state yang hilang dikirim ulang, baris yang dicabut sesudah backup — mis. anggota org — dihapus) 4) di server
 #                          stack yang dipulihkan: `deploy.sh bus reconcile <tiap stack lain>` (stack itu sekarang sumber kebenaran
 #                          datanya sendiri) 5) `deploy.sh bus status` di semua server sampai antrean kosong; alert admin
 #                          bus.rejected_payload berisi baris yang TIDAK diubah otomatis dan perlu keputusan manual: delete (baris
