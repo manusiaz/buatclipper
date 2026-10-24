@@ -19,9 +19,10 @@ create table market.campaign_assets (
 );
 create index campaign_assets_campaign_idx on market.campaign_assets (campaign_id);
 
--- Aset campaign yang sudah disetujui tidak berubah lewat replika (pasangan market.campaign_content_frozen): brand mengunci brief dari
--- replika status yang bisa tertinggal (admin → brand macet) — aset baru / hapus dari brand dilewati + alert campaign.content_drift,
--- supaya clipper tidak menerima file yang belum direview. Aset versi yang diajukan tiba lebih dulu (urutan bus per pengirim).
+-- Aset campaign lewat replika (pasangan market.campaign_content_frozen): brand mengunci brief dari replika status yang bisa tertinggal
+-- (admin → brand macet). Sudah disetujui → aset baru / hapus dilewati + alert campaign.content_drift (clipper tidak menerima file
+-- yang belum direview). Selagi in_review → review dibatalkan saat itu juga (market.require_resubmit): kenaikan content_version bisa
+-- tiba di batch berikutnya, sesudah persetujuan, lalu ikut dibekukan.
 create function market.campaign_assets_frozen() returns trigger
 language plpgsql set search_path = '' as $$
 declare
@@ -30,8 +31,19 @@ begin
   if current_setting('bus.applying', true) is distinct from 'on' then
     return coalesce(new, old);
   end if;
-  select * into c from market.campaigns k where k.id = coalesce(new.campaign_id, old.campaign_id);
-  if c.status in ('draft', 'in_review', 'rejected') or c.submitted_version is null then
+  select * into c from market.campaigns k where k.id = coalesce(new.campaign_id, old.campaign_id) for update;
+  if c.status = 'in_review' then
+    begin  -- applying dimatikan sementara: status draft ikut direplika ke brand & creator; tidak pernah raise (antrean jalan)
+      perform set_config('bus.applying', 'off', true);
+      perform market.require_resubmit(c);
+      perform set_config('bus.applying', 'on', true);
+    exception when others then
+      perform set_config('bus.applying', 'on', true);
+      perform ops.raise_alert('campaign.apply_failed', 'critical', jsonb_build_object('campaign_id', c.id, 'error', sqlerrm));
+    end;
+    return coalesce(new, old);
+  end if;
+  if c.status in ('draft', 'rejected') or c.submitted_version is null then
     return coalesce(new, old);
   end if;
   perform ops.raise_alert('campaign.content_drift', 'critical', jsonb_build_object('campaign_id', c.id, 'status', c.status, 'asset', lower(tg_op)));

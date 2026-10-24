@@ -117,6 +117,22 @@ create trigger campaigns_replicate after insert or update or delete on market.ca
   execute function bus.replicate('brand:status,start_at,submit_deadline,view_window_days,pinned_until',
                                 'creator:status,submit_deadline,view_window_days,required_hashtags,required_mentions,required_links');
 
+-- Isi (baris campaign atau aset) berubah selagi in_review: review yang berjalan tidak lagi untuk isi ini → kembali draft, invoice
+-- campaign yang belum dibayar batal, brand diminta mengajukan ulang.
+create function market.require_resubmit(c market.campaigns) returns void
+language plpgsql set search_path = '' as $$
+begin
+  update market.campaigns set status = 'rejected' where id = c.id;
+  update market.campaigns set status = 'draft' where id = c.id;
+  update finance.invoices set status = 'void' where campaign_id = c.id and kind = 'campaign' and status = 'issued';
+  perform market.notify_org(c.org_id, array['brand_owner', 'brand_manager']::market.org_role[], 'campaign.rejected',
+                            jsonb_build_object('campaign_id', c.id, 'campaign_title', c.title, 'reason', 'content_changed'));
+  insert into ops.audit_logs (actor_id, action, target, before, after)
+  values (null, 'campaign.resubmit_required', 'campaign:' || c.id, jsonb_build_object('submitted_version', c.submitted_version),
+          jsonb_build_object('content_version', c.content_version));
+end $$;
+revoke execute on function market.require_resubmit(market.campaigns) from public;
+
 -- Isi tiba dari brand (bus.apply_row). Brand mengunci brief sejak status replika ≠ draft/rejected; balapan dengan replika status
 -- (isi berubah tepat setelah diajukan) ditutup di sini: in_review dengan isi lebih baru dari yang diajukan → kembali draft, invoice
 -- campaign yang belum dibayar batal, brand diminta mengajukan ulang. rejected + isi baru = diperbaiki → draft. Tidak pernah raise
@@ -136,14 +152,7 @@ begin
   if c.status = 'rejected' then
     update market.campaigns set status = 'draft' where id = c.id;
   elsif c.status = 'in_review' then
-    update market.campaigns set status = 'rejected' where id = c.id;
-    update market.campaigns set status = 'draft' where id = c.id;
-    update finance.invoices set status = 'void' where campaign_id = c.id and kind = 'campaign' and status = 'issued';
-    perform market.notify_org(c.org_id, array['brand_owner', 'brand_manager']::market.org_role[], 'campaign.rejected',
-                              jsonb_build_object('campaign_id', c.id, 'campaign_title', c.title, 'reason', 'content_changed'));
-    insert into ops.audit_logs (actor_id, action, target, before, after)
-    values (null, 'campaign.resubmit_required', 'campaign:' || c.id, jsonb_build_object('submitted_version', c.submitted_version),
-            jsonb_build_object('content_version', c.content_version));
+    perform market.require_resubmit(c);
   end if;  -- status sesudah disetujui: isi dibekukan (market.campaign_content_frozen), versi tidak naik
 exception when others then
   perform ops.raise_alert('campaign.apply_failed', 'critical', jsonb_build_object('campaign_id', p_row ->> 'id', 'error', sqlerrm));
