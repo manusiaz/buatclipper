@@ -1,0 +1,8 @@
+/*
+ * Tailwind v4 source registration for the builder's utility classes. Apps that render <CampaignBuilder> import it after
+ * the design-system styles:
+ *   @import "tailwindcss";
+ *   @import "@clipper/ui/styles.css";
+ *   @import "@clipper/campaign-builder/styles.css";
+ */
+@source "./";

@@ -1,0 +1,41 @@
+{
+  "data": [
+    {
+      "id": "1840000000000000001",
+      "text": "Clip seru #mplid @studiosatu https://t.co/abc",
+      "author_id": "2244994945",
+      "created_at": "2026-10-01T10:00:00.000Z",
+      "attachments": { "media_keys": ["13_1840000000000000001"] },
+      "public_metrics": {
+        "retweet_count": 5,
+        "reply_count": 2,
+        "like_count": 40,
+        "quote_count": 1,
+        "bookmark_count": 3,
+        "impression_count": 9876
+      }
+    }
+  ],
+  "includes": {
+    "media": [
+      {
+        "media_key": "13_1840000000000000001",
+        "type": "video",
+        "duration_ms": 30000,
+        "preview_image_url": "https://pbs.twimg.com/ext_tw_video_thumb/x.jpg",
+        "public_metrics": { "view_count": 4321 }
+      }
+    ]
+  },
+  "errors": [
+    {
+      "value": "1840000000000000002",
+      "detail": "Could not find tweet with ids: [1840000000000000002].",
+      "title": "Not Found Error",
+      "resource_type": "tweet",
+      "parameter": "ids",
+      "resource_id": "1840000000000000002",
+      "type": "https://api.twitter.com/2/problems/resource-not-found"
+    }
+  ]
+}

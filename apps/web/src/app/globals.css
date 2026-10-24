@@ -1,0 +1,20 @@
+@import "tailwindcss";
+@import "@clipper/ui/styles.css";
+
+/* Cetak (laporan /r/[token] = PDF): tanpa header/footer situs, tanpa latar halaman. */
+@media print {
+  [data-site-shell] > div > header,
+  [data-site-shell] > div > footer {
+    display: none !important;
+  }
+  html,
+  body,
+  .bg-page {
+    background: none !important;
+  }
+  [role="progressbar"],
+  [role="progressbar"] * {
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+}

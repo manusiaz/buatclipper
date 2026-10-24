@@ -1,0 +1,68 @@
+# Project core (campaign, tracking, uang; tanpa PII). Hanya kunci yang sudah dicek ke docs CLI. Third-Party Auth → Custom OIDC
+# (issuer identity) tidak tersedia di CLI: didaftarkan lewat Dashboard/Management API (PRD §15.6).
+project_id = "clipper-core"
+
+# Port lokal digeser dari default (dipakai stack identity) supaya dua stack jalan bareng.
+[api]
+port = 55321
+schemas = ["api"]
+extra_search_path = ["extensions"]
+
+[db]
+port = 55322
+shadow_port = 55320
+
+[db.pooler]
+port = 55329
+
+[studio]
+port = 55323
+
+[local_smtp]
+port = 55324
+
+[analytics]
+port = 55327
+
+[edge_runtime]
+inspector_port = 8084
+
+# Signup & provider core dimatikan: satu-satunya penerbit login = identity (§15.6). Key dev sama dengan identity.
+[auth]
+enable_signup = false
+signing_keys_path = "./dev-keys/signing_keys.json"
+
+[auth.email]
+enable_signup = false
+
+[storage.buckets.invoice-docs]
+public = false
+file_size_limit = "5MiB"
+allowed_mime_types = ["application/pdf"]
+
+# Diff schema deklaratif memakai pg-delta. Engine lama (migra) membuang security_invoker dari view: view schema api jadi
+# melewati RLS. Jangan matikan.
+[experimental.pgdelta]
+enabled = true
+
+[functions.notify]
+verify_jwt = false
+[functions.bridge]
+verify_jwt = false
+[functions.fulfill]
+verify_jwt = false
+
+# Secret Edge Function untuk stack LOKAL saja (scripts/dev-stack.sh mengisi env-nya). Produksi: supabase secrets set.
+[edge_runtime.secrets]
+IDENTITY_ISSUER = "env(IDENTITY_ISSUER)"
+IDENTITY_JWKS_URL = "env(IDENTITY_JWKS_URL)"
+APP_ORIGINS = "env(APP_ORIGINS)"
+UNSUBSCRIBE_SECRET = "env(UNSUBSCRIBE_SECRET)"
+UNSUBSCRIBE_BASE_URL = "env(UNSUBSCRIBE_BASE_URL)"
+IDENTITY_FUNCTIONS_URL = "env(IDENTITY_FUNCTIONS_URL)"
+BRIDGE_SECRET_CORE_TO_IDENTITY = "env(BRIDGE_SECRET_CORE_TO_IDENTITY)"
+BRIDGE_SECRET_IDENTITY_TO_CORE = "env(BRIDGE_SECRET_IDENTITY_TO_CORE)"
+# Bus antar DB (penerima): secret per pengirim; FROM_ADMIN = loopback uji lokal.
+BUS_SECRET_FROM_CREATOR = "env(BUS_CREATOR_TO_ADMIN)"
+BUS_SECRET_FROM_BRAND = "env(BUS_BRAND_TO_ADMIN)"
+BUS_SECRET_FROM_ADMIN = "env(BUS_ADMIN_TO_ADMIN)"

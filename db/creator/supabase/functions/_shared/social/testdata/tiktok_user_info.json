@@ -1,0 +1,12 @@
+{
+  "data": {
+    "user": {
+      "open_id": "afd97af1-b87b-48b9-ac98-410aghda5344",
+      "union_id": "8e1b5d5c-4b2a-4e8f-9a2b-1f2e3d4c5b6a",
+      "display_name": "Clipper Satu",
+      "username": "clippersatu",
+      "follower_count": 1520
+    }
+  },
+  "error": { "code": "ok", "message": "", "log_id": "20221013102617185D2B9A0E1E0C0E3C2B" }
+}

@@ -1,0 +1,8 @@
+{
+  "imports": {
+    "@supabase/supabase-js": "npm:@supabase/supabase-js@2.117.2",
+    "jose": "npm:jose@5.10.0",
+    "web-push": "npm:web-push@3.6.7",
+    "@std/assert": "jsr:@std/assert@1.0.13"
+  }
+}

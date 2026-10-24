@@ -1,0 +1,22 @@
+{
+  "name": "@clipper/app-brand",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "next dev -p 3003",
+    "build": "next build",
+    "start": "next start -p 3003",
+    "typecheck": "next typegen && tsc --noEmit -p .",
+    "test": "vitest run --passWithNoTests"
+  },
+  "dependencies": {
+    "next": "catalog:", "react": "catalog:", "react-dom": "catalog:",
+    "next-intl": "catalog:", "next-themes": "catalog:",
+    "@clipper/ui": "workspace:*", "@clipper/auth": "workspace:*", "@clipper/i18n": "workspace:*", "@clipper/db-core": "workspace:*", "@clipper/db-brand": "workspace:*", "@clipper/campaign-builder": "workspace:*", "react-markdown": "catalog:", "recharts": "catalog:", "qrcode": "catalog:", "@types/qrcode": "catalog:"
+  },
+  "devDependencies": {
+    "@clipper/config": "workspace:*", "typescript": "catalog:", "@types/react": "catalog:", "@types/react-dom": "catalog:",
+    "@types/node": "catalog:", "tailwindcss": "catalog:", "@tailwindcss/postcss": "catalog:", "vitest": "catalog:"
+  }
+}

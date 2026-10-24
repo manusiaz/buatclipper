@@ -1,0 +1,9 @@
+{
+  "error": {
+    "message": "Application request limit reached",
+    "type": "OAuthException",
+    "is_transient": true,
+    "code": 4,
+    "fbtrace_id": "B7bq9cN8iRx1yGkqG5Xq2bQ"
+  }
+}

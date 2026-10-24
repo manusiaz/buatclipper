@@ -1,0 +1,20 @@
+{
+  "importMap": "./import_map.json",
+  "compilerOptions": {
+    "strict": true
+  },
+  "lint": {
+    "rules": {
+      "tags": [
+        "recommended"
+      ]
+    }
+  },
+  "tasks": {
+    "test": "deno test --allow-env --allow-net=localhost --permit-no-files",
+    "check": "deno check */index.ts"
+  },
+  "fmt": {
+    "lineWidth": 120
+  }
+}

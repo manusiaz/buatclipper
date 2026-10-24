@@ -1,0 +1,108 @@
+# Project identity (login + PII). Hanya kunci yang sudah dicek ke docs CLI; setelan Auth lain (SMTP Resend, Turnstile,
+# template email, rate limit, MFA, redirect URL, custom domain) diatur di Dashboard/Management API (PRD §15.10).
+project_id = "clipper-identity"
+
+[api]
+schemas = ["api"]
+extra_search_path = ["extensions"]
+
+[auth]
+jwt_expiry = 600
+# Lokal: host dev *.clipper.localhost (produksi diatur di Dashboard, §15.10). Key ES256 dev dipakai bersama stack core
+# supaya core menerima JWT identity tanpa Custom OIDC (tidak ada di CLI, §15.6). File key tidak di-commit.
+site_url = "http://accounts.clipper.localhost:3001"
+additional_redirect_urls = ["http://accounts.clipper.localhost:3001/auth/callback", "http://accounts.clipper.localhost:3001/auth/confirm", "http://app.clipper.localhost:3002/auth/callback"]
+signing_keys_path = "./dev-keys/signing_keys.json"
+
+[auth.email]
+enable_signup = true
+enable_confirmations = false
+otp_length = 6
+otp_expiry = 600
+
+# Yang terkirim kode OTP, bukan magic link (PWA iOS, §15.6); undangan menaut ke accounts/auth/confirm (§15.10).
+[auth.email.template.magic_link]
+subject = "Kode masuk Clipper: {{ .Token }}"
+content_path = "./supabase/templates/magic_link.html"
+
+[auth.email.template.invite]
+subject = "Kamu diundang ke Clipper"
+content_path = "./supabase/templates/invite.html"
+
+[auth.mfa]
+max_enrolled_factors = 10
+
+[auth.mfa.totp]
+enroll_enabled = true
+verify_enabled = true
+
+[auth.hook.custom_access_token]
+enabled = true
+uri = "pg-functions://postgres/member/custom_access_token_hook"
+
+[storage.buckets.kyc-docs]
+public = false
+file_size_limit = "5MiB"
+allowed_mime_types = ["image/jpeg", "image/png", "image/webp"]
+
+[storage.buckets.pii-exports]
+public = false
+file_size_limit = "50MiB"
+allowed_mime_types = ["text/csv"]
+
+[storage.buckets.payout-proofs]
+public = false
+file_size_limit = "10MiB"
+allowed_mime_types = ["application/pdf", "image/jpeg", "image/png"]
+
+# Diff schema deklaratif memakai pg-delta. Engine lama (migra) membuang security_invoker dari view: view schema api jadi
+# melewati RLS. Jangan matikan.
+[experimental.pgdelta]
+enabled = true
+
+# Semua fungsi mengautentikasi pemanggil di kode (JWT identity lewat JWKS, HMAC bridge, atau apikey cron) — PRD §15.6.
+[functions.bridge]
+verify_jwt = false
+[functions.member-data]
+verify_jwt = false
+[functions.pii-export]
+verify_jwt = false
+[functions.delete-account]
+verify_jwt = false
+[functions.admin-auth]
+verify_jwt = false
+[functions.disburse]
+verify_jwt = false
+[functions.session-handoff]
+verify_jwt = false
+
+# Secret Edge Function untuk stack LOKAL saja (scripts/dev-stack.sh mengisi env-nya). Produksi: supabase secrets set.
+[edge_runtime.secrets]
+IDENTITY_ISSUER = "env(IDENTITY_ISSUER)"
+PUBLIC_SUPABASE_URL = "env(IDENTITY_PUBLIC_URL)"
+APP_ORIGINS = "env(APP_ORIGINS)"
+PII_HMAC_KEY = "env(PII_HMAC_KEY)"
+PII_ENC_KEYS = "env(PII_ENC_KEYS)"
+PII_ENC_KEY_VERSION = "env(PII_ENC_KEY_VERSION)"
+CORE_FUNCTIONS_URL = "env(CORE_FUNCTIONS_URL)"
+BRIDGE_SECRET_CORE_TO_IDENTITY = "env(BRIDGE_SECRET_CORE_TO_IDENTITY)"
+BRIDGE_SECRET_IDENTITY_TO_CORE = "env(BRIDGE_SECRET_IDENTITY_TO_CORE)"
+RESEND_API_KEY = "env(RESEND_API_KEY)"
+EMAIL_FROM = "env(EMAIL_FROM)"
+MAILPIT_URL = "env(MAILPIT_URL)"
+APP_URL = "env(APP_URL)"
+BRAND_URL = "env(BRAND_URL)"
+ACCOUNTS_URL = "env(ACCOUNTS_URL)"
+ADMIN_URL = "env(ADMIN_URL)"
+VAPID_PUBLIC_KEY = "env(VAPID_PUBLIC_KEY)"
+VAPID_PRIVATE_KEY = "env(VAPID_PRIVATE_KEY)"
+VAPID_SUBJECT = "env(VAPID_SUBJECT)"
+DISBURSE_PROVIDER = "env(DISBURSE_PROVIDER)"
+DISBURSE_CALLBACK_TOKEN = "env(DISBURSE_CALLBACK_TOKEN)"
+XENDIT_SECRET_KEY = "env(XENDIT_SECRET_KEY)"
+# Live Activity iOS (APNs, _shared/apns.ts): kosong = fitur mati.
+APNS_KEY_ID = "env(APNS_KEY_ID)"
+APNS_TEAM_ID = "env(APNS_TEAM_ID)"
+APNS_PRIVATE_KEY = "env(APNS_PRIVATE_KEY)"
+APNS_BUNDLE_ID = "env(APNS_BUNDLE_ID)"
+APNS_ENV = "env(APNS_ENV)"

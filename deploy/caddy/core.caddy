@@ -1,0 +1,4 @@
+# Server core: API Supabase core.
+{$SCHEME}://api.{$DOMAIN} {
+	import supabase_api core-gw:8000
+}

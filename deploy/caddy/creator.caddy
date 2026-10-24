@@ -1,0 +1,4 @@
+# Server creator: API Supabase creator (bus antar DB; profil, sosmed, claim, submisi di 4DB-4).
+{$SCHEME}://creator-api.{$DOMAIN} {
+	import supabase_api creator-gw:8000
+}

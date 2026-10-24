@@ -1,0 +1,101 @@
+-- Alert admin (F-X01 penerima admin, F-A01): payout gagal, selisih/ID yatim rekonsiliasi, fulfillment macet, lonjakan fraud flag,
+-- job tracking telat. Ditulis fungsi definer lewat ops.raise_alert; dibaca & ditutup admin apa pun (aal2).
+create table ops.alerts (
+  id bigint generated always as identity primary key,
+  kind text not null check (kind ~ '^[a-z_]+(\.[a-z_]+)+$'),
+  severity text not null default 'warning' check (severity in ('info', 'warning', 'critical')),
+  payload jsonb not null default '{}' check (jsonb_typeof(payload) = 'object'),
+  created_at timestamptz not null default now(),
+  resolved_at timestamptz,
+  resolved_by uuid,
+  notified_at timestamptz, -- email admin terkirim (bridge identity notify_admins sukses)
+  notify_requested_at timestamptz, -- pengiriman terakhir diminta (pg_net asinkron; dibaca transaksi yang sama)
+  constraint alerts_resolution check ((resolved_at is null) = (resolved_by is null))
+);
+create index alerts_open_idx on ops.alerts (kind, created_at desc) where resolved_at is null;
+
+alter table ops.alerts enable row level security;
+create policy alerts_iss on ops.alerts as restrictive for all to authenticated  -- policy:core.iss-identity
+  using ((select ops.iss_ok())) with check ((select ops.iss_ok()));
+create policy alerts_admin_read on ops.alerts for select to authenticated using ((select ops.has_admin()));  -- policy:core.admin-aal2
+grant select on ops.alerts to authenticated;
+
+create view api.alerts with (security_invoker = true) as
+  select id, kind, severity, payload, created_at, resolved_at, resolved_by from ops.alerts;
+grant select on api.alerts to authenticated;
+
+-- Nilai config E-25 (jsonb) dengan default. Hanya dipanggil fungsi definer.
+create function ops.cfg(p_key text, p_default jsonb default null) returns jsonb
+language plpgsql stable security definer set search_path = '' as $$
+begin
+  return coalesce((select s.value from ops.settings s where s.key = p_key), p_default);
+end $$;
+
+-- Tulis alert. p_dedupe: lewati kalau alert jenis sama yang belum ditutup sudah ada dalam rentang itu (job berulang).
+create function ops.raise_alert(p_kind text, p_severity text, p_payload jsonb, p_dedupe interval default null) returns bigint
+language plpgsql security definer set search_path = '' as $$
+declare
+  aid bigint;
+begin
+  if p_dedupe is not null and exists (select 1 from ops.alerts a where a.kind = p_kind and a.resolved_at is null
+                                        and a.created_at > now() - p_dedupe) then
+    return null;
+  end if;
+  insert into ops.alerts (kind, severity, payload) values (p_kind, p_severity, coalesce(p_payload, '{}')) returning id into aid;
+  perform ops.notify_alerts(p_kind);
+  return aid;
+end $$;
+
+-- F-X01 admin (alur 4): job tracking gagal, lonjakan fraud, payout gagal, selisih rekonsiliasi → email admin terkait lewat
+-- bridge identity (tanpa PII; payload tidak dikirim). Per jenis: alert terbuka terbaru yang belum terkirim (≤ 1 hari), maks
+-- satu email per jam dihitung dari email yang benar-benar terkirim (notified_at); permintaan yang masih berjalan
+-- (notify_requested_at ≤ 15 menit, terlihat di transaksi yang sama) menahan alert beruntun; transaksi paralel diserialkan dengan
+-- advisory lock per jenis (try: tidak menunggu, tanpa deadlock — yang memegang lock sedang mengirim). Job alert-notify mengulang
+-- yang gagal.
+create function ops.notify_alerts(p_kind text default null) returns int
+language plpgsql security definer set search_path = '' as $$
+declare
+  r record;
+  n int := 0;
+begin
+  for r in select distinct on (a.kind) a.id, a.kind, a.severity from ops.alerts a
+            where a.kind in ('tracking.lag', 'tracking.final_missing', 'fraud.flag_spike', 'payout.failed', 'payout.instant_stuck',
+                             'reconcile.ledger', 'reconcile.orphans', 'reconcile.bank',
+                             -- antar-DB: antrean macet, hook replika gagal, payload ditolak, isi campaign yang disetujui berubah
+                             'bus.stuck', 'bus.watermark_held', 'bus.rejected_payload', 'tracking.apply_failed', 'campaign.apply_failed',
+                             'campaign.content_drift')
+              and (p_kind is null or a.kind = p_kind)
+              and a.notified_at is null and a.resolved_at is null and a.created_at > now() - interval '1 day'
+              and not exists (select 1 from ops.alerts b
+                               where b.kind = a.kind and (b.notified_at > now() - interval '1 hour'
+                                                          or b.notify_requested_at > now() - interval '15 minutes'))
+            order by a.kind, a.id desc loop
+    continue when not pg_try_advisory_xact_lock(hashtext('ops.notify_alerts:' || r.kind));
+    -- Setelah lock: transaksi lain yang baru commit mungkin sudah meminta kirim (snapshot statement baru).
+    continue when exists (select 1 from ops.alerts b
+                           where b.kind = r.kind and b.id <> r.id
+                             and (b.notified_at > now() - interval '1 hour' or b.notify_requested_at > now() - interval '15 minutes'));
+    update ops.alerts set notify_requested_at = now() where id = r.id;
+    perform ops.invoke_function('bridge', jsonb_build_object('action', 'notify_admins', 'kind', r.kind, 'severity', r.severity,
+                                                             'alert_id', r.id));
+    n := n + 1;
+  end loop;
+  return n;
+end $$;
+
+create function api.resolve_alert(p_id bigint) returns void
+language plpgsql security definer set search_path = '' as $$
+begin
+  if not ops.has_admin() then
+    raise exception 'auth:forbidden' using errcode = '42501';
+  end if;
+  update ops.alerts set resolved_at = now(), resolved_by = (select auth.uid()) where id = p_id and resolved_at is null;
+  if not found then
+    raise exception 'not_found:alert' using errcode = 'P0002';
+  end if;
+  insert into ops.audit_logs (actor_id, action, target, after) values ((select auth.uid()), 'alert.resolve', 'alert:' || p_id, null);
+end $$;
+
+revoke execute on function ops.cfg(text, jsonb), ops.raise_alert(text, text, jsonb, interval), ops.notify_alerts(text),
+  api.resolve_alert(bigint) from public;
+grant execute on function api.resolve_alert(bigint) to authenticated;

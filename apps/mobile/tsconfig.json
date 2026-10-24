@@ -1,0 +1,11 @@
+{
+  "extends": "@clipper/config/tsconfig.base.json",
+  "compilerOptions": {
+    "jsx": "react-jsx",
+    "lib": ["esnext", "dom"],
+    "types": ["node"],
+    "paths": { "@/*": ["./src/*"] }
+  },
+  "include": ["app", "src", "index.ts", "app.config.ts", "expo-env.d.ts"],
+  "exclude": ["node_modules", "dist", "android", "ios"]
+}

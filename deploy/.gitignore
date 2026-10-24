@@ -1,0 +1,7 @@
+# Konfigurasi & secret server, file hasil generate, compose resmi yang diunduh, dan data stack — jangan masuk git.
+config.env
+secrets.env
+secrets.*.env
+apps.env
+.generated/
+stack/

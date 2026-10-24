@@ -1,0 +1,39 @@
+{
+  "name": "@clipper/auth",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts",
+    "./server": "./src/server.ts",
+    "./proxy": "./src/proxy.ts",
+    "./actions": "./src/actions.ts",
+    "./otp": "./src/otp.ts",
+    "./routes": "./src/routes.ts",
+    "./components": "./src/components.tsx"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit -p ."
+  },
+  "dependencies": {
+    "@supabase/ssr": "catalog:",
+    "@supabase/supabase-js": "catalog:",
+    "@clipper/ui": "workspace:*",
+    "@clipper/i18n": "workspace:*",
+    "@clipper/db-core": "workspace:*",
+    "@clipper/db-brand": "workspace:*",
+    "@clipper/db-creator": "workspace:*"
+  },
+  "peerDependencies": {
+    "next": "catalog:",
+    "next-intl": "catalog:",
+    "react": "catalog:"
+  },
+  "devDependencies": {
+    "@clipper/config": "workspace:*",
+    "typescript": "catalog:",
+    "@types/react": "catalog:",
+    "@types/node": "catalog:",
+    "vitest": "catalog:"
+  }
+}

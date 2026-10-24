@@ -1,0 +1,52 @@
+# contracts.yaml — kontrak fungsi yang badannya ditulis tim dev (Lampiran A.3 PRD, node api/fn/job di KNOWLEDGE_GRAPH.md).
+# Semua fungsi SQL: schema api, security definer, SET search_path = '', cek ops.iss_ok() + role + aal sendiri, revoke dari PUBLIC.
+# Fungsi yang SUDAH ditulis & dites (db/**/schemas) tidak ada di sini; daftarnya dibaca dari katalog DB.
+core:
+  list_campaigns: {args: "p_filters jsonb, p_cursor text", returns: "campaign + cta_state (6 state F-C03) + sisa views", caller: "anon, authenticated", reads: [market.campaigns, finance.reward_pools, market.claims, tracking.social_accounts, market.profiles], rule: "CTA per user: bisa claim / sudah claim belum submit / slot penuh / budget habis / deadline lewat / tidak eligible + alasan"}
+  claim_campaign: {args: "p_campaign uuid", returns: "market.claims", caller: "authenticated", writes: [market.claims], rule: "profil active, bukan anggota org pemilik, eligibility (akun platform, follower, umur akun, Trust Score, KYC), kuota & maks klip, 1 claim terbuka (unique index), kedaluwarsa 48 jam"}
+  appeal_submission: {args: "p_submission uuid, p_message text", returns: void, caller: "authenticated (pemilik)", writes: [trust.review_decisions, tracking.submissions], rule: "hanya dari rejected, 1× (unique index), S-03 rejected → appealed"}
+  request_payout: {args: "p_method uuid, p_amount numeric, p_channel text, p_idempotency text", returns: "finance.payouts", caller: "authenticated (claim kyc = approved)", writes: [finance.payouts, finance.ledger_entries], rule: "status E-01 active, saldo Tersedia ≥ jumlah ≥ minimum, instant: Trust Score ≥ ambang + biaya; jurnal available → withdrawn"}
+  request_fulfillment: {args: "p_reward_type uuid, p_amount numeric, p_recipient jsonb, p_recipient_ref uuid, p_idempotency text", returns: "finance.fulfillments", caller: "authenticated", writes: [finance.fulfillments, finance.ledger_entries], rule: "field ber-flag pii wajib lewat recipient_ref (identity)"}
+  save_campaign: {args: "p_campaign jsonb, p_submit boolean", returns: uuid, caller: "brand_owner/brand_manager org, admin_ops (aal2)", writes: [market.campaigns, market.rate_rules, finance.reward_pools, market.campaign_assets, finance.invoices], rule: "brief terstruktur: hashtag/mention dinormalisasi huruf kecil tanpa #/@, link https; brief terkunci sejak in_review kecuali faq (trigger campaigns_brief_frozen); service_mode managed = minta dibantu tim (antre di builder admin, J-A7); berkas brief mentah = campaign_assets audience internal di folder {org}/{campaign}/internal/; submit: org verified, campaign → in_review + invoice kind campaign + notifikasi invoice.issued"}
+  control_campaign: {args: "p_campaign uuid, p_action text, p_params jsonb", returns: void, caller: "brand_owner/brand_manager", writes: [market.campaigns, market.rate_rules, finance.invoices], rule: "pause/resume/extend/raise_rate/topup/end_early; raise_rate = tutup rule lama + rule baru; topup = invoice kind topup"}
+  duplicate_campaign: {args: "p_campaign uuid, p_as_template boolean", returns: uuid, caller: "brand_owner/brand_manager", writes: [market.campaigns, market.rate_rules, finance.reward_pools], rule: "salinan selalu draft"}
+  invite_to_campaign: {args: "p_campaign uuid, p_usernames text[]", returns: int, caller: "brand_owner/brand_manager", writes: [market.campaign_invites], rule: "notifikasi campaign.invited"}
+  create_org: {args: "p_name text, p_org_type text, p_legal_name text, p_npwp text, p_address text, p_is_agency boolean", returns: uuid, caller: "authenticated (consent_ok.brand)", writes: [market.organizations, market.org_members], rule: "status pending_verification, pembuat = brand_owner"}
+  link_agency: {args: "p_agency uuid, p_client uuid, p_action text", returns: void, caller: "anggota agency (request), brand_owner klien (approve/revoke)", writes: [market.org_links], rule: "approved_by = brand_owner klien"}
+  create_org_invite: {args: "p_org uuid, p_role market.org_role", returns: "text (token sekali tampil)", caller: "brand_owner", writes: [market.org_invites], rule: "hanya hash token disimpan"}
+  accept_org_invite: {args: "p_token text", returns: uuid, caller: "authenticated", writes: [market.org_members, market.org_invites], rule: "token belum dipakai & belum kedaluwarsa; profil dibuat dulu kalau belum ada"}
+  manage_org: {args: "p_org uuid, p_action text, p_params jsonb", returns: void, caller: "admin_ops/admin_super (aal2)", writes: [market.organizations, market.org_members, ops.audit_logs], rule: "verify/suspend, fee rule custom, tambah anggota (paket managed)"}
+  save_reward_type: {args: "p jsonb", returns: uuid, caller: "brand_owner/brand_manager", writes: [market.reward_types], rule: "webhook → secret disimpan di Vault (webhook_secret_ref)"}
+  upload_reward_codes: {args: "p_reward_type uuid, p_codes text[]", returns: int, caller: "brand_owner/brand_manager pemilik reward type", writes: [finance.reward_codes], rule: "kode duplikat diabaikan (unique)"}
+  request_refund: {args: "p_org uuid, p_campaign uuid, p_mode text, p_amount numeric, p_idempotency text", returns: uuid, caller: "brand_owner/brand_finance (aal2)", writes: [finance.org_refunds, finance.ledger_entries], rule: "rollover → jurnal ke org_credit; refund → E-35 requested"}
+  buy_pin: {args: "p_campaign uuid, p_days int", returns: uuid, caller: "brand_owner/brand_manager", writes: [finance.invoices], rule: "invoice kind pinned + pin_until; pinned_until diset saat lunas"}
+  confirm_invoice_payment: {args: "p_invoice uuid, p_amount numeric, p_paid_at timestamptz, p_ref text, p_channel text", returns: void, caller: "admin_finance (aal2)", writes: [finance.invoices, finance.ledger_entries, finance.reward_pools], rule: "referensi unik; jurnal bank_clearing → campaign_pool / platform_revenue"}
+  create_payout_batch: {args: "p_cutoff timestamptz", returns: uuid, caller: "admin_finance (aal2)", writes: [finance.payout_batches, finance.payouts], rule: "payout requested ≤ cut-off, batch draft"}
+  approve_payout_batch: {args: "p_batch uuid", returns: void, caller: "admin_finance lain (aal2)", writes: [finance.payout_batches], rule: "approved_by ≠ created_by (constraint)"}
+  mark_batch_paid: {args: "p_batch uuid, p_results jsonb", returns: void, caller: "admin_finance (aal2)", writes: [finance.payouts, finance.payout_batches, finance.ledger_entries], rule: "hanya payout di CSV; gagal → saldo kembali"}
+  record_review: {args: "p_target_type text, p_target_id uuid, p_decision text, p_reason text, p_message text, p_note text", returns: void, caller: "admin (aal2) atau brand_owner/brand_manager untuk review brand", writes: [trust.review_decisions, tracking.submissions, market.campaigns], rule: "campaign: approve hanya kalau invoice lunas; notifikasi ke subjek"}
+  resolve_fraud_flag: {args: "p_flag uuid, p_action text, p_note text", returns: void, caller: "admin_moderator (aal2)", writes: [trust.fraud_flags, market.profiles, trust.score_events, finance.ledger_entries], rule: "hold/reverse/suspend/ban; ban → identity admin-auth"}
+  update_config: {args: "p_key text, p_value jsonb", returns: void, caller: "admin_super/admin_ops (aal2)", writes: [ops.settings, finance.fee_rules, market.categories, market.campaigns, ops.audit_logs], rule: "audit sebelum/sesudah"}
+  send_broadcast: {args: "p_title text, p_body text, p_segment jsonb, p_channels text[], p_scheduled_at timestamptz", returns: uuid, caller: "admin_ops (aal2)", writes: [ops.broadcasts], rule: "dikirim job broadcast-dispatch"}
+core_internal:
+  accrue_earnings: {args: "p_submission uuid, p_snapshot bigint", writes: [finance.ledger_entries, finance.reward_pools, tracking.submissions], rule: "§10.5: Δviews × rate, cap per klip, alokasi pool atomik, ref_id = snapshot:rule"}
+  reverse_earning: {args: "p_submission uuid, p_reason text", writes: [finance.ledger_entries, finance.reward_pools], rule: "pending kembali ke pool"}
+  run_lifecycle: {job: lifecycle, writes: [market.campaigns, tracking.submissions, trust.review_decisions], rule: "transisi S-01, lock akhir view window, settlement, auto-approve 72 jam"}
+  release_earnings: {job: earning-release, writes: [finance.ledger_entries], rule: "lock + hold 7 hari tanpa fraud flag → available"}
+  run_budget_alerts: {job: budget-alerts, writes: [ops.notifications], rule: "50/80/100% terpakai, proyeksi < 50%"}
+  accrue_referral_bonus: {job: referral-bonus, writes: [finance.ledger_entries, market.referrals], rule: "persen config dari earning teman yang Tersedia, sampai bonus_until"}
+  recalc_scores: {job: trust-score, writes: [market.profiles], rule: "50 + jumlah delta E-40, dibatasi 0–100"}
+  dispatch_broadcasts: {job: broadcast-dispatch, writes: [ops.broadcasts, ops.notifications], rule: "segmen → penerima → enqueue_notification"}
+edge:
+  creator/social: "connect OAuth (tukar code → store_social_token), daftar video, verifikasi kepemilikan, submit (E-12): caption dicek api.missing_brief_tags, durasi dicek min/max_duration_sec; campaign berbatas durasi + API tanpa durasi → in_review walau review_mode auto"
+  creator/track-worker: "ambil batch queue tracking, fetchMetrics, tulis snapshot, cek ulang caption lewat api.missing_brief_tags (hashtag/mention/link hilang → flag), panggil accrue_earnings"
+  creator/refresh-tokens: "refresh token sosmed sebelum kedaluwarsa"
+  core/notify: "kuras queue email → bridge identity (email + push); endpoint one-click unsubscribe (List-Unsubscribe-Post) untuk email promosi"
+  core/bridge: "terima panggilan identity (get_batch, attach_export, attach_proof, raise_fraud_flag, close_account, mark_instant) + kirim reconcile_ids"
+  core/fulfill: "pasang kode dari pool, kirim webhook reward (tanda tangan HMAC, retry 5 menit)"
+  identity/member-data: "submit KYC (cek umur dari NIK, HMAC + enkripsi → store_kyc), tambah rekening, simpan data penerima, unduh data saya"
+  identity/pii-export: "CSV payout & penerima, unggah bukti transfer, rekap PPh 21"
+  identity/delete-account: "alur 7: putuskan retensi (tombstone), close_account di core, hapus user Auth"
+  identity/bridge: "send_email, send_push (VAPID), check_ids, fraud_device_scan (shared_device_groups → raise_fraud_flag)"
+  identity/admin-auth: "Auth Admin API dengan secret key: undang user (paket managed), ban/unban (ban_duration), reset MFA admin"
+  identity/disburse: "instant withdraw: dekripsi rekening, kirim ke penyedia disbursement, terima callback, mark_instant di core (alur 11)"

@@ -1,0 +1,15 @@
+# Stack core (= db/core/supabase/config.toml versi self-hosted): Auth core tidak dipakai login (signup mati); token user
+# diverifikasi lewat JWKS bersama (public key identity). Env Edge Function core — tanpa kunci PII identity.
+services:
+  functions:
+    environment:
+      IDENTITY_ISSUER: ${IDENTITY_ISSUER}
+      IDENTITY_JWKS_URL: ${IDENTITY_PUBLIC_URL}/auth/v1/.well-known/jwks.json
+      APP_ORIGINS: ${APP_ORIGINS}
+      UNSUBSCRIBE_SECRET: ${UNSUBSCRIBE_SECRET}
+      UNSUBSCRIBE_BASE_URL: ${SUPABASE_PUBLIC_URL}/functions/v1/notify/unsubscribe
+      IDENTITY_FUNCTIONS_URL: ${IDENTITY_PUBLIC_URL}/functions/v1
+      BRIDGE_SECRET_CORE_TO_IDENTITY: ${BRIDGE_SECRET_CORE_TO_IDENTITY}
+      BRIDGE_SECRET_IDENTITY_TO_CORE: ${BRIDGE_SECRET_IDENTITY_TO_CORE}
+      BUS_SECRET_FROM_CREATOR: ${BUS_SECRET_FROM_CREATOR}
+      BUS_SECRET_FROM_BRAND: ${BUS_SECRET_FROM_BRAND}

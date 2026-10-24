@@ -1,0 +1,7 @@
+{
+  "imports": {
+    "@supabase/supabase-js": "npm:@supabase/supabase-js@2.117.2",
+    "jose": "npm:jose@5.10.0",
+    "jpeg-js": "npm:jpeg-js@0.4.4"
+  }
+}

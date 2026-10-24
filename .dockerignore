@@ -1,0 +1,15 @@
+# Konteks build image app (deploy/app.Dockerfile): source monorepo saja, tanpa build lokal, secret, atau data stack.
+**/node_modules
+**/.next
+**/*.tsbuildinfo
+.git
+**/.env
+**/.env.*
+!**/.env.example
+apps/mobile
+db
+deploy
+e2e
+spec
+test-results
+playwright-report

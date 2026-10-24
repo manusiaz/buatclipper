@@ -1,0 +1,16 @@
+# Server app: 5 app Next.js (deploy/apps.yml).
+{$SCHEME}://{$DOMAIN} {
+	reverse_proxy web:3000
+}
+{$SCHEME}://accounts.{$DOMAIN} {
+	reverse_proxy accounts:3001
+}
+{$SCHEME}://app.{$DOMAIN} {
+	reverse_proxy clipper:3002
+}
+{$SCHEME}://brand.{$DOMAIN} {
+	reverse_proxy brand:3003
+}
+{$SCHEME}://admin.{$DOMAIN} {
+	reverse_proxy admin:3004
+}

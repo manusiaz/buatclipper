@@ -1,0 +1,8 @@
+{
+  "data": {},
+  "error": {
+    "code": "rate_limit_exceeded",
+    "message": "API rate limit exceeded.",
+    "log_id": "20220622185437010113006207250A1B2C"
+  }
+}

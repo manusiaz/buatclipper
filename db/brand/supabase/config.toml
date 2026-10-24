@@ -1,0 +1,59 @@
+# Project brand (arsitektur 4 DB, keputusan owner 2026-10-22): brand (organisasi, tim, agency, isi campaign, aset, undangan, report link). Tanpa PII, tanpa uang.
+# Login hanya dari identity (Third-Party Auth → Custom OIDC di produksi; lokal: signing key dev sama).
+project_id = "clipper-brand"
+
+[api]
+port = 57321
+schemas = ["api"]
+extra_search_path = ["extensions"]
+
+[db]
+port = 57322
+shadow_port = 57320
+
+[db.pooler]
+port = 57329
+
+[studio]
+port = 57323
+
+[local_smtp]
+port = 57324
+
+[analytics]
+port = 57327
+
+[edge_runtime]
+inspector_port = 8086
+
+[auth]
+enable_signup = false
+signing_keys_path = "./dev-keys/signing_keys.json"
+
+[auth.email]
+enable_signup = false
+
+[storage.buckets.campaign-covers]
+public = true
+file_size_limit = "2MiB"
+allowed_mime_types = ["image/jpeg", "image/png", "image/webp"]
+
+[storage.buckets.campaign-assets]
+public = false
+file_size_limit = "500MiB"
+allowed_mime_types = ["video/mp4", "video/quicktime", "image/jpeg", "image/png", "image/webp", "audio/mpeg", "audio/wav", "application/pdf"]
+
+[experimental.pgdelta]
+enabled = true
+
+[functions.bridge]
+verify_jwt = false
+
+[edge_runtime.secrets]
+IDENTITY_ISSUER = "env(IDENTITY_ISSUER)"
+IDENTITY_JWKS_URL = "env(IDENTITY_JWKS_URL)"
+APP_ORIGINS = "env(APP_ORIGINS)"
+# Bus antar DB (penerima): secret per pengirim.
+BUS_SECRET_FROM_ADMIN = "env(BUS_ADMIN_TO_BRAND)"
+BUS_SECRET_FROM_CREATOR = "env(BUS_CREATOR_TO_BRAND)"
+BUS_SECRET_FROM_IDENTITY = "env(BUS_IDENTITY_TO_BRAND)"

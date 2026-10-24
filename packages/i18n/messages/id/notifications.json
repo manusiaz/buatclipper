@@ -1,0 +1,111 @@
+{
+  "fallback": {
+    "campaign": "ini",
+    "platform": "sosmed",
+    "amount": "kamu",
+    "soon": "dalam beberapa jam",
+    "further": "pemberitahuan berikutnya",
+    "count": "Beberapa",
+    "invoice": "baru",
+    "dueAt": "sesuai tagihan",
+    "reward": "Reward non-tunai kamu",
+    "broadcast": "Pengumuman",
+    "org": "kamu",
+    "agency": "Agency",
+    "client": "Klien"
+  },
+  "reason": "Alasan: {reason}",
+  "unknown": { "title": "Notifikasi baru", "body": "Buka aplikasi untuk detailnya." },
+  "facts": {
+    "views": "{n} views dihitung",
+    "estimate": "±{amount} sejauh ini",
+    "release": "cair ±{date}",
+    "rate": "{rate}/1K views",
+    "lost": "{amount} hangus",
+    "held": "{amount} ditahan",
+    "hoursLeft": "sisa {n} jam",
+    "paused": "{n} video berhenti dilacak",
+    "to": "ke {bank}",
+    "fee": "biaya {amount}",
+    "eta": "estimasi masuk {when}"
+  },
+  "campaign": {
+    "new": { "title": "Campaign baru: {campaign}", "body": "Ambil sebelum slot atau budget-nya habis." },
+    "invited": { "title": "Kamu diundang ke campaign {campaign}", "body": "Buka campaign untuk membaca brief dan mengambil slot." },
+    "approved": { "title": "Campaign {campaign} disetujui", "body": "Campaign lolos review dan akan tayang sesuai jadwal." },
+    "rejected": { "title": "Campaign {campaign} ditolak", "body": "Perbaiki campaign lalu ajukan lagi." },
+    "live": { "title": "Campaign {campaign} sudah tayang", "body": "Clipper sekarang bisa mengambil campaign. Pantau views dan budget dari dashboard." },
+    "settled": { "title": "Campaign {campaign} selesai", "body": "Laporan akhir siap. Sisa budget mengikuti pilihan refund atau rollover." }
+  },
+  "claim": {
+    "expiring": { "title": "Claim kamu hampir kedaluwarsa", "body": "Claim campaign {campaign} berakhir {expiresAt}. Posting lalu submit sebelum slot dilepas." }
+  },
+  "submission": {
+    "approved": { "title": "Submisi kamu disetujui", "body": "Video di campaign {campaign} disetujui. Views-nya sekarang dihitung untuk earning." },
+    "rejected": { "title": "Submisi kamu ditolak", "body": "Video di campaign {campaign} ditolak. Kamu bisa banding satu kali dari halaman Tugas." },
+    "forfeited": { "title": "Earning submisi hangus", "body": "{cause, select, fraud {Earning video di campaign {campaign} dibatalkan setelah pemeriksaan kecurangan.} other {Video di campaign {campaign} tidak bisa diakses lagi, jadi earning-nya hangus.}}" },
+    "pending_review": { "title": "Submisi menunggu review: {campaign}", "body": "{count} submisi baru menunggu review. Tanpa keputusan dalam 72 jam, disetujui otomatis." }
+  },
+  "social": {
+    "token_expired": { "title": "Hubungkan ulang akun {platform} kamu", "body": "Izin akun {platform}{handle} kedaluwarsa atau dicabut, jadi tracking views berhenti sementara." }
+  },
+  "earning": {
+    "available": { "title": "Earning siap ditarik", "body": "{amount} sudah Tersedia di wallet dan bisa ditarik." },
+    "held": { "title": "Earning kamu ditahan sementara", "body": "{scope, select, submission {Earning video di campaign {campaign} ditahan selama tim moderasi memeriksanya.} other {Penarikan saldo ditahan selama tim moderasi memeriksa akun.}} Kalau tidak ada masalah, semuanya berjalan lagi seperti biasa." }
+  },
+  "payout": {
+    "processing": { "title": "Payout {amount} sedang ditransfer", "body": "Pencairan sudah diproses dan sedang dikirim ke rekening tujuan." },
+    "paid": { "title": "Payout {amount} berhasil", "body": "Dana sudah ditransfer. Waktu masuk tergantung bank atau e-wallet tujuan." },
+    "failed": { "title": "Payout {amount} gagal", "body": "Saldo sudah kembali ke wallet. Periksa rekening lalu ajukan lagi." },
+    "cancelled": { "title": "Penarikan {amount} dibatalkan", "body": "Saldonya sudah kembali ke Tersedia dan bisa ditarik lagi." }
+  },
+  "fulfillment": {
+    "delivered": { "title": "Reward kamu sudah dikirim", "body": "{reward} sudah dikirim. Detailnya ada di tab Reward." },
+    "cancelled": { "title": "Klaim reward dibatalkan", "body": "Saldo reward sudah kembali dan bisa diklaim lagi." }
+  },
+  "kyc": {
+    "approved": { "title": "KYC kamu disetujui", "body": "Identitas kamu sudah diverifikasi. Sekarang kamu bisa menarik saldo." },
+    "rejected": { "title": "KYC kamu ditolak", "body": "Perbaiki data atau foto KTP lalu kirim ulang dari halaman KYC." }
+  },
+  "broadcast": {
+    "sent": { "title": "{title}", "body": "{body}" }
+  },
+  "account": {
+    "suspended": { "title": "Akun kamu ditangguhkan", "body": "Ditangguhkan sampai {until}. Selama itu kamu tidak bisa claim, submit, atau menarik saldo." },
+    "banned": { "title": "Akun kamu diblokir", "body": "Akun diblokir karena pelanggaran ketentuan layanan. Hubungi bantuan kalau menurutmu keliru." },
+    "warned": { "title": "Peringatan untuk akunmu", "body": "Tim menemukan aktivitas yang melanggar ketentuan. Ini peringatan pertama; pelanggaran berikutnya bisa membuat earning ditahan atau akun ditangguhkan. Kamu bisa membanding di Profil." }
+  },
+  "invoice": {
+    "issued": { "title": "Invoice {invoice} terbit", "body": "Tagihan {amount} jatuh tempo {dueAt}. Bayar lewat QRIS atau transfer bank." },
+    "paid": { "title": "Pembayaran diterima", "body": "Pembayaran invoice {invoice} sebesar {amount} sudah kami terima." }
+  },
+  "budget": {
+    "used": {
+      "title": "{level, select, full {Budget campaign {campaign} habis} p80 {Budget campaign {campaign} terpakai 80%} other {Budget campaign {campaign} terpakai 50%}}",
+      "body": "{level, select, full {Campaign berhenti menghitung views baru. Top-up kalau ingin berjalan lagi.} p80 {Pertimbangkan top-up supaya campaign tidak berhenti mendadak.} other {Pantau performanya di dashboard.}}"
+    },
+    "projection_low": { "title": "Proyeksi campaign {campaign} di bawah target", "body": "Kurang dari separuh budget diperkirakan terpakai. Naikkan rate, perpanjang jadwal, atau undang clipper." }
+  },
+  "org": {
+    "verified": { "title": "Organisasi {org} terverifikasi", "body": "Sekarang kamu bisa mengajukan campaign." },
+    "rejected": { "title": "Verifikasi organisasi ditolak", "body": "Perbaiki data organisasi lalu ajukan ulang dari pengaturan." },
+    "suspended": { "title": "Organisasi {org} ditangguhkan", "body": "Campaign baru tidak bisa diajukan sampai penangguhan dicabut." }
+  },
+  "agency": {
+    "link_requested": { "title": "{agency} minta akses ke {org}", "body": "Setujui hanya kalau kamu memang bekerja sama dengan agency ini." },
+    "link_approved": { "title": "{client} menyetujui tautan agency", "body": "Organisasi klien sekarang muncul di pemilih organisasi kamu." }
+  },
+  "refund": {
+    "requested": { "title": "Refund campaign {campaign} sedang diproses", "body": "Tim finance akan mentransfer {amount} dan mengunggah buktinya di halaman tagihan." },
+    "paid": { "title": "Refund {amount} sudah ditransfer", "body": "Bukti transfer ada di halaman tagihan." }
+  },
+  "managed": {
+    "draft_ready": { "title": "Draft campaign {campaign} siap disetujui", "body": "Periksa ringkasannya, lalu setujui dan bayar supaya campaign bisa direview." }
+  },
+  "sanction": {
+    "appeal_decided": { "title": "{decision, select, overturned {Banding dikabulkan} other {Banding ditolak}}", "body": "{decision, select, overturned {Sanksi dibatalkan dan efeknya dipulihkan sejauh memungkinkan.} other {Sanksi tetap berlaku. Keputusan banding bersifat final.}}" }
+  },
+  "security": {
+    "notice": { "title": "{title}", "body": "{body}" }
+  }
+}

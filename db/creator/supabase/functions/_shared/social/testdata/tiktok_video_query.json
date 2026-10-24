@@ -1,0 +1,22 @@
+{
+  "data": {
+    "videos": [
+      {
+        "id": "7080217258529732869",
+        "create_time": 1790000000,
+        "cover_image_url": "https://p16-sign.tiktokcdn-us.com/obj/tos-useast5-p-0068-tx/cover.jpeg",
+        "share_url": "https://www.tiktok.com/@clippersatu/video/7080217258529732869?utm_campaign=tt4d_open_api",
+        "video_description": "Highlight MPL #mplid @studiosatu",
+        "title": "Highlight MPL",
+        "duration": 34,
+        "view_count": 15234,
+        "like_count": 812,
+        "comment_count": 44,
+        "share_count": 19
+      }
+    ],
+    "cursor": 0,
+    "has_more": false
+  },
+  "error": { "code": "ok", "message": "", "log_id": "20220829194722CBE87ED59D524E727021" }
+}
