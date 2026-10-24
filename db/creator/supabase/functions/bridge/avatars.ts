@@ -30,7 +30,10 @@ async function removeFolder(bucket: AvatarBucket, prefix: string): Promise<numbe
   }
 }
 
-export async function removeAnonymizedAvatars(events: BusEvent[], bucket: AvatarBucket): Promise<void> {
+/** Hanya kiriman admin (satu-satunya pengirim profile.anonymize di allowlist): events mentah bisa memuat duplikat id yang dilewati
+ * SQL sebelum cek allowlist, jadi topik saja tidak cukup (CX9). */
+export async function removeAnonymizedAvatars(events: BusEvent[], bucket: AvatarBucket, from: string): Promise<void> {
+  if (from !== "admin") return;
   for (const e of events) {
     if (e.topic === "profile.anonymize") await removeFolder(bucket, String(e.payload.user_id));
   }

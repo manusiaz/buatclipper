@@ -60,17 +60,17 @@ else echo "✗ sambung sosmed saat akun ditutup tersimpan"; fail=1; fi
 q creator -c "delete from vault.secrets where id in (select token_ref from tracking.social_accounts where user_id = '$U')" \
           -c "select set_config('bus.applying', 'on', false)" -c "delete from tracking.social_accounts where user_id = '$U'" \
           -c "delete from market.profiles where id = '$U'" >/dev/null
-# Ping = watermark lock/settle di admin (CX6): ping menunggu transaksi yang sedang menulis event, jadi event itu (seq lebih kecil)
-# tiba lebih dulu — ping tidak menyalip event yang belum commit.
+# Ping = watermark lock/settle di admin (CX6/CL11): event dari transaksi yang belum commit tidak boleh diklaim ping — at ping tidak
+# melewati awal transaksi yang masih terbuka (created_at event = awal transaksinya), dan ping tetap langsung terkirim (tidak menunggu).
 q creator -c "begin; select bus.emit('admin', 'uji.ping', jsonb_build_object('src', 'barrier', 'v', 'b')); select pg_sleep(3); commit;" >/dev/null &
 for _ in $(seq 1 50); do
   [ "$(q creator -c "select count(*) from pg_stat_activity where query like '%''barrier''%' and backend_xid is not null and pid <> pg_backend_pid()")" = 1 ] && break; sleep 0.1
 done
 t0=$(date +%s%N); pid=$(q creator -c "select bus.ping()"); dt=$(( ($(date +%s%N) - t0) / 1000000 ))
 wait
-ord=$(q creator -c "select (select seq from bus.outbox where payload ->> 'src' = 'barrier') < (select seq from bus.outbox where id = '$pid')")
-if [ "$dt" -ge 2000 ] && [ "$ord" = t ]; then echo "✓ ping menunggu event yang belum commit (${dt} ms)"
-else echo "✗ ping menyalip event yang belum commit (${dt} ms, urutan: $ord)"; fail=1; fi
+ok=$(q creator -c "select (select (payload ->> 'at')::timestamptz from bus.outbox where id = '$pid') <= (select created_at from bus.outbox where payload ->> 'src' = 'barrier')")
+if [ "$dt" -lt 1500 ] && [ "$ok" = t ]; then echo "✓ ping tidak mengklaim event yang belum commit, tanpa menunggu (${dt} ms)"
+else echo "✗ ping mengklaim event yang belum commit / menunggu (${dt} ms, at ≤ awal transaksi: $ok)"; fail=1; fi
 for _ in $(seq 1 20); do [ "$(q admin -c "select count(*) from public.bus_e2e_log where src = 'barrier'")" = 1 ] && break; sleep 1; done
 for t in admin creator brand; do
   q "$t" -c "delete from bus.outbox where topic = 'uji.ping'" -c "delete from bus.inbox where topic = 'uji.ping'" \

@@ -74,6 +74,9 @@ select ok(exists (select 1 from bus.outbox where sent_at is not null and payload
 insert into bus.outbox (target, topic, payload, sent_at)
 values ('admin', 'notify.user', '{"user_id":"11111111-0000-0000-0000-00000000000a","event":"social.connected","payload":{"handle":"@andi"}}', now());
 select bus_in.profile_anonymize('{"user_id":"11111111-0000-0000-0000-00000000000a"}');
+select ok(exists (select 1 from bus.outbox where sent_at is not null and payload ->> 'user_id' = '11111111-0000-0000-0000-00000000000a'),
+          'CL10: handler hapus akun tidak memindai outbox (jalan di dalam transaksi bus_receive)');
+select bus.scrub_closed();
 select ok(not exists (select 1 from bus.outbox where sent_at is not null and payload ->> 'user_id' = '11111111-0000-0000-0000-00000000000a'),
           'CL9: salinan notifikasi (handle) di outbox terkirim ikut dihapus');
 select ok(not exists (select 1 from bus.outbox where sent_at is not null and payload -> 'key' ->> 'id' = '11111111-0000-0000-0000-00000000000a'),

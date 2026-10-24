@@ -13,7 +13,7 @@ Deno.serve(async (req) => {
       req,
       serviceRpc(),
       busSecret,
-      (events) => removeAnonymizedAvatars(events, serviceClient().storage.from("avatars")),
+      (events, from) => removeAnonymizedAvatars(events, serviceClient().storage.from("avatars"), from),
     );
   } catch (e) {
     if (e instanceof HttpError) return json(e.status, { ok: false, error: { code: e.code, message: e.message } });

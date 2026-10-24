@@ -80,13 +80,6 @@ begin
   values (v_user, 'deleted_' || substr(md5(v_user::text), 1, 22), 'Akun dihapus', 'closed')
   on conflict (id) do update set username = excluded.username, display_name = excluded.display_name, avatar_path = null,
                                  status = 'closed';
-  -- salinan di outbox yang sudah terkirim (profil, akun sosmed, submisi, snapshot + caption, notifikasi) ikut dihapus — tidak
-  -- menunggu retensi bus.prune. Yang belum terkirim tetap dikirim (urutan replika) lalu hilang oleh retensi 14 hari, begitu juga
-  -- salinan profil di outbox brand (profile.ensure anggota org).
-  delete from bus.outbox o where o.sent_at is not null
-     and (o.payload -> 'key' ->> 'id' = v_user::text or o.payload -> 'row' ->> 'user_id' = v_user::text
-          or o.payload ->> 'user_id' = v_user::text
-          or o.payload -> 'row' ->> 'submission_id' in (select s.id::text from tracking.submissions s where s.user_id = v_user));
   delete from vault.secrets v where v.id in (select a.token_ref from tracking.social_accounts a where a.user_id = v_user);
   delete from tracking.social_accounts a
    where a.user_id = v_user and not exists (select 1 from tracking.submissions s where s.social_account_id = a.id);
@@ -111,3 +104,18 @@ begin
                                                                           'handle', a.handle, 'paused_count', tracking.paused_count(a.id)));
 end $$;
 revoke execute on function bus_in.profile_ensure(jsonb), bus_in.profile_anonymize(jsonb), bus_in.social_reset(jsonb) from public;
+
+-- Salinan data user akun yang dihapus (status closed) di outbox yang sudah terkirim — profil, akun sosmed, submisi, snapshot +
+-- caption, notifikasi — dihapus job bus-prune tiap malam (scan penuh outbox: tidak di dalam bus_receive, CL10), jadi paling lama
+-- sehari, bukan 14 hari retensi. Yang belum terkirim tetap dikirim (urutan replika) lalu ikut terhapus malam berikutnya; salinan
+-- profil di outbox brand (profile.ensure anggota org) hilang oleh retensi 14 hari.
+create function bus.scrub_closed() returns void
+language sql security definer set search_path = '' as $$
+  with u as (select p.id::text as id from market.profiles p where p.status = 'closed'),
+       s as (select s.id::text as id from tracking.submissions s join market.profiles p on p.id = s.user_id where p.status = 'closed')
+  delete from bus.outbox o
+   where o.sent_at is not null
+     and (o.payload -> 'key' ->> 'id' in (select id from u) or o.payload -> 'row' ->> 'user_id' in (select id from u)
+          or o.payload ->> 'user_id' in (select id from u) or o.payload -> 'row' ->> 'submission_id' in (select id from s));
+$$;
+revoke execute on function bus.scrub_closed() from public;

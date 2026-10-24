@@ -17,12 +17,13 @@ export function busSecret(from: string, read: (k: string) => string = env): stri
 export type BusEvent = { id: string; topic: string; payload: Record<string, unknown> };
 
 /** after: efek di luar DB (mis. hapus file Storage) sesudah batch diterapkan; gagal → 500, pengirim mengulang batch
- * (bus_receive idempoten, after dijalankan ulang). */
+ * (bus_receive idempoten, after dijalankan ulang). events = isi mentah kiriman (duplikat ikut, tanpa cek allowlist SQL):
+ * after wajib memeriksa sendiri pengirim (from) yang berhak memicu efeknya. */
 export async function handleBusDelivery(
   req: Request,
   rpc: Rpc,
   secret: (from: string) => string = busSecret,
-  after?: (events: BusEvent[]) => Promise<void>,
+  after?: (events: BusEvent[], from: string) => Promise<void>,
 ): Promise<Response> {
   const from = req.headers.get("x-bridge-from") ?? "";
   const msg = await verifyBridge(req, secret(from));
@@ -30,6 +31,6 @@ export async function handleBusDelivery(
   if (msg.payload.source !== from) throw new HttpError(400, "bad_payload", "source ≠ x-bridge-from");
   if (!Array.isArray(msg.payload.events)) throw new HttpError(400, "bad_payload", "events wajib array");
   const data = await rpc("bus_receive", { p_source: from, p_events: msg.payload.events });
-  if (after) await after(msg.payload.events as BusEvent[]);
+  if (after) await after(msg.payload.events as BusEvent[], from);
   return json(200, { ok: true, data });
 }

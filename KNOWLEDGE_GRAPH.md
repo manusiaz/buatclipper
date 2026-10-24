@@ -474,7 +474,7 @@ Wajib tetap benar setiap perubahan (dicek otomatis saat graph ini dibuat; cek ul
 | `api:rpc core.health` | api | db/core/supabase/schemas/bus/bus.sql | Endpoint health admin: antrean bus keluar per target + event terakhir per sumber (anon boleh, angka & waktu saja) |  |
 | `api:rpc creator.health` | api | db/creator/supabase/schemas/bus/bus.sql | Endpoint health creator (fungsi bersama bus.sql) | `db/creator` |
 | `api:rpc brand.health` | api | db/brand/supabase/schemas/bus/bus.sql | Endpoint health brand (fungsi bersama bus.sql) | `db/brand` |
-| `job:bus-ping` | job | db/creator/supabase/schemas/bus/self.sql | Tiap 5 menit creator & brand mengirim bus.ping ke admin (tanda hidup + antrean macet) | creator, brand |
+| `job:bus-ping` | job | db/creator/supabase/schemas/bus/self.sql | Tiap 5 menit creator & brand mengirim bus.ping ke admin: tanda hidup + antrean macet + watermark (at = waktu ping atau awal transaksi lain yang masih terbuka di DB itu, mana yang lebih dulu — tidak menunggu; transaksi terbuka > 5 menit dilaporkan di stuck) | creator, brand |
 | `job:bus-watch` | job | db/core/supabase/schemas/bus/inbound.sql | Tiap 5 menit admin: ping telat > 15 menit / antrean macet → alert kritis bus.stuck (email lewat alert-notify) |  |
 | `job:bus-prune` | job | db/core/supabase/schemas/bus/self.sql | Tiap hari 03:17 di admin, creator, brand: bus.prune hapus outbox terkirim > 14 hari (payload berisi data user). Inbox tidak dipangkas: id inbox = pencegah perintah diterapkan dua kali saat batch yang ack-nya hilang dikirim ulang (CX7) | creator, brand: self.sql masing-masing |
 | `fn:bus.reject` | fn | db/core/supabase/schemas/bus/bus.sql | Replika ke tabel/kolom yang ADA di penerima tapi bukan milik pengirim (kontrak dipensiunkan / secret bocor) dilewati + dikumpulkan per batch → bus.report_rejects: 1 alert kritis bus.rejected_payload per kiriman (di creator/brand: 1 event bus.rejected ke admin). Tabel/kolom yang belum ada di penerima dan topik di luar allowlist → raise (antrean ditahan, tidak ada yang hilang) | fungsi bersama bus.sql |
@@ -1051,7 +1051,7 @@ Arah: `A --tipe--> B` = A bergantung pada B. `?` = belum terverifikasi.
 | `table:creator/market.claims` | guarded-by | `policy:core.rls-self` | db/creator/supabase/schemas/market/campaigns.sql:46 |
 | `table:creator/ops.settings` | guarded-by | `policy:core.public-read` | db/creator/supabase/schemas/ops/settings.sql:13 |
 | `test:creator.tracking` | tests | `api:rpc creator.worker_create_submission` | db/creator/supabase/tests/creator_tracking.test.sql:1 |
-| `fn:bus_in.creator` | writes | `table:creator/tracking.social_accounts` | db/creator/supabase/schemas/api/profile.sql:109 (social.reset) |
+| `fn:bus_in.creator` | writes | `table:creator/tracking.social_accounts` | db/creator/supabase/schemas/api/profile.sql:102 (social.reset) |
 | `fn:tracking.apply_snapshot` | writes | `table:trust.fraud_flags` | db/core/supabase/schemas/api/worker.sql:111 (trust.raise_flag) |
 | `api:fn identity/admin-auth` | guarded-by | `policy:identity.admin-aal2` | db/identity/supabase/functions/admin-auth/handler.ts:33 |
 | `api:fn identity/admin-auth` | writes | `table:auth.users` | db/identity/supabase/functions/admin-auth/handler.ts:51 (invite; ban_duration lewat _shared/moderation.ts) |
@@ -1195,14 +1195,14 @@ Arah: `A --tipe--> B` = A bergantung pada B. `?` = belum terverifikasi.
 | `test:e2e.roles` | tests | `page:app/profile` | e2e/roles.cjs:451 (ubah nama + foto → creator → replika admin) |
 | `table:brand/ops.audit_logs` | calls | `fn:bus_in.admin` | db/brand/supabase/schemas/ops/audit_logs.sql:24 (ops.forward_audit) |
 | `api:rpc core.bus_receive` | calls | `fn:bus_in.admin` | db/core/supabase/schemas/bus/bus.sql:178 |
-| `api:rpc core.bus_receive` | calls | `fn:bus.accepts` | db/core/supabase/schemas/bus/bus.sql:291 (apply_row menolak tabel/kolom di luar allowlist pengirim) |
+| `api:rpc core.bus_receive` | calls | `fn:bus.accepts` | db/core/supabase/schemas/bus/bus.sql:285 (apply_row menolak tabel/kolom di luar allowlist pengirim) |
 | `job:bus-ping` | emits | `fn:bus_in.admin` | db/creator/supabase/schemas/bus/self.sql:8 (bus.ping; brand: db/brand/supabase/schemas/bus/self.sql baris 6) |
 | `fn:bus_in.admin` | writes | `table:ops.bus_peers` | db/core/supabase/schemas/bus/inbound.sql:99 (bus_ping) |
 | `job:bus-watch` | reads | `table:ops.bus_peers` | db/core/supabase/schemas/bus/inbound.sql:115 |
 | `job:bus-watch` | calls | `job:alert-notify` | db/core/supabase/schemas/bus/inbound.sql:120 (ops.raise_alert bus.stuck → email admin) |
 | `table:ops.bus_peers` | guarded-by | `policy:core.iss-identity` | db/core/supabase/schemas/bus/inbound.sql:92 |
 | `table:ops.bus_peers` | guarded-by | `policy:core.admin-aal2` | db/core/supabase/schemas/bus/inbound.sql:94 |
-| `api:rpc core.health` | reads | `table:bus.outbox` | db/core/supabase/schemas/bus/bus.sql:241 |
+| `api:rpc core.health` | reads | `table:bus.outbox` | db/core/supabase/schemas/bus/bus.sql:235 |
 | `doc:docs/endpoints` | documents | `api:rpc core.health` | docs/endpoints/admin.md:13 |
 | `test:core.full-product` | tests | `job:bus-watch` | db/core/supabase/tests/core_contracts_finance.test.sql:1558 |
 | `job:bus-prune` | writes | `table:bus.outbox` | db/core/supabase/schemas/bus/bus.sql:118 (bus.prune; dijadwalkan self.sql baris 7) |
@@ -1210,13 +1210,13 @@ Arah: `A --tipe--> B` = A bergantung pada B. `?` = belum terverifikasi.
 | `fn:bus.reject` | calls | `job:alert-notify` | db/core/supabase/schemas/bus/bus.sql:145 (admin: ops.raise_alert bus.rejected_payload per batch → email admin_ops) |
 | `fn:bus.reject` | emits | `fn:bus_in.admin` | db/core/supabase/schemas/bus/bus.sql:147 (creator/brand: event bus.rejected per batch; handler inbound.sql baris 27) |
 | `job:alert-notify` | calls | `api:fn identity/bridge` | db/core/supabase/schemas/ops/alerts.sql:79 (kind bus.* masuk daftar baris 65/apply_failed/content_drift → notify_admins; rute peran bridge/handler.ts) |
-| `fn:bus_in.creator` | writes | `table:bus.outbox` | db/creator/supabase/schemas/api/profile.sql:86 (profile_anonymize hapus salinan profil di outbox terkirim) |
+| `job:bus-prune` | writes | `table:bus.outbox` | db/creator/supabase/schemas/api/profile.sql:116 (creator: bus.scrub_closed hapus salinan data akun closed di outbox terkirim, malam — di luar bus_receive) |
 | `test:core.full-product` | tests | `fn:bus.reject` | db/core/supabase/tests/bus.test.sql:130 (CL8 satu alert per batch; CL7 raise baris 121) |
 | `test:core.full-product` | tests | `job:bus-prune` | db/core/supabase/tests/bus.test.sql:93 |
-| `test:e2e.bus` | tests | `job:bus-ping` | e2e/bus.sh:63 (CX6: ping menunggu transaksi yang sedang menulis event — watermark tidak menyalip event yang belum commit) |
+| `test:e2e.bus` | tests | `job:bus-ping` | e2e/bus.sh:63 (CX6/CL11: at ping tidak melewati awal transaksi yang belum commit; ping tidak menunggu) |
 | `test:core.full-product` | tests | `table:ops.bus_peers` | db/core/supabase/tests/core_contracts_finance.test.sql:1783 (CX3: lock fallback menunggu ping creator) |
 | `test:rls.access-matrix` | tests | `job:bus-prune` | db/core/supabase/tests/core_access.test.sql:273 |
-| `test:creator.profiles` | tests | `fn:bus_in.creator` | db/creator/supabase/tests/creator_profiles.test.sql:76 (CL4 hapus salinan outbox) |
+| `test:creator.profiles` | tests | `job:bus-prune` | db/creator/supabase/tests/creator_profiles.test.sql:79 (CL10: scrub di job malam, bukan di handler) |
 | `test:creator.tracking` | tests | `api:rpc creator.health` | db/creator/supabase/tests/creator_tracking.test.sql:229 |
 | `fn:bus_in.admin` | writes | `table:ops.audit_logs` | db/core/supabase/schemas/bus/inbound.sql:7 |
 | `fn:bus_in.admin` | writes | `table:trust.review_decisions` | db/core/supabase/schemas/bus/inbound.sql:21 |
@@ -1244,7 +1244,7 @@ Arah: `A --tipe--> B` = A bergantung pada B. `?` = belum terverifikasi.
 | `api:rpc core.copy_campaign_economics` | writes | `table:finance.reward_pools` | db/core/supabase/schemas/api/campaigns.sql:536 |
 | `api:rpc core.copy_campaign_economics` | writes | `table:market.rate_rules` | db/core/supabase/schemas/api/campaigns.sql:539 |
 | `api:rpc core.save_campaign` | reads | `table:market.campaigns` | db/core/supabase/schemas/api/campaigns.sql:206 (gerbang content_version replika) |
-| `api:rpc core.bus_receive` | calls | `fn:bus_in.market_campaigns_applied` | db/core/supabase/schemas/bus/bus.sql:368 |
+| `api:rpc core.bus_receive` | calls | `fn:bus_in.market_campaigns_applied` | db/core/supabase/schemas/bus/bus.sql:362 |
 | `fn:bus_in.market_campaigns_applied` | writes | `table:market.campaigns` | db/core/supabase/schemas/market/campaigns.sql:153 |
 | `fn:bus_in.market_campaigns_applied` | writes | `table:finance.invoices` | db/core/supabase/schemas/market/campaigns.sql:127 (lewat market.require_resubmit, juga dari trigger aset) |
 | `comp:CampaignBuilder` | calls | `api:rpc brand.save_campaign` | packages/campaign-builder/src/persist.ts:47 (persistCampaign) |
@@ -1658,7 +1658,7 @@ Arah: `A --tipe--> B` = A bergantung pada B. `?` = belum terverifikasi.
 | `table:bus.inbox` | guarded-by | `policy:core.definer-only` | db/core/supabase/schemas/bus/bus.sql:39 |
 | `job:bus-relay` | writes | `table:bus.outbox` | db/core/supabase/schemas/bus/bus.sql:106 |
 | `job:bus-relay` | calls | `api:fn core/bridge` | db/core/supabase/schemas/bus/bus.sql:101 |
-| `api:fn core/bridge` | calls | `api:rpc core.bus_receive` | db/core/supabase/functions/_shared/bus.ts:32 |
+| `api:fn core/bridge` | calls | `api:rpc core.bus_receive` | db/core/supabase/functions/_shared/bus.ts:33 |
 | `api:rpc core.bus_receive` | reads | `table:bus.inbox` | db/core/supabase/schemas/bus/bus.sql:165 (klaim on conflict = cek idempoten) |
 | `api:rpc core.bus_receive` | writes | `table:bus.inbox` | db/core/supabase/schemas/bus/bus.sql:165 |
 | `policy:bridge-hmac` | configured-by | `env:BRIDGE_SECRET_CORE_TO_IDENTITY` | db/core/supabase/functions/_shared/bridge.ts:66 |
@@ -2769,6 +2769,10 @@ Masalah sistem yang ditemukan saat menyusun PRD v0.2 dan saat dicek ulang (v0.2.
 | 2026-10-24 | `job:bus-ping` | Cek silang D2 — Codex CX6: relay hanya melihat baris yang sudah commit → ping bisa menyalip snapshot yang transaksinya belum commit → watermark lock/settle lolos → earning terkunci tanpa snapshot final | diperbaiki: bus.ping menunggu semua xid < xid-nya selesai (rentang [xmin, xid ping), bukan hanya xip: xid berjalan bisa ≥ xmax snapshot); > 60 detik → ping dilewati (watermark tidak maju, ping telat → bus.stuck) |
 | 2026-10-24 | `job:bus-prune` | Cek silang D2 — Codex CX7 (celah di fix CL4): inbox dipangkas 30 hari padahal retry outbox tanpa batas → batch yang ack-nya hilang + pengirim mati > 30 hari → perintah (social.reset, audit, notifikasi) diterapkan dua kali | diperbaiki: inbox tidak dipangkas (id/sumber/topik saja, tanpa PII); hanya outbox terkirim yang dipangkas |
 | 2026-10-24 | `fn:bus_in.creator` | Cek silang D2 — Codex CX8 = Claude CL9: scrub hapus akun melewatkan salinan notifikasi (user_id level atas) dan snapshot (submission_id + caption) | diperbaiki: predicate mencakup payload.user_id & snapshot via submisi user; sisa yang tidak dijangkau (belum terkirim, outbox brand) hilang oleh retensi 14 hari — terdokumentasi di kode |
+| 2026-10-24 | `api:fn creator/bridge` | Cek silang D3 — Codex CX9 (celah di fix CX5): id duplikat di satu batch brand (profile.ensure lalu profile.anonymize id sama) dilewati SQL sebelum cek allowlist, tapi after() bridge menerima event mentah → hapus avatar user mana pun | diperbaiki: efek avatar hanya untuk kiriman dari admin (pengirim terautentikasi); kontrak after() mendokumentasikan event mentah wajib dicek sendiri |
+| 2026-10-24 | `job:bus-ping` | Cek silang D3 — Codex CX10 + Claude CL11 (celah di fix CX6): loop barrier `for x in lo..me` = integer 32-bit (rusak permanen sesudah xid 2^31); transaksi tulis > 60 detik di mana pun di cluster membuat ping dilewati diam-diam → watermark lock/settle beku, alert menunjuk antrean | diperbaiki: ping tidak menunggu dan tidak ber-loop — at = least(waktu ping, awal transaksi lain yang masih terbuka di DB ini); transaksi terbuka > 5 menit dilaporkan di stuck (alert bus.stuck menunjuk pid/umur) |
+| 2026-10-24 | `job:bus-prune` | Cek silang D3 — Claude CL10 (celah di fix CL9): scrub hapus akun memindai seluruh outbox terkirim (jsonb, tanpa indeks) di dalam transaksi bus_receive → batch admin → creator timeout, antrean macet | diperbaiki: scrub pindah ke bus.scrub_closed di job bus-prune malam (akun status closed), paling lama sehari |
+| 2026-10-24 | `fn:bus.reject` | Cek silang D3 — Claude CL12: kolom yang pindah pemilik sudah ada di penerima → nilai pemilik baru dibuang (bukan ditahan) bila penerima belum upgrade | keputusan: aturan deploy ditambah — pindah pemilik kolom = deploy penerima dulu, lalu bus.resync kolom itu |
 
 ## Keputusan
 
@@ -2827,5 +2831,5 @@ Keputusan yang sudah diambil — jangan dibahas ulang tanpa alasan baru.
 | 2026-10-21 | Kirim clip & filter = `presentation: 'modal'` (sheet kartu iOS, layar penuh Android), bukan formSheet ber-detent | Footer CTA absolut terpotong di detent < 1; formSheet Android tanpa header native | `layout:mobile` |
 | 2026-10-21 | Daftar path universal link / App Link = satu JSON (`packages/clipper-lib/src/native-paths.json`) untuk AASA, intent filter Android, dan dipetakan nativeRoute | Satu sumber: path yang dibuka app = path yang punya layar native | `page:app/.well-known/apple-app-site-association`, `config:expo-app`, `mod:native-intent` |
 | 2026-10-21 | Teks Live Activity berbahasa Indonesia saja | Payload APNs tidak membawa locale; sama dengan push/email server (templates.ts) | `mod:live-activity` |
-| 2026-10-24 | Urutan deploy kontrak bus: penambahan (topik, tabel, kolom baru) → urutan bebas: pengirim yang upgrade duluan membuat antrean tertahan (raise) sampai penerima upgrade, lalu pulih sendiri. Penghapusan → kosongkan antrean pengirim dulu (kolom pensiun yang masih antre dibuang + alert; topik pensiun menahan antrean) | Kontrak tanpa versi: penerima hanya bisa membedakan 'belum ada di sini' (tahan) vs 'ada tapi bukan milik pengirim' (buang + alert) | `fn:bus.reject`, `fn:bus.accepts`, `doc:deploy/deploy.sh` |
+| 2026-10-24 | Urutan deploy kontrak bus: penambahan (topik, tabel, kolom baru) → urutan bebas: pengirim yang upgrade duluan membuat antrean tertahan (raise) sampai penerima upgrade, lalu pulih sendiri. Penghapusan → kosongkan antrean pengirim dulu (kolom pensiun yang masih antre dibuang + alert; topik pensiun menahan antrean). Pindah pemilik kolom yang sudah ada (pola D8) → deploy penerima dulu, lalu bus.resync kolom itu (CL12) | Kontrak tanpa versi: penerima hanya bisa membedakan 'belum ada di sini' (tahan) vs 'ada tapi bukan milik pengirim' (buang + alert) | `fn:bus.reject`, `fn:bus.accepts`, `doc:deploy/deploy.sh` |
 | 2026-10-24 | TERBUKA (butuh keputusan owner): restore satu DB (Codex CX2 = Claude CL3), jalur bus interaktif vs massal (CL5), klasifikasi retry 4xx / rotasi secret ganda / alat `deploy.sh bus` (CL6) | Desain/ops berskala M–L, bukan bug lokal; rekomendasi di laporan review desain | `api:rpc core.bus_receive`, `table:bus.outbox`, `doc:deploy/deploy.sh` |

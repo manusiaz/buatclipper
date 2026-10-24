@@ -203,32 +203,26 @@ $$;
 create index inbox_source_idx on bus.inbox (source, received_at desc);
 
 -- Ping = watermark di admin (lock tanpa snapshot final, settle R83-1): "semua event yang dibuat sebelum at sudah di depan ping".
--- Relay hanya melihat baris yang sudah commit, jadi ping baru dibuat setelah semua transaksi yang berjalan saat at selesai
--- (event-nya tertulis sebelum ping → seq lebih kecil → terkirim lebih dulu). Transaksi > 60 detik → ping dilewati (watermark
--- tidak maju; ping telat → bus.stuck).
+-- Relay hanya melihat baris yang sudah commit dan created_at event = awal transaksinya, jadi at = waktu ping atau awal transaksi
+-- lain di DB ini yang masih terbuka (mana yang lebih dulu): transaksi yang mulai sebelum at sudah selesai → event-nya (seq lebih
+-- kecil) terkirim lebih dulu. Tidak menunggu — ping selalu terkirim (tanda hidup); transaksi terbuka > 5 menit dilaporkan di
+-- stuck (target 'transaksi') supaya alert bus.stuck menunjuk penyebabnya, bukan antrean.
 create function bus.ping() returns uuid
 language plpgsql security definer set search_path = '' as $$
 declare
-  at timestamptz := clock_timestamp();
-  me bigint := pg_current_xact_id()::text::bigint;  -- diambil sesudah at: transaksi yang menulis sebelum at punya xid < me
-  lo bigint := pg_snapshot_xmin(pg_current_snapshot())::text::bigint;
-  x bigint;
+  t0 timestamptz := clock_timestamp();  -- sebelum membaca pg_stat_activity: transaksi yang mulai sesudahnya tidak diklaim
+  h record;
 begin
-  -- xid yang masih berjalan bisa ≥ xmax snapshot (tidak tercantum di xip), jadi seluruh rentang [xmin, me) dicek
-  if me - lo > 1000000 then
-    return null;
-  end if;
-  for x in lo .. me - 1 loop
-    while pg_xact_status(x::text::xid8) = 'in progress' loop
-      if clock_timestamp() > at + interval '60 seconds' then
-        return null;
-      end if;
-      perform pg_sleep(0.05);
-    end loop;
-  end loop;
-  return bus.emit('admin', 'bus.ping', jsonb_build_object('source', bus.me(), 'at', at,
+  select a.pid, a.xact_start, a.state into h from pg_stat_activity a
+   where a.datname = current_database() and a.backend_type = 'client backend' and a.xact_start is not null
+     and a.pid <> pg_backend_pid()
+   order by a.xact_start limit 1;
+  return bus.emit('admin', 'bus.ping', jsonb_build_object('source', bus.me(), 'at', least(t0, h.xact_start),
     'stuck', coalesce((select jsonb_agg(jsonb_build_object('target', s.target, 'since', s.created_at, 'attempts', s.attempts))
-                         from bus.stuck() s), '[]')));
+                         from bus.stuck() s), '[]')
+             || case when h.xact_start < t0 - interval '5 minutes'
+                     then jsonb_build_array(jsonb_build_object('target', 'transaksi', 'since', h.xact_start, 'pid', h.pid, 'state', h.state))
+                     else '[]' end));
 end $$;
 
 -- Endpoint health tiap project (POST /rest/v1/rpc/health): antrean keluar per target + event terakhir yang diterima per sumber.

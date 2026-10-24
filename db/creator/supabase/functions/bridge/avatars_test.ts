@@ -30,7 +30,7 @@ Deno.test("avatar: profile.anonymize → semua file avatars/{user}/ dihapus; eve
   await removeAnonymizedAvatars([
     { id: "1", topic: "rep.row", payload: { table: "market.profiles" } },
     { id: "2", topic: "profile.anonymize", payload: { user_id: "u1" } },
-  ], b);
+  ], b, "admin");
   assert.deepEqual(b.removed, ["u1/a.webp", "u1/b.png"]);
 });
 
@@ -39,12 +39,22 @@ Deno.test("avatar: hapus gagal → error (bus mengulang batch)", async () => {
     removeAnonymizedAvatars(
       [{ id: "1", topic: "profile.anonymize", payload: { user_id: "u1" } }],
       bucket(["u1/a.webp"], true),
+      "admin",
     )
   );
 });
 
 Deno.test("avatar: subfolder (R85-1) dikosongkan rekursif, tidak berputar selamanya", async () => {
   const b = bucket(["u1/a.webp", "u1/x/b.webp", "u1/x/y/c.webp", "u2/d.webp"]);
-  await removeAnonymizedAvatars([{ id: "1", topic: "profile.anonymize", payload: { user_id: "u1" } }], b);
+  await removeAnonymizedAvatars([{ id: "1", topic: "profile.anonymize", payload: { user_id: "u1" } }], b, "admin");
   assert.deepEqual(b.removed.sort(), ["u1/a.webp", "u1/x/b.webp", "u1/x/y/c.webp"]);
+});
+
+Deno.test("avatar: CX9 — anonymize dari selain admin (mis. duplikat id di batch brand) tidak menghapus apa pun", async () => {
+  const b = bucket(["u1/a.webp"]);
+  await removeAnonymizedAvatars([
+    { id: "x", topic: "profile.ensure", payload: { user_id: "u9" } },
+    { id: "x", topic: "profile.anonymize", payload: { user_id: "u1" } },
+  ], b, "brand");
+  assert.deepEqual(b.removed, []);
 });
