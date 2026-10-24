@@ -232,6 +232,10 @@ select is((select array_agg(k order by k) from jsonb_object_keys(api.health()) k
 select is(api.health() -> 'outbox' -> 'admin' ->> 'pending', (select count(*)::text from bus.outbox where target = 'admin' and sent_at is null),
           'health: antrean keluar per target');
 create temp table t_ping as select bus.ping() as id;
+select ok(pg_has_role((select p.proowner from pg_proc p where p.oid = 'bus.ping()'::regprocedure), 'pg_read_all_stats', 'member'),
+          'CL13: pemilik bus.ping bisa membaca transaksi semua sesi (watermark; tanpa ini fail-closed: at = -infinity)');
+select ok((select (payload ->> 'at')::timestamptz <= clock_timestamp() and (payload ->> 'at')::timestamptz > '-infinity' from bus.outbox where id = (select id from t_ping)),
+          'bus.ping: at terbaca (sesi lain terlihat)');
 select ok((select payload ->> 'source' = 'creator' and payload -> 'stuck' = '[]' and target = 'admin' from bus.outbox where id = (select id from t_ping)),
           'bus.ping ke admin: sumber + antrean macet');
 select is((select count(*)::int from pg_proc p where p.pronamespace = 'api'::regnamespace and p.proname ~ '^worker_'

@@ -1559,19 +1559,28 @@ select ops.watch_bus();
 select ok(not exists (select 1 from ops.alerts where kind = 'bus.stuck'), 'bus sehat (ping baru, tidak ada antrean macet) → tanpa alert');
 select bus_in.bus_ping('{"_source":"creator","at":"2020-01-01T00:00:00Z","stuck":[]}');
 select ok((select pinged_at > now() - interval '1 minute' from ops.bus_peers where source = 'creator'), 'ping lama yang tiba terlambat tidak memundurkan waktu ping');
-update ops.bus_peers set pinged_at = now() - interval '20 minutes' where source = 'brand';
+update ops.bus_peers set seen_at = now() - interval '20 minutes' where source = 'brand';
 select ops.watch_bus();
 select ok((select payload -> 'late' = '["brand"]' and severity = 'critical' from ops.alerts where kind = 'bus.stuck' and resolved_at is null),
           'ping brand telat > 15 menit → alert kritis bus.stuck');
 select ops.watch_bus();
 select is((select count(*)::int from ops.alerts where kind = 'bus.stuck'), 1, 'alert bus.stuck maks satu per jam (tidak spam)');
 update ops.alerts set resolved_at = now(), resolved_by = '33333333-0000-0000-0000-0000000000ad' where kind = 'bus.stuck';
-update ops.bus_peers set pinged_at = now();
+update ops.bus_peers set pinged_at = now(), seen_at = now();
 select bus_in.bus_ping('{"_source":"creator","stuck":[{"target":"brand","attempts":7}]}');
 select ops.watch_bus();
 select ok((select payload -> 'peer_stuck' -> 0 ->> 'target' = 'brand' from ops.alerts where kind = 'bus.stuck' and resolved_at is null),
           'antrean creator → brand macet (dilaporkan lewat ping) → alert');
 update ops.alerts set resolved_at = now(), resolved_by = '33333333-0000-0000-0000-0000000000ad' where kind = 'bus.stuck';
+-- Review CL14: watermark tertahan transaksi panjang di creator (backup, job malam) ≠ antrean macet — ping tetap diterima (seen_at)
+update ops.bus_peers set pinged_at = now() - interval '2 hours' where source = 'creator';
+select bus_in.bus_ping('{"_source":"creator","at":"2000-01-01T00:00:00Z","stuck":[{"target":"transaksi","since":"2000-01-01T00:00:00Z","pid":42,"state":"active"}]}');
+select ops.watch_bus();
+select ok(not exists (select 1 from ops.alerts where kind = 'bus.stuck' and resolved_at is null),
+          'CL14: watermark tertahan (ping tetap diterima) → bukan alert kritis bus.stuck');
+select ok((select severity = 'warning' and payload -> 'held' -> 0 -> 'transaksi' -> 0 ->> 'pid' = '42' from ops.alerts
+            where kind = 'bus.watermark_held' and resolved_at is null), 'CL14: alert terpisah bus.watermark_held menunjuk transaksinya');
+update ops.bus_peers set pinged_at = now() where source = 'creator';
 select bus_in.bus_ping('{"_source":"creator","stuck":[]}');
 
 -- Regresi R83-1: submisi dibuat di creator dan tiba lewat bus → campaign yang tutup karena deadline baru settle setelah ping
@@ -1788,6 +1797,23 @@ update ops.bus_peers set pinged_at = now() where source = 'creator';
 select market.run_lifecycle();
 select is((select status::text from tracking.submissions where id = (select v::uuid from t_ids where k = 's15e')), 'locked',
           'CX3: ping creator sesudah batas tiba → dikunci dengan views terakhir');
+
+-- Review CX11: hook snapshot gagal (alert) lalu lifecycle menemukan snapshot final → tidak accrual/lock langsung tanpa cek fraud;
+-- apply_snapshot diproses ulang (gagal lagi → tetap tracking + alert), berhasil → locked lewat jalur cek fraud.
+insert into t_ids select 's15f', pg_temp.mk_sub('55555555-0000-0000-0000-0000000000b5', '11111111-0000-0000-0000-00000000000d', 'v15f', now() - interval '40 days');
+insert into tracking.view_snapshots (submission_id, taken_at, views, is_final)
+values ((select v::uuid from t_ids where k = 's15f'), now() - interval '5 days', 4000, true);
+create temp table t_cx11 as select value from ops.settings where key = 'trust.fraud.new_account_days';
+update ops.settings set value = '2147483648' where key = 'trust.fraud.new_account_days';
+update ops.alerts set resolved_at = now(), resolved_by = '33333333-0000-0000-0000-0000000000ad' where kind = 'tracking.apply_failed' and resolved_at is null;
+select market.run_lifecycle();
+select is((select status::text || ':' || (last_snapshot_at is null)::text from tracking.submissions where id = (select v::uuid from t_ids where k = 's15f')),
+          'tracking:true', 'CX11: apply_snapshot gagal → submisi tidak dikunci/accrual tanpa cek fraud');
+select ok(exists (select 1 from ops.alerts where kind = 'tracking.apply_failed' and payload ->> 'step' = 'lifecycle'), 'CX11: kegagalan dilaporkan');
+update ops.settings set value = (select value from t_cx11) where key = 'trust.fraud.new_account_days';
+select market.run_lifecycle();
+select is((select status::text || ':' || (last_snapshot_at is not null)::text from tracking.submissions where id = (select v::uuid from t_ids where k = 's15f')),
+          'locked:true', 'CX11: snapshot final diproses ulang lewat apply_snapshot → locked');
 
 -- ========== N2. Sisa budget campaign settled: rollover vs refund (D-09) ==========
 set local role authenticated;

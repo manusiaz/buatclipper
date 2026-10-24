@@ -53,6 +53,7 @@ declare
   active constant tracking.submission_status[] := array['validating', 'in_review', 'tracking', 'flagged', 'appealed']::tracking.submission_status[];
   r record;
   fin bigint;
+  fin_at timestamptz;
   n int;
 begin
   -- Suspend berdurasi yang sudah lewat → active lagi (sanksi tetap tercatat dengan until); entry point yang mensyaratkan
@@ -74,8 +75,18 @@ begin
               and (s.posted_at + make_interval(days => c.view_window_days) <= now() or c.status in ('exhausted', 'settling', 'settled'))
             order by s.id
             for update of s skip locked loop
-    select v.id into fin from tracking.view_snapshots v where v.submission_id = r.id and v.is_final;
-    if fin is not null then
+    select v.id, v.taken_at into fin, fin_at from tracking.view_snapshots v where v.submission_id = r.id and v.is_final;
+    -- Snapshot final yang belum diproses apply_snapshot (hook replika gagal → alert, CX11): proses ulang lewat apply_snapshot
+    -- (cek fraud + accrual + lock), bukan accrual langsung; masih gagal → tetap tracking (dicoba lagi run berikutnya) + alert.
+    if fin is not null and not exists (select 1 from tracking.submissions t where t.id = r.id and t.last_snapshot_at >= fin_at) then
+      begin
+        perform tracking.apply_snapshot(fin);
+      exception when others then
+        perform ops.raise_alert('tracking.apply_failed', 'critical',
+                                jsonb_build_object('snapshot_id', fin, 'step', 'lifecycle', 'error', sqlerrm), interval '1 hour');
+      end;
+    -- Sudah diproses (mis. flagged saat snapshot final tiba, lalu flag diselesaikan) → accrual final + lock.
+    elsif fin is not null then
       perform finance.accrue_earnings(r.id, fin);
       update tracking.submissions set status = 'locked', locked_at = now(), next_poll_at = null where id = r.id and status = 'tracking';
     -- Grace dihitung dari yang terakhir: akhir window atau masuk tracking (approve/overturn telat) → poll final sempat jalan (R69).

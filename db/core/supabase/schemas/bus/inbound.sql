@@ -85,7 +85,8 @@ revoke execute on function bus_in.audit_log(jsonb), bus_in.review_decision(jsonb
 -- Pemantauan bus (lihat bus.ping): ping terakhir tiap project pengirim + antrean macet yang dilaporkannya.
 create table ops.bus_peers (
   source text primary key check (source in ('creator', 'brand')),
-  pinged_at timestamptz not null default now(),
+  pinged_at timestamptz not null default now(),  -- watermark (at dari ping): dasar lock/settle, bisa tertahan transaksi panjang
+  seen_at timestamptz not null default now(),    -- ping terakhir diterima: tanda hidup antrean pengirim → admin
   stuck jsonb not null default '[]' check (jsonb_typeof(stuck) = 'array')
 );
 alter table ops.bus_peers enable row level security;
@@ -96,25 +97,36 @@ grant select on ops.bus_peers to authenticated;
 
 create function bus_in.bus_ping(p jsonb) returns void
 language sql set search_path = '' as $$
-  insert into ops.bus_peers (source, pinged_at, stuck)
-  select p ->> '_source', coalesce((p ->> 'at')::timestamptz, now()),
+  insert into ops.bus_peers (source, pinged_at, seen_at, stuck)
+  select p ->> '_source', coalesce((p ->> 'at')::timestamptz, now()), now(),
          case when jsonb_typeof(p -> 'stuck') = 'array' then p -> 'stuck' else '[]' end
    where p ->> '_source' in ('creator', 'brand')
-  on conflict (source) do update set pinged_at = greatest(ops.bus_peers.pinged_at, excluded.pinged_at), stuck = excluded.stuck;
+  on conflict (source) do update set pinged_at = greatest(ops.bus_peers.pinged_at, excluded.pinged_at), seen_at = now(),
+                                     stuck = excluded.stuck;
 $$;
 
--- job:bus-watch (5 menit): ping creator/brand telat > 15 menit, antrean mereka yang macet, atau antrean admin sendiri yang
--- macet → alert kritis bus.stuck (email admin lewat job alert-notify; maks satu per jam).
+-- job:bus-watch (5 menit): ping creator/brand tidak diterima > 15 menit (seen_at), antrean mereka yang macet, atau antrean admin
+-- sendiri yang macet → alert kritis bus.stuck (email admin lewat job alert-notify; maks satu per jam). Watermark yang tertahan
+-- > 1 jam oleh transaksi terbuka di pengirim (backup pg_dump, job malam, sesi lupa commit — entri stuck 'transaksi') bukan
+-- antrean macet: alert terpisah bus.watermark_held (warning; lock/settle menunggu, tidak ada data hilang).
 create function ops.watch_bus() returns void
 language plpgsql security definer set search_path = '' as $$
 declare
   late jsonb;
   peer_stuck jsonb;
   own_stuck jsonb;
+  held jsonb;
 begin
-  select jsonb_agg(p.source order by p.source) into late from ops.bus_peers p where p.pinged_at < now() - interval '15 minutes';
+  select jsonb_agg(p.source order by p.source) into late from ops.bus_peers p where p.seen_at < now() - interval '15 minutes';
   select jsonb_agg(jsonb_build_object('source', p.source) || e.value) into peer_stuck
-    from ops.bus_peers p cross join lateral jsonb_array_elements(p.stuck) e;
+    from ops.bus_peers p cross join lateral jsonb_array_elements(p.stuck) e where e.value ->> 'target' <> 'transaksi';
+  select jsonb_agg(jsonb_strip_nulls(jsonb_build_object('source', p.source, 'watermark', p.pinged_at,
+           'transaksi', (select jsonb_agg(e.value) from jsonb_array_elements(p.stuck) e where e.value ->> 'target' = 'transaksi')))
+           order by p.source) into held
+    from ops.bus_peers p where p.pinged_at < now() - interval '1 hour' and p.seen_at >= now() - interval '15 minutes';
+  if held is not null then
+    perform ops.raise_alert('bus.watermark_held', 'warning', jsonb_build_object('held', held), interval '1 hour');
+  end if;
   select jsonb_agg(jsonb_build_object('target', s.target, 'since', s.created_at, 'attempts', s.attempts)) into own_stuck from bus.stuck() s;
   if late is not null or peer_stuck is not null or own_stuck is not null then
     perform ops.raise_alert('bus.stuck', 'critical', jsonb_strip_nulls(jsonb_build_object('late', late, 'peer_stuck', peer_stuck,

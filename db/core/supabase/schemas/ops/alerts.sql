@@ -62,7 +62,7 @@ begin
             where a.kind in ('tracking.lag', 'tracking.final_missing', 'fraud.flag_spike', 'payout.failed', 'payout.instant_stuck',
                              'reconcile.ledger', 'reconcile.orphans', 'reconcile.bank',
                              -- antar-DB: antrean macet, hook replika gagal, payload ditolak, isi campaign yang disetujui berubah
-                             'bus.stuck', 'bus.rejected_payload', 'tracking.apply_failed', 'campaign.apply_failed',
+                             'bus.stuck', 'bus.watermark_held', 'bus.rejected_payload', 'tracking.apply_failed', 'campaign.apply_failed',
                              'campaign.content_drift')
               and (p_kind is null or a.kind = p_kind)
               and a.notified_at is null and a.resolved_at is null and a.created_at > now() - interval '1 day'
