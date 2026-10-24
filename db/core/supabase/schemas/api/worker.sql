@@ -193,7 +193,7 @@ begin
      order by e.i limit 1;
     nxt := least(now() + coalesce(every_h, 24) * interval '1 hour', window_end);
   end if;
-  update tracking.submissions set last_snapshot_at = taken, last_views = p_views, next_poll_at = nxt where id = s.id;
+  update tracking.submissions set applied_snapshot_id = sid, next_poll_at = nxt where id = s.id;
   return jsonb_build_object('snapshot_id', sid, 'flagged', raised or st = 'flagged', 'next_poll_at', nxt, 'locked', st = 'locked');
 end $$;
 

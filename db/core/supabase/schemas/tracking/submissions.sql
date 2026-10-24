@@ -18,6 +18,9 @@ create table tracking.submissions (
   counted_views bigint not null default 0 check (counted_views >= 0),
   last_snapshot_at timestamptz,
   last_views bigint check (last_views >= 0),  -- views snapshot terakhir apa adanya (F-C07); counted_views = yang dihitung earning
+  -- snapshot terakhir yang selesai diproses tracking.apply_snapshot (fraud + accrual) — milik admin, satu-satunya penulis;
+  -- last_snapshot_at/last_views milik creator (replika, ikut tiba walau hook snapshot gagal → bukan bukti diproses, CL15/CX12)
+  applied_snapshot_id bigint,
   next_poll_at timestamptz,
   cover_hash bigint,  -- FR-07: dHash 64-bit cover saat submit (perseptual; null = cover tidak terbaca)
   locked_at timestamptz,

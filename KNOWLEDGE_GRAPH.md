@@ -1037,7 +1037,7 @@ Arah: `A --tipe--> B` = A bergantung pada B. `?` = belum terverifikasi.
 | `table:creator/tracking.view_snapshots` | replicates-to | `table:tracking.view_snapshots` | db/creator/supabase/schemas/tracking/submissions.sql:66 |
 | `table:tracking.view_snapshots` | calls | `fn:tracking.apply_snapshot` | db/core/supabase/schemas/api/worker.sql:378 (hook bus_in.tracking_view_snapshots_applied) |
 | `table:creator/tracking.submissions` | replicates-to | `table:tracking.submissions` | db/creator/supabase/schemas/tracking/submissions.sql:39 (isi + review_route) |
-| `table:tracking.submissions` | replicates-to | `table:creator/tracking.submissions` | db/core/supabase/schemas/tracking/submissions.sql:40 (status, counted_views, locked_at, next_poll_at) |
+| `table:tracking.submissions` | replicates-to | `table:creator/tracking.submissions` | db/core/supabase/schemas/tracking/submissions.sql:43 (status, counted_views, locked_at, next_poll_at) |
 | `table:tracking.submissions` | calls | `fn:tracking.decide_new_submission` | db/core/supabase/schemas/api/worker.sql:362 (hook bus_in.tracking_submissions_applied) |
 | `table:creator/tracking.social_accounts` | replicates-to | `table:tracking.social_accounts` | db/creator/supabase/schemas/tracking/social_accounts.sql:20 (tanpa token_ref) |
 | `table:market.claims` | replicates-to | `table:creator/market.claims` | db/core/supabase/schemas/market/claims.sql:20 |
@@ -1053,6 +1053,8 @@ Arah: `A --tipe--> B` = A bergantung pada B. `?` = belum terverifikasi.
 | `test:creator.tracking` | tests | `api:rpc creator.worker_create_submission` | db/creator/supabase/tests/creator_tracking.test.sql:1 |
 | `fn:bus_in.creator` | writes | `table:creator/tracking.social_accounts` | db/creator/supabase/schemas/api/profile.sql:102 (social.reset) |
 | `fn:tracking.apply_snapshot` | writes | `table:trust.fraud_flags` | db/core/supabase/schemas/api/worker.sql:111 (trust.raise_flag) |
+| `fn:tracking.apply_snapshot` | writes | `table:tracking.submissions` | db/core/supabase/schemas/api/worker.sql:196 (applied_snapshot_id = penanda diproses milik admin; last_snapshot_at/last_views milik creator, tidak ditulis admin) |
+| `test:core.full-product` | tests | `fn:tracking.apply_snapshot` | db/core/supabase/tests/core_contracts_finance.test.sql:1831 (CL15/CX12: pasangan event creator + hook gagal → tidak lock tanpa cek fraud) |
 | `api:fn identity/admin-auth` | guarded-by | `policy:identity.admin-aal2` | db/identity/supabase/functions/admin-auth/handler.ts:33 |
 | `api:fn identity/admin-auth` | writes | `table:auth.users` | db/identity/supabase/functions/admin-auth/handler.ts:51 (invite; ban_duration lewat _shared/moderation.ts) |
 | `api:fn identity/bridge` | calls | `api:rpc identity.shared_device_groups` | db/identity/supabase/functions/bridge/handler.ts:214 |
@@ -1195,17 +1197,17 @@ Arah: `A --tipe--> B` = A bergantung pada B. `?` = belum terverifikasi.
 | `test:e2e.roles` | tests | `page:app/profile` | e2e/roles.cjs:451 (ubah nama + foto → creator → replika admin) |
 | `table:brand/ops.audit_logs` | calls | `fn:bus_in.admin` | db/brand/supabase/schemas/ops/audit_logs.sql:24 (ops.forward_audit) |
 | `api:rpc core.bus_receive` | calls | `fn:bus_in.admin` | db/core/supabase/schemas/bus/bus.sql:178 |
-| `api:rpc core.bus_receive` | calls | `fn:bus.accepts` | db/core/supabase/schemas/bus/bus.sql:294 (apply_row menolak tabel/kolom di luar allowlist pengirim) |
+| `api:rpc core.bus_receive` | calls | `fn:bus.accepts` | db/core/supabase/schemas/bus/bus.sql:296 (apply_row menolak tabel/kolom di luar allowlist pengirim) |
 | `job:bus-ping` | emits | `fn:bus_in.admin` | db/creator/supabase/schemas/bus/self.sql:8 (bus.ping; brand: db/brand/supabase/schemas/bus/self.sql baris 6) |
 | `fn:bus_in.admin` | writes | `table:ops.bus_peers` | db/core/supabase/schemas/bus/inbound.sql:100 (bus_ping: watermark pinged_at + seen_at) |
 | `job:bus-watch` | reads | `table:ops.bus_peers` | db/core/supabase/schemas/bus/inbound.sql:120 (late dari seen_at; watermark > 1 jam → bus.watermark_held baris 128) |
-| `test:core.full-product` | tests | `job:bus-watch` | db/core/supabase/tests/core_contracts_finance.test.sql:1580 (CL14: watermark tertahan ≠ antrean macet) |
+| `test:core.full-product` | tests | `job:bus-watch` | db/core/supabase/tests/core_contracts_finance.test.sql:1591 (CL14: watermark tertahan ≠ antrean macet) |
 | `job:bus-watch` | calls | `job:alert-notify` | db/core/supabase/schemas/bus/inbound.sql:132 (ops.raise_alert bus.stuck → email admin) |
 | `table:ops.bus_peers` | guarded-by | `policy:core.iss-identity` | db/core/supabase/schemas/bus/inbound.sql:93 |
 | `table:ops.bus_peers` | guarded-by | `policy:core.admin-aal2` | db/core/supabase/schemas/bus/inbound.sql:95 |
-| `api:rpc core.health` | reads | `table:bus.outbox` | db/core/supabase/schemas/bus/bus.sql:244 |
+| `api:rpc core.health` | reads | `table:bus.outbox` | db/core/supabase/schemas/bus/bus.sql:246 |
 | `doc:docs/endpoints` | documents | `api:rpc core.health` | docs/endpoints/admin.md:13 |
-| `test:core.full-product` | tests | `job:bus-watch` | db/core/supabase/tests/core_contracts_finance.test.sql:1558 |
+| `test:core.full-product` | tests | `job:bus-watch` | db/core/supabase/tests/core_contracts_finance.test.sql:1569 |
 | `job:bus-prune` | writes | `table:bus.outbox` | db/core/supabase/schemas/bus/bus.sql:118 (bus.prune; dijadwalkan self.sql baris 7) |
 | `api:rpc core.bus_receive` | calls | `fn:bus.reject` | db/core/supabase/schemas/bus/bus.sql:189 (bus.report_rejects akhir batch; topik tak diizinkan raise baris 183, tabel/kolom belum ada raise baris 304, 316) |
 | `fn:bus.reject` | calls | `job:alert-notify` | db/core/supabase/schemas/bus/bus.sql:145 (admin: ops.raise_alert bus.rejected_payload per batch → email admin_ops) |
@@ -1215,7 +1217,7 @@ Arah: `A --tipe--> B` = A bergantung pada B. `?` = belum terverifikasi.
 | `test:core.full-product` | tests | `fn:bus.reject` | db/core/supabase/tests/bus.test.sql:130 (CL8 satu alert per batch; CL7 raise baris 121) |
 | `test:core.full-product` | tests | `job:bus-prune` | db/core/supabase/tests/bus.test.sql:93 |
 | `test:e2e.bus` | tests | `job:bus-ping` | e2e/bus.sh:63 (CX6/CL11: at ping tidak melewati awal transaksi yang belum commit; ping tidak menunggu) |
-| `test:core.full-product` | tests | `table:ops.bus_peers` | db/core/supabase/tests/core_contracts_finance.test.sql:1792 (CX3: lock fallback menunggu ping creator) |
+| `test:core.full-product` | tests | `table:ops.bus_peers` | db/core/supabase/tests/core_contracts_finance.test.sql:1803 (CX3: lock fallback menunggu ping creator) |
 | `test:rls.access-matrix` | tests | `job:bus-prune` | db/core/supabase/tests/core_access.test.sql:273 |
 | `test:creator.profiles` | tests | `job:bus-prune` | db/creator/supabase/tests/creator_profiles.test.sql:79 (CL10: scrub di job malam, bukan di handler) |
 | `test:creator.tracking` | tests | `api:rpc creator.health` | db/creator/supabase/tests/creator_tracking.test.sql:229 |
@@ -1245,7 +1247,7 @@ Arah: `A --tipe--> B` = A bergantung pada B. `?` = belum terverifikasi.
 | `api:rpc core.copy_campaign_economics` | writes | `table:finance.reward_pools` | db/core/supabase/schemas/api/campaigns.sql:536 |
 | `api:rpc core.copy_campaign_economics` | writes | `table:market.rate_rules` | db/core/supabase/schemas/api/campaigns.sql:539 |
 | `api:rpc core.save_campaign` | reads | `table:market.campaigns` | db/core/supabase/schemas/api/campaigns.sql:206 (gerbang content_version replika) |
-| `api:rpc core.bus_receive` | calls | `fn:bus_in.market_campaigns_applied` | db/core/supabase/schemas/bus/bus.sql:371 |
+| `api:rpc core.bus_receive` | calls | `fn:bus_in.market_campaigns_applied` | db/core/supabase/schemas/bus/bus.sql:373 |
 | `fn:bus_in.market_campaigns_applied` | writes | `table:market.campaigns` | db/core/supabase/schemas/market/campaigns.sql:153 |
 | `fn:bus_in.market_campaigns_applied` | writes | `table:finance.invoices` | db/core/supabase/schemas/market/campaigns.sql:127 (lewat market.require_resubmit, juga dari trigger aset) |
 | `comp:CampaignBuilder` | calls | `api:rpc brand.save_campaign` | packages/campaign-builder/src/persist.ts:47 (persistCampaign) |
@@ -1412,9 +1414,9 @@ Arah: `A --tipe--> B` = A bergantung pada B. `?` = belum terverifikasi.
 | `job:budget-alerts` | writes | `table:ops.notifications` | db/core/supabase/schemas/market/_org_helpers.sql:35 (market.notify_org → ops.enqueue_notification) |
 | `job:claim-expiry` | calls | `fn:enqueue_notification` | db/core/supabase/schemas/market/claims.sql:40 |
 | `job:claim-expiry` | writes | `table:market.claims` | db/core/supabase/schemas/market/claims.sql:44 |
-| `job:earning-release` | calls | `fn:enqueue_notification` | db/core/supabase/schemas/finance/earnings.sql:507 |
-| `job:earning-release` | writes | `table:finance.ledger_entries` | db/core/supabase/schemas/finance/earnings.sql:505 (finance.post) |
-| `job:earning-release` | reads | `table:finance.fee_rules` | db/core/supabase/schemas/finance/earnings.sql:474 (fee rule efektif campaign → clipper_fee_pct dipotong saat rilis) |
+| `job:earning-release` | calls | `fn:enqueue_notification` | db/core/supabase/schemas/finance/earnings.sql:509 |
+| `job:earning-release` | writes | `table:finance.ledger_entries` | db/core/supabase/schemas/finance/earnings.sql:507 (finance.post) |
+| `job:earning-release` | reads | `table:finance.fee_rules` | db/core/supabase/schemas/finance/earnings.sql:476 (fee rule efektif campaign → clipper_fee_pct dipotong saat rilis) |
 | `job:fraud-device-scan` | calls | `api:fn core/bridge` | db/identity/supabase/functions/bridge/handler.ts:227 |
 | `job:fraud-device-scan` | calls | `api:fn identity/bridge` | db/identity/supabase/schemas/member/cron.sql:17 |
 | `job:fraud-device-scan` | configured-by | `env:BRIDGE_SECRET_IDENTITY_TO_CORE` | db/identity/supabase/functions/_shared/bridge.ts:136 |
@@ -1423,10 +1425,10 @@ Arah: `A --tipe--> B` = A bergantung pada B. `?` = belum terverifikasi.
 | `job:fulfillment-retry` | configured-by | `env:CORE_SECRET_KEY` | db/core/supabase/schemas/ops/enqueue_notification.sql:36 (ops.invoke_function → header apikey) |
 | `job:leaderboard-refresh` | writes | `table:market.leaderboard_campaign` | db/core/supabase/schemas/market/leaderboard.sql:27 |
 | `job:leaderboard-refresh` | writes | `table:market.leaderboard_weekly` | db/core/supabase/schemas/market/leaderboard.sql:26 |
-| `job:lifecycle` | calls | `fn:tracking.apply_snapshot` | db/core/supabase/schemas/market/lifecycle.sql:83 (CX11: snapshot final yang belum diproses hook → diproses ulang dengan cek fraud, bukan accrual langsung) |
+| `job:lifecycle` | calls | `fn:tracking.apply_snapshot` | db/core/supabase/schemas/market/lifecycle.sql:83 (CX11/CL15: snapshot final yang belum diproses admin — applied_snapshot_id ≠ final — diproses ulang dengan cek fraud, bukan accrual langsung) |
 | `job:lifecycle` | calls | `fn:accrue_earnings` | db/core/supabase/schemas/market/lifecycle.sql:90 |
 | `job:lifecycle` | calls | `fn:reverse_earning` | PRD v0.3.1 §10.5 langkah 6 koreksi turun (belum di kode: koreksi turun = finance.correct_down di accrue_earnings; reverse_earning hanya dipanggil api.worker_post_gone & resolve_fraud_flag) |
-| `job:lifecycle` | writes | `table:market.campaigns` | db/core/supabase/schemas/market/lifecycle.sql:62 |
+| `job:lifecycle` | writes | `table:market.campaigns` | db/core/supabase/schemas/market/lifecycle.sql:61 |
 | `job:lifecycle` | writes | `table:tracking.submissions` | db/core/supabase/schemas/market/lifecycle.sql:91 |
 | `job:lifecycle` | writes | `table:trust.review_decisions` | db/core/supabase/schemas/market/lifecycle.sql:135 (trust.auto_approve_overdue) |
 | `job:alert-notify` | calls | `api:fn core/bridge` | db/core/supabase/schemas/ops/alerts.sql:79 (ops.notify_alerts → invoke bridge notify_admins) |
@@ -1621,13 +1623,13 @@ Arah: `A --tipe--> B` = A bergantung pada B. `?` = belum terverifikasi.
 | `table:tracking.social_accounts` | guarded-by | `policy:core.iss-identity` | db/core/supabase/schemas/tracking/social_accounts.sql:20 |
 | `table:tracking.social_accounts` | guarded-by | `policy:core.rls-self` | db/core/supabase/schemas/tracking/social_accounts.sql:22 |
 | `table:tracking.social_accounts` | typed-by | `table:market.profiles` | db/core/supabase/schemas/tracking/social_accounts.sql:5 |
-| `table:tracking.submissions` | guarded-by | `policy:core.admin-aal2` | db/core/supabase/schemas/tracking/submissions.sql:48 |
-| `table:tracking.submissions` | guarded-by | `policy:core.iss-identity` | db/core/supabase/schemas/tracking/submissions.sql:43 |
-| `table:tracking.submissions` | guarded-by | `policy:core.rls-org` | db/core/supabase/schemas/tracking/submissions.sql:46 |
-| `table:tracking.submissions` | guarded-by | `policy:core.rls-self` | db/core/supabase/schemas/tracking/submissions.sql:45 |
+| `table:tracking.submissions` | guarded-by | `policy:core.admin-aal2` | db/core/supabase/schemas/tracking/submissions.sql:51 |
+| `table:tracking.submissions` | guarded-by | `policy:core.iss-identity` | db/core/supabase/schemas/tracking/submissions.sql:46 |
+| `table:tracking.submissions` | guarded-by | `policy:core.rls-org` | db/core/supabase/schemas/tracking/submissions.sql:49 |
+| `table:tracking.submissions` | guarded-by | `policy:core.rls-self` | db/core/supabase/schemas/tracking/submissions.sql:48 |
 | `table:tracking.submissions` | typed-by | `doc:spec/kg.yaml` | db/core/supabase/schemas/ops/state_triggers.sql:1 |
-| `table:tracking.submissions` | typed-by | `table:market.claims` | db/core/supabase/schemas/tracking/submissions.sql:27 |
-| `table:tracking.submissions` | typed-by | `table:tracking.social_accounts` | db/core/supabase/schemas/tracking/submissions.sql:29 |
+| `table:tracking.submissions` | typed-by | `table:market.claims` | db/core/supabase/schemas/tracking/submissions.sql:30 |
+| `table:tracking.submissions` | typed-by | `table:tracking.social_accounts` | db/core/supabase/schemas/tracking/submissions.sql:32 |
 | `table:tracking.view_snapshots` | guarded-by | `policy:core.inherit-parent` | db/core/supabase/schemas/tracking/view_snapshots.sql:23 |
 | `table:tracking.view_snapshots` | guarded-by | `policy:core.iss-identity` | db/core/supabase/schemas/tracking/view_snapshots.sql:21 |
 | `table:tracking.view_snapshots` | typed-by | `table:tracking.submissions` | db/core/supabase/schemas/tracking/view_snapshots.sql:6 |
@@ -1697,7 +1699,7 @@ Arah: `A --tipe--> B` = A bergantung pada B. `?` = belum terverifikasi.
 | `ext:supabase-identity` | configured-by | `config:supabase.identity` | PRD v0.3.1 §15.3 |
 | `ext:supabase-identity` | guarded-by | `policy:identity.api-only` | PRD v0.3.1 §15.4 hanya schema api |
 | `ext:tiktok` | configured-by | `config:host.app` | PRD v0.3.1 §15.2 redirect URI per host |
-| `test:accrue.idempotent` | tests | `fn:accrue_earnings` | db/core/supabase/tests/core_contracts_finance.test.sql:199 |
+| `test:accrue.idempotent` | tests | `fn:accrue_earnings` | db/core/supabase/tests/core_contracts_finance.test.sql:210 |
 | `test:core.full-product` | tests | `api:rpc core.missing_brief_tags` | db/core/supabase/tests/core_full_product.test.sql:175 |
 | `test:brand.campaigns` | tests | `table:bucket.campaign-assets` | db/brand/supabase/tests/brand_campaigns.test.sql:199 |
 | `test:core.full-product` | tests | `table:finance.reward_codes` | db/core/supabase/tests/core_full_product.test.sql:132 |
@@ -1989,7 +1991,7 @@ Arah: `A --tipe--> B` = A bergantung pada B. `?` = belum terverifikasi.
 | `api:rpc core.mark_batch_paid` | calls | `fn:payout_notice` | db/core/supabase/schemas/finance/payout_flow.sql:257 |
 | `fn:payout_notice` | reads | `table:finance.payouts` | db/core/supabase/schemas/finance/payout_flow.sql:110 |
 | `fn:notify_payout_processing` | reads | `table:ops.settings` | db/core/supabase/schemas/finance/payout_flow.sql:122 |
-| `fn:clip_estimate` | reads | `table:finance.ledger_entries` | db/core/supabase/schemas/finance/earnings.sql:519 |
+| `fn:clip_estimate` | reads | `table:finance.ledger_entries` | db/core/supabase/schemas/finance/earnings.sql:521 |
 | `test:mobile.unit` | tests | `mod:mobile-widget-ios` | apps/mobile/src/widget-fns.test.ts:53 (string fungsi widget dari babel-preset-expo dijalankan di context terpisah) |
 | `test:mobile.unit` | tests | `mod:live-activity` | apps/mobile/src/widget-fns.test.ts:54 |
 | `test:mobile.unit` | tests | `mod:widget-snapshot` | apps/mobile/src/widget-snapshot.test.ts:8 |
@@ -2778,6 +2780,8 @@ Masalah sistem yang ditemukan saat menyusun PRD v0.2 dan saat dicek ulang (v0.2.
 | 2026-10-24 | `job:bus-ping` | Cek silang D4 — Claude CL13: watermark aman hanya bila pemilik bus.ping bisa membaca xact_start sesi role lain (pg_read_all_stats); sesi tak terbaca diam-diam diabaikan → at terlalu maju (CX6 terbuka lagi) | diperbaiki: fail-closed — ada sesi client backend yang tak terbaca → at = -infinity (watermark tidak maju) + dilaporkan; transaksi prepared ikut dihitung; pgTAP memeriksa pemilik bus.ping anggota pg_read_all_stats (jalur fail-closed butuh sesi kedua, tidak dites pgTAP) |
 | 2026-10-24 | `job:bus-watch` | Cek silang D4 — Claude CL14: watermark yang ditahan transaksi panjang (pg_dump malam, job scrub) membuat pinged_at tertinggal → alert kritis 'ping telat' tiap malam + dedupe 1 jam menyembunyikan macet sungguhan | diperbaiki: tanda hidup dipisah dari watermark (bus_peers.seen_at); watermark tertahan > 1 jam = alert warning bus.watermark_held (menunjuk transaksinya), entri 'transaksi' tidak memicu bus.stuck |
 | 2026-10-24 | `job:lifecycle` | Cek silang D4 — Codex CX11: hook snapshot gagal (tertangkap → alert) lalu lifecycle menemukan snapshot final → accrual + lock langsung tanpa cek fraud apply_snapshot → bisa dibayar | diperbaiki: snapshot final yang belum diproses (last_snapshot_at < taken_at) diproses ulang lewat tracking.apply_snapshot; gagal → tetap tracking + alert (dedupe 1 jam), dicoba lagi run berikutnya |
+| 2026-10-24 | `table:tracking.submissions` | Cek silang D5 — Claude CL15 = Codex CX12 (ditemukan independen keduanya; celah di fix CX11): penanda 'sudah diproses' = last_snapshot_at, padahal kolom itu milik creator dan tiba sebagai replika sesudah snapshot walau hook gagal → lifecycle tetap accrual + lock tanpa cek fraud; finalize_settlements juga memakai kolom itu → demand snapshot gagal hilang dari pro-rata | diperbaiki: penanda admin sendiri applied_snapshot_id (hanya ditulis apply_snapshot) dipakai lifecycle & finalize_settlements; admin berhenti menulis last_snapshot_at/last_views (satu pemilik per kolom); tes mengirim pasangan event creator utuh lewat bus |
+| 2026-10-24 | `job:bus-ping` | Cek silang D5 — Claude CL15 (catatan): waktu pg_prepared_xacts.prepared = saat PREPARE, bukan awal transaksi → bukan batas bawah created_at event | diperbaiki: transaksi prepared di DB itu = fail-closed (watermark tidak maju) |
 
 ## Keputusan
 

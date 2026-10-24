@@ -154,8 +154,19 @@ begin
           nullif(coalesce(p_raw, '{}') || case when coalesce(p_extra, '{}') <> '{}' then jsonb_build_object('extra', p_extra) else '{}' end
                  || case when p_caption is not null then jsonb_build_object('caption', p_caption) else '{}' end, '{}'))
   returning id into vid;
+  -- kolom milik creator, tiba sebagai replika (worker_record_snapshot di creator)
+  update tracking.submissions set last_snapshot_at = clock_timestamp(), last_views = p_views where id = p_sub;
   return tracking.apply_snapshot(vid);
 end $$;
+-- seperti worker sesudah cut-off: tiap submisi tracking campaign di-poll & diproses admin (applied_snapshot_id)
+create function pg_temp.polled(p_campaign uuid) returns void
+language sql as $$
+  with ins as (insert into tracking.view_snapshots (submission_id, taken_at, views)
+               select t.id, clock_timestamp(), coalesce(t.counted_views, 0) from tracking.submissions t
+                where t.campaign_id = p_campaign and t.status = 'tracking'
+               returning id, submission_id)
+  update tracking.submissions t set applied_snapshot_id = ins.id from ins where t.id = ins.submission_id;
+$$;
 create function pg_temp.bal(p_user uuid, p_state text, p_rt uuid default '77777777-0000-0000-0000-000000000001') returns numeric
 language sql security definer as $$
   select coalesce(sum(e.amount), 0) from finance.ledger_entries e join finance.ledger_accounts a on a.id = e.account_id
@@ -276,7 +287,7 @@ select is((select sum(demand) from finance.clip_earnings where pool_id = '666666
           'R76: poll ulang selama settlement tidak menambah demand (jatah dari snapshot pertama setelah cut-off)');
 select is((select total - allocated from finance.reward_pools where id = '66666666-0000-0000-0000-0000000000a4'), 1000::numeric,
           'settlement: sisa pool belum dibagi sebelum finalisasi');
-update tracking.submissions set last_snapshot_at = clock_timestamp() where campaign_id = '55555555-0000-0000-0000-0000000000a4';  -- seperti worker (taken = clock_timestamp)
+select pg_temp.polled('55555555-0000-0000-0000-0000000000a4');  -- seperti worker (taken = clock_timestamp)
 select finance.finalize_settlements();
 select is((select sum(amount) from finance.clip_earnings where pool_id = '66666666-0000-0000-0000-0000000000a4'
             and submission_id <> (select v::uuid from t_ids where k = 's4a')), 1000::numeric,
@@ -308,7 +319,7 @@ select is((select array_agg(demand order by submission_id = (select v::uuid from
 select pg_temp.snap((select v::uuid from t_ids where k = 's77b'), 2000);
 select is((select views_to from finance.clip_earnings where submission_id = (select v::uuid from t_ids where k = 's77b')), 1000::bigint,
           'R78: poll kedua selama settlement tidak memajukan kursor rule pool yang sedang settlement');
-update tracking.submissions set last_snapshot_at = clock_timestamp() where campaign_id = '55555555-0000-0000-0000-0000000000d7';
+select pg_temp.polled('55555555-0000-0000-0000-0000000000d7');
 select finance.finalize_settlements();
 select pg_temp.snap((select v::uuid from t_ids where k = 's77b'), 2000);
 select is((select sum(amount + demand) from finance.clip_earnings where submission_id = (select v::uuid from t_ids where k = 's77b')), 2000::numeric,
@@ -347,7 +358,7 @@ insert into t_ids select 's80y', pg_temp.mk_sub('55555555-0000-0000-0000-0000000
 select pg_temp.snap((select v::uuid from t_ids where k = 's80y'), 96000);  -- sisa 4.000 → settlement
 select pg_temp.snap((select v::uuid from t_ids where k = 's80x'), 1000);   -- demand sampai 1.000
 select pg_temp.snap((select v::uuid from t_ids where k = 's80x'), 2000);   -- dilewati (kursor tetap 1.000)
-update tracking.submissions set last_snapshot_at = clock_timestamp() where campaign_id = '55555555-0000-0000-0000-0000000000dc';
+select pg_temp.polled('55555555-0000-0000-0000-0000000000dc');
 select finance.finalize_settlements();                                      -- sisa cukup: 1.000 dibayar
 select pg_temp.snap((select v::uuid from t_ids where k = 's80x'), 1500, null, true);  -- final turun ke 1.500
 select is((select sum(amount + demand) from finance.clip_earnings where submission_id = (select v::uuid from t_ids where k = 's80x')), 1500::numeric,
@@ -1465,8 +1476,8 @@ select is((select r - 'snapshot_id' from t_rec), jsonb_build_object('flagged', f
           'snapshot pertama: umur < 72 jam → poll lagi 4 jam');
 select is((select raw from tracking.view_snapshots where id = (select (r ->> 'snapshot_id')::bigint from t_rec)),
           '{"api":"tiktok","extra":{"reach":1500},"caption":"#mplid mantap"}'::jsonb, 'extra & caption dari creator ada di raw');
-select is((select last_snapshot_at is not null from tracking.submissions where id = (select v::uuid from t_ids where k = 's10')), true,
-          'snapshot terakhir tercatat');
+select is((select applied_snapshot_id from tracking.submissions where id = (select v::uuid from t_ids where k = 's10')),
+          (select (r ->> 'snapshot_id')::bigint from t_rec), 'snapshot terakhir yang diproses admin tercatat (applied_snapshot_id)');
 select is(pg_temp.rule_amt((select v::uuid from t_ids where k = 's10'),
                            (select id from market.rate_rules where campaign_id = '55555555-0000-0000-0000-0000000000b0')), 2000::numeric,
           'record_snapshot memanggil accrue_earnings');
@@ -1798,21 +1809,31 @@ select market.run_lifecycle();
 select is((select status::text from tracking.submissions where id = (select v::uuid from t_ids where k = 's15e')), 'locked',
           'CX3: ping creator sesudah batas tiba → dikunci dengan views terakhir');
 
--- Review CX11: hook snapshot gagal (alert) lalu lifecycle menemukan snapshot final → tidak accrual/lock langsung tanpa cek fraud;
--- apply_snapshot diproses ulang (gagal lagi → tetap tracking + alert), berhasil → locked lewat jalur cek fraud.
+-- Review CX11 + CL15/CX12: hook snapshot gagal (alert) — pasangan event creator utuh lewat bus (snapshot final, lalu submisi dengan
+-- last_snapshot_at = taken_at) — lalu lifecycle: tidak accrual/lock langsung tanpa cek fraud; apply_snapshot diproses ulang
+-- (gagal lagi → tetap tracking + alert), berhasil → locked lewat jalur cek fraud.
 insert into t_ids select 's15f', pg_temp.mk_sub('55555555-0000-0000-0000-0000000000b5', '11111111-0000-0000-0000-00000000000d', 'v15f', now() - interval '40 days');
-insert into tracking.view_snapshots (submission_id, taken_at, views, is_final)
-values ((select v::uuid from t_ids where k = 's15f'), now() - interval '5 days', 4000, true);
 create temp table t_cx11 as select value from ops.settings where key = 'trust.fraud.new_account_days';
 update ops.settings set value = '2147483648' where key = 'trust.fraud.new_account_days';
 update ops.alerts set resolved_at = now(), resolved_by = '33333333-0000-0000-0000-0000000000ad' where kind = 'tracking.apply_failed' and resolved_at is null;
+select lives_ok(format($$ select api.bus_receive('creator', '[
+  {"id":"%s","topic":"rep.row","payload":{"table":"tracking.view_snapshots","op":"upsert","key":{"id":900015},
+   "row":{"id":900015,"submission_id":"%s","taken_at":"%s","views":4000,"likes":0,"comments":0,"shares":0,"is_final":true,"raw":{}}}},
+  {"id":"%s","topic":"rep.row","payload":{"table":"tracking.submissions","op":"upsert","key":{"id":"%s"},
+   "row":{"id":"%s","last_snapshot_at":"%s","last_views":4000}}}]') $$,
+  gen_random_uuid(), (select v from t_ids where k = 's15f'), now() - interval '5 days',
+  gen_random_uuid(), (select v from t_ids where k = 's15f'), (select v from t_ids where k = 's15f'), now() - interval '5 days'),
+  'CX12: pasangan event creator (snapshot final + submisi) diterima walau hook snapshot gagal');
+select ok((select last_snapshot_at is not null and applied_snapshot_id is null from tracking.submissions where id = (select v::uuid from t_ids where k = 's15f')),
+          'CL15: last_snapshot_at replika tiba, applied_snapshot_id (milik admin) kosong — hook gagal');
 select market.run_lifecycle();
-select is((select status::text || ':' || (last_snapshot_at is null)::text from tracking.submissions where id = (select v::uuid from t_ids where k = 's15f')),
-          'tracking:true', 'CX11: apply_snapshot gagal → submisi tidak dikunci/accrual tanpa cek fraud');
-select ok(exists (select 1 from ops.alerts where kind = 'tracking.apply_failed' and payload ->> 'step' = 'lifecycle'), 'CX11: kegagalan dilaporkan');
+select is((select status::text from tracking.submissions where id = (select v::uuid from t_ids where k = 's15f')),
+          'tracking', 'CX11/CL15: apply_snapshot gagal → submisi tidak dikunci/accrual tanpa cek fraud');
+select ok(exists (select 1 from ops.alerts where kind = 'tracking.apply_failed' and resolved_at is null and payload ->> 'step' in ('snapshot', 'lifecycle')),
+          'CX11: kegagalan dilaporkan (alert hook; lifecycle tidak menggandakan selama alert terbuka)');
 update ops.settings set value = (select value from t_cx11) where key = 'trust.fraud.new_account_days';
 select market.run_lifecycle();
-select is((select status::text || ':' || (last_snapshot_at is not null)::text from tracking.submissions where id = (select v::uuid from t_ids where k = 's15f')),
+select is((select status::text || ':' || (applied_snapshot_id = 900015)::text from tracking.submissions where id = (select v::uuid from t_ids where k = 's15f')),
           'locked:true', 'CX11: snapshot final diproses ulang lewat apply_snapshot → locked');
 
 -- ========== N2. Sisa budget campaign settled: rollover vs refund (D-09) ==========

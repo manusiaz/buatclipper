@@ -420,7 +420,8 @@ begin
   perform finance.check_exhausted(p.campaign_id);
 end $$;
 
--- Dipanggil job lifecycle: settlement siap diakhiri kalau semua submisi tracking campaign sudah di-poll sejak cut-off
+-- Dipanggil job lifecycle: settlement siap diakhiri kalau semua submisi tracking campaign sudah di-poll & diproses admin
+-- (applied_snapshot_id) sejak cut-off
 -- (yang polling-nya di-pause tidak ditunggu) atau batas tunggu finance.settlement_wait_hours lewat.
 create function finance.finalize_settlements() returns void
 language plpgsql security definer set search_path = '' as $$
@@ -432,7 +433,8 @@ begin
              where ps.cutoff_at <= now() - wait
                 or not exists (select 1 from tracking.submissions t
                                where t.campaign_id = rp.campaign_id and t.status = 'tracking' and t.next_poll_at is not null
-                                 and coalesce(t.last_snapshot_at, '-infinity') < ps.cutoff_at)
+                                 and coalesce((select v.taken_at from tracking.view_snapshots v where v.id = t.applied_snapshot_id),
+                                              '-infinity') < ps.cutoff_at)
              order by ps.pool_id loop
     perform finance.settle_pool(st.pool_id);
   end loop;

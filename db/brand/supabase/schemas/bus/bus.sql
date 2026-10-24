@@ -204,9 +204,10 @@ create index inbox_source_idx on bus.inbox (source, received_at desc);
 
 -- Ping = watermark di admin (lock tanpa snapshot final, settle R83-1): "semua event yang dibuat sebelum at sudah di depan ping".
 -- Relay hanya melihat baris yang sudah commit dan created_at event = awal transaksinya, jadi at = waktu ping atau awal transaksi
--- lain di DB ini yang masih terbuka / prepared (mana yang lebih dulu): transaksi yang mulai sebelum at sudah selesai → event-nya
--- (seq lebih kecil) terkirim lebih dulu. Tidak menunggu — ping selalu terkirim (tanda hidup, seen_at di admin). Fail-closed: sesi
--- yang tidak terbaca (pemilik fungsi tanpa pg_read_all_stats → state NULL) → at = -infinity, watermark tidak maju. Penulis outbox =
+-- lain di DB ini yang masih terbuka (mana yang lebih dulu): transaksi yang mulai sebelum at sudah selesai → event-nya (seq lebih
+-- kecil) terkirim lebih dulu. Tidak menunggu — ping selalu terkirim (tanda hidup, seen_at di admin). Fail-closed → at = -infinity,
+-- watermark tidak maju: sesi yang tidak terbaca (pemilik fungsi tanpa pg_read_all_stats → state NULL) atau transaksi prepared
+-- (waktu prepared = saat PREPARE, bukan awal transaksi — bukan batas bawah created_at event-nya). Penulis outbox =
 -- client backend (PostgREST, Edge Function, pg_cron lewat libpq: cron.use_background_workers off). Transaksi terbuka > 5 menit /
 -- sesi tak terbaca dilaporkan di stuck (target 'transaksi') → alert bus.watermark_held di admin.
 create function bus.ping() returns uuid
@@ -218,17 +219,18 @@ declare
   oldest timestamptz;
 begin
   select exists (select 1 from pg_stat_activity a where a.datname = current_database() and a.backend_type = 'client backend'
-                                                    and a.state is null and a.pid <> pg_backend_pid()) into blind;
+                                                    and a.state is null and a.pid <> pg_backend_pid())
+      or exists (select 1 from pg_prepared_xacts x where x.database = current_database()) into blind;
   select a.pid, a.xact_start, a.state into h from pg_stat_activity a
    where a.datname = current_database() and a.backend_type = 'client backend' and a.xact_start is not null
      and a.pid <> pg_backend_pid()
    order by a.xact_start limit 1;
-  oldest := least(h.xact_start, (select min(x.prepared) from pg_prepared_xacts x where x.database = current_database()));
+  oldest := h.xact_start;
   return bus.emit('admin', 'bus.ping', jsonb_build_object('source', bus.me(),
     'at', case when blind then '-infinity'::timestamptz else least(t0, oldest) end,
     'stuck', coalesce((select jsonb_agg(jsonb_build_object('target', s.target, 'since', s.created_at, 'attempts', s.attempts))
                          from bus.stuck() s), '[]')
-             || case when blind then jsonb_build_array(jsonb_build_object('target', 'transaksi', 'reason', 'pg_stat_activity tidak terbaca'))
+             || case when blind then jsonb_build_array(jsonb_build_object('target', 'transaksi', 'reason', 'sesi tak terbaca / transaksi prepared'))
                      when oldest < t0 - interval '5 minutes'
                      then jsonb_build_array(jsonb_build_object('target', 'transaksi', 'since', oldest, 'pid', h.pid, 'state', h.state))
                      else '[]' end));
