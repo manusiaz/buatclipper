@@ -1,5 +1,6 @@
 // Invarian arsitektur yang dicek statis (KNOWLEDGE_GRAPH "Invarian pemisahan" 1, 4 + §15.3): arah import, jalur ke data
 // identity, secret di app Next.js, dan HTML mentah (R-16). Dipanggil `pnpm lint`.
+import { execFileSync } from 'node:child_process';
 import { readdirSync, readFileSync, statSync } from 'node:fs';
 import { join, relative } from 'node:path';
 
@@ -61,6 +62,13 @@ for (const p of ['creator', 'brand']) {
     } catch {}
     if (copy !== src) errors.push(`db/${p}/supabase/functions/_shared/${f}: beda dari db/core (jalankan scripts/sync-fn-shared.sh)`);
   }
+}
+
+// Allowlist rep.row tiap penerima = trigger bus.replicate pengirim (scripts/gen-bus-accept.mjs).
+try {
+  execFileSync(process.execPath, [join(root, 'scripts/gen-bus-accept.mjs'), '--check'], { stdio: 'pipe' });
+} catch (e) {
+  errors.push(String(e.stderr || e.message).trim());
 }
 
 // SQL bersama sama di semua project: protokol bus (pengirim & penerima sepakat), helper error/sesi, dan aturan akses

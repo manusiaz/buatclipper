@@ -253,6 +253,12 @@ begin
                                                            'reason', 'Campaign sudah tidak menerima klip saat submisi kamu tercatat.'));
     return;
   end if;
+  -- Profil diblokir/ditutup selagi submisi di jalan (replika status di creator tertinggal; ban & tutup akun hanya menyapu submisi
+  -- yang sudah ada di sini) → ditolak tanpa penalti; jalur auto akan gagal not_eligible:profile_inactive dan submisi tertahan.
+  if (select p.status::text from market.profiles p where p.id = s.user_id) in ('banned', 'closed') then
+    update tracking.submissions set status = 'rejected' where id = s.id;
+    return;
+  end if;
   update tracking.submissions set status = 'in_review' where id = s.id;
   if s.review_route = 'auto' then
     perform trust.apply_submission_decision(s.id, 'auto_approve', null, null, null, 'auto');
@@ -271,8 +277,12 @@ begin
     end if;
   end if;
   if c.review_mode = 'brand' and s.review_route = 'manual' then
-    perform market.notify_org(c.org_id, array['brand_owner', 'brand_manager']::market.org_role[], 'submission.pending_review',
-                              market.campaign_ref(c.id) || jsonb_build_object('submission_id', s.id));
+    begin  -- kabar saja: anggota brand yang profilnya belum tiba (FK notifikasi) tidak boleh membatalkan keputusan
+      perform market.notify_org(c.org_id, array['brand_owner', 'brand_manager']::market.org_role[], 'submission.pending_review',
+                                market.campaign_ref(c.id) || jsonb_build_object('submission_id', s.id));
+    exception when others then
+      perform ops.raise_alert('tracking.notify_failed', 'warning', jsonb_build_object('submission_id', s.id, 'error', sqlerrm));
+    end;
   end if;
 end $$;
 
@@ -286,6 +296,11 @@ begin
 exception when others then
   perform ops.raise_alert('tracking.apply_failed', 'critical', jsonb_build_object('submission_id', p_row ->> 'id', 'step', 'decide',
                                                                                'error', sqlerrm));
+  begin  -- jangan tertahan validating (lifecycle menunggu submisi aktif): antre review manual
+    update tracking.submissions set status = 'in_review' where id = (p_row ->> 'id')::uuid and status = 'validating';
+  exception when others then
+    null;
+  end;
 end $$;
 
 create function bus_in.tracking_view_snapshots_applied(p_op text, p_row jsonb) returns void

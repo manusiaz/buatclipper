@@ -1291,6 +1291,22 @@ select is((select count(*)::int from ops.notifications where event = 'campaign.r
           'brand_owner + brand_manager diminta mengajukan ulang');
 select ok(exists (select 1 from ops.audit_logs where action = 'campaign.resubmit_required'
                     and target = 'campaign:' || (select id from t_ids where k = 'c_race')), 'tercatat audit');
+-- Review Claude C1: is_template tiba lewat replika sesudah diajukan (status replika di brand tertinggal) → kembali draft; penjaga
+-- template tidak boleh membuat hook raise (batch bus brand → admin macet selamanya).
+set local role authenticated;
+select pg_temp.jwt('22222222-0000-0000-0000-0000000000a1');
+insert into t_ids (k, id) select 'c_tpl', pg_temp.save_campaign($j${
+  "org_id":"44444444-0000-0000-0000-000000000001","title":"Template Balapan","type":"clipping","platforms":["tiktok"],
+  "start_at":"2099-01-01T00:00:00Z","submit_deadline":"2099-01-20T00:00:00Z",
+  "pools":[{"key":"idr","reward_type_id":"77777777-0000-0000-0000-000000000001","total":1000000,"max_per_clip":100000}],
+  "rules":[{"kind":"per_1k_views","pool":"idr","params":{"rate":2000}}]}$j$::jsonb, true);
+reset role;
+select lives_ok($$ select pg_temp.save_campaign(jsonb_build_object('id', (select id from t_ids where k = 'c_tpl'), 'is_template', true)) $$,
+                'C1: replika is_template sesudah diajukan diterima (bus tidak macet)');
+select is((select status::text || ':' || is_template::text from market.campaigns where id = (select id from t_ids where k = 'c_tpl')),
+          'draft:true', 'C1: campaign kembali draft (template tidak pernah diajukan)');
+select throws_ok($$ update market.campaigns set status = 'in_review' where id = (select id from t_ids where k = 'c_tpl') $$,
+                 '23514', 'invalid:template', 'C1: template tetap tidak bisa diajukan');
 
 -- Keputusan owner 2026-10-19: batal sebelum live → jasa managed yang sudah dibayar ikut dikembalikan (refund E-35 + jurnal balik).
 insert into t_ids (k, id) select 'inv_mgd', id from finance.invoices

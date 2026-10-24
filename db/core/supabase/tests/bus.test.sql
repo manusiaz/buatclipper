@@ -78,6 +78,21 @@ select is((select jsonb_agg(payload order by seq) from bus.outbox where target =
             {"op":"delete","key":{"id":1},"row":null,"table":"public.rep_src"}]'::jsonb,
           'replikasi: hanya kolom milik sendiri + pk; update kolom milik project lain tidak dikirim; delete ikut');
 
+-- allowlist rep.row (bus/accept.sql) + tabel uji di bawah (di-rollback bersama tes)
+alter function bus.accepts(text, text) rename to accepts_real;
+create function bus.accepts(p_source text, p_table text) returns text[] language sql as $$
+  select case p_table when 'public.rep_dst' then array['a'] when 'public.rep_part' then array['status'] else bus.accepts_real(p_source, p_table) end;
+$$;
+-- Review Claude C3: pengirim hanya bisa menulis tabel & kolom yang memang direplikasi pemiliknya ke sini
+select throws_ok($$ select api.bus_receive('creator', '[{"id":"00000000-0000-0000-0000-0000000000e1","topic":"rep.row","payload":{"op":"upsert","key":{"id":"11111111-0000-0000-0000-00000000000a"},"row":{"id":"11111111-0000-0000-0000-00000000000a","status":"active","trust_score":100},"table":"market.profiles"}}]') $$,
+                 '42501', 'bus_not_allowed:creator market.profiles', 'C3: creator tidak bisa menulis kolom milik admin (status/trust profil)');
+select throws_ok($$ select api.bus_receive('creator', '[{"id":"00000000-0000-0000-0000-0000000000e2","topic":"rep.row","payload":{"op":"upsert","key":{"id":"00000000-0000-0000-0000-0000000000e2"},"row":{"id":"00000000-0000-0000-0000-0000000000e2","value":"1"},"table":"ops.settings"}}]') $$,
+                 '42501', 'bus_not_allowed:creator ops.settings', 'C3: tabel yang tidak direplikasi pengirim ke sini ditolak');
+select throws_ok($$ select api.bus_receive('brand', '[{"id":"00000000-0000-0000-0000-0000000000e3","topic":"rep.row","payload":{"op":"delete","key":{"id":"11111111-0000-0000-0000-00000000000a"},"row":null,"table":"market.profiles"}}]') $$,
+                 '42501', 'bus_not_allowed:brand market.profiles', 'C3: delete juga dibatasi allowlist pengirim');
+select ok(not exists (select 1 from bus.inbox where id in ('00000000-0000-0000-0000-0000000000e1', '00000000-0000-0000-0000-0000000000e2',
+                                                           '00000000-0000-0000-0000-0000000000e3')), 'event yang ditolak tidak tercatat diterima');
+
 -- penerima: tabel replika dengan kolom milik project lain (b) tidak tersentuh upsert parsial; tanpa gema balik
 create table public.rep_dst (id int primary key, a text, b text not null default 'lokal');
 create trigger rep_dst_replicate after insert or update or delete on public.rep_dst for each row execute function bus.replicate('brand:b');

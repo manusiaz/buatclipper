@@ -1309,6 +1309,24 @@ select is(pg_temp.create_submission('11111111-0000-0000-0000-00000000000f', '888
             '99999999-0000-0000-0000-00000000000f', 'vid-12', 'https://tiktok.com/@fani/video/12', now() - interval '1 hour', 'halo', null,
             -1234567890123) ->> 'status',
           'in_review', 'review brand → in_review');
+-- Review Claude C2: profil diblokir selagi submisi review auto di jalan → ditolak tanpa penalti (bukan tertahan validating, yang
+-- menahan settle campaign); anggota brand tanpa profil di admin (replika belum tiba) tidak menggagalkan keputusan review brand.
+create temp table t_c2 as select status from market.profiles where id = '11111111-0000-0000-0000-00000000000b';
+update market.profiles set status = 'banned' where id = '11111111-0000-0000-0000-00000000000b';
+insert into market.claims (id, campaign_id, user_id, expires_at, created_at) values
+  ('88888888-0000-0000-0000-0000000000c2', '55555555-0000-0000-0000-0000000000b0', '11111111-0000-0000-0000-00000000000b', now() + interval '46 hours', now() - interval '2 hours'),
+  ('88888888-0000-0000-0000-0000000000c3', '55555555-0000-0000-0000-0000000000b1', '11111111-0000-0000-0000-00000000000a', now() + interval '46 hours', now() - interval '2 hours');
+create temp table t_c2s as select pg_temp.create_submission('11111111-0000-0000-0000-00000000000b', '88888888-0000-0000-0000-0000000000c2',
+  '99999999-0000-0000-0000-00000000000b', 'vid-c2', 'https://tiktok.com/@budi/video/c2', now() - interval '1 hour', '#mplid', 30) as r;
+select is((select r ->> 'status' from t_c2s), 'rejected', 'C2: profil banned + review auto → rejected (tidak tertahan validating)');
+select ok(not exists (select 1 from trust.score_events where ref_id = (select r ->> 'submission_id' from t_c2s)), 'C2: tanpa penalti Trust Score');
+update market.profiles set status = (select status from t_c2) where id = '11111111-0000-0000-0000-00000000000b';
+insert into market.org_members (org_id, user_id, role) values
+  ('44444444-0000-0000-0000-000000000001', '11111111-0000-0000-0000-0000000000c9', 'brand_manager');
+select is(pg_temp.create_submission('11111111-0000-0000-0000-00000000000a', '88888888-0000-0000-0000-0000000000c3',
+            '99999999-0000-0000-0000-00000000000a', 'vid-c3', 'https://tiktok.com/@andi/video/c3', now() - interval '1 hour', 'halo', null)
+          ->> 'status', 'in_review', 'C2: anggota brand tanpa profil di admin tidak menggagalkan keputusan review brand');
+delete from market.org_members where user_id = '11111111-0000-0000-0000-0000000000c9';
 -- Regresi audit AA-11 (§11): API TikTok tidak memberi info sound → campaign musik di TikTok selalu review manual.
 insert into market.campaigns (id, org_id, slug, title, type, platforms, start_at, submit_deadline, created_by, review_mode)
 values ('55555555-0000-0000-0000-0000000000b9', '44444444-0000-0000-0000-000000000001', 'k10-music', 'Lagu baru', 'music', '{tiktok}',

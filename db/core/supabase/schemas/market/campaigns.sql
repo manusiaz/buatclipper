@@ -72,12 +72,13 @@ create index campaigns_status_start_idx on market.campaigns (status, start_at);
 create index campaigns_pinned_idx on market.campaigns (pinned_rank) where pinned_until is not null;
 create index campaigns_managed_queue_idx on market.campaigns (created_at) where service_mode = 'managed' and status = 'draft';
 
--- Template tidak pernah diajukan. Penjaga di perubahan status (kolom milik admin; replika isi tidak pernah mengubah status, jadi
--- penjaga ini tidak bisa menolak event replika).
+-- Template tidak pernah diajukan: penjaga hanya di titik pengajuan (→ in_review, kolom milik admin). is_template milik brand dan bisa
+-- tiba lewat replika sesudah campaign diajukan (replika status di brand tertinggal); transisi lain (rejected/draft oleh hook,
+-- lifecycle scheduled → live) tidak boleh ikut gagal — kalau gagal, batch bus atau seluruh run_lifecycle ikut batal.
 create function market.template_stays_draft() returns trigger
 language plpgsql set search_path = '' as $$
 begin
-  if new.is_template and new.status <> 'draft' then
+  if new.is_template and new.status = 'in_review' then
     raise exception 'invalid:template' using errcode = '23514', detail = 'template tidak bisa diajukan; duplikat dulu';
   end if;
   return new;
@@ -92,8 +93,8 @@ create trigger campaigns_replicate after insert or update or delete on market.ca
 
 -- Isi tiba dari brand (bus.apply_row). Brand mengunci brief sejak status replika ≠ draft/rejected; balapan dengan replika status
 -- (isi berubah tepat setelah diajukan) ditutup di sini: in_review dengan isi lebih baru dari yang diajukan → kembali draft, invoice
--- campaign yang belum dibayar batal, brand diminta mengajukan ulang. rejected + isi baru = diperbaiki → draft. Tidak pernah raise:
--- event yang gagal menahan antrean bus.
+-- campaign yang belum dibayar batal, brand diminta mengajukan ulang. rejected + isi baru = diperbaiki → draft. Tidak pernah raise
+-- (event yang gagal menahan antrean bus): gagal → alert ops, replika isi tetap tersimpan.
 create function bus_in.market_campaigns_applied(p_op text, p_row jsonb) returns void
 language plpgsql set search_path = '' as $$
 declare
@@ -122,6 +123,8 @@ begin
     values (null, 'campaign.content_drift', 'campaign:' || c.id, jsonb_build_object('submitted_version', c.submitted_version),
             jsonb_build_object('content_version', c.content_version, 'status', c.status));
   end if;
+exception when others then
+  perform ops.raise_alert('campaign.apply_failed', 'critical', jsonb_build_object('campaign_id', p_row ->> 'id', 'error', sqlerrm));
 end $$;
 revoke execute on function bus_in.market_campaigns_applied(text, jsonb) from public;
 

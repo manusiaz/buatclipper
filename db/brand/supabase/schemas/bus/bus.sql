@@ -129,8 +129,12 @@ begin
       skipped := skipped + 1;
       continue;
     end if;
-    h := case when e ->> 'topic' = 'rep.row' then 'bus.apply_row(jsonb)'::regprocedure  -- replikasi baris: handler bawaan
-              else to_regprocedure(format('bus_in.%s(jsonb)', replace(e ->> 'topic', '.', '_'))) end;
+    if e ->> 'topic' = 'rep.row' then  -- replikasi baris: handler bawaan, dibatasi allowlist pengirim (bus.accepts)
+      perform bus.apply_row(e -> 'payload', p_source);
+      applied := applied + 1;
+      continue;
+    end if;
+    h := to_regprocedure(format('bus_in.%s(jsonb)', replace(e ->> 'topic', '.', '_')));
     if h is null then
       raise exception 'bus_no_handler:%', e ->> 'topic' using errcode = 'P0001';
     end if;
@@ -213,16 +217,29 @@ begin
   return null;
 end $$;
 
-create function bus.apply_row(p jsonb) returns void
+create function bus.apply_row(p jsonb, p_source text) returns void
 language plpgsql security definer set search_path = '' as $$
 declare
-  t regclass := (p ->> 'table')::regclass;
-  pk text[] := bus.pk_columns(t);
+  allowed text[] := bus.accepts(p_source, p ->> 'table');
+  t regclass;
+  pk text[];
   cols text[];
   upd text;
   n int := 0;
   h regprocedure;
 begin
+  -- Hanya tabel & kolom yang dikirim pemiliknya (bus/accept.sql, dari trigger bus.replicate pengirim): secret bus satu peer
+  -- yang bocor tidak bisa menulis tabel lain di sini (uang, sanksi) atau kolom milik penerima.
+  if allowed is null then
+    raise exception 'bus_not_allowed:% %', p_source, p ->> 'table' using errcode = '42501';
+  end if;
+  t := (p ->> 'table')::regclass;
+  pk := bus.pk_columns(t);
+  if exists (select 1 from jsonb_object_keys(case when jsonb_typeof(p -> 'row') = 'object' then p -> 'row' else '{}' end) k
+             where not k = any (allowed || pk)) then
+    raise exception 'bus_not_allowed:% %', p_source, p ->> 'table' using errcode = '42501',
+      detail = (select string_agg(k, ',') from jsonb_object_keys(p -> 'row') k where not k = any (allowed || pk));
+  end if;
   perform set_config('bus.applying', 'on', true);
   if p ->> 'op' = 'delete' then
     execute format('delete from %s x using jsonb_populate_record(null::%s, $1) k where %s', t, t,
@@ -296,5 +313,5 @@ end $$;
 
 revoke all on bus.outbox, bus.inbox from anon, authenticated;
 revoke execute on function bus.emit(text, text, jsonb), bus.relay(), bus.stuck(), api.bus_receive(text, jsonb), bus.pk_columns(regclass),
-  bus.replicate(), bus.apply_row(jsonb), bus.resync(regclass, text) from public;
+  bus.replicate(), bus.apply_row(jsonb, text), bus.resync(regclass, text) from public;
 grant execute on function api.bus_receive(text, jsonb) to service_role;
