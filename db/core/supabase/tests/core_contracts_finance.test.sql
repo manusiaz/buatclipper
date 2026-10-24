@@ -1374,6 +1374,18 @@ select is(pg_temp.create_submission('11111111-0000-0000-0000-00000000000a', '888
             '99999999-0000-0000-0000-00000000000a', 'vid-c7', 'https://tiktok.com/@andi/video/c7', now() - interval '1 hour', '#mplid', 30)
           ->> 'status', 'rejected', 'R90-1: clip melebihi max_clips_per_clipper (clip lain masih aktif) → ditolak');
 update market.campaigns set max_clips_per_clipper = (select m from t_r90) where id = '55555555-0000-0000-0000-0000000000b0';
+-- Review R93-1: syarat isi campaign (durasi, platform, …) dicek ulang admin — creator memakai replika isi yang bisa tertinggal
+create temp table t_r93 as select min_duration_sec m from market.campaigns where id = '55555555-0000-0000-0000-0000000000b0';
+update market.campaigns set min_duration_sec = 60 where id = '55555555-0000-0000-0000-0000000000b0';
+insert into market.claims (id, campaign_id, user_id, expires_at, created_at) values
+  ('88888888-0000-0000-0000-0000000000c9', '55555555-0000-0000-0000-0000000000b0', '11111111-0000-0000-0000-00000000000d', now() + interval '46 hours', now() - interval '2 hours');
+select is(pg_temp.create_submission('11111111-0000-0000-0000-00000000000d', '88888888-0000-0000-0000-0000000000c9',
+            '99999999-0000-0000-0000-00000000000d', 'vid-c9', 'https://tiktok.com/@dedi/video/c9', now() - interval '1 hour', '#mplid', 10)
+          ->> 'status', 'rejected', 'R93-1: durasi 10 dtk di campaign min 60 dtk (brief basi di creator) → ditolak, tidak auto-approve');
+select is((select payload ->> 'reason' from ops.notifications where event = 'submission.rejected'
+             and payload ->> 'submission_id' = (select id::text from tracking.submissions where post_id = 'vid-c9')),
+          'Durasi video di luar syarat campaign.', 'R93-1: clipper diberi alasan spesifik');
+update market.campaigns set min_duration_sec = (select m from t_r93) where id = '55555555-0000-0000-0000-0000000000b0';
 -- Regresi audit AA-11 (§11): API TikTok tidak memberi info sound → campaign musik di TikTok selalu review manual.
 insert into market.campaigns (id, org_id, slug, title, type, platforms, start_at, submit_deadline, created_by, review_mode)
 values ('55555555-0000-0000-0000-0000000000b9', '44444444-0000-0000-0000-000000000001', 'k10-music', 'Lagu baru', 'music', '{tiktok}',

@@ -238,6 +238,8 @@ declare
   c market.campaigns;
   dup record;
   claim_ok boolean;
+  acc tracking.social_accounts;
+  why text;
 begin
   select * into s from tracking.submissions t where t.id = p_submission for update;
   if not found or s.status <> 'validating' then
@@ -279,6 +281,27 @@ begin
     perform ops.enqueue_notification(s.user_id, 'submission.rejected', market.campaign_ref(c.id)
                                      || jsonb_build_object('submission_id', s.id, 'url', s.url, 'platform', s.platform, 'final', true,
                                                            'reason', 'Batas clip per clipper di campaign ini sudah terpenuhi.'));
+    return;
+  end if;
+  -- Syarat isi campaign dicek creator dari replika isi yang bisa tertinggal (brand → creator telat): dicek ulang terhadap campaign
+  -- di sini (isi terkunci sejak diajukan). Tag wajib caption tidak bisa (caption tiba bersama snapshot).
+  select * into acc from tracking.social_accounts a where a.id = s.social_account_id;
+  why := case
+    when not (s.platform = any (c.platforms)) then 'Platform akun ini tidak termasuk campaign.'
+    when coalesce(acc.followers, 0) < c.min_followers then 'Followers akun belum memenuhi syarat campaign.'
+    when c.min_account_age_days > 0 and (acc.platform_created_at is null
+                                         or acc.platform_created_at > s.created_at - make_interval(days => c.min_account_age_days))
+      then 'Umur akun belum memenuhi syarat campaign.'
+    when s.duration_sec < c.min_duration_sec or s.duration_sec > c.max_duration_sec then 'Durasi video di luar syarat campaign.'
+    when not c.allow_video_reuse and exists (select 1 from tracking.submissions t where t.platform = s.platform and t.post_id = s.post_id
+                                                                                  and t.campaign_id <> c.id)
+      then 'Video ini sudah dipakai di campaign lain.'
+  end;
+  if why is not null then
+    update tracking.submissions set status = 'rejected' where id = s.id;
+    perform ops.enqueue_notification(s.user_id, 'submission.rejected', market.campaign_ref(c.id)
+                                     || jsonb_build_object('submission_id', s.id, 'url', s.url, 'platform', s.platform, 'final', true,
+                                                           'reason', why));
     return;
   end if;
   -- Profil diblokir/ditutup selagi submisi di jalan (replika status di creator tertinggal; ban & tutup akun hanya menyapu submisi

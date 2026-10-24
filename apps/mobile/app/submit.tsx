@@ -80,8 +80,13 @@ export default function Submit() {
       haptic.error();
       return setError(r.error);
     }
-    haptic.success();
-    toast({ tone: 'success', title: t('success'), body: r.data.status === 'tracking' ? t('successTracking') : t('successReview') });
+    if (r.data.status === 'rejected') {  // keputusan admin bisa langsung menolak (claim dilepas, org sendiri, kuota)
+      haptic.error();
+      toast({ tone: 'danger', title: t('rejected'), body: t('rejectedBody') });
+    } else {
+      haptic.success();
+      toast({ tone: 'success', title: t('success'), body: r.data.status === 'tracking' ? t('successTracking') : t('successReview') });
+    }
     router.dismissAll();
     router.replace('/clips');
   };

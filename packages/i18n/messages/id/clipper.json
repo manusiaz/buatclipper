@@ -344,7 +344,9 @@
     "sending": "Mengirim…",
     "success": "Submisi masuk",
     "successTracking": "Views mulai dihitung otomatis.",
-    "successReview": "Video kamu direview dulu sebelum views dihitung."
+    "successReview": "Video kamu direview dulu sebelum views dihitung.",
+    "rejected": "Submisi ditolak",
+    "rejectedBody": "Lihat alasannya di Tugas."
   },
   "social": {
     "title": "Akun sosmed",

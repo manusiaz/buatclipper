@@ -92,8 +92,13 @@ export function SubmitSheet({
         setError({ code: r.code, message: r.message });
         return;
       }
-      toast.success(t('success'), { description: t(r.data.status === 'tracking' ? 'successTracking' : 'successReview') });
       onOpenChange(false);
+      // Keputusan admin (claim dilepas, org sendiri, kuota, campaign tutup) bisa langsung menolak
+      if (r.data.status === 'rejected') {
+        toast.error(t('rejected'), { description: t('rejectedBody') });
+        return router.push('/tasks');
+      }
+      toast.success(t('success'), { description: t(r.data.status === 'tracking' ? 'successTracking' : 'successReview') });
       router.push('/tasks?submitted=1');
     });
 

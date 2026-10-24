@@ -344,7 +344,9 @@
     "sending": "Sending…",
     "success": "Submission received",
     "successTracking": "Views are now tracked automatically.",
-    "successReview": "Your video is reviewed before views count."
+    "successReview": "Your video is reviewed before views count.",
+    "rejected": "Submission rejected",
+    "rejectedBody": "See the reason in Tasks."
   },
   "social": {
     "title": "Social accounts",
