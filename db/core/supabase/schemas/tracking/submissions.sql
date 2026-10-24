@@ -21,6 +21,7 @@ create table tracking.submissions (
   -- snapshot terakhir yang selesai diproses tracking.apply_snapshot (fraud + accrual) — milik admin, satu-satunya penulis;
   -- last_snapshot_at/last_views milik creator (replika, ikut tiba walau hook snapshot gagal → bukan bukti diproses, CL15/CX12)
   applied_snapshot_id bigint,
+  final_skipped boolean not null default false,  -- snapshot final dilewati admin_ops (api.skip_failed_snapshot): lock tanpa accrual-nya
   next_poll_at timestamptz,
   cover_hash bigint,  -- FR-07: dHash 64-bit cover saat submit (perseptual; null = cover tidak terbaca)
   locked_at timestamptz,

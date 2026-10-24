@@ -20,16 +20,26 @@
 #   Bus antar-DB (stack di server ini): deploy/deploy.sh bus status  → antrean keluar per target, kepala antrean yang macet
 #                          (seq, topik, error), ping creator/brand di admin · bus kick → coba kirim ulang sekarang (reset backoff)
 #                          · bus skip <stack> <target> <seq> → lewati kepala antrean yang macet permanen (event hilang untuk
-#                          penerima; pulihkan state dengan bus.resync) — snapshot yang gagal di admin: tombol "Lewati snapshot"
+#                          penerima; pulihkan state dengan bus.resync) — tunggu attempts ≥ 3: relay lalu mengirim satu per satu,
+#                          jadi kepala = event yang gagal — snapshot yang gagal di admin: tombol "Lewati snapshot"
 #                          di alert admin.{DOMAIN}, bukan dari sini · bus reconcile <admin|creator|brand> → kirim ulang semua tabel
 #                          replika dari stack di server ini ke target + hapus di target baris yang sudah tidak ada di sini
+#                          · bus jobs <off|on> → hentikan/jalankan job cron bisnis stack di server ini (restore)
 #   Restore SATU DB (core|creator|brand) ke backup lama — runbook (CX2): 1) `deploy.sh down apps` di server app (hentikan semua
-#                          tulisan user & uang) 2) pulihkan dump ke stack itu (pg_restore dari deploy/stack/<stack>/backups) lalu
-#                          `deploy.sh up <stack>` 3) di SETIAP server stack lain: `deploy.sh bus reconcile <nama bus stack yang
-#                          dipulihkan>` (state yang hilang dikirim ulang, baris yang dicabut sesudah backup — mis. anggota org —
-#                          dihapus) 4) di server stack yang dipulihkan: `deploy.sh bus reconcile <tiap stack lain>` (stack itu sekarang
-#                          sumber kebenaran datanya sendiri) 5) `deploy.sh bus status` di semua server sampai antrean kosong, cek alert
-#                          admin (perintah/event non-replika di jendela backup hilang: cek audit) 6) `deploy.sh up apps`.
+#                          tulisan user & uang) 2) pulihkan dump ke stack itu (pg_restore dari deploy/stack/<stack>/backups), SEGERA
+#                          `deploy.sh bus jobs off` di server itu (dump membawa job cron aktif: lifecycle/release/track-worker jangan
+#                          jalan di atas data yang belum lengkap; job bus-* tetap jalan), khusus creator: id snapshot dimajukan
+#                          melewati yang sudah dilihat admin: ambil `select max(id) from tracking.view_snapshots` di core-db, lalu di creator-db `alter table
+#                          tracking.view_snapshots alter column id restart with <max+1>` — lalu `deploy.sh up <stack>`
+#                          3) di SETIAP server stack lain: `deploy.sh bus reconcile <nama bus stack yang dipulihkan>` (state yang
+#                          hilang dikirim ulang, baris yang dicabut sesudah backup — mis. anggota org — dihapus) 4) di server stack
+#                          yang dipulihkan: `deploy.sh bus reconcile <tiap stack lain>` (stack itu sekarang sumber kebenaran datanya
+#                          sendiri) 5) `deploy.sh bus status` di semua server sampai antrean kosong; alert admin bus.rejected_payload
+#                          berisi baris yang TIDAK diubah otomatis dan perlu keputusan manual: reconcile_delete (baris tidak boleh
+#                          dihapus: append-only/dirujuk catatan uang, mis. snapshot yang hilang dari creator), orphan (induk hilang
+#                          bersama DB yang dipulihkan, mis. submisi yang claim-nya hilang dari admin), reconcile_incomplete (ulangi
+#                          reconcile); perintah/event non-replika di jendela backup hilang: cek audit 6) `deploy.sh bus jobs on` di
+#                          server stack yang dipulihkan, lalu `deploy.sh up apps`.
 #
 # DNS A: auth.{DOMAIN} → server identity, api.{DOMAIN} → server core (admin), creator-api.{DOMAIN} → server creator,
 # brand-api.{DOMAIN} → server brand, {DOMAIN} + accounts./app./brand./admin. → server app. Satu server: semua ke IP yang sama.
@@ -512,7 +522,7 @@ case "$CMD" in
     exit $fail
     ;;
   bus)
-    local_stacks=$(for p in core creator brand; do [ -d "stack/$p" ] && echo "$p"; done)
+    local_stacks=$(for p in core creator brand; do if [ -d "stack/$p" ]; then echo "$p"; fi; done)
     [ -n "$local_stacks" ] || { echo "tidak ada stack core/creator/brand di server ini"; exit 1; }
     case "$BUS_OP" in
       status)
@@ -549,7 +559,15 @@ case "$CMD" in
           done
         done
         ;;
-      *) echo "pakai: deploy.sh bus status | kick | skip <stack> <target> <seq> | reconcile <target>"; exit 1 ;;
+      jobs)
+        # Job cron bisnis (lifecycle, release earning, settlement, …) berhenti/jalan; job bus-* tetap (restore, O1-C2).
+        [[ "${BUS_ARGS[0]:-}" =~ ^(on|off)$ ]] || { echo "pakai: deploy.sh bus jobs <off|on>"; exit 1; }
+        for p in $local_stacks; do
+          psql_db "$p" -tA -c "select '$p: ' || count(*) || ' job ${BUS_ARGS[0]}' from (select cron.alter_job(jobid, active := $([ "${BUS_ARGS[0]}" = on ] && echo true || echo false))
+                               from cron.job where jobname not like 'bus-%') x"
+        done
+        ;;
+      *) echo "pakai: deploy.sh bus status | kick | skip <stack> <target> <seq> | reconcile <target> | jobs <off|on>"; exit 1 ;;
     esac
     ;;
   admin)

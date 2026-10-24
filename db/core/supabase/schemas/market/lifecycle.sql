@@ -53,6 +53,8 @@ declare
   active constant tracking.submission_status[] := array['validating', 'in_review', 'tracking', 'flagged', 'appealed']::tracking.submission_status[];
   r record;
   fin bigint;
+  e text;
+  step text;
   n int;
 begin
   -- Suspend berdurasi yang sudah lewat → active lagi (sanksi tetap tercatat dengan until); entry point yang mensyaratkan
@@ -75,6 +77,7 @@ begin
             order by s.id
             for update of s skip locked loop
     select v.id into fin from tracking.view_snapshots v where v.submission_id = r.id and v.is_final;
+    e := null;
     -- Snapshot final yang belum diproses apply_snapshot (hook replika gagal → alert, CX11): proses ulang lewat apply_snapshot
     -- (cek fraud + accrual + lock), bukan accrual langsung; masih gagal → tetap tracking (dicoba lagi run berikutnya) + alert.
     -- Penanda = applied_snapshot_id milik admin (last_snapshot_at replika creator tiba walau hook gagal, CL15/CX12); naik
@@ -83,13 +86,21 @@ begin
       begin
         perform tracking.apply_snapshot(fin);
       exception when others then
-        perform ops.raise_alert('tracking.apply_failed', 'critical',
-                                jsonb_build_object('snapshot_id', fin, 'step', 'lifecycle', 'error', sqlerrm), interval '1 hour');
+        e := sqlerrm;
+        step := 'lifecycle';
       end;
-    -- Sudah diproses (mis. flagged saat snapshot final tiba, lalu flag diselesaikan) → accrual final + lock.
+    -- Sudah diproses (mis. flagged saat snapshot final tiba, lalu flag diselesaikan) → accrual final + lock; final yang dilewati
+    -- admin_ops (final_skipped) → lock tanpa accrual-nya. Accrual gagal → alert (bisa dilewati), submisi lain tetap jalan (O1-4).
     elsif fin is not null then
-      perform finance.accrue_earnings(r.id, fin);
-      update tracking.submissions set status = 'locked', locked_at = now(), next_poll_at = null where id = r.id and status = 'tracking';
+      begin
+        if not (select t.final_skipped from tracking.submissions t where t.id = r.id) then
+          perform finance.accrue_earnings(r.id, fin);
+        end if;
+        update tracking.submissions set status = 'locked', locked_at = now(), next_poll_at = null where id = r.id and status = 'tracking';
+      exception when others then
+        e := sqlerrm;
+        step := 'lock';
+      end;
     -- Grace dihitung dari yang terakhir: akhir window atau masuk tracking (approve/overturn telat) → poll final sempat jalan (R69).
     -- Lock tanpa snapshot final hanya bila antrean creator → admin sudah melewati batas itu (ping creator yang dikirim sesudahnya
     -- sudah tiba, FIFO): bus macet bukan berarti snapshot final tidak ada — earning tidak dikunci dari data yang tertinggal.
@@ -101,6 +112,11 @@ begin
       perform ops.raise_alert('tracking.final_missing', 'warning', jsonb_build_object('submission_id', r.id));
     elsif r.next_poll_at is null or r.next_poll_at > now() + interval '1 hour' then
       update tracking.submissions set next_poll_at = now() where id = r.id;
+    end if;
+    -- satu alert terbuka per snapshot (bukan dedupe per jenis): tiap snapshot macet punya tombol "Lewati snapshot" sendiri
+    if e is not null and not exists (select 1 from ops.alerts a where a.kind = 'tracking.apply_failed' and a.resolved_at is null
+                                                                and a.payload ->> 'snapshot_id' = fin::text) then
+      perform ops.raise_alert('tracking.apply_failed', 'critical', jsonb_build_object('snapshot_id', fin, 'step', step, 'error', e));
     end if;
   end loop;
 

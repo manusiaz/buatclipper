@@ -6,7 +6,7 @@ select no_plan();
 alter function bus.accepts(text, text) rename to accepts_real;
 create function bus.accepts(p_source text, p_table text) returns text[] language sql as $$
   select case p_table when 'public.rep_dst' then array['a'] when 'public.rep_part' then array['status']
-                      when 'public.rc_dst' then array['a'] when 'public.rc_mixed' then array['a'] else bus.accepts_real(p_source, p_table) end;
+                      when 'public.rc_dst' then array['a'] when 'public.rc_mixed' then array['a'] when 'public.rc_part' then array['a'] when 'public.rc_child' then array['parent_id'] else bus.accepts_real(p_source, p_table) end;
 $$;
 alter function bus.accepts_topic(text, text) rename to accepts_topic_real;
 create function bus.accepts_topic(p_source text, p_topic text) returns boolean language sql as $$
@@ -74,6 +74,11 @@ select max(request_id), 200, '{"ok":true}', false, now() from bus.outbox where t
 select bus.relay();
 select ok((select bool_and(sent_at is not null) from bus.outbox where target = 'brand'), 'jawaban 200 → batch ditandai terkirim');
 select is(bus.relay(), 0, 'tidak ada yang tersisa');
+select bus.emit('brand', 'test.ping', '{"v":"y1"}');
+select bus.emit('brand', 'test.ping', '{"v":"y2"}');
+update bus.outbox set attempts = 3 where target = 'brand' and sent_at is null;
+select is(bus.relay(), 1, 'O1-C6: kepala gagal ≥ 3 kali → dikirim sendiri (kepala = event yang gagal)');
+delete from bus.outbox where target = 'brand' and sent_at is null;
 
 -- ===== replikasi baris =====
 create table public.rep_src (id int primary key, a text, b text not null default 'milik-lain');
@@ -187,6 +192,8 @@ delete from bus.outbox where payload ->> 'table' = 'public.rc_src';
 select is(bus.reconcile('public.rc_src', 'creator'), 1500, 'CX2: reconcile mengirim seluruh kunci pemilik');
 select is((select string_agg(jsonb_array_length(payload -> 'keys') || ':' || (payload ->> 'last'), ',' order by seq) from bus.outbox
             where topic = 'rep.keys' and payload ->> 'table' = 'public.rc_src'), '1000:false,500:true', 'CX2: berpotongan 1000, potongan terakhir ditandai');
+select is((select payload -> 'total' from bus.outbox where topic = 'rep.keys' and payload ->> 'table' = 'public.rc_src' and payload ->> 'last' = 'true'),
+          '1500'::jsonb, 'O1-3: potongan terakhir membawa jumlah kunci (penerima cek kelengkapan)');
 select ok('public.rc_src'::regclass in (select bus.replica_tables('creator')), 'CX2: daftar tabel replika ke target (deploy.sh bus reconcile)');
 create temp table t_rt as select r, row_number() over () i from bus.replica_tables('creator') r;
 select ok(not exists (select 1 from t_rt a join t_rt b on a.i < b.i
@@ -203,15 +210,46 @@ select lives_ok($$ select api.bus_receive('creator', jsonb_build_array(
   'CX2: potongan kunci pertama ditampung');
 select is((select count(*)::int from public.rc_dst), 3, 'CX2: belum ada yang dihapus sebelum potongan terakhir');
 select lives_ok($$ select api.bus_receive('creator', jsonb_build_array(
-  jsonb_build_object('id', gen_random_uuid(), 'topic', 'rep.keys', 'payload', '{"table":"public.rc_dst","epoch":"00000000-0000-0000-0000-0000000000c2","keys":[{"id":3}],"last":true}'::jsonb),
-  jsonb_build_object('id', gen_random_uuid(), 'topic', 'rep.keys', 'payload', '{"table":"public.rc_mixed","epoch":"00000000-0000-0000-0000-0000000000c3","keys":[{"id":1}],"last":true}'::jsonb))) $$,
+  jsonb_build_object('id', gen_random_uuid(), 'topic', 'rep.keys', 'payload', '{"table":"public.rc_dst","epoch":"00000000-0000-0000-0000-0000000000c2","keys":[{"id":3}],"last":true,"total":2}'::jsonb),
+  jsonb_build_object('id', gen_random_uuid(), 'topic', 'rep.keys', 'payload', '{"table":"public.rc_mixed","epoch":"00000000-0000-0000-0000-0000000000c3","keys":[{"id":1}],"last":true,"total":1}'::jsonb))) $$,
   'CX2: potongan terakhir diterapkan');
 select is((select array_agg(id order by id) from public.rc_dst), array[1, 3], 'CX2: baris yang tidak ada di pemilik (dihidupkan restore) dihapus');
 select is((select count(*)::int from public.rc_mixed), 2, 'CX2: tabel campuran tidak dihapus (kolom milik penerima)');
 select ok(exists (select 1 from ops.alerts where kind = 'bus.rejected_payload' and id > (select m from t_cx2) and payload -> 'events' -> 0 ->> 'reason' = 'delete'),
           'CX2: baris tabel campuran yang tidak ada di pemilik dilaporkan');
 select is((select count(*)::int from bus.reconcile_keys), 0, 'CX2: penampung kunci dibersihkan');
-drop table public.rc_src, public.rc_dst, public.rc_mixed;
+-- O1-3: potongan awal hilang (dipangkas bus.prune / dilewati bus.skip) → daftar tidak lengkap, tidak ada yang dihapus, dilaporkan.
+insert into public.rc_dst values (2, 'x');
+select lives_ok($$ select api.bus_receive('creator', jsonb_build_array(
+  jsonb_build_object('id', gen_random_uuid(), 'topic', 'rep.keys', 'payload', '{"table":"public.rc_dst","epoch":"00000000-0000-0000-0000-0000000000c4","keys":[{"id":3}],"last":true,"total":2}'::jsonb))) $$,
+  'O1-3: potongan terakhir dari daftar tidak lengkap tidak menahan antrean');
+select is((select array_agg(id order by id) from public.rc_dst), array[1, 2, 3], 'O1-3: daftar tidak lengkap → tidak ada baris dihapus');
+select ok(exists (select 1 from ops.alerts where kind = 'bus.rejected_payload' and id > (select m from t_cx2)
+                  and payload -> 'events' @> '[{"reason":"reconcile_incomplete","table":"public.rc_dst"}]'), 'O1-3: dilaporkan');
+-- O1-2: baris yang tidak boleh dihapus (dirujuk / append-only) dilaporkan; baris lain tetap dihapus, antrean jalan.
+create table public.rc_part (id int primary key, a text);
+create table public.rc_ref (part_id int references public.rc_part);
+insert into public.rc_part values (1, 'x'), (2, 'dirujuk'), (3, 'x');
+insert into public.rc_ref values (2);
+select lives_ok($$ select api.bus_receive('creator', jsonb_build_array(
+  jsonb_build_object('id', gen_random_uuid(), 'topic', 'rep.keys', 'payload', '{"table":"public.rc_part","epoch":"00000000-0000-0000-0000-0000000000c5","keys":[{"id":1}],"last":true,"total":1}'::jsonb))) $$,
+  'O1-2: baris yang gagal dihapus tidak menahan antrean');
+select is((select array_agg(id order by id) from public.rc_part), array[1, 2], 'O1-2: baris dirujuk tetap, baris lain dihapus');
+select ok(exists (select 1 from ops.alerts where kind = 'bus.rejected_payload' and id > (select m from t_cx2)
+                  and payload -> 'events' @> '[{"reason":"reconcile_delete","table":"public.rc_part","key":{"id":2}}]'), 'O1-2: dilaporkan');
+select is((select count(*)::int from bus.reconcile_keys), 0, 'O1-2/O1-3: penampung kunci dibersihkan');
+-- O1-C3: resync sesudah restore membawa anak yang induknya hilang bersama DB yang dipulihkan → dilaporkan, antrean jalan;
+-- kiriman biasa (induk dari pengirim lain belum tiba) tetap menahan antrean.
+create table public.rc_child (id int primary key, parent_id int not null references public.rc_part);
+select lives_ok($$ select api.bus_receive('creator', jsonb_build_array(jsonb_build_object('id', gen_random_uuid(), 'topic', 'rep.row', 'payload',
+  '{"table":"public.rc_child","op":"upsert","resync":true,"key":{"id":1},"row":{"id":1,"parent_id":99}}'::jsonb))) $$,
+  'O1-C3: anak yatim dari resync tidak menahan antrean');
+select ok(exists (select 1 from ops.alerts where kind = 'bus.rejected_payload' and id > (select m from t_cx2)
+                  and payload -> 'events' @> '[{"reason":"orphan","table":"public.rc_child","key":{"id":1}}]'), 'O1-C3: dilaporkan');
+select throws_ok($$ select api.bus_receive('creator', jsonb_build_array(jsonb_build_object('id', gen_random_uuid(), 'topic', 'rep.row', 'payload',
+  '{"table":"public.rc_child","op":"upsert","key":{"id":2},"row":{"id":2,"parent_id":99}}'::jsonb))) $$, '23503', null,
+  'O1-C3: kiriman biasa dengan induk belum tiba tetap menahan antrean');
+drop table public.rc_src, public.rc_dst, public.rc_mixed, public.rc_ref, public.rc_child, public.rc_part;
 
 -- Review CX16: bus.resync mengirim baris urut kunci primer (bukan urutan fisik heap) — penerima seperti apply_snapshot memproses
 -- berurutan. Baris 1 di-update → pindah ke akhir heap → scan tanpa ORDER BY mengirim 2,3,1.
@@ -223,6 +261,8 @@ delete from bus.outbox where payload ->> 'table' = 'public.rs_order';
 select bus.resync('public.rs_order', 'creator');
 select is((select array_agg((payload -> 'key' ->> 'id')::int order by seq) from bus.outbox where payload ->> 'table' = 'public.rs_order'),
           array[1, 2, 3], 'CX16: resync mengirim urut kunci primer');
+select ok((select bool_and((payload ->> 'resync')::boolean) from bus.outbox where payload ->> 'table' = 'public.rs_order'),
+          'O1-C3: kiriman resync ditandai (penerima melaporkan anak yatim, bukan menahan antrean)');
 delete from bus.outbox where payload ->> 'table' = 'public.rs_order';
 drop table public.rs_order;
 

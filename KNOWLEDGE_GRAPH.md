@@ -478,9 +478,9 @@ Wajib tetap benar setiap perubahan (dicek otomatis saat graph ini dibuat; cek ul
 | `job:bus-watch` | job | db/core/supabase/schemas/bus/inbound.sql | Tiap 5 menit admin: ping tidak diterima > 15 menit (seen_at) / antrean macet → alert kritis bus.stuck (email lewat alert-notify); watermark tertahan > 1 jam oleh transaksi terbuka di pengirim → alert warning bus.watermark_held |  |
 | `job:bus-prune` | job | db/core/supabase/schemas/bus/self.sql | Tiap hari 03:17 di admin, creator, brand: bus.prune hapus outbox terkirim > 14 hari (payload berisi data user). Inbox tidak dipangkas: id inbox = pencegah perintah diterapkan dua kali saat batch yang ack-nya hilang dikirim ulang (CX7) | creator, brand: self.sql masing-masing |
 | `fn:bus.reject` | fn | db/core/supabase/schemas/bus/bus.sql | Replika ke tabel/kolom yang ADA di penerima tapi bukan milik pengirim (kontrak dipensiunkan / secret bocor) dilewati + dikumpulkan per batch → bus.report_rejects: 1 alert kritis bus.rejected_payload per kiriman (di creator/brand: 1 event bus.rejected ke admin). Tabel/kolom yang belum ada di penerima dan topik di luar allowlist → raise (antrean ditahan, tidak ada yang hilang) | fungsi bersama bus.sql |
-| `api:rpc core.skip_failed_snapshot` | api | db/core/supabase/schemas/api/worker.sql | CL19: admin_ops melewati snapshot yang gagal permanen dari alert tracking.apply_failed — hanya snapshot tertunda paling awal, ditandai diproses tanpa fraud/accrual, submisi flagged + flag FR-12 untuk moderator, alert ditutup, audit | tombol "Lewati snapshot" di page:admin/ |
-| `fn:bus.skip` | fn | db/core/supabase/schemas/bus/bus.sql | CL6: lewati kepala antrean bus ke satu target yang macet permanen (seq eksplisit; event hilang untuk penerima, pulihkan dengan resync) — deploy.sh bus skip | fungsi bersama bus.sql |
-| `fn:bus.reconcile` | fn | db/core/supabase/schemas/bus/bus.sql | CX2: restore satu DB — pemilik mengirim seluruh kunci tabel replika (rep.keys, potongan 1000); penerima (bus.apply_keys) menghapus baris yang tidak ada di pemilik lewat apply_row delete (tabel campuran dilaporkan). bus.replica_tables: daftar tabel replika urut FK — deploy.sh bus reconcile (resync induk dulu, reconcile anak dulu) | fungsi bersama bus.sql |
+| `api:rpc core.skip_failed_snapshot` | api | db/core/supabase/schemas/api/worker.sql | CL19: admin_ops melewati snapshot yang gagal permanen dari alert tracking.apply_failed — hanya snapshot tertunda paling awal, ditandai diproses tanpa fraud/accrual, submisi flagged + flag FR-12 untuk moderator, alert ditutup, audit; juga final yang accrual-nya gagal saat lock (final_skipped → lock tanpa accrual); snapshot sesudahnya langsung diproses ulang dan alert-nya ditutup (O1-4/O1-C8) | tombol "Lewati snapshot" di page:admin/ |
+| `fn:bus.skip` | fn | db/core/supabase/schemas/bus/bus.sql | CL6: lewati kepala antrean bus ke satu target yang macet permanen (seq eksplisit; event hilang untuk penerima, pulihkan dengan resync) — deploy.sh bus skip; relay kirim satu per satu setelah kepala gagal ≥ 3 kali supaya kepala = event yang gagal (O1-C6) | fungsi bersama bus.sql |
+| `fn:bus.reconcile` | fn | db/core/supabase/schemas/bus/bus.sql | CX2: restore satu DB — pemilik mengirim seluruh kunci tabel replika (rep.keys, potongan 1000); penerima (bus.apply_keys) menghapus baris yang tidak ada di pemilik lewat apply_row delete hanya bila jumlah kunci = total (O1-3); baris tabel campuran / append-only / dirujuk dilaporkan, antrean jalan (O1-2); resync bertanda resync → anak yatim dilaporkan (O1-C3); deploy.sh bus jobs off/on saat restore (O1-C2). bus.replica_tables: daftar tabel replika urut FK — deploy.sh bus reconcile (resync induk dulu, reconcile anak dulu) | fungsi bersama bus.sql |
 | `table:ops.bus_peers` | table | db/core/supabase/schemas/bus/inbound.sql | Per pengirim (creator, brand): watermark pinged_at (dasar lock/settle), seen_at (ping terakhir diterima = tanda hidup), antrean macet / transaksi panjang yang dilaporkannya |  |
 | `doc:docs/endpoints` | doc | scripts/endpoints.mjs | Katalog endpoint per DB (view, RPC + siapa boleh memanggil, Edge Function, health, URL) → docs/endpoints/{identity,admin,creator,brand}.md, dibangkitkan dari DB yang jalan (`pnpm endpoints`) |  |
 | `doc:deploy/deploy.sh` | doc | deploy/deploy.sh | Deploy self-hosted 4 DB: `up identity` / `up core` (admin) / `up creator` / `up brand` / `up apps` (server per peran) atau `up all` (satu VPS); compose resmi Supabase (dipin) + override deploy/supabase/*.yml, `deploy.sh secrets` memecah secret per peran (core tanpa PII/private key, creator/brand hanya kunci stack + secret bus pasangannya, app hanya kunci publik; secrets.env lama dilengkapi tanpa mengubah kunci), migration + seed + bucket + Vault (bus_url_/bus_secret_ per target) + issuer, kick antrean bus setelah semua hidup, 5 app (app.Dockerfile / APP_IMAGE), Caddy per server (deploy/caddy/*.caddy); `check` (pra-cek peran) dan `backup` (dump DB + file Storage, BACKUP_KEEP_DAYS). Diuji di sandbox: `up all` (domain uji, SCHEME=http) → e2e roles 20/20 + bus 6/6 |  |
@@ -726,7 +726,7 @@ Arah: `A --tipe--> B` = A bergantung pada B. `?` = belum terverifikasi.
 | `layout:clipper` | routes-to | `page:app/share` | apps/clipper/src/app/manifest.ts:19 (share_target) |
 | `page:app/.well-known/assetlinks.json` | configured-by | `env:ANDROID_APP_PACKAGE` | apps/clipper/src/app/.well-known/assetlinks.json/route.ts:7 |
 | `page:app/.well-known/assetlinks.json` | configured-by | `env:ANDROID_CERT_SHA256` | apps/clipper/src/app/.well-known/assetlinks.json/route.ts:7 |
-| `doc:deploy/deploy.sh` | documents | `env:ANDROID_APP_PACKAGE` | deploy/deploy.sh:370 |
+| `doc:deploy/deploy.sh` | documents | `env:ANDROID_APP_PACKAGE` | deploy/deploy.sh:380 |
 | `page:app/social` | configured-by | `env:NEXT_PUBLIC_GOOGLE_CLIENT_ID` | PRD v0.3.1 §15.7 client ID publik (belum di kode: app tidak membaca client ID; URL OAuth dibuat creator/social, lihat mod:social) |
 | `page:app/social` | configured-by | `env:NEXT_PUBLIC_META_APP_ID` | PRD v0.3.1 §15.7 client ID publik (belum di kode: app tidak membaca client ID; URL OAuth dibuat creator/social, lihat mod:social) |
 | `page:app/social` | configured-by | `env:NEXT_PUBLIC_TIKTOK_CLIENT_KEY` | PRD v0.3.1 §15.7 client ID publik (belum di kode: app tidak membaca client ID; URL OAuth dibuat creator/social, lihat mod:social) |
@@ -993,10 +993,10 @@ Arah: `A --tipe--> B` = A bergantung pada B. `?` = belum terverifikasi.
 | `api:fn core/bridge` | calls | `api:fn identity/bridge` | db/core/supabase/functions/bridge/handler.ts:153 (cron disburse & ban_user → identity) |
 | `api:fn core/fulfill` | calls | `ext:brand-webhook` | db/core/supabase/functions/fulfill/fulfill.ts:115 |
 | `api:fn core/fulfill` | guarded-by | `policy:fn-cron-key` | db/core/supabase/functions/fulfill/index.ts:10 |
-| `api:fn core/fulfill` | reads | `table:finance.fulfillments` | db/core/supabase/schemas/api/worker.sql:486 (rpc worker_fulfillments_due) |
-| `api:fn core/fulfill` | reads | `table:vault.social-tokens` | db/core/supabase/schemas/api/worker.sql:508 (secret webhook reward type di Vault core) |
-| `api:fn core/fulfill` | writes | `table:finance.fulfillments` | db/core/supabase/schemas/api/worker.sql:564 (rpc worker_fulfillment_result) |
-| `api:fn core/fulfill` | writes | `table:finance.reward_codes` | db/core/supabase/schemas/api/worker.sql:543 (rpc worker_assign_code) |
+| `api:fn core/fulfill` | reads | `table:finance.fulfillments` | db/core/supabase/schemas/api/worker.sql:502 (rpc worker_fulfillments_due) |
+| `api:fn core/fulfill` | reads | `table:vault.social-tokens` | db/core/supabase/schemas/api/worker.sql:524 (secret webhook reward type di Vault core) |
+| `api:fn core/fulfill` | writes | `table:finance.fulfillments` | db/core/supabase/schemas/api/worker.sql:580 (rpc worker_fulfillment_result) |
+| `api:fn core/fulfill` | writes | `table:finance.reward_codes` | db/core/supabase/schemas/api/worker.sql:559 (rpc worker_assign_code) |
 | `api:fn core/notify` | calls | `api:fn identity/bridge` | db/core/supabase/functions/notify/notify.ts:94 (send_email; send_push sesuai flag kanal pesan) |
 | `api:fn core/notify` | configured-by | `env:BRIDGE_SECRET_CORE_TO_IDENTITY` | db/core/supabase/functions/_shared/bridge.ts:66 |
 | `api:fn core/notify` | configured-by | `env:SUPABASE_DB_URL` | PRD v0.3.1 §15.8 Queue lewat koneksi Postgres langsung (belum di kode: queue dibaca lewat rpc api.worker_dequeue dengan secret key, bukan koneksi Postgres) |
@@ -1040,7 +1040,7 @@ Arah: `A --tipe--> B` = A bergantung pada B. `?` = belum terverifikasi.
 | `table:creator/tracking.view_snapshots` | replicates-to | `table:tracking.view_snapshots` | db/creator/supabase/schemas/tracking/submissions.sql:66 |
 | `table:tracking.view_snapshots` | calls | `fn:tracking.apply_snapshot` | db/core/supabase/schemas/api/worker.sql:396 (hook bus_in.tracking_view_snapshots_applied) |
 | `table:creator/tracking.submissions` | replicates-to | `table:tracking.submissions` | db/creator/supabase/schemas/tracking/submissions.sql:39 (isi + review_route) |
-| `table:tracking.submissions` | replicates-to | `table:creator/tracking.submissions` | db/core/supabase/schemas/tracking/submissions.sql:43 (status, counted_views, locked_at, next_poll_at) |
+| `table:tracking.submissions` | replicates-to | `table:creator/tracking.submissions` | db/core/supabase/schemas/tracking/submissions.sql:44 (status, counted_views, locked_at, next_poll_at) |
 | `table:tracking.submissions` | calls | `fn:tracking.decide_new_submission` | db/core/supabase/schemas/api/worker.sql:380 (hook bus_in.tracking_submissions_applied) |
 | `table:creator/tracking.social_accounts` | replicates-to | `table:tracking.social_accounts` | db/creator/supabase/schemas/tracking/social_accounts.sql:20 (tanpa token_ref) |
 | `table:market.claims` | replicates-to | `table:creator/market.claims` | db/core/supabase/schemas/market/claims.sql:20 |
@@ -1197,14 +1197,14 @@ Arah: `A --tipe--> B` = A bergantung pada B. `?` = belum terverifikasi.
 | `fn:bus_in.creator` | writes | `table:creator/market.profiles` | db/creator/supabase/schemas/api/profile.sql:65 (profile_ensure; profile_anonymize baris 67) |
 | `mod:auth` | calls | `mod:db-creator` | packages/auth/src/server.ts:7 (creatorServer) |
 | `mod:db-creator` | configured-by | `env:NEXT_PUBLIC_CREATOR_DB_URL` | packages/db-creator/src/index.ts:9 |
-| `mod:db-creator` | configured-by | `config:host.creator-api` | deploy/deploy.sh:363 (apps_env) |
+| `mod:db-creator` | configured-by | `config:host.creator-api` | deploy/deploy.sh:373 (apps_env) |
 | `page:app/profile` | calls | `api:rpc creator.ensure_profile` | apps/clipper/src/features/profile/actions.ts:31 (saveProfile, lalu tunggu replika admin) |
 | `page:app/profile` | writes | `table:bucket.avatars` | apps/clipper/src/features/profile/actions.ts:16 (avatarUploadUrl) |
 | `test:creator.profiles` | tests | `api:rpc creator.ensure_profile` | db/creator/supabase/tests/creator_profiles.test.sql:1 |
 | `test:e2e.roles` | tests | `page:app/profile` | e2e/roles.cjs:451 (ubah nama + foto → creator → replika admin) |
 | `table:brand/ops.audit_logs` | calls | `fn:bus_in.admin` | db/brand/supabase/schemas/ops/audit_logs.sql:24 (ops.forward_audit) |
-| `api:rpc core.bus_receive` | calls | `fn:bus_in.admin` | db/core/supabase/schemas/bus/bus.sql:196 |
-| `api:rpc core.bus_receive` | calls | `fn:bus.accepts` | db/core/supabase/schemas/bus/bus.sql:330 (apply_row menolak tabel/kolom di luar allowlist pengirim) |
+| `api:rpc core.bus_receive` | calls | `fn:bus_in.admin` | db/core/supabase/schemas/bus/bus.sql:200 |
+| `api:rpc core.bus_receive` | calls | `fn:bus.accepts` | db/core/supabase/schemas/bus/bus.sql:334 (apply_row menolak tabel/kolom di luar allowlist pengirim) |
 | `job:bus-ping` | emits | `fn:bus_in.admin` | db/creator/supabase/schemas/bus/self.sql:8 (bus.ping; brand: db/brand/supabase/schemas/bus/self.sql baris 6) |
 | `fn:bus_in.admin` | writes | `table:ops.bus_peers` | db/core/supabase/schemas/bus/inbound.sql:100 (bus_ping: watermark pinged_at + seen_at) |
 | `job:bus-watch` | reads | `table:ops.bus_peers` | db/core/supabase/schemas/bus/inbound.sql:120 (late dari seen_at; watermark > 1 jam → bus.watermark_held baris 128) |
@@ -1212,17 +1212,17 @@ Arah: `A --tipe--> B` = A bergantung pada B. `?` = belum terverifikasi.
 | `job:bus-watch` | calls | `job:alert-notify` | db/core/supabase/schemas/bus/inbound.sql:132 (ops.raise_alert bus.stuck → email admin) |
 | `table:ops.bus_peers` | guarded-by | `policy:core.iss-identity` | db/core/supabase/schemas/bus/inbound.sql:93 |
 | `table:ops.bus_peers` | guarded-by | `policy:core.admin-aal2` | db/core/supabase/schemas/bus/inbound.sql:95 |
-| `api:rpc core.health` | reads | `table:bus.outbox` | db/core/supabase/schemas/bus/bus.sql:264 |
+| `api:rpc core.health` | reads | `table:bus.outbox` | db/core/supabase/schemas/bus/bus.sql:268 |
 | `doc:docs/endpoints` | documents | `api:rpc core.health` | docs/endpoints/admin.md:13 |
 | `test:core.full-product` | tests | `job:bus-watch` | db/core/supabase/tests/core_contracts_finance.test.sql:1569 |
-| `job:bus-prune` | writes | `table:bus.outbox` | db/core/supabase/schemas/bus/bus.sql:128 (bus.prune; dijadwalkan self.sql baris 7) |
-| `api:rpc core.bus_receive` | calls | `fn:bus.reject` | db/core/supabase/schemas/bus/bus.sql:207 (bus.report_rejects akhir batch; topik tak diizinkan raise baris 183, tabel/kolom belum ada raise baris 304, 316) |
-| `fn:bus.reject` | calls | `job:alert-notify` | db/core/supabase/schemas/bus/bus.sql:157 (admin: ops.raise_alert bus.rejected_payload per batch → email admin_ops) |
-| `fn:bus.reject` | emits | `fn:bus_in.admin` | db/core/supabase/schemas/bus/bus.sql:160 (creator/brand: event bus.rejected per batch; handler inbound.sql baris 27) |
+| `job:bus-prune` | writes | `table:bus.outbox` | db/core/supabase/schemas/bus/bus.sql:132 (bus.prune; dijadwalkan self.sql baris 7) |
+| `api:rpc core.bus_receive` | calls | `fn:bus.reject` | db/core/supabase/schemas/bus/bus.sql:211 (bus.report_rejects akhir batch; topik tak diizinkan raise baris 183, tabel/kolom belum ada raise baris 304, 316) |
+| `fn:bus.reject` | calls | `job:alert-notify` | db/core/supabase/schemas/bus/bus.sql:161 (admin: ops.raise_alert bus.rejected_payload per batch → email admin_ops) |
+| `fn:bus.reject` | emits | `fn:bus_in.admin` | db/core/supabase/schemas/bus/bus.sql:164 (creator/brand: event bus.rejected per batch; handler inbound.sql baris 27) |
 | `job:alert-notify` | calls | `api:fn identity/bridge` | db/core/supabase/schemas/ops/alerts.sql:79 (kind bus.* masuk daftar baris 65/apply_failed/content_drift → notify_admins; rute peran bridge/handler.ts) |
 | `job:bus-prune` | writes | `table:bus.outbox` | db/creator/supabase/schemas/api/profile.sql:116 (creator: bus.scrub_closed hapus salinan data akun closed di outbox terkirim, malam — di luar bus_receive) |
-| `test:core.full-product` | tests | `fn:bus.reject` | db/core/supabase/tests/bus.test.sql:132 (CL8 satu alert per batch; CL7 raise baris 121) |
-| `test:core.full-product` | tests | `job:bus-prune` | db/core/supabase/tests/bus.test.sql:95 |
+| `test:core.full-product` | tests | `fn:bus.reject` | db/core/supabase/tests/bus.test.sql:137 (CL8 satu alert per batch; CL7 raise baris 121) |
+| `test:core.full-product` | tests | `job:bus-prune` | db/core/supabase/tests/bus.test.sql:100 |
 | `test:e2e.bus` | tests | `job:bus-ping` | e2e/bus.sh:63 (CX6/CL11: at ping tidak melewati awal transaksi yang belum commit; ping tidak menunggu) |
 | `test:core.full-product` | tests | `table:ops.bus_peers` | db/core/supabase/tests/core_contracts_finance.test.sql:1803 (CX3: lock fallback menunggu ping creator) |
 | `test:rls.access-matrix` | tests | `job:bus-prune` | db/core/supabase/tests/core_access.test.sql:273 |
@@ -1254,7 +1254,7 @@ Arah: `A --tipe--> B` = A bergantung pada B. `?` = belum terverifikasi.
 | `api:rpc core.copy_campaign_economics` | writes | `table:finance.reward_pools` | db/core/supabase/schemas/api/campaigns.sql:536 |
 | `api:rpc core.copy_campaign_economics` | writes | `table:market.rate_rules` | db/core/supabase/schemas/api/campaigns.sql:539 |
 | `api:rpc core.save_campaign` | reads | `table:market.campaigns` | db/core/supabase/schemas/api/campaigns.sql:206 (gerbang content_version replika) |
-| `api:rpc core.bus_receive` | calls | `fn:bus_in.market_campaigns_applied` | db/core/supabase/schemas/bus/bus.sql:407 |
+| `api:rpc core.bus_receive` | calls | `fn:bus_in.market_campaigns_applied` | db/core/supabase/schemas/bus/bus.sql:419 |
 | `fn:bus_in.market_campaigns_applied` | writes | `table:market.campaigns` | db/core/supabase/schemas/market/campaigns.sql:153 |
 | `fn:bus_in.market_campaigns_applied` | writes | `table:finance.invoices` | db/core/supabase/schemas/market/campaigns.sql:127 (lewat market.require_resubmit, juga dari trigger aset) |
 | `comp:CampaignBuilder` | calls | `api:rpc brand.save_campaign` | packages/campaign-builder/src/persist.ts:47 (persistCampaign) |
@@ -1277,7 +1277,7 @@ Arah: `A --tipe--> B` = A bergantung pada B. `?` = belum terverifikasi.
 | `api:rpc core.mark_batch_paid` | writes | `table:ops.audit_logs` | db/core/supabase/schemas/finance/payout_flow.sql:269 |
 | `api:rpc core.mark_fulfillment_delivered` | guarded-by | `policy:core.admin-aal2` | db/core/supabase/schemas/finance/fulfillment_admin.sql:9 |
 | `api:rpc core.mark_fulfillment_delivered` | reads | `table:market.reward_types` | db/core/supabase/schemas/finance/fulfillment_admin.sql:21 |
-| `api:rpc core.mark_fulfillment_delivered` | writes | `table:finance.fulfillments` | db/core/supabase/schemas/finance/fulfillment_admin.sql:12, db/core/supabase/schemas/api/worker.sql:564 (api.worker_fulfillment_result, baris 28) |
+| `api:rpc core.mark_fulfillment_delivered` | writes | `table:finance.fulfillments` | db/core/supabase/schemas/finance/fulfillment_admin.sql:12, db/core/supabase/schemas/api/worker.sql:580 (api.worker_fulfillment_result, baris 28) |
 | `api:rpc core.mark_fulfillment_delivered` | writes | `table:ops.audit_logs` | db/core/supabase/schemas/finance/fulfillment_admin.sql:40 |
 | `api:rpc core.cancel_payout` | writes | `table:finance.payouts` | db/core/supabase/schemas/finance/payout_flow.sql:379 |
 | `api:rpc core.cancel_fulfillment` | writes | `table:finance.fulfillments` | db/core/supabase/schemas/finance/payout_flow.sql:430 |
@@ -1432,13 +1432,13 @@ Arah: `A --tipe--> B` = A bergantung pada B. `?` = belum terverifikasi.
 | `job:fulfillment-retry` | configured-by | `env:CORE_SECRET_KEY` | db/core/supabase/schemas/ops/enqueue_notification.sql:36 (ops.invoke_function → header apikey) |
 | `job:leaderboard-refresh` | writes | `table:market.leaderboard_campaign` | db/core/supabase/schemas/market/leaderboard.sql:27 |
 | `job:leaderboard-refresh` | writes | `table:market.leaderboard_weekly` | db/core/supabase/schemas/market/leaderboard.sql:26 |
-| `job:lifecycle` | calls | `fn:tracking.apply_snapshot` | db/core/supabase/schemas/market/lifecycle.sql:84 (CX11/CL15: snapshot final yang belum diproses admin — applied_snapshot_id < final (naik berurutan; ≥ final = sudah diproses, CX15) — diproses ulang dengan cek fraud, bukan accrual langsung) |
+| `job:lifecycle` | calls | `fn:tracking.apply_snapshot` | db/core/supabase/schemas/market/lifecycle.sql:87 (CX11/CL15: snapshot final yang belum diproses admin — applied_snapshot_id < final (naik berurutan; ≥ final = sudah diproses, CX15) — diproses ulang dengan cek fraud, bukan accrual langsung) |
 | `test:core.full-product` | tests | `job:lifecycle` | db/core/supabase/tests/core_contracts_finance.test.sql:1880 (CX15: snapshot sesudah final tidak membuat final diproses ulang) |
-| `job:lifecycle` | calls | `fn:accrue_earnings` | db/core/supabase/schemas/market/lifecycle.sql:91 |
+| `job:lifecycle` | calls | `fn:accrue_earnings` | db/core/supabase/schemas/market/lifecycle.sql:97 (final sudah diproses; final_skipped → tanpa accrual; gagal → alert per snapshot, O1-4) |
 | `job:lifecycle` | calls | `fn:reverse_earning` | PRD v0.3.1 §10.5 langkah 6 koreksi turun (belum di kode: koreksi turun = finance.correct_down di accrue_earnings; reverse_earning hanya dipanggil api.worker_post_gone & resolve_fraud_flag) |
-| `job:lifecycle` | writes | `table:market.campaigns` | db/core/supabase/schemas/market/lifecycle.sql:61 |
-| `job:lifecycle` | writes | `table:tracking.submissions` | db/core/supabase/schemas/market/lifecycle.sql:92 |
-| `job:lifecycle` | writes | `table:trust.review_decisions` | db/core/supabase/schemas/market/lifecycle.sql:136 (trust.auto_approve_overdue) |
+| `job:lifecycle` | writes | `table:market.campaigns` | db/core/supabase/schemas/market/lifecycle.sql:63 |
+| `job:lifecycle` | writes | `table:tracking.submissions` | db/core/supabase/schemas/market/lifecycle.sql:99 |
+| `job:lifecycle` | writes | `table:trust.review_decisions` | db/core/supabase/schemas/market/lifecycle.sql:152 (trust.auto_approve_overdue) |
 | `job:alert-notify` | calls | `api:fn core/bridge` | db/core/supabase/schemas/ops/alerts.sql:79 (ops.notify_alerts → invoke bridge notify_admins) |
 | `job:notify-drain` | calls | `api:fn core/notify` | db/core/supabase/schemas/ops/cron.sql:7 |
 | `job:notify-drain` | configured-by | `env:CORE_SECRET_KEY` | db/core/supabase/schemas/ops/enqueue_notification.sql:36 (ops.invoke_function → header apikey) |
@@ -1631,13 +1631,13 @@ Arah: `A --tipe--> B` = A bergantung pada B. `?` = belum terverifikasi.
 | `table:tracking.social_accounts` | guarded-by | `policy:core.iss-identity` | db/core/supabase/schemas/tracking/social_accounts.sql:20 |
 | `table:tracking.social_accounts` | guarded-by | `policy:core.rls-self` | db/core/supabase/schemas/tracking/social_accounts.sql:22 |
 | `table:tracking.social_accounts` | typed-by | `table:market.profiles` | db/core/supabase/schemas/tracking/social_accounts.sql:5 |
-| `table:tracking.submissions` | guarded-by | `policy:core.admin-aal2` | db/core/supabase/schemas/tracking/submissions.sql:51 |
-| `table:tracking.submissions` | guarded-by | `policy:core.iss-identity` | db/core/supabase/schemas/tracking/submissions.sql:46 |
-| `table:tracking.submissions` | guarded-by | `policy:core.rls-org` | db/core/supabase/schemas/tracking/submissions.sql:49 |
-| `table:tracking.submissions` | guarded-by | `policy:core.rls-self` | db/core/supabase/schemas/tracking/submissions.sql:48 |
+| `table:tracking.submissions` | guarded-by | `policy:core.admin-aal2` | db/core/supabase/schemas/tracking/submissions.sql:52 |
+| `table:tracking.submissions` | guarded-by | `policy:core.iss-identity` | db/core/supabase/schemas/tracking/submissions.sql:47 |
+| `table:tracking.submissions` | guarded-by | `policy:core.rls-org` | db/core/supabase/schemas/tracking/submissions.sql:50 |
+| `table:tracking.submissions` | guarded-by | `policy:core.rls-self` | db/core/supabase/schemas/tracking/submissions.sql:49 |
 | `table:tracking.submissions` | typed-by | `doc:spec/kg.yaml` | db/core/supabase/schemas/ops/state_triggers.sql:1 |
-| `table:tracking.submissions` | typed-by | `table:market.claims` | db/core/supabase/schemas/tracking/submissions.sql:30 |
-| `table:tracking.submissions` | typed-by | `table:tracking.social_accounts` | db/core/supabase/schemas/tracking/submissions.sql:32 |
+| `table:tracking.submissions` | typed-by | `table:market.claims` | db/core/supabase/schemas/tracking/submissions.sql:31 |
+| `table:tracking.submissions` | typed-by | `table:tracking.social_accounts` | db/core/supabase/schemas/tracking/submissions.sql:33 |
 | `table:tracking.view_snapshots` | guarded-by | `policy:core.inherit-parent` | db/core/supabase/schemas/tracking/view_snapshots.sql:23 |
 | `table:tracking.view_snapshots` | guarded-by | `policy:core.iss-identity` | db/core/supabase/schemas/tracking/view_snapshots.sql:21 |
 | `table:tracking.view_snapshots` | typed-by | `table:tracking.submissions` | db/core/supabase/schemas/tracking/view_snapshots.sql:6 |
@@ -1668,11 +1668,11 @@ Arah: `A --tipe--> B` = A bergantung pada B. `?` = belum terverifikasi.
 | `table:vault.social-tokens` | guarded-by | `policy:core.definer-only` | db/creator/supabase/schemas/tracking/vault.sql:4 |
 | `table:bus.outbox` | guarded-by | `policy:core.definer-only` | db/core/supabase/schemas/bus/bus.sql:38 |
 | `table:bus.inbox` | guarded-by | `policy:core.definer-only` | db/core/supabase/schemas/bus/bus.sql:39 |
-| `job:bus-relay` | writes | `table:bus.outbox` | db/core/supabase/schemas/bus/bus.sql:116 |
-| `job:bus-relay` | calls | `api:fn core/bridge` | db/core/supabase/schemas/bus/bus.sql:111 |
+| `job:bus-relay` | writes | `table:bus.outbox` | db/core/supabase/schemas/bus/bus.sql:120 |
+| `job:bus-relay` | calls | `api:fn core/bridge` | db/core/supabase/schemas/bus/bus.sql:115 |
 | `api:fn core/bridge` | calls | `api:rpc core.bus_receive` | db/core/supabase/functions/_shared/bus.ts:33 |
-| `api:rpc core.bus_receive` | reads | `table:bus.inbox` | db/core/supabase/schemas/bus/bus.sql:178 (klaim on conflict = cek idempoten) |
-| `api:rpc core.bus_receive` | writes | `table:bus.inbox` | db/core/supabase/schemas/bus/bus.sql:178 |
+| `api:rpc core.bus_receive` | reads | `table:bus.inbox` | db/core/supabase/schemas/bus/bus.sql:182 (klaim on conflict = cek idempoten) |
+| `api:rpc core.bus_receive` | writes | `table:bus.inbox` | db/core/supabase/schemas/bus/bus.sql:182 |
 | `policy:bridge-hmac` | configured-by | `env:BRIDGE_SECRET_CORE_TO_IDENTITY` | db/core/supabase/functions/_shared/bridge.ts:66 |
 | `policy:bridge-hmac` | configured-by | `env:BRIDGE_SECRET_IDENTITY_TO_CORE` | db/core/supabase/functions/bridge/index.ts:10 |
 | `policy:core.admin-aal2` | typed-by | `fn:custom_access_token_hook` | PRD v0.3.1 §15.5 alur 2 kontrak claim app_roles; kode: ops/_auth.sql baris 12, 18 (claim app_roles dari hook) |
@@ -1722,16 +1722,16 @@ Arah: `A --tipe--> B` = A bergantung pada B. `?` = belum terverifikasi.
 | `test:e2e.bus` | calls | `api:fn creator/bridge` | e2e/bus.sh:3 |
 | `test:e2e.bus` | tests | `api:rpc core.bus_receive` | e2e/bus.sh:43 |
 | `test:core.full-product` | tests | `fn:bus.accepts` | db/core/supabase/tests/bus.test.sql:6 |
-| `test:core.full-product` | tests | `table:bus.outbox` | db/core/supabase/tests/bus.test.sql:223 (CX16: resync mengirim urut kunci primer) |
+| `test:core.full-product` | tests | `table:bus.outbox` | db/core/supabase/tests/bus.test.sql:261 (CX16: resync mengirim urut kunci primer) |
 | `page:admin/` | calls | `api:rpc core.skip_failed_snapshot` | apps/admin/src/features/overview/actions.ts:18 (skipFailedSnapshot; tombol di kartu alert tracking.apply_failed) |
-| `api:rpc core.skip_failed_snapshot` | writes | `table:trust.fraud_flags` | db/core/supabase/schemas/api/worker.sql:442 (FR-12 untuk review moderator) |
-| `doc:deploy/deploy.sh` | calls | `fn:bus.skip` | deploy/deploy.sh:537 (bus skip <stack> <target> <seq>) |
-| `doc:deploy/deploy.sh` | calls | `fn:bus.reconcile` | deploy/deploy.sh:548 (bus reconcile <target>; runbook restore satu DB di kepala file) |
-| `api:rpc core.bus_receive` | calls | `fn:bus.reconcile` | db/core/supabase/schemas/bus/bus.sql:189 (rep.keys → bus.apply_keys) |
-| `fn:bus.reconcile` | writes | `table:bus.outbox` | db/core/supabase/schemas/bus/bus.sql:472 (rep.keys berpotongan; penerima apply_keys hapus lewat apply_row delete) |
+| `api:rpc core.skip_failed_snapshot` | writes | `table:trust.fraud_flags` | db/core/supabase/schemas/api/worker.sql:445 (FR-12 untuk review moderator) |
+| `doc:deploy/deploy.sh` | calls | `fn:bus.skip` | deploy/deploy.sh:547 (bus skip <stack> <target> <seq>) |
+| `doc:deploy/deploy.sh` | calls | `fn:bus.reconcile` | deploy/deploy.sh:558 (bus reconcile <target>; runbook restore satu DB di kepala file) |
+| `api:rpc core.bus_receive` | calls | `fn:bus.reconcile` | db/core/supabase/schemas/bus/bus.sql:193 (rep.keys → bus.apply_keys) |
+| `fn:bus.reconcile` | writes | `table:bus.outbox` | db/core/supabase/schemas/bus/bus.sql:484 (rep.keys berpotongan + total; penerima apply_keys hapus hanya bila daftar lengkap, baris yang tak bisa dihapus dilaporkan) |
 | `test:core.full-product` | tests | `api:rpc core.skip_failed_snapshot` | db/core/supabase/tests/core_contracts_finance.test.sql:1920 |
-| `test:core.full-product` | tests | `fn:bus.skip` | db/core/supabase/tests/bus.test.sql:176 |
-| `test:core.full-product` | tests | `fn:bus.reconcile` | db/core/supabase/tests/bus.test.sql:187 |
+| `test:core.full-product` | tests | `fn:bus.skip` | db/core/supabase/tests/bus.test.sql:181 |
+| `test:core.full-product` | tests | `fn:bus.reconcile` | db/core/supabase/tests/bus.test.sql:192 |
 | `test:e2e.bus` | tests | `fn:bus.reconcile` | e2e/bus.sh:82 (CX2 lintas stack: anggota org yang dihidupkan restore terhapus di admin, yang hilang dikirim ulang) |
 | `test:e2e.bus` | calls | `api:fn brand/bridge` | e2e/bus.sh:3 |
 | `test:e2e.cross-host` | configured-by | `doc:deploy/deploy.sh` | e2e/journey.cjs:2 (E2E_* menimpa host & DB untuk stack self-hosted) |
@@ -1780,10 +1780,10 @@ Arah: `A --tipe--> B` = A bergantung pada B. `?` = belum terverifikasi.
 | `doc:deploy/deploy.sh` | documents | `env:PII_HMAC_KEY` | deploy/keys.mjs:68 |
 | `doc:deploy/deploy.sh` | documents | `env:PII_ENC_KEY` | deploy/keys.mjs:69 (PII_ENC_KEYS) |
 | `doc:deploy/deploy.sh` | documents | `env:VAPID_PRIVATE_KEY` | deploy/keys.mjs:74 |
-| `doc:deploy/deploy.sh` | documents | `env:IDENTITY_ISSUER` | deploy/deploy.sh:261 |
-| `doc:deploy/deploy.sh` | documents | `config:host.brand-api` | deploy/deploy.sh:71 (stack_host: <stack>-api.DOMAIN) |
-| `doc:deploy/deploy.sh` | documents | `config:host.creator-api` | deploy/deploy.sh:71 (stack_host: <stack>-api.DOMAIN) |
-| `mod:db-brand` | configured-by | `config:host.brand-api` | deploy/deploy.sh:362 (apps_env) |
+| `doc:deploy/deploy.sh` | documents | `env:IDENTITY_ISSUER` | deploy/deploy.sh:271 |
+| `doc:deploy/deploy.sh` | documents | `config:host.brand-api` | deploy/deploy.sh:81 (stack_host: <stack>-api.DOMAIN) |
+| `doc:deploy/deploy.sh` | documents | `config:host.creator-api` | deploy/deploy.sh:81 (stack_host: <stack>-api.DOMAIN) |
+| `mod:db-brand` | configured-by | `config:host.brand-api` | deploy/deploy.sh:372 (apps_env) |
 | `doc:deploy/deploy.sh` | documents | `fn:custom_access_token_hook` | deploy/supabase/identity.yml:17 (GOTRUE_HOOK_CUSTOM_ACCESS_TOKEN_URI) |
 | `doc:scripts/dev-stack.sh` | documents | `env:BRIDGE_SECRET_IDENTITY_TO_CORE` | scripts/dev-stack.sh:19 |
 | `doc:scripts/dev-stack.sh` | documents | `env:IDENTITY_ISSUER` | scripts/dev-stack.sh:44 |
@@ -1995,7 +1995,7 @@ Arah: `A --tipe--> B` = A bergantung pada B. `?` = belum terverifikasi.
 | `page:app/.well-known/apple-app-site-association` | calls | `mod:clipper-lib` | apps/clipper/src/app/.well-known/apple-app-site-association/route.ts:1 |
 | `page:app/.well-known/apple-app-site-association` | configured-by | `env:APPLE_TEAM_ID` | apps/clipper/src/app/.well-known/apple-app-site-association/route.ts:7 |
 | `page:app/.well-known/apple-app-site-association` | configured-by | `env:IOS_BUNDLE_ID` | apps/clipper/src/app/.well-known/apple-app-site-association/route.ts:7 |
-| `doc:deploy/deploy.sh` | documents | `env:APPLE_TEAM_ID` | deploy/deploy.sh:371 |
+| `doc:deploy/deploy.sh` | documents | `env:APPLE_TEAM_ID` | deploy/deploy.sh:381 |
 | `api:fn identity/session-handoff` | writes | `table:member.session_handoffs` | db/identity/supabase/schemas/api/svc.sql:178 (api.svc_create_handoff; redeem = svc_redeem_handoff) |
 | `page:accounts/handoff` | calls | `api:fn identity/session-handoff` | apps/accounts/src/lib/handoff.ts:4 |
 | `api:fn identity/bridge` | calls | `mod:apns` | db/identity/supabase/functions/bridge/handler.ts:5 |
@@ -2812,6 +2812,13 @@ Masalah sistem yang ditemukan saat menyusun PRD v0.2 dan saat dicek ulang (v0.2.
 | 2026-10-24 | `config:ci` | CI PR #2: job db tanpa scripts/dev-stack.sh → Vault core_url kosong → ops.invoke_function (pg_net) gagal url NULL → raise_alert/request_payout membatalkan transaksi tes | diperbaiki di CI (bukan kode): langkah mengisi Vault <project>_url/_secret_key seperti dev-stack. Kode sengaja tetap gagal keras bila konfigurasi kosong — aksi seperti ban_user tidak boleh dilewati diam-diam |
 | 2026-10-24 | `page:admin/` | Dicek saat membangun CL19: 9 jenis alert yang dibuat kode (bus.*, campaign.*, tracking.apply_failed/notify_failed, reconcile.ledger/bank) tanpa label di UI admin → tampil kode mentah | diperbaiki: label id/en untuk semua jenis alert yang dibuat ops.raise_alert |
 | 2026-10-24 | `fn:bus.reconcile` | Uji e2e CX2 lintas stack: replica_tables urut OID → resync org_members sebelum organizations → FK gagal di admin → antrean brand → admin macet | diperbaiki: replica_tables urut kedalaman FK (induk dulu); deploy.sh bus reconcile dua tahap — resync induk dulu, reconcile anak dulu; pgTAP memeriksa urutan |
+| 2026-10-24 | `doc:deploy/deploy.sh` | Review OPS1 (Codex O1-1 + Claude O1-C9): `local_stacks=$(for …; do [ -d ] && echo; done)` berstatus 1 bila stack/brand tidak ada → set -e menghentikan semua `bus …` di server core/creator saja | diperbaiki: if/then; direproduksi di bash |
+| 2026-10-24 | `fn:bus.reconcile` | Review OPS1 (O1-2/O1-C1): satu baris replika yang tidak boleh dihapus (view_snapshots append-only sesudah restore creator, kategori dirujuk campaign di brand) menggagalkan potongan terakhir → antrean macet | diperbaiki: delete per baris dalam subtransaksi, gagal → bus.reject reconcile_delete; pgTAP merah di kode lama |
+| 2026-10-24 | `fn:bus.reconcile` | Review OPS1 (O1-3/O1-C7): potongan awal hilang (bus.prune > 7 hari, bus.skip) → potongan terakhir menghapus massal baris yang kuncinya ada di potongan hilang | diperbaiki: potongan terakhir membawa total; jumlah tertampung ≠ total → tidak menghapus, dilaporkan reconcile_incomplete |
+| 2026-10-24 | `job:lifecycle` | Review OPS1 (O1-4/O1-C5): final yang dilewati lalu flag-nya diselesaikan → lifecycle accrual langsung tanpa penjaga → error yang sama menggagalkan seluruh run lifecycle (go-live, settlement, payout) tiap 5 menit | diperbaiki: tracking.submissions.final_skipped (lock tanpa accrual-nya), accrual lock dalam subtransaksi + alert per snapshot (dedupe per jenis sebelumnya menelan alert snapshot lain) |
+| 2026-10-24 | `fn:bus.skip` | Review OPS1 (O1-C6): relay mengirim 100 event per batch, error penerima tidak menyebut event mana → bus skip kepala bisa membuang event sehat | diperbaiki: kepala gagal ≥ 3 kali → batch 1 event |
+| 2026-10-24 | `api:rpc core.skip_failed_snapshot` | Review OPS1 (O1-C8): snapshot sesudahnya ikut gagal hanya karena menunggu; sesudah skip alert-nya tetap terbuka dengan tombol lewati → operator melewati snapshot sehat tanpa cek fraud/accrual | diperbaiki: skip memproses ulang snapshot sesudahnya dan menutup alert yang sudah diproses |
+| 2026-10-24 | `doc:deploy/deploy.sh` | Review OPS1 (O1-C2/C3/C4): runbook restore — job cron bisnis dari dump langsung jalan di atas data belum lengkap; resync submisi yang claim-nya hilang dari admin melanggar FK → antrean macet; identity view_snapshots creator mundur → id bentrok dengan admin | diperbaiki: deploy.sh bus jobs off/on; resync bertanda → anak yatim dilaporkan (orphan); runbook memajukan identity view_snapshots |
 
 ## Keputusan
 

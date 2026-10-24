@@ -63,6 +63,7 @@ declare
   asked timestamptz;
   resp record;
   first_ready boolean;
+  head_tries int;
   ids bigint[];
   events jsonb;
   body jsonb;
@@ -92,13 +93,16 @@ begin
         continue;  -- masih menunggu jawaban
       end if;
     end if;
-    select o.next_at <= now() into first_ready
+    select o.next_at <= now(), o.attempts into first_ready, head_tries
       from bus.outbox o where o.target = t and o.sent_at is null order by o.seq limit 1;
     continue when not coalesce(first_ready, false);
     select array_agg(b.seq order by b.seq), jsonb_agg(jsonb_build_object('id', b.id, 'topic', b.topic, 'payload', b.payload) order by b.seq)
       into ids, events
       from (select o.seq, o.id, o.topic, o.payload from bus.outbox o
-             where o.target = t and o.sent_at is null order by o.seq limit 100) b;
+             where o.target = t and o.sent_at is null order by o.seq
+             -- gagal ≥ 3 kali → satu per satu: error penerima tidak menyebut event mana, jadi kepala = event yang gagal
+             -- (bus.skip tepat sasaran, O1-C6)
+             limit case when head_tries >= 3 then 1 else 100 end) b;
     select ds.decrypted_secret into url from vault.decrypted_secrets ds where ds.name = 'bus_url_' || t;
     select ds.decrypted_secret into secret from vault.decrypted_secrets ds where ds.name = 'bus_secret_' || t;
     if url is null or secret is null then
@@ -396,6 +400,14 @@ begin
         get diagnostics n = row_count;
       exception when not_null_violation then
         n := 0;
+      when foreign_key_violation then
+        -- Kiriman biasa: induk dari pengirim lain belum tiba → tahan antrean (dicoba lagi). Resync sesudah restore: induknya
+        -- hilang bersama DB yang dipulihkan (mis. claim di admin untuk submisi creator) → dilaporkan, antrean jalan (O1-C3).
+        if not coalesce((p ->> 'resync')::boolean, false) then
+          raise;
+        end if;
+        perform bus.reject(jsonb_build_object('reason', 'orphan', 'table', p ->> 'table', 'key', p -> 'key', 'error', sqlerrm));
+        n := 0;
       end;
       if n = 0 then
         perform set_config('bus.applying', 'off', true);
@@ -432,7 +444,7 @@ begin
   -- urut kunci primer: penerima memproses berurutan (mis. snapshot — apply_snapshot menganggap id ≤ penanda sudah diproses, CX16)
   for r in execute format('select to_jsonb(t) from %s t order by %s', p_table,
                           (select string_agg(format('t.%I', k), ', ') from unnest(pk) k)) loop
-    perform bus.emit(p_target, 'rep.row', jsonb_build_object('table', p_table::text, 'op', 'upsert',
+    perform bus.emit(p_target, 'rep.row', jsonb_build_object('table', p_table::text, 'op', 'upsert', 'resync', true,
       'key', (select jsonb_object_agg(k, r -> k) from unnest(pk) k),
       'row', (select jsonb_object_agg(c, r -> c) from unnest(cols || pk) c)));
     n := n + 1;
@@ -469,7 +481,7 @@ begin
       keys := '[]';
     end if;
   end loop;
-  perform bus.emit(p_target, 'rep.keys', jsonb_build_object('table', p_table::text, 'epoch', ep, 'keys', keys, 'last', true));
+  perform bus.emit(p_target, 'rep.keys', jsonb_build_object('table', p_table::text, 'epoch', ep, 'keys', keys, 'last', true, 'total', n));
   return n;
 end $$;
 
@@ -493,12 +505,25 @@ begin
   if not coalesce((p ->> 'last')::boolean, false) then
     return;
   end if;
+  -- Daftar tidak lengkap (potongan dipangkas bus.prune saat antrean macet > 7 hari, atau dilewati bus.skip) → tidak ada yang
+  -- dihapus; dilaporkan, jalankan reconcile ulang (O1-3).
+  if (select count(*) from bus.reconcile_keys r where r.source = p_source and r.tbl = t::text and r.epoch = (p ->> 'epoch')::uuid)
+     is distinct from (p ->> 'total')::bigint then
+    perform bus.reject(jsonb_build_object('reason', 'reconcile_incomplete', 'table', t::text, 'total', p -> 'total'));
+    delete from bus.reconcile_keys where source = p_source and tbl = t::text and epoch = (p ->> 'epoch')::uuid;
+    return;
+  end if;
   pk := bus.pk_columns(t);
   for k in execute format('select jsonb_build_object(%s) from %s x where not exists (select 1 from bus.reconcile_keys r
                              where r.source = $1 and r.tbl = $2 and r.epoch = $3 and r.key = jsonb_build_object(%1$s))',
                           (select string_agg(format('%L, x.%I', c, c), ', ') from unnest(pk) c), t)
              using p_source, t::text, (p ->> 'epoch')::uuid loop
-    perform bus.apply_row(jsonb_build_object('table', t::text, 'op', 'delete', 'key', k), p_source);
+    -- baris yang tidak boleh dihapus (append-only mis. view_snapshots, dirujuk catatan uang) dilaporkan, antrean jalan (O1-2)
+    begin
+      perform bus.apply_row(jsonb_build_object('table', t::text, 'op', 'delete', 'key', k), p_source);
+    exception when others then
+      perform bus.reject(jsonb_build_object('reason', 'reconcile_delete', 'table', t::text, 'key', k, 'error', sqlerrm));
+    end;
   end loop;
   delete from bus.reconcile_keys where source = p_source and tbl = t::text and epoch = (p ->> 'epoch')::uuid;
 end $$;

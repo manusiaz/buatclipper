@@ -1920,14 +1920,60 @@ select throws_ok(format('select api.skip_failed_snapshot(%s)', (select v from t_
 select lives_ok(format('select api.skip_failed_snapshot(%s)', (select v from t_ids where k = 'a19s1')), 'CL19: admin_ops melewati snapshot gagal');
 reset role;
 select is((select applied_snapshot_id::text || ':' || status::text from tracking.submissions where id = (select v::uuid from t_ids where k = 's19')),
-          (select s1 from t_cl19)::text || ':flagged', 'CL19: snapshot ditandai diproses, submisi ditahan untuk review');
+          (select s2 from t_cl19)::text || ':flagged', 'CL19: snapshot dilewati, submisi ditahan untuk review (sesudahnya ikut diproses, O1-C8)');
 select ok(exists (select 1 from trust.fraud_flags where target_id = (select v::uuid from t_ids where k = 's19') and signal = 'FR-12' and status = 'open')
           and exists (select 1 from ops.alerts where id = (select v::bigint from t_ids where k = 'a19s1') and resolved_at is not null)
           and exists (select 1 from ops.audit_logs where action = 'snapshot.skip' and target = 'submission:' || (select v from t_ids where k = 's19')),
           'CL19: flag FR-12 untuk moderator, alert ditutup, tercatat di audit log');
+select ok(exists (select 1 from ops.alerts where id = (select v::bigint from t_ids where k = 'a19s2') and resolved_at is not null),
+          'O1-C8: alert snapshot sesudahnya ditutup (tidak ada tombol lewati untuk snapshot yang sehat)');
 select lives_ok(format('select tracking.apply_snapshot(%s)', (select s2 from t_cl19)), 'CL19: snapshot sesudahnya diproses normal');
 select is((select applied_snapshot_id from tracking.submissions where id = (select v::uuid from t_ids where k = 's19')), (select s2 from t_cl19),
           'CL19: penanda lanjut ke snapshot berikutnya');
+
+-- Review O1-4: final yang dilewati tidak di-accrue lagi lewat jalur lock langsung lifecycle (flag FR-12 diselesaikan → tracking);
+-- accrual saat lock yang gagal tidak menggagalkan seluruh lifecycle (alert, submisi tetap tracking) dan bisa dilewati admin_ops.
+select pg_temp.mk_campaign('55555555-0000-0000-0000-0000000000e8', 'o14', 0);
+select pg_temp.mk_pool('55555555-0000-0000-0000-0000000000e8', '66666666-0000-0000-0000-0000000000e8', 100000, 10000000);
+select pg_temp.mk_rule('55555555-0000-0000-0000-0000000000e8', '66666666-0000-0000-0000-0000000000e8', 'per_1k_views', '{"rate":1000}', now() - interval '60 days');
+insert into t_ids select 'o14a', pg_temp.mk_sub('55555555-0000-0000-0000-0000000000e8', '11111111-0000-0000-0000-00000000000a', 'o14a', now() - interval '40 days');
+insert into t_ids select 'o14b', pg_temp.mk_sub('55555555-0000-0000-0000-0000000000e8', '11111111-0000-0000-0000-00000000000a', 'o14b', now() - interval '40 days');
+insert into tracking.view_snapshots (submission_id, taken_at, views, is_final)
+select (select v::uuid from t_ids where k = k2), now() - interval '5 days', 5000, true from unnest(array['o14a', 'o14b']) k2;
+update tracking.submissions s set applied_snapshot_id = v.id from tracking.view_snapshots v
+ where v.submission_id = s.id and s.id = (select v::uuid from t_ids where k = 'o14b');  -- final o14b sudah diproses (flag diselesaikan)
+insert into t_ids select 'ao14a', ops.raise_alert('tracking.apply_failed', 'critical', jsonb_build_object('snapshot_id',
+  (select id from tracking.view_snapshots where submission_id = (select v::uuid from t_ids where k = 'o14a'))::text, 'step', 'snapshot'))::text;
+create function public.o14_fail() returns trigger language plpgsql as $$
+begin
+  if new.submission_id = (select v::uuid from t_ids where k = 'o14b') then raise exception 'accrual rusak'; end if;
+  return new;
+end $$;
+create trigger o14_fail before insert on finance.clip_earnings for each row execute function public.o14_fail();
+set local role authenticated;
+select pg_temp.jwt('33333333-0000-0000-0000-0000000000a0', '{"app_roles":["admin_ops"],"aal":"aal2"}');
+select lives_ok(format('select api.skip_failed_snapshot(%s)', (select v from t_ids where k = 'ao14a')), 'O1-4: snapshot final gagal dilewati');
+reset role;
+update tracking.submissions set status = 'tracking' where id = (select v::uuid from t_ids where k = 'o14a');  -- moderator: flag ditolak
+select lives_ok('select market.run_lifecycle()', 'O1-4: accrual lock yang gagal tidak menggagalkan seluruh lifecycle');
+select is((select string_agg(status::text, ',' order by post_id) from tracking.submissions where post_id in ('o14a', 'o14b')), 'locked,tracking',
+          'O1-4: final dilewati → dikunci; accrual lock gagal → tetap tracking');
+select ok(not exists (select 1 from finance.clip_earnings where submission_id = (select v::uuid from t_ids where k = 'o14a')),
+          'O1-4: final yang dilewati tidak di-accrue lewat jalur lock');
+select ok(exists (select 1 from ops.alerts where kind = 'tracking.apply_failed' and resolved_at is null and payload ->> 'step' = 'lock'
+                  and payload ->> 'snapshot_id' = (select id::text from tracking.view_snapshots where submission_id = (select v::uuid from t_ids where k = 'o14b'))),
+          'O1-4: accrual lock gagal → alert tracking.apply_failed');
+insert into t_ids select 'ao14b', id::text from ops.alerts where kind = 'tracking.apply_failed' and resolved_at is null and payload ->> 'step' = 'lock';
+set local role authenticated;
+select lives_ok(format('select api.skip_failed_snapshot(%s)', (select v from t_ids where k = 'ao14b')), 'O1-4: final yang gagal saat lock bisa dilewati admin_ops');
+reset role;
+drop trigger o14_fail on finance.clip_earnings;
+select is((select status::text || ':' || final_skipped from tracking.submissions where post_id = 'o14b'), 'flagged:true',
+          'O1-4: final ditandai dilewati, submisi ditahan untuk review');
+update tracking.submissions set status = 'tracking' where post_id = 'o14b';
+select market.run_lifecycle();
+select is((select status::text || ':' || (select count(*) from finance.clip_earnings e where e.submission_id = s.id) from tracking.submissions s
+            where post_id = 'o14b'), 'locked:0', 'O1-4: sesudah review dikunci tanpa accrual final yang dilewati');
 
 -- ========== N2. Sisa budget campaign settled: rollover vs refund (D-09) ==========
 set local role authenticated;

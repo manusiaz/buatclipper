@@ -432,20 +432,36 @@ begin
     raise exception 'not_found:snapshot' using errcode = 'P0002';
   end if;
   select * into s from tracking.submissions t where t.id = v.submission_id for update;
+  -- snapshot tertunda paling awal, atau final yang sudah diproses tapi accrual saat lock gagal (lifecycle step lock, O1-4)
   if v.id is distinct from (select min(x.id) from tracking.view_snapshots x
-                             where x.submission_id = s.id and x.id > coalesce(s.applied_snapshot_id, 0)) then
+                             where x.submission_id = s.id and x.id > coalesce(s.applied_snapshot_id, 0))
+     and not (v.is_final and v.id <= coalesce(s.applied_snapshot_id, 0) and s.status = 'tracking') then
     raise exception 'invalid_state:not_next_pending' using errcode = 'P0001';
   end if;
-  update tracking.submissions set applied_snapshot_id = v.id,
+  update tracking.submissions set applied_snapshot_id = greatest(coalesce(applied_snapshot_id, 0), v.id),
+         final_skipped = final_skipped or v.is_final,
          status = case when status = 'tracking' then 'flagged'::tracking.submission_status else status end
    where id = s.id;
   perform trust.raise_flag('submission', s.id, 'FR-12', 50,
                            jsonb_build_object('snapshot_id', v.id, 'alert_id', a.id, 'error', a.payload ->> 'error'));
   update ops.alerts set resolved_at = now(), resolved_by = (select auth.uid()) where id = a.id;
+  -- Snapshot sesudahnya ikut gagal hanya karena menunggu yang ini: proses sekarang (berurutan), alert-nya yang sudah diproses
+  -- ditutup — tidak ikut "dilewati" tanpa cek fraud/accrual (O1-C8). Masih gagal → alert-nya tetap terbuka.
+  begin
+    perform tracking.apply_snapshot(m) from (select max(x.id) m from tracking.view_snapshots x where x.submission_id = s.id and x.id > v.id) n
+     where m is not null;
+  exception when others then
+    perform ops.raise_alert('tracking.apply_failed', 'critical', jsonb_build_object('submission_id', s.id, 'step', 'skip_retry', 'error', sqlerrm),
+                            interval '1 hour');
+  end;
+  update ops.alerts x set resolved_at = now(), resolved_by = (select auth.uid())
+   where x.kind = 'tracking.apply_failed' and x.resolved_at is null and x.payload ->> 'snapshot_id' ~ '^[0-9]+$'
+     and (x.payload ->> 'snapshot_id')::bigint in (select y.id from tracking.view_snapshots y where y.submission_id = s.id
+                                                    and y.id <= (select t.applied_snapshot_id from tracking.submissions t where t.id = s.id));
   insert into ops.audit_logs (actor_id, action, target, before, after)
   values ((select auth.uid()), 'snapshot.skip', 'submission:' || s.id,
           jsonb_build_object('applied_snapshot_id', s.applied_snapshot_id, 'status', s.status),
-          jsonb_build_object('applied_snapshot_id', v.id, 'alert_id', a.id));
+          jsonb_build_object('applied_snapshot_id', greatest(coalesce(s.applied_snapshot_id, 0), v.id), 'final_skipped', v.is_final, 'alert_id', a.id));
 end $$;
 revoke execute on function api.skip_failed_snapshot(bigint) from public;
 grant execute on function api.skip_failed_snapshot(bigint) to authenticated;
