@@ -247,10 +247,15 @@ begin
       detail = (select string_agg(k, ',') from jsonb_object_keys(p -> 'row') k where not k = any (allowed || pk));
   end if;
   -- delete hanya untuk tabel yang seluruh kolomnya milik pengirim: baris campuran (mis. profil dengan status/sanksi admin, org
-  -- dengan fee admin) yang dihapus lalu dikirim ulang akan mengembalikan kolom milik penerima ke default.
+  -- dengan fee admin) yang dihapus lalu dikirim ulang akan mengembalikan kolom milik penerima ke default. Dilewati + alert (tidak
+  -- raise): delete baris campuran di pengirim (mis. hapus manual) tidak boleh menahan antrean selamanya.
   if p ->> 'op' = 'delete' and exists (select 1 from pg_attribute a where a.attrelid = t and a.attnum > 0 and not a.attisdropped
                                                                     and not a.attname = any (allowed || pk)) then
-    raise exception 'bus_not_allowed:% % delete', p_source, p ->> 'table' using errcode = '42501';
+    if to_regprocedure('ops.raise_alert(text, text, jsonb, interval)') is not null then
+      execute 'select ops.raise_alert($1, $2, $3)' using 'bus.rejected_payload', 'critical',
+        jsonb_build_object('topic', 'rep.row', 'op', 'delete', 'source', p_source, 'table', p ->> 'table', 'key', p -> 'key');
+    end if;
+    return;
   end if;
   perform set_config('bus.applying', 'on', true);
   if p ->> 'op' = 'delete' then

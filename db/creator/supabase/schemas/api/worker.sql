@@ -242,6 +242,8 @@ declare
   a tracking.social_accounts;
   aid uuid;
 begin
+  -- FOR SHARE: serial dengan penutupan akun (status closed + profile.anonymize) — akun & token tidak tersimpan sesudah dibersihkan.
+  perform 1 from market.profiles pr where pr.id = p_user for share;
   -- Aktif efektif (sama dengan claim_check / require_active_clipper): suspend yang sudah lewat tidak menunggu job lifecycle.
   if not exists (select 1 from market.profiles pr where pr.id = p_user
                   and (pr.status = 'active' or (pr.status = 'suspended' and pr.suspended_until <= now()))) then

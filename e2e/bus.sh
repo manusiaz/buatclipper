@@ -46,6 +46,20 @@ race=$(q admin -c "select api.bus_receive('brand', '$ev') ->> 'skipped'" 2>&1) |
 wait
 if [ "$race" = 1 ] && [ "$(q admin -c "select count(*) from public.bus_e2e_log where src = 'race'")" = 1 ]; then echo "✓ kiriman kembar bersamaan dilewati"
 else echo "✗ kiriman kembar bersamaan: $race"; fail=1; fi
+# Sambung OAuth bersamaan dengan penutupan akun (R92-1): menunggu penutupan lalu ditolak, tidak meninggalkan akun/token.
+U=11111111-0000-0000-0000-0000000009a2
+# profil uji tanpa replika (bus.applying): tidak meninggalkan baris di admin/brand
+q creator -c "select set_config('bus.applying', 'on', false)" \
+          -c "insert into market.profiles (id, username, display_name) values ('$U', 'uji_r92', 'Uji') on conflict (id) do update set status = 'active'" >/dev/null
+q creator -c "begin; update market.profiles set status = 'closed' where id = '$U'; select pg_sleep(2); commit;" >/dev/null &
+sleep 0.5
+q creator -c "select api.worker_upsert_social_account('$U', 'tiktok', 'uji-r92', '@uji', 1, null, '{}')" >/dev/null 2>&1 || true
+wait
+if [ "$(q creator -c "select count(*) from tracking.social_accounts where user_id = '$U'")" = 0 ]; then echo "✓ sambung sosmed saat akun ditutup ditolak"
+else echo "✗ sambung sosmed saat akun ditutup tersimpan"; fail=1; fi
+q creator -c "delete from vault.secrets where id in (select token_ref from tracking.social_accounts where user_id = '$U')" \
+          -c "select set_config('bus.applying', 'on', false)" -c "delete from tracking.social_accounts where user_id = '$U'" \
+          -c "delete from market.profiles where id = '$U'" >/dev/null
 for t in admin creator brand; do
   q "$t" -c "delete from bus.outbox where topic = 'uji.ping'" -c "delete from bus.inbox where topic = 'uji.ping'" \
          -c "drop function bus_in.uji_ping(jsonb)" -c "drop table public.bus_e2e_log" >/dev/null
