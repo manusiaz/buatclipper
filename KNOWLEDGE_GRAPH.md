@@ -1719,6 +1719,7 @@ Arah: `A --tipe--> B` = A bergantung pada B. `?` = belum terverifikasi.
 | `test:e2e.bus` | calls | `api:fn creator/bridge` | e2e/bus.sh:3 |
 | `test:e2e.bus` | tests | `api:rpc core.bus_receive` | e2e/bus.sh:43 |
 | `test:core.full-product` | tests | `fn:bus.accepts` | db/core/supabase/tests/bus.test.sql:6 |
+| `test:core.full-product` | tests | `table:bus.outbox` | db/core/supabase/tests/bus.test.sql:176 (CX16: resync mengirim urut kunci primer) |
 | `test:e2e.bus` | calls | `api:fn brand/bridge` | e2e/bus.sh:3 |
 | `test:e2e.cross-host` | configured-by | `doc:deploy/deploy.sh` | e2e/journey.cjs:2 (E2E_* menimpa host & DB untuk stack self-hosted) |
 | `test:e2e.cross-host` | tests | `page:accounts/invite/[token]` | e2e/journey.cjs:118 |
@@ -2793,6 +2794,7 @@ Masalah sistem yang ditemukan saat menyusun PRD v0.2 dan saat dicek ulang (v0.2.
 | 2026-10-24 | `table:tracking.submissions` | Cek silang D7 — Codex CX14 (celah di fix CL17): backfill applied_snapshot_id = snapshot terakhir mencap snapshot yang hook-nya dulu gagal sebagai diproses → bypass cek fraud (CX11) & jatah settlement (CL16) terbuka lagi untuk data lama | diperbaiki: backfill hanya dari bukti — kegagalan hook selalu tercatat di ops.alerts (snapshot_id, tidak pernah dihapus); ditandai diproses hanya snapshot sebelum kegagalan pertama, sisanya diproses ulang berurutan. Migrasi D6 dikoreksi di tempat (belum pernah di-deploy); diverifikasi manual pada data sintetis (rollback), bukan tes permanen |
 | 2026-10-24 | `job:lifecycle` | Cek silang D8 — Codex CX15 (celah di fix CX11): lifecycle memeriksa applied_snapshot_id = final; snapshot non-final sesudah final (creator polling ulang saat replika status tertinggal) memajukan penanda melewati final → final diproses ulang → flag yang sudah diselesaikan moderator muncul lagi, earning & settlement tertahan | diperbaiki: applied_snapshot_id ≥ final = final sudah diproses (penanda naik berurutan). Claude D8 = [] |
 | 2026-10-24 | `fn:tracking.apply_snapshot` | Cek silang D9 — Claude CL20 (premis fix CX15): jalur sukses apply_snapshot menulis applied_snapshot_id = sid tanpa greatest → snapshot lama yang dipulihkan bus.resync memundurkan penanda, memproses ulang bukti fraud lama (flag yang sudah ditutup muncul lagi), dan memundurkan kesiapan settlement. Codex D9 = [] untuk d7008b2 | diperbaiki: penanda monoton (greatest) dan snapshot dengan id ≤ penanda = no-op |
+| 2026-10-24 | `table:bus.outbox` | Cek silang D10 — Codex CX16 (premis fix CL20): bus.resync mengirim baris tanpa ORDER BY (urutan fisik heap) → snapshot 102 bisa tiba sebelum 101 → penanda naik ke 102 lalu 101 jadi no-op selamanya (cek fraud & accrual terlewat). Claude D10 = [] untuk 4252659 | diperbaiki: resync mengirim urut kunci primer (bus.sql:399); FIFO outbox → penerima memproses berurutan; tulisan baru menunggu resync (lock share) |
 
 ## Keputusan
 

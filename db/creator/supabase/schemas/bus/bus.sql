@@ -395,7 +395,9 @@ begin
   end if;
   -- Tulisan baru menunggu sampai resync commit: event resync (snapshot lama) tidak bisa menyalip event tulisan yang lebih baru (R83-2).
   execute format('lock table %s in share mode', p_table);
-  for r in execute format('select to_jsonb(t) from %s t', p_table) loop
+  -- urut kunci primer: penerima memproses berurutan (mis. snapshot — apply_snapshot menganggap id ≤ penanda sudah diproses, CX16)
+  for r in execute format('select to_jsonb(t) from %s t order by %s', p_table,
+                          (select string_agg(format('t.%I', k), ', ') from unnest(pk) k)) loop
     perform bus.emit(p_target, 'rep.row', jsonb_build_object('table', p_table::text, 'op', 'upsert',
       'key', (select jsonb_object_agg(k, r -> k) from unnest(pk) k),
       'row', (select jsonb_object_agg(c, r -> c) from unnest(cols || pk) c)));

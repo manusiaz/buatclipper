@@ -166,6 +166,19 @@ select ok(not exists (select 1 from trust.review_decisions where target_id = '00
           'C7: brand tidak bisa menulis keputusan submisi (banding) atau notifikasi di luar org.*/agency.*/campaign.invited');
 select is((select count(*)::int from ops.alerts where kind = 'bus.rejected_payload' and payload ->> 'topic' in ('review.decision', 'notify.user')), 2, 'C7: payload yang dilewati → alert');
 
+-- Review CX16: bus.resync mengirim baris urut kunci primer (bukan urutan fisik heap) — penerima seperti apply_snapshot memproses
+-- berurutan. Baris 1 di-update → pindah ke akhir heap → scan tanpa ORDER BY mengirim 2,3,1.
+create table public.rs_order (id int primary key, a text);
+create trigger rs_order_replicate after insert or update or delete on public.rs_order for each row execute function bus.replicate('creator:a');
+insert into public.rs_order values (1, 'x'), (2, 'x'), (3, 'x');
+update public.rs_order set a = 'y' where id = 1;
+delete from bus.outbox where payload ->> 'table' = 'public.rs_order';
+select bus.resync('public.rs_order', 'creator');
+select is((select array_agg((payload -> 'key' ->> 'id')::int order by seq) from bus.outbox where payload ->> 'table' = 'public.rs_order'),
+          array[1, 2, 3], 'CX16: resync mengirim urut kunci primer');
+delete from bus.outbox where payload ->> 'table' = 'public.rs_order';
+drop table public.rs_order;
+
 -- penerima: tabel replika dengan kolom milik project lain (b) tidak tersentuh upsert parsial; tanpa gema balik
 create table public.rep_dst (id int primary key, a text, b text not null default 'lokal');
 create trigger rep_dst_replicate after insert or update or delete on public.rep_dst for each row execute function bus.replicate('brand:b');
