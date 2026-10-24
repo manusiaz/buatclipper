@@ -97,6 +97,11 @@ select throws_ok($$ select api.bus_receive('brand', '[{"id":"00000000-0000-0000-
                  '42501', 'bus_not_allowed:brand market.profiles', 'C3: delete juga dibatasi allowlist pengirim');
 select ok(not exists (select 1 from bus.inbox where id in ('00000000-0000-0000-0000-0000000000e1', '00000000-0000-0000-0000-0000000000e2',
                                                            '00000000-0000-0000-0000-0000000000e3')), 'event yang ditolak tidak tercatat diterima');
+-- Review R91-1: delete hanya untuk tabel tanpa kolom milik penerima (hapus + kirim ulang tidak bisa mereset status/sanksi admin)
+select throws_ok($$ select api.bus_receive('creator', '[{"id":"00000000-0000-0000-0000-0000000000ea","topic":"rep.row","payload":{"op":"delete","key":{"id":"11111111-0000-0000-0000-00000000000a"},"row":null,"table":"market.profiles"}}]') $$,
+                 '42501', 'bus_not_allowed:creator market.profiles delete', 'R91-1: creator tidak bisa menghapus profil (kolom status/sanksi milik admin)');
+select lives_ok($$ select api.bus_receive('creator', '[{"id":"00000000-0000-0000-0000-0000000000eb","topic":"rep.row","payload":{"op":"delete","key":{"id":"00000000-0000-0000-0000-0000000000eb"},"row":null,"table":"tracking.social_accounts"}}]') $$,
+                'R91-1: delete tabel yang seluruhnya milik pengirim tetap diterima (akun sosmed diputus)');
 -- Review C5/R88-1: topik hanya dari pengirim yang memang mengirimnya; sumber ping = pengirim terautentikasi
 select throws_ok($$ select api.bus_receive('brand', '[{"id":"00000000-0000-0000-0000-0000000000e4","topic":"submission.post_gone","payload":{"submission_id":"00000000-0000-0000-0000-0000000000e4"}}]') $$,
                  '42501', 'bus_not_allowed:brand submission.post_gone', 'C5: brand tidak bisa memanggil handler milik creator (post_gone)');
@@ -133,8 +138,9 @@ select is((select a || '|' || b from public.rep_dst where id = 7), 'pemilik-ubah
 select is((select count(*)::int from bus.outbox where target = 'brand'), 1,
           'perubahan hasil replika tidak dipantulkan (hanya update kolom lokal b yang dikirim)');
 select is((select array_agg(op order by row ->> 'a') from public.rep_hook_log), array['upsert', 'upsert'], 'hook penerima dijalankan per baris');
-select api.bus_receive('creator', '[{"id":"00000000-0000-0000-0000-0000000000c3","topic":"rep.row","payload":{"op":"delete","key":{"id":7},"row":null,"table":"public.rep_dst"}}]');
-select ok(not exists (select 1 from public.rep_dst where id = 7), 'delete replika');
+select throws_ok($$ select api.bus_receive('creator', '[{"id":"00000000-0000-0000-0000-0000000000c3","topic":"rep.row","payload":{"op":"delete","key":{"id":7},"row":null,"table":"public.rep_dst"}}]') $$,
+                 '42501', 'bus_not_allowed:creator public.rep_dst delete', 'delete baris campuran (kolom b milik lokal) ditolak (R91-1)');
+select ok(exists (select 1 from public.rep_dst where id = 7), 'baris campuran tetap ada');
 select is(current_setting('bus.applying', true), 'off', 'flag penerapan dimatikan lagi setelah apply');
 
 -- kolom milik sebagian (pemilik baris project lain): baris ada → update kolom itu saja; baris belum ada → dilewati tanpa error

@@ -246,6 +246,12 @@ begin
     raise exception 'bus_not_allowed:% %', p_source, p ->> 'table' using errcode = '42501',
       detail = (select string_agg(k, ',') from jsonb_object_keys(p -> 'row') k where not k = any (allowed || pk));
   end if;
+  -- delete hanya untuk tabel yang seluruh kolomnya milik pengirim: baris campuran (mis. profil dengan status/sanksi admin, org
+  -- dengan fee admin) yang dihapus lalu dikirim ulang akan mengembalikan kolom milik penerima ke default.
+  if p ->> 'op' = 'delete' and exists (select 1 from pg_attribute a where a.attrelid = t and a.attnum > 0 and not a.attisdropped
+                                                                    and not a.attname = any (allowed || pk)) then
+    raise exception 'bus_not_allowed:% % delete', p_source, p ->> 'table' using errcode = '42501';
+  end if;
   perform set_config('bus.applying', 'on', true);
   if p ->> 'op' = 'delete' then
     execute format('delete from %s x using jsonb_populate_record(null::%s, $1) k where %s', t, t,
