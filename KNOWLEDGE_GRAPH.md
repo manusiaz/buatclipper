@@ -1214,7 +1214,7 @@ Arah: `A --tipe--> B` = A bergantung pada B. `?` = belum terverifikasi.
 | `test:core.full-product` | tests | `job:bus-watch` | db/core/supabase/tests/core_contracts_finance.test.sql:1569 |
 | `job:bus-prune` | writes | `table:bus.outbox` | db/core/supabase/schemas/bus/bus.sql:118 (bus.prune; dijadwalkan self.sql baris 7) |
 | `api:rpc core.bus_receive` | calls | `fn:bus.reject` | db/core/supabase/schemas/bus/bus.sql:191 (bus.report_rejects akhir batch; topik tak diizinkan raise baris 183, tabel/kolom belum ada raise baris 304, 316) |
-| `fn:bus.reject` | calls | `job:alert-notify` | db/core/supabase/schemas/bus/bus.sql:145 (admin: ops.raise_alert bus.rejected_payload per batch → email admin_ops) |
+| `fn:bus.reject` | calls | `job:alert-notify` | db/core/supabase/schemas/bus/bus.sql:146 (admin: ops.raise_alert bus.rejected_payload per batch → email admin_ops) |
 | `fn:bus.reject` | emits | `fn:bus_in.admin` | db/core/supabase/schemas/bus/bus.sql:149 (creator/brand: event bus.rejected per batch; handler inbound.sql baris 27) |
 | `job:alert-notify` | calls | `api:fn identity/bridge` | db/core/supabase/schemas/ops/alerts.sql:79 (kind bus.* masuk daftar baris 65/apply_failed/content_drift → notify_admins; rute peran bridge/handler.ts) |
 | `job:bus-prune` | writes | `table:bus.outbox` | db/creator/supabase/schemas/api/profile.sql:116 (creator: bus.scrub_closed hapus salinan data akun closed di outbox terkirim, malam — di luar bus_receive) |
