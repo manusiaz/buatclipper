@@ -25,10 +25,10 @@
 #                          di alert admin.{DOMAIN}, bukan dari sini · bus reconcile <admin|creator|brand> → kirim ulang semua tabel
 #                          replika dari stack di server ini ke target + hapus di target baris yang sudah tidak ada di sini
 #                          · bus jobs <off|on> → hentikan/jalankan job cron bisnis stack di server ini (restore)
-#   Restore SATU DB (core|creator|brand) ke backup lama — runbook (CX2): 1) `deploy.sh down apps` di server app (hentikan semua
-#                          tulisan user & uang) 2) pulihkan dump ke stack itu (pg_restore dari deploy/stack/<stack>/backups), SEGERA
-#                          `deploy.sh bus jobs off` di server itu (dump membawa job cron aktif: lifecycle/release/track-worker jangan
-#                          jalan di atas data yang belum lengkap; job bus-* tetap jalan), khusus creator: id snapshot dimajukan
+#   Restore SATU DB (core|creator|brand) ke backup lama — runbook (CX2): 1) `deploy.sh down apps` di server app dan `deploy.sh bus
+#                          jobs off` di SETIAP server stack (hentikan semua tulisan user, uang & worker) 2) pulihkan dump ke stack itu (pg_restore dari deploy/stack/<stack>/backups), SEGERA
+#                          ulangi `deploy.sh bus jobs off` di server itu (dump membawa job cron aktif: lifecycle/release/track-worker
+#                          jangan jalan di atas data yang belum lengkap; job bus-* tetap jalan), khusus creator: id snapshot dimajukan
 #                          melewati yang sudah dilihat admin: ambil `select max(id) from tracking.view_snapshots` di core-db, lalu di creator-db `alter table
 #                          tracking.view_snapshots alter column id restart with <max+1>` — lalu `deploy.sh up <stack>`
 #                          3) di SETIAP server stack lain: `deploy.sh bus reconcile <nama bus stack yang dipulihkan>` (state yang
@@ -38,8 +38,10 @@
 #                          berisi baris yang TIDAK diubah otomatis dan perlu keputusan manual: reconcile_delete (baris tidak boleh
 #                          dihapus: append-only/dirujuk catatan uang, mis. snapshot yang hilang dari creator), orphan (induk hilang
 #                          bersama DB yang dipulihkan, mis. submisi yang claim-nya hilang dari admin), reconcile_incomplete (ulangi
-#                          reconcile); perintah/event non-replika di jendela backup hilang: cek audit 6) `deploy.sh bus jobs on` di
-#                          server stack yang dipulihkan, lalu `deploy.sh up apps`.
+#                          reconcile); kepala antrean yang macet foreign key (event biasa yang induknya ikut hilang, sudah antre sebelum
+#                          resync) → `deploy.sh bus skip` (barisnya dikirim ulang resync di belakangnya lalu dilaporkan orphan);
+#                          perintah/event non-replika di jendela backup hilang: cek audit 6) `deploy.sh bus jobs on` di SETIAP server
+#                          stack, lalu `deploy.sh up apps`.
 #
 # DNS A: auth.{DOMAIN} → server identity, api.{DOMAIN} → server core (admin), creator-api.{DOMAIN} → server creator,
 # brand-api.{DOMAIN} → server brand, {DOMAIN} + accounts./app./brand./admin. → server app. Satu server: semua ke IP yang sama.

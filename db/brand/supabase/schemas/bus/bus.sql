@@ -383,36 +383,39 @@ begin
     -- kolom lain dicek sebelum konflik). Baris belum ada → insert; kolom wajib lain tidak dikirim = baris milik project lain
     -- yang belum/tidak ada di sini → dilewati. Nilai sama persis (bus.resync) → tidak diubah dan hook tidak jalan: tabel
     -- append-only menolak UPDATE dan hook (accrual, keputusan) tidak boleh jalan dua kali.
-    if upd is not null then
-      execute format('update %1$s x set %2$s from jsonb_populate_record(null::%1$s, $1) r where %3$s and row(%4$s) is distinct from row(%5$s)',
-                     t, upd, (select string_agg(format('x.%1$I = r.%1$I', c), ' and ') from unnest(pk) c),
-                     (select string_agg(format('x.%I', c), ', ') from unnest(cols) c),
-                     (select string_agg(format('r.%I', c), ', ') from unnest(cols) c))
-        using p -> 'row';
-      get diagnostics n = row_count;
-    end if;
-    if n = 0 then
-      begin
-        execute format('insert into %1$s (%2$s) select %2$s from jsonb_populate_record(null::%1$s, $1) on conflict (%3$s) do nothing',
-                       t, (select string_agg(format('%I', c), ', ') from unnest(cols) c),
-                       (select string_agg(format('%I', c), ', ') from unnest(pk) c))
+    begin
+      if upd is not null then
+        execute format('update %1$s x set %2$s from jsonb_populate_record(null::%1$s, $1) r where %3$s and row(%4$s) is distinct from row(%5$s)',
+                       t, upd, (select string_agg(format('x.%1$I = r.%1$I', c), ' and ') from unnest(pk) c),
+                       (select string_agg(format('x.%I', c), ', ') from unnest(cols) c),
+                       (select string_agg(format('r.%I', c), ', ') from unnest(cols) c))
           using p -> 'row';
         get diagnostics n = row_count;
-      exception when not_null_violation then
-        n := 0;
-      when foreign_key_violation then
-        -- Kiriman biasa: induk dari pengirim lain belum tiba → tahan antrean (dicoba lagi). Resync sesudah restore: induknya
-        -- hilang bersama DB yang dipulihkan (mis. claim di admin untuk submisi creator) → dilaporkan, antrean jalan (O1-C3).
-        if not coalesce((p ->> 'resync')::boolean, false) then
-          raise;
-        end if;
-        perform bus.reject(jsonb_build_object('reason', 'orphan', 'table', p ->> 'table', 'key', p -> 'key', 'error', sqlerrm));
-        n := 0;
-      end;
-      if n = 0 then
-        perform set_config('bus.applying', 'off', true);
-        return;
       end if;
+      if n = 0 then
+        begin
+          execute format('insert into %1$s (%2$s) select %2$s from jsonb_populate_record(null::%1$s, $1) on conflict (%3$s) do nothing',
+                         t, (select string_agg(format('%I', c), ', ') from unnest(cols) c),
+                         (select string_agg(format('%I', c), ', ') from unnest(pk) c))
+            using p -> 'row';
+          get diagnostics n = row_count;
+        exception when not_null_violation then
+          n := 0;
+        end;
+      end if;
+    exception when foreign_key_violation then
+      -- Kiriman biasa: induk dari pengirim lain belum tiba → tahan antrean (dicoba lagi). Resync sesudah restore: induknya
+      -- hilang bersama DB yang dipulihkan (mis. claim di admin untuk submisi creator, kategori baru untuk campaign lama) →
+      -- dilaporkan, antrean jalan (O1-C3, O2-1: insert maupun update).
+      if not coalesce((p ->> 'resync')::boolean, false) then
+        raise;
+      end if;
+      perform bus.reject(jsonb_build_object('reason', 'orphan', 'table', p ->> 'table', 'key', p -> 'key', 'error', sqlerrm));
+      n := 0;
+    end;
+    if n = 0 then
+      perform set_config('bus.applying', 'off', true);
+      return;
     end if;
   end if;
   perform set_config('bus.applying', 'off', true);

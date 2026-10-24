@@ -249,6 +249,14 @@ select ok(exists (select 1 from ops.alerts where kind = 'bus.rejected_payload' a
 select throws_ok($$ select api.bus_receive('creator', jsonb_build_array(jsonb_build_object('id', gen_random_uuid(), 'topic', 'rep.row', 'payload',
   '{"table":"public.rc_child","op":"upsert","key":{"id":2},"row":{"id":2,"parent_id":99}}'::jsonb))) $$, '23503', null,
   'O1-C3: kiriman biasa dengan induk belum tiba tetap menahan antrean');
+insert into public.rc_child values (3, 1);
+select lives_ok($$ select api.bus_receive('creator', jsonb_build_array(jsonb_build_object('id', gen_random_uuid(), 'topic', 'rep.row', 'payload',
+  '{"table":"public.rc_child","op":"upsert","resync":true,"key":{"id":3},"row":{"id":3,"parent_id":99}}'::jsonb))) $$,
+  'O2-1: update resync ke induk yang hilang tidak menahan antrean');
+select ok((select parent_id from public.rc_child where id = 3) = 1
+          and exists (select 1 from ops.alerts where kind = 'bus.rejected_payload' and id > (select m from t_cx2)
+                      and payload -> 'events' @> '[{"reason":"orphan","table":"public.rc_child","key":{"id":3}}]'),
+          'O2-1: baris tidak berubah, dilaporkan');
 drop table public.rc_src, public.rc_dst, public.rc_mixed, public.rc_ref, public.rc_child, public.rc_part;
 
 -- Review CX16: bus.resync mengirim baris urut kunci primer (bukan urutan fisik heap) — penerima seperti apply_snapshot memproses
