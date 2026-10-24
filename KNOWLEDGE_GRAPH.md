@@ -727,7 +727,7 @@ Arah: `A --tipe--> B` = A bergantung pada B. `?` = belum terverifikasi.
 | `layout:clipper` | routes-to | `page:app/share` | apps/clipper/src/app/manifest.ts:19 (share_target) |
 | `page:app/.well-known/assetlinks.json` | configured-by | `env:ANDROID_APP_PACKAGE` | apps/clipper/src/app/.well-known/assetlinks.json/route.ts:7 |
 | `page:app/.well-known/assetlinks.json` | configured-by | `env:ANDROID_CERT_SHA256` | apps/clipper/src/app/.well-known/assetlinks.json/route.ts:7 |
-| `doc:deploy/deploy.sh` | documents | `env:ANDROID_APP_PACKAGE` | deploy/deploy.sh:389 |
+| `doc:deploy/deploy.sh` | documents | `env:ANDROID_APP_PACKAGE` | deploy/deploy.sh:390 |
 | `page:app/social` | configured-by | `env:NEXT_PUBLIC_GOOGLE_CLIENT_ID` | PRD v0.3.1 §15.7 client ID publik (belum di kode: app tidak membaca client ID; URL OAuth dibuat creator/social, lihat mod:social) |
 | `page:app/social` | configured-by | `env:NEXT_PUBLIC_META_APP_ID` | PRD v0.3.1 §15.7 client ID publik (belum di kode: app tidak membaca client ID; URL OAuth dibuat creator/social, lihat mod:social) |
 | `page:app/social` | configured-by | `env:NEXT_PUBLIC_TIKTOK_CLIENT_KEY` | PRD v0.3.1 §15.7 client ID publik (belum di kode: app tidak membaca client ID; URL OAuth dibuat creator/social, lihat mod:social) |
@@ -1198,7 +1198,7 @@ Arah: `A --tipe--> B` = A bergantung pada B. `?` = belum terverifikasi.
 | `fn:bus_in.creator` | writes | `table:creator/market.profiles` | db/creator/supabase/schemas/api/profile.sql:65 (profile_ensure; profile_anonymize baris 67) |
 | `mod:auth` | calls | `mod:db-creator` | packages/auth/src/server.ts:7 (creatorServer) |
 | `mod:db-creator` | configured-by | `env:NEXT_PUBLIC_CREATOR_DB_URL` | packages/db-creator/src/index.ts:9 |
-| `mod:db-creator` | configured-by | `config:host.creator-api` | deploy/deploy.sh:382 (apps_env) |
+| `mod:db-creator` | configured-by | `config:host.creator-api` | deploy/deploy.sh:383 (apps_env) |
 | `page:app/profile` | calls | `api:rpc creator.ensure_profile` | apps/clipper/src/features/profile/actions.ts:31 (saveProfile, lalu tunggu replika admin) |
 | `page:app/profile` | writes | `table:bucket.avatars` | apps/clipper/src/features/profile/actions.ts:16 (avatarUploadUrl) |
 | `test:creator.profiles` | tests | `api:rpc creator.ensure_profile` | db/creator/supabase/tests/creator_profiles.test.sql:1 |
@@ -1726,8 +1726,8 @@ Arah: `A --tipe--> B` = A bergantung pada B. `?` = belum terverifikasi.
 | `test:core.full-product` | tests | `table:bus.outbox` | db/core/supabase/tests/bus.test.sql:290 (CX16: resync mengirim urut kunci primer) |
 | `page:admin/` | calls | `api:rpc core.skip_failed_snapshot` | apps/admin/src/features/overview/actions.ts:18 (skipFailedSnapshot; tombol di kartu alert tracking.apply_failed) |
 | `api:rpc core.skip_failed_snapshot` | writes | `table:trust.fraud_flags` | db/core/supabase/schemas/api/worker.sql:464 (FR-12 untuk review moderator) |
-| `doc:deploy/deploy.sh` | calls | `fn:bus.skip` | deploy/deploy.sh:559 (bus skip <stack> <target> <seq>) |
-| `doc:deploy/deploy.sh` | calls | `fn:bus.reconcile` | deploy/deploy.sh:570 (bus reconcile <target>; runbook restore satu DB di kepala file) |
+| `doc:deploy/deploy.sh` | calls | `fn:bus.skip` | deploy/deploy.sh:560 (bus skip <stack> <target> <seq>) |
+| `doc:deploy/deploy.sh` | calls | `fn:bus.reconcile` | deploy/deploy.sh:571 (bus reconcile <target>; runbook restore satu DB di kepala file) |
 | `job:bus-reconcile` | calls | `fn:bus.reconcile` | db/core/supabase/schemas/bus/self.sql:7 (bus.reconcile_apply) |
 | `test:core.full-product` | tests | `job:bus-reconcile` | db/core/supabase/tests/bus.test.sql:226 |
 | `api:rpc core.bus_receive` | calls | `fn:bus.reconcile` | db/core/supabase/schemas/bus/bus.sql:208 (rep.keys → bus.apply_keys) |
@@ -1783,10 +1783,10 @@ Arah: `A --tipe--> B` = A bergantung pada B. `?` = belum terverifikasi.
 | `doc:deploy/deploy.sh` | documents | `env:PII_HMAC_KEY` | deploy/keys.mjs:68 |
 | `doc:deploy/deploy.sh` | documents | `env:PII_ENC_KEY` | deploy/keys.mjs:69 (PII_ENC_KEYS) |
 | `doc:deploy/deploy.sh` | documents | `env:VAPID_PRIVATE_KEY` | deploy/keys.mjs:74 |
-| `doc:deploy/deploy.sh` | documents | `env:IDENTITY_ISSUER` | deploy/deploy.sh:280 |
-| `doc:deploy/deploy.sh` | documents | `config:host.brand-api` | deploy/deploy.sh:90 (stack_host: <stack>-api.DOMAIN) |
-| `doc:deploy/deploy.sh` | documents | `config:host.creator-api` | deploy/deploy.sh:90 (stack_host: <stack>-api.DOMAIN) |
-| `mod:db-brand` | configured-by | `config:host.brand-api` | deploy/deploy.sh:381 (apps_env) |
+| `doc:deploy/deploy.sh` | documents | `env:IDENTITY_ISSUER` | deploy/deploy.sh:281 |
+| `doc:deploy/deploy.sh` | documents | `config:host.brand-api` | deploy/deploy.sh:91 (stack_host: <stack>-api.DOMAIN) |
+| `doc:deploy/deploy.sh` | documents | `config:host.creator-api` | deploy/deploy.sh:91 (stack_host: <stack>-api.DOMAIN) |
+| `mod:db-brand` | configured-by | `config:host.brand-api` | deploy/deploy.sh:382 (apps_env) |
 | `doc:deploy/deploy.sh` | documents | `fn:custom_access_token_hook` | deploy/supabase/identity.yml:17 (GOTRUE_HOOK_CUSTOM_ACCESS_TOKEN_URI) |
 | `doc:scripts/dev-stack.sh` | documents | `env:BRIDGE_SECRET_IDENTITY_TO_CORE` | scripts/dev-stack.sh:19 |
 | `doc:scripts/dev-stack.sh` | documents | `env:IDENTITY_ISSUER` | scripts/dev-stack.sh:44 |
@@ -1998,7 +1998,7 @@ Arah: `A --tipe--> B` = A bergantung pada B. `?` = belum terverifikasi.
 | `page:app/.well-known/apple-app-site-association` | calls | `mod:clipper-lib` | apps/clipper/src/app/.well-known/apple-app-site-association/route.ts:1 |
 | `page:app/.well-known/apple-app-site-association` | configured-by | `env:APPLE_TEAM_ID` | apps/clipper/src/app/.well-known/apple-app-site-association/route.ts:7 |
 | `page:app/.well-known/apple-app-site-association` | configured-by | `env:IOS_BUNDLE_ID` | apps/clipper/src/app/.well-known/apple-app-site-association/route.ts:7 |
-| `doc:deploy/deploy.sh` | documents | `env:APPLE_TEAM_ID` | deploy/deploy.sh:390 |
+| `doc:deploy/deploy.sh` | documents | `env:APPLE_TEAM_ID` | deploy/deploy.sh:391 |
 | `api:fn identity/session-handoff` | writes | `table:member.session_handoffs` | db/identity/supabase/schemas/api/svc.sql:178 (api.svc_create_handoff; redeem = svc_redeem_handoff) |
 | `page:accounts/handoff` | calls | `api:fn identity/session-handoff` | apps/accounts/src/lib/handoff.ts:4 |
 | `api:fn identity/bridge` | calls | `mod:apns` | db/identity/supabase/functions/bridge/handler.ts:5 |
@@ -2830,6 +2830,7 @@ Masalah sistem yang ditemukan saat menyusun PRD v0.2 dan saat dicek ulang (v0.2.
 | 2026-10-24 | `job:bus-reconcile` | Review OPS5 (Codex O5-1/O5-2): job memilih kandidat dengan satu snapshot lalu menghapus — upsert ulang yang commit di tengah tetap dihapus (dibuktikan dua sesi di core lokal: fungsi lama menghapus baris); bus skip boleh di attempts 3 padahal 3 kegagalan bisa semuanya per batch (kepala belum terbukti rusak) | diperbaiki: kunci advisory per (pengirim, tabel) dipegang job sampai commit dan diambil apply_row upsert saat ada rekonsiliasi tertunda (e2e bus dua sesi: job menunggu, baris selamat); job ≤ 2000 baris/putaran (tunggu bridge < timeout); bus.skip menolak attempts < 4 |
 | 2026-10-24 | `job:bus-reconcile` | Review OPS5 (Claude O5-C1): kunci per (pengirim, tabel) diambil job dalam urutan run dan oleh batch bus_receive dalam urutan event → siklus kunci (organizations ↔ org_members) → deadlock | diperbaiki: satu kunci per pengirim di apply_row dan reconcile_apply (batch satu pengirim memang serial) |
 | 2026-10-24 | `job:bus-reconcile` | Review OPS6 (Codex O6-1): dua pemanggil reconcile_apply (cron + manual) — yang menunggu kunci memproses run basi yang daftar kuncinya sudah dihapus pemanggil pertama → hapus massal (e2e dengan fungsi lama: anggota org 4 → 0) | diperbaiki: run dibaca ulang sesudah kunci, dilewati bila sudah selesai; regresi dua sesi di e2e/bus.sh |
+| 2026-10-24 | `doc:deploy/deploy.sh` | Review OPS6 (Claude O6-C1): runbook menjalankan `up <stack>` sesudah `bus jobs off` — migrasi yang lebih baru dari backup membuat job (mis. track-worker creator) aktif dan langsung jalan di tengah restore | diperbaiki: urutan hold → restore → setval creator → up (masih hold) → jobs off |
 | 2026-10-24 | `job:lifecycle` | Review OPS3 (Claude O3-C2): alert lifecycle/hook menunjuk snapshot final/pemicu, bukan snapshot tertunda paling awal yang memblokir → tombol "Lewati snapshot" selalu not_next_pending; alert skip_retry tertelan dedupe per jenis | diperbaiki: tracking.alert_apply_failed (snapshot pemblokir, satu alert terbuka per snapshot) dipakai hook, lifecycle, skip_retry |
 
 ## Keputusan

@@ -29,11 +29,12 @@
 #   Restore SATU DB (core|creator|brand) ke backup lama — runbook (CX2): 1) `deploy.sh down apps` di server app dan `deploy.sh bus
 #                          jobs off` di SETIAP server stack (hentikan semua tulisan user, uang & worker) 2) di server stack yang
 #                          dipulihkan: `deploy.sh bus jobs hold` → pulihkan dump (pg_restore dari deploy/stack/<stack>/backups; dump
-#                          membawa job cron yang aktif, hold mencegahnya jalan di atas data setengah dimuat) → `deploy.sh bus jobs off`
-#                          (job bisnis dari dump dimatikan, bus jalan lagi); khusus creator, sebelum jobs off: id snapshot dimajukan
-#                          melewati yang sudah dilihat admin MAUPUN yang ada di backup — N = `select max(id) from tracking.view_snapshots`
-#                          di core-db, lalu di creator-db `select setval(pg_get_serial_sequence('tracking.view_snapshots', 'id'),
-#                          greatest(N, (select coalesce(max(id), 1) from tracking.view_snapshots)))`; lalu `deploy.sh up <stack>`
+#                          membawa job cron yang aktif, hold mencegahnya jalan di atas data setengah dimuat) → khusus creator: id
+#                          snapshot dimajukan melewati yang sudah dilihat admin MAUPUN yang ada di backup — N = `select max(id) from
+#                          tracking.view_snapshots` di core-db, lalu di creator-db `select setval(pg_get_serial_sequence(
+#                          'tracking.view_snapshots', 'id'), greatest(N, (select coalesce(max(id), 1) from tracking.view_snapshots)))`
+#                          → `deploy.sh up <stack>` MASIH dalam hold (migrasi yang lebih baru dari backup membuat job aktif) →
+#                          `deploy.sh bus jobs off` (semua job bisnis — dari dump maupun migrasi — dimatikan, bus jalan lagi)
 #                          3) di SETIAP server stack, termasuk server yang dipulihkan (stack lain yang satu server ikut):
 #                          `deploy.sh bus reconcile <nama bus stack yang dipulihkan>` (state yang hilang dikirim ulang, baris yang dicabut sesudah backup — mis. anggota org — dihapus; penghapusan oleh job
 #                          bus-reconcile bertahap); tunggu `deploy.sh bus status` di semua server: antrean & rekonsiliasi_menunggu
