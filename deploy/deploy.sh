@@ -39,7 +39,7 @@
 #                          bus-reconcile bertahap); tunggu `deploy.sh bus status` di semua server: antrean & rekonsiliasi_menunggu
 #                          kosong (daftar kunci langkah 4 harus sudah memuat baris yang dikirim ulang langkah 3) 4) di server
 #                          stack yang dipulihkan: `deploy.sh bus reconcile <tiap stack lain>` (stack itu sekarang sumber kebenaran
-#                          datanya sendiri) 5) `deploy.sh bus status` di semua server sampai antrean kosong; alert admin
+#                          datanya sendiri) 5) `deploy.sh bus status` di semua server sampai antrean & rekonsiliasi_menunggu kosong; alert admin
 #                          bus.rejected_payload berisi baris yang TIDAK diubah otomatis dan perlu keputusan manual: delete (baris
 #                          campuran yang sudah tidak ada di pemilik, mis. submisi/profil yang dibuat sesudah backup creator — masih
 #                          punya status & earning di admin: batalkan/kembalikan atau buat ulang di pemilik), reconcile_delete (baris

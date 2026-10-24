@@ -1255,7 +1255,7 @@ Arah: `A --tipe--> B` = A bergantung pada B. `?` = belum terverifikasi.
 | `api:rpc core.copy_campaign_economics` | writes | `table:finance.reward_pools` | db/core/supabase/schemas/api/campaigns.sql:536 |
 | `api:rpc core.copy_campaign_economics` | writes | `table:market.rate_rules` | db/core/supabase/schemas/api/campaigns.sql:539 |
 | `api:rpc core.save_campaign` | reads | `table:market.campaigns` | db/core/supabase/schemas/api/campaigns.sql:206 (gerbang content_version replika) |
-| `api:rpc core.bus_receive` | calls | `fn:bus_in.market_campaigns_applied` | db/core/supabase/schemas/bus/bus.sql:437 |
+| `api:rpc core.bus_receive` | calls | `fn:bus_in.market_campaigns_applied` | db/core/supabase/schemas/bus/bus.sql:444 |
 | `fn:bus_in.market_campaigns_applied` | writes | `table:market.campaigns` | db/core/supabase/schemas/market/campaigns.sql:153 |
 | `fn:bus_in.market_campaigns_applied` | writes | `table:finance.invoices` | db/core/supabase/schemas/market/campaigns.sql:127 (lewat market.require_resubmit, juga dari trigger aset) |
 | `comp:CampaignBuilder` | calls | `api:rpc brand.save_campaign` | packages/campaign-builder/src/persist.ts:47 (persistCampaign) |
@@ -1723,15 +1723,15 @@ Arah: `A --tipe--> B` = A bergantung pada B. `?` = belum terverifikasi.
 | `test:e2e.bus` | calls | `api:fn creator/bridge` | e2e/bus.sh:3 |
 | `test:e2e.bus` | tests | `api:rpc core.bus_receive` | e2e/bus.sh:43 |
 | `test:core.full-product` | tests | `fn:bus.accepts` | db/core/supabase/tests/bus.test.sql:6 |
-| `test:core.full-product` | tests | `table:bus.outbox` | db/core/supabase/tests/bus.test.sql:280 (CX16: resync mengirim urut kunci primer) |
+| `test:core.full-product` | tests | `table:bus.outbox` | db/core/supabase/tests/bus.test.sql:286 (CX16: resync mengirim urut kunci primer) |
 | `page:admin/` | calls | `api:rpc core.skip_failed_snapshot` | apps/admin/src/features/overview/actions.ts:18 (skipFailedSnapshot; tombol di kartu alert tracking.apply_failed) |
 | `api:rpc core.skip_failed_snapshot` | writes | `table:trust.fraud_flags` | db/core/supabase/schemas/api/worker.sql:464 (FR-12 untuk review moderator) |
 | `doc:deploy/deploy.sh` | calls | `fn:bus.skip` | deploy/deploy.sh:559 (bus skip <stack> <target> <seq>) |
 | `doc:deploy/deploy.sh` | calls | `fn:bus.reconcile` | deploy/deploy.sh:570 (bus reconcile <target>; runbook restore satu DB di kepala file) |
 | `job:bus-reconcile` | calls | `fn:bus.reconcile` | db/core/supabase/schemas/bus/self.sql:7 (bus.reconcile_apply) |
-| `test:core.full-product` | tests | `job:bus-reconcile` | db/core/supabase/tests/bus.test.sql:218 |
+| `test:core.full-product` | tests | `job:bus-reconcile` | db/core/supabase/tests/bus.test.sql:222 |
 | `api:rpc core.bus_receive` | calls | `fn:bus.reconcile` | db/core/supabase/schemas/bus/bus.sql:208 (rep.keys → bus.apply_keys) |
-| `fn:bus.reconcile` | writes | `table:bus.outbox` | db/core/supabase/schemas/bus/bus.sql:502 (rep.keys berpotongan + total; penerima apply_keys hapus hanya bila daftar lengkap, baris yang tak bisa dihapus dilaporkan) |
+| `fn:bus.reconcile` | writes | `table:bus.outbox` | db/core/supabase/schemas/bus/bus.sql:509 (rep.keys berpotongan + total; penerima apply_keys hapus hanya bila daftar lengkap, baris yang tak bisa dihapus dilaporkan) |
 | `test:core.full-product` | tests | `api:rpc core.skip_failed_snapshot` | db/core/supabase/tests/core_contracts_finance.test.sql:1920 |
 | `test:core.full-product` | tests | `fn:bus.skip` | db/core/supabase/tests/bus.test.sql:181 |
 | `test:core.full-product` | tests | `fn:bus.reconcile` | db/core/supabase/tests/bus.test.sql:192 |
@@ -2826,6 +2826,7 @@ Masalah sistem yang ditemukan saat menyusun PRD v0.2 dan saat dicek ulang (v0.2.
 | 2026-10-24 | `doc:deploy/deploy.sh` | Review OPS2 (Claude O2-C1/C2/C3): data cron.job ikut dump (tabel config pg_cron) → job bisnis aktif di tengah pg_restore sebelum `jobs off` (lifecycle men-settle campaign saat submisi belum dimuat); `bus status`/`down`/`status` exit 1 bila stack terakhir tidak ada; reason `delete` (baris campuran yang hilang dari pemilik) tidak disebut runbook | diperbaiki: `bus jobs hold` = ALTER SYSTEM cron.launch_active_jobs off (postgresql.auto.conf, di luar dump; diuji di creator lokal: 0 run selama hold, jalan lagi sesudah on) sebelum pg_restore; if/then di loop; runbook menyebut delete. Restore satu transaksi (`pg_restore --clean` | psql -1) diuji dan GAGAL di objek internal Supabase (partisi realtime) — tidak dipakai |
 | 2026-10-24 | `doc:deploy/deploy.sh` | Review OPS3 (Codex O3-1/O3-2): restart identity snapshot creator ke max(id) admin + 1 bisa di bawah id yang sudah ada di backup (bus tertinggal saat backup) → duplikat PK; reconcile ke stack yang dipulihkan hanya "di server lain" → satu server tidak pernah memulihkan replika masuk | diperbaiki: runbook setval greatest(max admin, max creator) (diuji di creator lokal dalam transaksi); langkah 3 di SETIAP server stack termasuk yang dipulihkan |
 | 2026-10-24 | `job:bus-reconcile` | Review OPS3 (Claude O3-C1): penghapusan rekonsiliasi di dalam bus_receive (anti-join + subtransaksi per baris + bus.reject menyusun ulang jsonb per penolakan) melewati statement_timeout 8s authenticator → potongan terakhir gagal terus, antrean macet (4000 baris campuran timeout; 1 juta baris anti-join 7 s) | diperbaiki: potongan terakhir hanya mendaftarkan bus.reconcile_runs; job bus-reconcile ≤ 5000 baris/putaran (baris dilaporkan dicatat ke daftar supaya tidak diulang); bus.reject simpan 10 contoh + jumlah. Diukur: bus_receive 4 ms untuk 200 ribu baris, satu putaran 5000 baris 2,35 s; e2e lewat cron asli |
+| 2026-10-24 | `job:bus-reconcile` | Review OPS4 (Codex O4-1): penghapusan yang ditunda ke job melanggar urutan FIFO — upsert yang tiba sesudah daftar kunci (baris baru di pemilik) terhapus job yang jalan belakangan | diperbaiki: apply_row upsert dari pengirim yang punya rekonsiliasi tertunda di tabel itu menambah kuncinya ke daftar (pgTAP merah di kode lama); runbook langkah 5 menunggu rekonsiliasi_menunggu kosong |
 | 2026-10-24 | `job:lifecycle` | Review OPS3 (Claude O3-C2): alert lifecycle/hook menunjuk snapshot final/pemicu, bukan snapshot tertunda paling awal yang memblokir → tombol "Lewati snapshot" selalu not_next_pending; alert skip_retry tertelan dedupe per jenis | diperbaiki: tracking.alert_apply_failed (snapshot pemblokir, satu alert terbuka per snapshot) dipakai hook, lifecycle, skip_retry |
 
 ## Keputusan

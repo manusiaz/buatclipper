@@ -215,7 +215,13 @@ select lives_ok($$ select api.bus_receive('creator', jsonb_build_array(
   'CX2: potongan terakhir diterapkan');
 select is((select count(*)::int from public.rc_dst), 3, 'O3-C1: bus_receive tidak menghapus (dikerjakan job bus-reconcile, di luar timeout bridge)');
 select is((select count(*)::int from bus.reconcile_runs), 2, 'O3-C1: daftar lengkap menunggu job');
+-- O4-1: baris yang tiba sesudah daftar kunci (FIFO) sebelum job jalan tidak ikut terhapus
+insert into public.rc_dst values (4, 'baru di pemilik');
+select lives_ok($$ select api.bus_receive('creator', jsonb_build_array(jsonb_build_object('id', gen_random_uuid(), 'topic', 'rep.row', 'payload',
+  '{"table":"public.rc_dst","op":"upsert","key":{"id":4},"row":{"id":4,"a":"baru di pemilik"}}'::jsonb))) $$, 'O4-1: upsert sesudah daftar kunci diterima');
 select is(bus.reconcile_apply(), 2, 'O3-C1: job memproses baris yang tidak ada di pemilik (1 dihapus, 1 campuran dilaporkan)');
+select ok(exists (select 1 from public.rc_dst where id = 4), 'O4-1: baris yang tiba sesudah daftar kunci tidak dihapus');
+delete from public.rc_dst where id = 4;
 select is((select array_agg(id order by id) from public.rc_dst), array[1, 3], 'CX2: baris yang tidak ada di pemilik (dihidupkan restore) dihapus');
 select is((select count(*)::int from public.rc_mixed), 2, 'CX2: tabel campuran tidak dihapus (kolom milik penerima)');
 select ok(exists (select 1 from ops.alerts where kind = 'bus.rejected_payload' and id > (select m from t_cx2) and payload -> 'events' -> 0 ->> 'reason' = 'delete'),

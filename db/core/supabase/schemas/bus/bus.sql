@@ -365,6 +365,13 @@ begin
     perform bus.reject(jsonb_build_object('reason', 'table', 'table', p ->> 'table', 'op', p ->> 'op'));
     return;
   end if;
+  -- Rekonsiliasi tertunda (job bus-reconcile) untuk tabel ini: baris yang tiba sesudah daftar kunci (FIFO) ada di pemilik →
+  -- masuk daftar supaya tidak ikut terhapus (O4-1).
+  if p ->> 'op' = 'upsert' then
+    insert into bus.reconcile_keys (source, tbl, epoch, key)
+    select p_source, t::text, x.epoch, p -> 'key' from bus.reconcile_runs x where x.source = p_source and x.tbl = t::text
+    on conflict do nothing;
+  end if;
   pk := bus.pk_columns(t);
   bad := array(select k from jsonb_object_keys(case when jsonb_typeof(p -> 'row') = 'object' then p -> 'row' else '{}' end) k
                 where not k = any (allowed || pk));
