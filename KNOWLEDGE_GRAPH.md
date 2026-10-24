@@ -1011,7 +1011,7 @@ Arah: `A --tipe--> B` = A bergantung pada B. `?` = belum terverifikasi.
 | `api:rpc creator.worker_create_submission` | writes | `table:creator/tracking.submissions` | db/creator/supabase/schemas/api/worker.sql:364 |
 | `api:rpc creator.worker_create_submission` | reads | `table:creator/market.claims` | db/creator/supabase/schemas/api/worker.sql:297 |
 | `fn:tracking.decide_new_submission` | writes | `table:trust.fraud_flags` | db/core/supabase/schemas/api/worker.sql:308 (FR-07, cover_hash dari submit) |
-| `fn:tracking.decide_new_submission` | writes | `table:market.claims` | db/core/supabase/schemas/api/worker.sql:246 |
+| `fn:tracking.decide_new_submission` | writes | `table:market.claims` | db/core/supabase/schemas/api/worker.sql:249 |
 | `api:fn creator/social` | calls | `mod:social` | db/creator/supabase/functions/social/handler.ts:23 |
 | `api:fn creator/social` | configured-by | `env:GOOGLE_CLIENT_SECRET` | db/creator/supabase/functions/_shared/social/mod.ts:19 |
 | `api:fn creator/social` | configured-by | `env:META_APP_SECRET` | db/creator/supabase/functions/_shared/social/mod.ts:18 |
