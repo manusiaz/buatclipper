@@ -373,8 +373,10 @@ begin
   -- Rekonsiliasi tertunda (job bus-reconcile) untuk tabel ini: baris yang tiba sesudah daftar kunci (FIFO) ada di pemilik →
   -- masuk daftar supaya tidak ikut terhapus (O4-1).
   if p ->> 'op' = 'upsert' and exists (select 1 from bus.reconcile_runs x where x.source = p_source and x.tbl = t::text) then
-    -- serial dengan job (kunci sama di bus.reconcile_apply): job tidak menghapus baris yang sedang dikirim ulang (O5-1)
-    perform pg_advisory_xact_lock(hashtextextended('bus_reconcile:' || p_source || ':' || t::text, 0));
+    -- serial dengan job (kunci sama di bus.reconcile_apply): job tidak menghapus baris yang sedang dikirim ulang (O5-1). Satu
+    -- kunci per pengirim, bukan per tabel: batch bus_receive menyentuh beberapa tabel dalam urutan event, job dalam urutan run —
+    -- kunci per tabel bisa deadlock (O5-C1); batch satu pengirim memang diterapkan satu per satu.
+    perform pg_advisory_xact_lock(hashtextextended('bus_reconcile:' || p_source, 0));
     insert into bus.reconcile_keys (source, tbl, epoch, key)
     select p_source, t::text, x.epoch, p -> 'key' from bus.reconcile_runs x where x.source = p_source and x.tbl = t::text
     on conflict do nothing;
@@ -568,7 +570,7 @@ begin
     t := to_regclass(r.tbl);
     m := 0;
     -- kunci dipegang sampai job commit: upsert yang tiba bersamaan menunggu, lalu menulis ulang barisnya (O5-1)
-    perform pg_advisory_xact_lock(hashtextextended('bus_reconcile:' || r.source || ':' || r.tbl, 0));
+    perform pg_advisory_xact_lock(hashtextextended('bus_reconcile:' || r.source, 0));
     if t is not null then
       pk := bus.pk_columns(t);
       for k in execute format('select jsonb_build_object(%s) from %s x where not exists (select 1 from bus.reconcile_keys r
