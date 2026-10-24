@@ -8,7 +8,7 @@ import { APP_RETURN, cookieOptions, decodeState, redirectUri, STATE_COOKIE, veri
 
 // Platform → app.{domain}/api/oauth/[platform]/callback: cek state (constant-time) → creator/social connect → /social.
 export async function GET(request: NextRequest, { params }: { params: Promise<{ platform: string }> }) {
-  const uid = (await requireClipper()).claims.sub;
+  await requireClipper();
   const { platform } = await params;
   const sp = request.nextUrl.searchParams;
   const saved = decodeState(request.cookies.get(STATE_COOKIE)?.value);
@@ -27,7 +27,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
   const code = sp.get('code');
   if (!code || code.length > 2048) return done(new URLSearchParams({ error: 'oauth_failed', platform }));
 
-  const r = await invokeFunction<{ platform: string; handle: string }>('creator', 'social', {
+  const r = await invokeFunction<{ account_id: string; platform: string; handle: string }>('creator', 'social', {
     action: 'connect',
     platform,
     code,
@@ -36,9 +36,10 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     ...(saved.pageId ? { page_id: saved.pageId } : {}),
   });
   if (r.ok) {
-    // /social membaca akun dari admin: tunggu replika akun terverifikasi (habis waktu = tetap tersambung di creator)
+    // /social membaca akun dari admin: tunggu replika akun ini terverifikasi — akun lain di platform yang sama tidak dihitung
+    // (habis waktu = tetap tersambung di creator)
     const db = await core();
-    await untilReplicated(async () => !!(await db.from('social_accounts').select('id').eq('user_id', uid).eq('platform', platform)
+    await untilReplicated(async () => !!(await db.from('social_accounts').select('id').eq('id', r.data.account_id)
       .eq('status', 'verified').maybeSingle()).data);
     return done(new URLSearchParams({ connected: platform, handle: r.data.handle ?? '' }));
   }
