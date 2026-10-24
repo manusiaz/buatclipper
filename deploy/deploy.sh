@@ -24,24 +24,28 @@
 #                          jadi kepala = event yang gagal — snapshot yang gagal di admin: tombol "Lewati snapshot"
 #                          di alert admin.{DOMAIN}, bukan dari sini · bus reconcile <admin|creator|brand> → kirim ulang semua tabel
 #                          replika dari stack di server ini ke target + hapus di target baris yang sudah tidak ada di sini
-#                          · bus jobs <off|on> → hentikan/jalankan job cron bisnis stack di server ini (restore)
+#                          · bus jobs <hold|off|on> → hold: pg_cron tidak menjalankan job apa pun (bertahan melewati pg_restore);
+#                          off: job bisnis nonaktif, job bus-* jalan; on: semua jalan (stack di server ini)
 #   Restore SATU DB (core|creator|brand) ke backup lama — runbook (CX2): 1) `deploy.sh down apps` di server app dan `deploy.sh bus
-#                          jobs off` di SETIAP server stack (hentikan semua tulisan user, uang & worker) 2) pulihkan dump ke stack itu (pg_restore dari deploy/stack/<stack>/backups), SEGERA
-#                          ulangi `deploy.sh bus jobs off` di server itu (dump membawa job cron aktif: lifecycle/release/track-worker
-#                          jangan jalan di atas data yang belum lengkap; job bus-* tetap jalan), khusus creator: id snapshot dimajukan
-#                          melewati yang sudah dilihat admin: ambil `select max(id) from tracking.view_snapshots` di core-db, lalu di creator-db `alter table
-#                          tracking.view_snapshots alter column id restart with <max+1>` — lalu `deploy.sh up <stack>`
-#                          3) di SETIAP server stack lain: `deploy.sh bus reconcile <nama bus stack yang dipulihkan>` (state yang
-#                          hilang dikirim ulang, baris yang dicabut sesudah backup — mis. anggota org — dihapus) 4) di server stack
-#                          yang dipulihkan: `deploy.sh bus reconcile <tiap stack lain>` (stack itu sekarang sumber kebenaran datanya
-#                          sendiri) 5) `deploy.sh bus status` di semua server sampai antrean kosong; alert admin bus.rejected_payload
-#                          berisi baris yang TIDAK diubah otomatis dan perlu keputusan manual: reconcile_delete (baris tidak boleh
-#                          dihapus: append-only/dirujuk catatan uang, mis. snapshot yang hilang dari creator), orphan (induk hilang
-#                          bersama DB yang dipulihkan, mis. submisi yang claim-nya hilang dari admin), reconcile_incomplete (ulangi
-#                          reconcile); kepala antrean yang macet foreign key (event biasa yang induknya ikut hilang, sudah antre sebelum
-#                          resync) → `deploy.sh bus skip` (barisnya dikirim ulang resync di belakangnya lalu dilaporkan orphan);
-#                          perintah/event non-replika di jendela backup hilang: cek audit 6) `deploy.sh bus jobs on` di SETIAP server
-#                          stack, lalu `deploy.sh up apps`.
+#                          jobs off` di SETIAP server stack (hentikan semua tulisan user, uang & worker) 2) di server stack yang
+#                          dipulihkan: `deploy.sh bus jobs hold` → pulihkan dump (pg_restore dari deploy/stack/<stack>/backups; dump
+#                          membawa job cron yang aktif, hold mencegahnya jalan di atas data setengah dimuat) → `deploy.sh bus jobs off`
+#                          (job bisnis dari dump dimatikan, bus jalan lagi); khusus creator, sebelum jobs off: id snapshot dimajukan
+#                          melewati yang sudah dilihat admin — `select max(id) from tracking.view_snapshots` di core-db, lalu di
+#                          creator-db `alter table tracking.view_snapshots alter column id restart with <max+1>`; lalu `deploy.sh up
+#                          <stack>` 3) di SETIAP server stack lain: `deploy.sh bus reconcile <nama bus stack yang dipulihkan>` (state
+#                          yang hilang dikirim ulang, baris yang dicabut sesudah backup — mis. anggota org — dihapus) 4) di server
+#                          stack yang dipulihkan: `deploy.sh bus reconcile <tiap stack lain>` (stack itu sekarang sumber kebenaran
+#                          datanya sendiri) 5) `deploy.sh bus status` di semua server sampai antrean kosong; alert admin
+#                          bus.rejected_payload berisi baris yang TIDAK diubah otomatis dan perlu keputusan manual: delete (baris
+#                          campuran yang sudah tidak ada di pemilik, mis. submisi/profil yang dibuat sesudah backup creator — masih
+#                          punya status & earning di admin: batalkan/kembalikan atau buat ulang di pemilik), reconcile_delete (baris
+#                          tidak boleh dihapus: append-only/dirujuk catatan uang, mis. snapshot yang hilang dari creator), orphan (induk
+#                          hilang bersama DB yang dipulihkan, mis. submisi yang claim-nya hilang dari admin), reconcile_incomplete
+#                          (ulangi reconcile); kepala antrean yang macet foreign key (event biasa yang induknya ikut hilang, sudah
+#                          antre sebelum resync) → `deploy.sh bus skip` (barisnya dikirim ulang resync di belakangnya lalu dilaporkan
+#                          orphan); perintah/event non-replika di jendela backup hilang: cek audit 6) `deploy.sh bus jobs on` di
+#                          SETIAP server stack, lalu `deploy.sh up apps`.
 #
 # DNS A: auth.{DOMAIN} → server identity, api.{DOMAIN} → server core (admin), creator-api.{DOMAIN} → server creator,
 # brand-api.{DOMAIN} → server brand, {DOMAIN} + accounts./app./brand./admin. → server app. Satu server: semua ke IP yang sama.
@@ -457,11 +461,11 @@ case "$CMD" in
     load_config
     [ -f .generated/caddy.yml ] && docker compose -f .generated/caddy.yml down
     [[ " $SITES " == *" apps "* ]] && [ -f .generated/apps.hosts.yml ] && apps down
-    for p in $STACKS; do [ -d "stack/$p" ] && compose "$p" down; done
+    for p in $STACKS; do if [ -d "stack/$p" ]; then compose "$p" down; fi; done
     true
     ;;
   status)
-    for p in $ALL_STACKS; do [ -d "stack/$p" ] && compose "$p" ps --format 'table {{.Name}}\t{{.Status}}'; done
+    for p in $ALL_STACKS; do if [ -d "stack/$p" ]; then compose "$p" ps --format 'table {{.Name}}\t{{.Status}}'; fi; done
     [ -f .generated/apps.hosts.yml ] && apps ps --format 'table {{.Name}}\t{{.Status}}'
     [ -f .generated/caddy.yml ] && docker compose -f .generated/caddy.yml ps --format 'table {{.Name}}\t{{.Status}}'
     true
@@ -532,7 +536,9 @@ case "$CMD" in
           echo "== $p ($(bus_name "$p"))"
           psql_db "$p" -tA -c "select jsonb_pretty(api.health() - 'db')"
           psql_db "$p" -c "select target, seq, topic, attempts, created_at, left(last_error, 120) as last_error from bus.stuck()"
-          [ "$p" = core ] && psql_db "$p" -c "select source, pinged_at as watermark, seen_at as ping_terakhir, stuck from ops.bus_peers order by source"
+          if [ "$p" = core ]; then
+            psql_db "$p" -c "select source, pinged_at as watermark, seen_at as ping_terakhir, stuck from ops.bus_peers order by source"
+          fi
         done
         ;;
       kick)
@@ -562,14 +568,21 @@ case "$CMD" in
         done
         ;;
       jobs)
-        # Job cron bisnis (lifecycle, release earning, settlement, …) berhenti/jalan; job bus-* tetap (restore, O1-C2).
-        [[ "${BUS_ARGS[0]:-}" =~ ^(on|off)$ ]] || { echo "pakai: deploy.sh bus jobs <off|on>"; exit 1; }
+        # Restore (O1-C2, O2-C1): hold = pg_cron tidak menjalankan job apa pun (ALTER SYSTEM → postgresql.auto.conf, di luar
+        # dump: pg_restore yang membawa cron.job aktif tidak menyalakannya); off = job bisnis (lifecycle, release, track-worker, …)
+        # nonaktif, job bus-* jalan lagi; on = semua jalan.
+        case "${BUS_ARGS[0]:-}" in hold) launch=off ;; off|on) launch=on ;; *) echo "pakai: deploy.sh bus jobs <hold|off|on>"; exit 1 ;; esac
         for p in $local_stacks; do
-          psql_db "$p" -tA -c "select '$p: ' || count(*) || ' job ${BUS_ARGS[0]}' from (select cron.alter_job(jobid, active := $([ "${BUS_ARGS[0]}" = on ] && echo true || echo false))
-                               from cron.job where jobname not like 'bus-%') x"
+          if [ "${BUS_ARGS[0]}" != hold ]; then
+            psql_db "$p" -tA -c "select '$p: ' || count(*) || ' job bisnis ${BUS_ARGS[0]}' from (select cron.alter_job(jobid,
+                                 active := $([ "${BUS_ARGS[0]}" = on ] && echo true || echo false)) from cron.job where jobname not like 'bus-%') x"
+          fi
+          docker exec "$p-db" psql -h localhost -U supabase_admin -d postgres -X -q -v ON_ERROR_STOP=1 \
+            -c "alter system set cron.launch_active_jobs = $launch" -c "select pg_reload_conf()" >/dev/null
+          echo "$p: pg_cron launch_active_jobs = $launch"
         done
         ;;
-      *) echo "pakai: deploy.sh bus status | kick | skip <stack> <target> <seq> | reconcile <target> | jobs <off|on>"; exit 1 ;;
+      *) echo "pakai: deploy.sh bus status | kick | skip <stack> <target> <seq> | reconcile <target> | jobs <hold|off|on>"; exit 1 ;;
     esac
     ;;
   admin)
