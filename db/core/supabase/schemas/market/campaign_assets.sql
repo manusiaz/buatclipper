@@ -19,6 +19,27 @@ create table market.campaign_assets (
 );
 create index campaign_assets_campaign_idx on market.campaign_assets (campaign_id);
 
+-- Aset campaign yang sudah disetujui tidak berubah lewat replika (pasangan market.campaign_content_frozen): brand mengunci brief dari
+-- replika status yang bisa tertinggal (admin → brand macet) — aset baru / hapus dari brand dilewati + alert campaign.content_drift,
+-- supaya clipper tidak menerima file yang belum direview. Aset versi yang diajukan tiba lebih dulu (urutan bus per pengirim).
+create function market.campaign_assets_frozen() returns trigger
+language plpgsql set search_path = '' as $$
+declare
+  c market.campaigns;
+begin
+  if current_setting('bus.applying', true) is distinct from 'on' then
+    return coalesce(new, old);
+  end if;
+  select * into c from market.campaigns k where k.id = coalesce(new.campaign_id, old.campaign_id);
+  if c.status in ('draft', 'in_review', 'rejected') or c.submitted_version is null then
+    return coalesce(new, old);
+  end if;
+  perform ops.raise_alert('campaign.content_drift', 'critical', jsonb_build_object('campaign_id', c.id, 'status', c.status, 'asset', lower(tg_op)));
+  return null;
+end $$;
+create trigger campaign_assets_frozen before insert or delete on market.campaign_assets
+  for each row execute function market.campaign_assets_frozen();
+
 alter table market.campaign_assets enable row level security;
 create policy campaign_assets_iss on market.campaign_assets as restrictive for all to authenticated  -- policy:core.iss-identity
   using ((select ops.iss_ok())) with check ((select ops.iss_ok()));

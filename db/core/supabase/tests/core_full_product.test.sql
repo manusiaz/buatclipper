@@ -194,6 +194,15 @@ select ok(exists (select 1 from ops.alerts where kind = 'campaign.content_drift'
           'R95-1: isi baru setelah disetujui → alert untuk admin');
 select is((select slug from market.campaigns where id = '55555555-0000-0000-0000-000000000014'), 'slug-baru-r96',
           'R96-1: slug tidak dibekukan (unik lintas campaign — slug lama boleh dipakai campaign lain tanpa memacetkan replika)');
+-- Review D9: aset campaign yang disetujui juga dibekukan (file baru dari brand tidak sampai ke clipper tanpa review)
+select lives_ok($$ select api.bus_receive('brand', jsonb_build_array(jsonb_build_object('id', gen_random_uuid(), 'topic', 'rep.row',
+                   'payload', jsonb_build_object('table', 'market.campaign_assets', 'op', 'upsert', 'key', '{"id":"00000000-0000-0000-0000-0000000000d9"}'::jsonb,
+                   'row', jsonb_build_object('id', '00000000-0000-0000-0000-0000000000d9', 'campaign_id', '55555555-0000-0000-0000-000000000014',
+                     'kind', 'link', 'url', 'https://contoh.id/video-belum-direview', 'audience', 'clipper', 'created_at', now()))))) $$,
+                'D9: aset baru dari brand sesudah disetujui tidak menahan antrean');
+select ok(not exists (select 1 from market.campaign_assets where id = '00000000-0000-0000-0000-0000000000d9')
+          and exists (select 1 from ops.alerts where kind = 'campaign.content_drift' and payload ->> 'asset' = 'insert'),
+          'D9: aset baru sesudah disetujui tidak diterapkan + alert');
 -- Review D8: tag wajib caption ke creator datang dari admin (isi yang disetujui), bukan dari brand
 select bus.resync('market.campaigns', 'creator');
 select is((select array(select jsonb_array_elements_text(payload -> 'row' -> 'required_hashtags')) from bus.outbox
