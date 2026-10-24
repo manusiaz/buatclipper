@@ -93,16 +93,18 @@ insert into bus.outbox (target, topic, payload, sent_at, created_at) values
   ('creator', 'uji.prune', '{"lama":true}', now() - interval '15 days', now() - interval '15 days'),
   ('creator', 'uji.prune', '{"baru":true}', now() - interval '1 day', now() - interval '1 day'),
   ('creator', 'uji.prune', '{"belum":true}', null, now() - interval '40 days');
-insert into bus.inbox (id, source, topic, received_at) values ('00000000-0000-0000-0000-0000000000c1', 'creator', 'uji.prune', now() - interval '31 days')
+insert into bus.inbox (id, source, topic, received_at) values ('00000000-0000-0000-0000-0000000000d7', 'creator', 'uji.prune', now() - interval '31 days')
   on conflict (id) do update set received_at = excluded.received_at;
 select bus.prune();
 select is((select array_agg(payload::text order by created_at) from bus.outbox where topic = 'uji.prune'), array['{"belum": true}', '{"baru": true}'],
           'CL4: outbox terkirim > 14 hari dihapus; yang belum terkirim & yang baru tetap');
-select ok(not exists (select 1 from bus.inbox where id = '00000000-0000-0000-0000-0000000000c1'), 'CL4: inbox > 30 hari dihapus');
+select ok(exists (select 1 from bus.inbox where id = '00000000-0000-0000-0000-0000000000d7'),
+          'CX7: inbox tidak dipangkas — kiriman ulang batch yang ack-nya hilang tetap dikenali duplikat, berapa lama pun pengirim mati');
 delete from bus.outbox where topic = 'uji.prune';
 
 -- Review Claude C3 (+ CX1): pengirim hanya bisa menulis tabel & kolom yang memang direplikasi pemiliknya ke sini; di luar itu
--- dilewati + alert (tidak raise: kontrak lama yang masih antre sesudah upgrade tidak boleh memacetkan antrean)
+-- (tabel/kolom yang ada di sini) dilewati + alert (tidak raise: kontrak lama yang masih antre sesudah upgrade tidak boleh
+-- memacetkan antrean); yang belum ada di sini = penerima belum upgrade → raise (antrean ditahan, data tidak hilang, CL7)
 create temp table t_c3 as select coalesce(max(id), 0) m from ops.alerts;
 select lives_ok($$ select api.bus_receive('creator', '[{"id":"00000000-0000-0000-0000-0000000000e1","topic":"rep.row","payload":{"op":"upsert","key":{"id":"11111111-0000-0000-0000-00000000000a"},"row":{"id":"11111111-0000-0000-0000-00000000000a","status":"active","trust_score":100},"table":"market.profiles"}}]') $$,
                 'C3/CX1: kolom milik admin dari creator tidak menahan antrean');
@@ -113,8 +115,19 @@ select lives_ok($$ select api.bus_receive('creator', '[{"id":"00000000-0000-0000
 select ok(not exists (select 1 from ops.settings where key = 'x.c3'), 'C3: tabel yang tidak direplikasi pengirim ke sini tidak ditulis');
 select lives_ok($$ select api.bus_receive('brand', '[{"id":"00000000-0000-0000-0000-0000000000e3","topic":"rep.row","payload":{"op":"delete","key":{"id":"11111111-0000-0000-0000-00000000000a"},"row":null,"table":"market.profiles"}}]') $$,
                 'C3: delete dari pengirim yang tidak berhak tidak menahan antrean');
-select is((select array_agg(payload ->> 'reason' order by id) from ops.alerts where kind = 'bus.rejected_payload' and id > (select m from t_c3)),
+select is((select array_agg(payload -> 'events' -> 0 ->> 'reason' order by id) from ops.alerts where kind = 'bus.rejected_payload' and id > (select m from t_c3)),
           array['columns', 'table', 'table'], 'C3/CX1: tiap penolakan dilaporkan (alert bus.rejected_payload)');
+select throws_ok($$ select api.bus_receive('creator', '[{"id":"00000000-0000-0000-0000-0000000000c7","topic":"rep.row","payload":{"op":"upsert","key":{"id":"11111111-0000-0000-0000-00000000000a"},"row":{"id":"11111111-0000-0000-0000-00000000000a","kolom_baru":"x"},"table":"market.profiles"}}]') $$,
+                 'P0001', 'bus_no_column:market.profiles {kolom_baru}', 'CL7: kolom yang belum ada di penerima → antrean ditahan, tidak dibuang');
+select throws_ok($$ select api.bus_receive('creator', '[{"id":"00000000-0000-0000-0000-0000000000c8","topic":"rep.row","payload":{"op":"upsert","key":{"id":"x"},"row":{"id":"x"},"table":"market.tabel_baru"}}]') $$,
+                 'P0001', 'bus_no_table:market.tabel_baru', 'CL7: tabel yang belum ada di penerima → antrean ditahan');
+-- CL8: satu kiriman berisi banyak event yang ditolak = satu alert (jumlah + contoh), bukan satu alert per event
+create temp table t_cl8 as select coalesce(max(id), 0) m from ops.alerts;
+select api.bus_receive('creator', (select jsonb_agg(jsonb_build_object('id', gen_random_uuid(), 'topic', 'rep.row', 'payload',
+  jsonb_build_object('op', 'upsert', 'key', jsonb_build_object('key', 'x.cl8.' || g), 'row', jsonb_build_object('key', 'x.cl8.' || g, 'value', '1'),
+                     'table', 'ops.settings'))) from generate_series(1, 30) g));
+select is((select string_agg((payload ->> 'count') || ':' || jsonb_array_length(payload -> 'events'), ',') from ops.alerts
+            where kind = 'bus.rejected_payload' and id > (select m from t_cl8)), '30:10', 'CL8: 30 event ditolak = 1 alert (30, 10 contoh)');
 -- Review R91-1: delete hanya untuk tabel tanpa kolom milik penerima (hapus + kirim ulang tidak bisa mereset status/sanksi admin)
 create temp table t_r91 as select count(*) n from ops.alerts where kind = 'bus.rejected_payload';
 select lives_ok($$ select api.bus_receive('creator', '[{"id":"00000000-0000-0000-0000-0000000000ea","topic":"rep.row","payload":{"op":"delete","key":{"id":"11111111-0000-0000-0000-00000000000a"},"row":null,"table":"market.profiles"}}]') $$,
@@ -124,18 +137,17 @@ select is((select count(*) from ops.alerts where kind = 'bus.rejected_payload'),
 select lives_ok($$ select api.bus_receive('creator', '[{"id":"00000000-0000-0000-0000-0000000000eb","topic":"rep.row","payload":{"op":"delete","key":{"id":"00000000-0000-0000-0000-0000000000eb"},"row":null,"table":"tracking.social_accounts"}}]') $$,
                 'R91-1: delete tabel yang seluruhnya milik pengirim tetap diterima (akun sosmed diputus)');
 -- Review C5/R88-1: topik hanya dari pengirim yang memang mengirimnya; sumber ping = pengirim terautentikasi
-select is(api.bus_receive('brand', '[{"id":"00000000-0000-0000-0000-0000000000e4","topic":"submission.post_gone","payload":{"submission_id":"00000000-0000-0000-0000-0000000000e4"}}]'),
-          '{"applied": 0, "skipped": 1}'::jsonb, 'C5: brand tidak bisa memanggil handler milik creator (post_gone) — dilewati');
-select is(api.bus_receive('creator', '[{"id":"00000000-0000-0000-0000-0000000000e5","topic":"org.owner_lost","payload":{}}]'),
-          '{"applied": 0, "skipped": 1}'::jsonb, 'C5: creator tidak bisa memanggil handler milik brand — dilewati');
-select is((select count(*)::int from ops.alerts where kind = 'bus.rejected_payload' and payload ->> 'reason' = 'topic'), 2,
-          'C5/CX1: topik dari pengirim yang tidak berhak dilaporkan');
+-- (raise, bukan dilewati — CX5: event yang di-ack sampai ke efek sesudah batch di bridge, mis. hapus file avatar)
+select throws_ok($$ select api.bus_receive('brand', '[{"id":"00000000-0000-0000-0000-0000000000e4","topic":"submission.post_gone","payload":{"submission_id":"00000000-0000-0000-0000-0000000000e4"}}]') $$,
+                 '42501', 'bus_not_allowed:brand submission.post_gone', 'C5: brand tidak bisa memanggil handler milik creator (post_gone)');
+select throws_ok($$ select api.bus_receive('creator', '[{"id":"00000000-0000-0000-0000-0000000000e5","topic":"org.owner_lost","payload":{}}]') $$,
+                 '42501', 'bus_not_allowed:creator org.owner_lost', 'C5: creator tidak bisa memanggil handler milik brand');
 select throws_ok($$ select api.bus_receive('creator', '[{"id":"00000000-0000-0000-0000-0000000000ef","topic":"topik.baru_belum_ada","payload":{}}]') $$,
                  'P0001', 'bus_no_handler:topik.baru_belum_ada', 'CX1: handler belum ada (penerima belum di-deploy) → antrean ditahan, perintah tidak hilang');
 -- CX1: creator/brand melapor penolakan ke admin lewat bus.rejected → alert di admin
-select lives_ok($$ select api.bus_receive('creator', '[{"id":"00000000-0000-0000-0000-0000000000f0","topic":"bus.rejected","payload":{"reason":"columns","source":"brand","table":"market.campaigns","columns":["required_hashtags"],"at":"creator"}}]') $$,
+select lives_ok($$ select api.bus_receive('creator', '[{"id":"00000000-0000-0000-0000-0000000000f0","topic":"bus.rejected","payload":{"source":"brand","count":1,"events":[{"reason":"columns","table":"market.campaigns","columns":["required_hashtags"]}]}}]') $$,
                 'CX1: laporan penolakan dari creator diterima');
-select is((select payload ->> 'receiver' || ':' || (payload ->> 'reason') from ops.alerts where kind = 'bus.rejected_payload' order by id desc limit 1),
+select is((select payload ->> 'receiver' || ':' || (payload -> 'events' -> 0 ->> 'reason') from ops.alerts where kind = 'bus.rejected_payload' order by id desc limit 1),
           'creator:columns', 'CX1: penolakan di creator jadi alert di admin');
 insert into ops.bus_peers (source, pinged_at) values ('creator', '2020-01-01'), ('brand', '2020-01-01')
   on conflict (source) do update set pinged_at = excluded.pinged_at;
