@@ -1327,6 +1327,16 @@ select is(pg_temp.create_submission('11111111-0000-0000-0000-00000000000a', '888
             '99999999-0000-0000-0000-00000000000a', 'vid-c3', 'https://tiktok.com/@andi/video/c3', now() - interval '1 hour', 'halo', null)
           ->> 'status', 'in_review', 'C2: anggota brand tanpa profil di admin tidak menggagalkan keputusan review brand');
 delete from market.org_members where user_id = '11111111-0000-0000-0000-0000000000c9';
+-- Review R89-1: review_route dari creator dihitung dari replika isi yang bisa tertinggal → syarat review manual campaign admin menang
+insert into market.claims (id, campaign_id, user_id, expires_at, created_at) values
+  ('88888888-0000-0000-0000-0000000000c4', '55555555-0000-0000-0000-0000000000b1', '11111111-0000-0000-0000-00000000000d', now() + interval '46 hours', now() - interval '2 hours');
+insert into tracking.submissions (id, claim_id, user_id, campaign_id, social_account_id, platform, post_id, url, posted_at, duration_sec, review_route)
+values ('00000000-0000-0000-0000-0000000000c4', '88888888-0000-0000-0000-0000000000c4', '11111111-0000-0000-0000-00000000000d',
+        '55555555-0000-0000-0000-0000000000b1', '99999999-0000-0000-0000-00000000000d', 'tiktok', 'vid-c4', 'https://tiktok.com/@dedi/video/c4',
+        now() - interval '1 hour', 30, 'auto');
+select tracking.decide_new_submission('00000000-0000-0000-0000-0000000000c4');
+select is((select status::text from tracking.submissions where id = '00000000-0000-0000-0000-0000000000c4'), 'in_review',
+          'R89-1: route auto dari replika basi di campaign review brand → in_review (tidak auto-approve)');
 -- Regresi audit AA-11 (§11): API TikTok tidak memberi info sound → campaign musik di TikTok selalu review manual.
 insert into market.campaigns (id, org_id, slug, title, type, platforms, start_at, submit_deadline, created_by, review_mode)
 values ('55555555-0000-0000-0000-0000000000b9', '44444444-0000-0000-0000-000000000001', 'k10-music', 'Lagu baru', 'music', '{tiktok}',
@@ -1488,7 +1498,7 @@ select is((select count(*) from finance.ledger_entries), (select n from t_le), '
 insert into ops.bus_peers (source, pinged_at) values ('creator', now()), ('brand', now()) on conflict (source) do update set pinged_at = now(), stuck = '[]';
 select ops.watch_bus();
 select ok(not exists (select 1 from ops.alerts where kind = 'bus.stuck'), 'bus sehat (ping baru, tidak ada antrean macet) → tanpa alert');
-select bus_in.bus_ping('{"source":"creator","at":"2020-01-01T00:00:00Z","stuck":[]}');
+select bus_in.bus_ping('{"_source":"creator","at":"2020-01-01T00:00:00Z","stuck":[]}');
 select ok((select pinged_at > now() - interval '1 minute' from ops.bus_peers where source = 'creator'), 'ping lama yang tiba terlambat tidak memundurkan waktu ping');
 update ops.bus_peers set pinged_at = now() - interval '20 minutes' where source = 'brand';
 select ops.watch_bus();
@@ -1498,12 +1508,12 @@ select ops.watch_bus();
 select is((select count(*)::int from ops.alerts where kind = 'bus.stuck'), 1, 'alert bus.stuck maks satu per jam (tidak spam)');
 update ops.alerts set resolved_at = now(), resolved_by = '33333333-0000-0000-0000-0000000000ad' where kind = 'bus.stuck';
 update ops.bus_peers set pinged_at = now();
-select bus_in.bus_ping('{"source":"creator","stuck":[{"target":"brand","attempts":7}]}');
+select bus_in.bus_ping('{"_source":"creator","stuck":[{"target":"brand","attempts":7}]}');
 select ops.watch_bus();
 select ok((select payload -> 'peer_stuck' -> 0 ->> 'target' = 'brand' from ops.alerts where kind = 'bus.stuck' and resolved_at is null),
           'antrean creator → brand macet (dilaporkan lewat ping) → alert');
 update ops.alerts set resolved_at = now(), resolved_by = '33333333-0000-0000-0000-0000000000ad' where kind = 'bus.stuck';
-select bus_in.bus_ping('{"source":"creator","stuck":[]}');
+select bus_in.bus_ping('{"_source":"creator","stuck":[]}');
 
 -- Regresi R83-1: submisi dibuat di creator dan tiba lewat bus → campaign yang tutup karena deadline baru settle setelah ping
 -- creator yang dikirim > 1 menit sesudah deadline tiba (FIFO: semua submisi sebelum deadline sudah di admin).

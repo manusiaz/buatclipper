@@ -259,6 +259,12 @@ begin
     update tracking.submissions set status = 'rejected' where id = s.id;
     return;
   end if;
+  -- review_route dihitung creator dari replika isi campaign yang bisa tertinggal (mis. review_mode baru belum tiba di creator):
+  -- syarat review manual menurut campaign yang disetujui di sini selalu menang.
+  if c.review_mode in ('manual', 'brand') or (s.duration_sec is null and (c.min_duration_sec is not null or c.max_duration_sec is not null))
+     or (c.type = 'music' and s.platform = 'tiktok') then
+    s.review_route := 'manual';
+  end if;
   update tracking.submissions set status = 'in_review' where id = s.id;
   if s.review_route = 'auto' then
     perform trust.apply_submission_decision(s.id, 'auto_approve', null, null, null, 'auto');

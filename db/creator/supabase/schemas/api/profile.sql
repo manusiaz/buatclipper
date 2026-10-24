@@ -74,8 +74,12 @@ language plpgsql set search_path = '' as $$
 declare
   v_user uuid := (p ->> 'user_id')::uuid;
 begin
-  update market.profiles set username = 'deleted_' || substr(md5(id::text), 1, 22), display_name = 'Akun dihapus', avatar_path = null
-   where id = v_user;
+  -- upsert nisan closed: profil yang belum ada (hapus akun sebelum onboarding) tidak bisa dibuat ulang ensure_profile memakai JWT
+  -- yang belum kedaluwarsa (ensure_profile hanya memperbarui profil active)
+  insert into market.profiles (id, username, display_name, status)
+  values (v_user, 'deleted_' || substr(md5(v_user::text), 1, 22), 'Akun dihapus', 'closed')
+  on conflict (id) do update set username = excluded.username, display_name = excluded.display_name, avatar_path = null,
+                                 status = 'closed';
   delete from vault.secrets v where v.id in (select a.token_ref from tracking.social_accounts a where a.user_id = v_user);
   delete from tracking.social_accounts a
    where a.user_id = v_user and not exists (select 1 from tracking.submissions s where s.social_account_id = a.id);

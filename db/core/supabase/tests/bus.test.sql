@@ -110,6 +110,14 @@ select is((select string_agg(source || ':' || (pinged_at > '2021-01-01')::text, 
 -- Review C6: notifikasi untuk anggota brand yang profilnya belum tiba dari creator tidak menolak batch (FK lintas sumber dilepas)
 select lives_ok($$ select api.bus_receive('brand', '[{"id":"00000000-0000-0000-0000-0000000000e7","topic":"notify.user","payload":{"user_id":"00000000-0000-0000-0000-0000000000e7","event":"org.member_added","payload":{}}}]') $$,
                 'C6: notify.user untuk profil yang belum tiba diterima');
+-- Review C7: isi topik yang diizinkan divalidasi per pengirim — dilewati + alert (tidak menahan antrean)
+select lives_ok($$ select api.bus_receive('brand', '[{"id":"00000000-0000-0000-0000-0000000000e8","topic":"review.decision","payload":{"target_type":"submission","target_id":"00000000-0000-0000-0000-0000000000e8","decision":"appeal"}},
+                                                     {"id":"00000000-0000-0000-0000-0000000000e9","topic":"notify.user","payload":{"user_id":"00000000-0000-0000-0000-0000000000e9","event":"payout.paid","payload":{}}}]') $$,
+                'C7: keputusan submisi & notifikasi uang palsu dari brand tidak menolak batch');
+select ok(not exists (select 1 from trust.review_decisions where target_id = '00000000-0000-0000-0000-0000000000e8')
+          and not exists (select 1 from ops.notifications where user_id = '00000000-0000-0000-0000-0000000000e9'),
+          'C7: brand tidak bisa menulis keputusan submisi (banding) atau notifikasi di luar org.*/agency.*/campaign.invited');
+select is((select count(*)::int from ops.alerts where kind = 'bus.rejected_payload'), 2, 'C7: payload yang dilewati → alert');
 
 -- penerima: tabel replika dengan kolom milik project lain (b) tidak tersentuh upsert parsial; tanpa gema balik
 create table public.rep_dst (id int primary key, a text, b text not null default 'lokal');

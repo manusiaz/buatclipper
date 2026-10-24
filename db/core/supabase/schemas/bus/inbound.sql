@@ -8,13 +8,20 @@ language sql set search_path = '' as $$
   select r.actor_id, r.action, r.target, r.before, r.after, coalesce(r.at, now()) from jsonb_populate_record(null::ops.audit_logs, p) r;
 $$;
 
--- E-19 keputusan review yang diambil di project lain (mis. verifikasi org di brand).
+-- E-19 keputusan review yang diambil di project lain: hanya verifikasi org dari brand. Keputusan submisi milik admin (banding sekali,
+-- tenggang lock) — selain org dilewati + alert, tidak menahan antrean.
 create function bus_in.review_decision(p jsonb) returns void
-language sql set search_path = '' as $$
+language plpgsql set search_path = '' as $$
+begin
+  if p ->> 'target_type' is distinct from 'org' then
+    perform ops.raise_alert('bus.rejected_payload', 'critical', jsonb_build_object('topic', 'review.decision', 'source', p ->> '_source',
+                                                                                  'target_type', p ->> 'target_type'));
+    return;
+  end if;
   insert into trust.review_decisions (target_type, target_id, actor_id, decision, reason_code, message, note)
   select r.target_type, r.target_id, r.actor_id, r.decision, r.reason_code, r.message, r.note
     from jsonb_populate_record(null::trust.review_decisions, p) r;
-$$;
+end $$;
 
 -- Inbox & pengiriman email/push satu pintu di admin. Undangan campaign dilengkapi rate per 1.000 views (rule milik admin).
 create function bus_in.notify_user(p jsonb) returns void
@@ -22,6 +29,13 @@ language plpgsql set search_path = '' as $$
 declare
   body jsonb := coalesce(p -> 'payload', '{}');
 begin
+  -- event per pengirim (email/push memakai template platform): brand = org.*, agency.*, campaign.invited; creator = social.*
+  if not (p ->> '_source' = 'brand' and (p ->> 'event' ~ '^(org|agency)\.' or p ->> 'event' = 'campaign.invited')
+          or p ->> '_source' = 'creator' and p ->> 'event' ~ '^social\.') then
+    perform ops.raise_alert('bus.rejected_payload', 'critical', jsonb_build_object('topic', 'notify.user', 'source', p ->> '_source',
+                                                                                  'event', p ->> 'event'));
+    return;
+  end if;
   if p ->> 'event' = 'campaign.invited' and body ? 'campaign_id' then
     body := body || jsonb_build_object('rate_per_1k', market.rate_per_1k((body ->> 'campaign_id')::uuid));
   end if;
@@ -77,9 +91,9 @@ grant select on ops.bus_peers to authenticated;
 create function bus_in.bus_ping(p jsonb) returns void
 language sql set search_path = '' as $$
   insert into ops.bus_peers (source, pinged_at, stuck)
-  select p ->> 'source', coalesce((p ->> 'at')::timestamptz, now()),
+  select p ->> '_source', coalesce((p ->> 'at')::timestamptz, now()),
          case when jsonb_typeof(p -> 'stuck') = 'array' then p -> 'stuck' else '[]' end
-   where p ->> 'source' in ('creator', 'brand')
+   where p ->> '_source' in ('creator', 'brand')
   on conflict (source) do update set pinged_at = greatest(ops.bus_peers.pinged_at, excluded.pinged_at), stuck = excluded.stuck;
 $$;
 

@@ -143,8 +143,8 @@ begin
     if h is null then
       raise exception 'bus_no_handler:%', e ->> 'topic' using errcode = 'P0001';
     end if;
-    execute format('select %s($1)', h::regproc)  -- pengirim bus.ping = pengirim yang terautentikasi, bukan isi payload
-      using case when e ->> 'topic' = 'bus.ping' then e -> 'payload' || jsonb_build_object('source', p_source) else e -> 'payload' end;
+    execute format('select %s($1)', h::regproc)  -- _source = pengirim terautentikasi (handler memvalidasi isi per pengirim)
+      using e -> 'payload' || jsonb_build_object('_source', p_source);
     applied := applied + 1;
   end loop;
   return jsonb_build_object('applied', applied, 'skipped', skipped);

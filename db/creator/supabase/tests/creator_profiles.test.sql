@@ -71,6 +71,15 @@ select is((select username || ' ' || display_name from market.profiles where id 
 select bus_in.profile_anonymize('{"user_id":"11111111-0000-0000-0000-00000000000a"}');
 select ok((select username like 'deleted\_%' and display_name = 'Akun dihapus' and avatar_path is null from market.profiles
            where id = '11111111-0000-0000-0000-00000000000a'), 'profile.anonymize mengosongkan isi profil');
+-- Review R89-2: hapus akun sebelum profil creator ada → nisan closed; JWT yang belum kedaluwarsa tidak bisa membuat profil lagi
+select bus_in.profile_anonymize('{"user_id":"11111111-0000-0000-0000-0000000000e1"}');
+select is((select status::text from market.profiles where id = '11111111-0000-0000-0000-0000000000e1'), 'closed',
+          'R89-2: profile.anonymize tanpa profil → nisan closed');
+set local role authenticated;
+select pg_temp.jwt('11111111-0000-0000-0000-0000000000e1');
+select throws_ok($$ select api.ensure_profile('hidup_lagi', 'Hidup') $$, '42501', 'not_eligible:profile_inactive',
+                 'R89-2: akun yang dihapus tidak bisa membuat profil lagi');
+reset role;
 select lives_ok($$ select api.bus_receive('admin', jsonb_build_array(jsonb_build_object('id', gen_random_uuid(), 'topic', 'rep.row',
   'payload', jsonb_build_object('table', 'market.profiles', 'op', 'UPDATE',
     'row', jsonb_build_object('id', '11111111-0000-0000-0000-0000000000b0', 'status', 'suspended', 'trust_score', 20))))) $$,
