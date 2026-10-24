@@ -22,8 +22,14 @@ function setup(
 
 Deno.test("notify: email + push lewat bridge identity; promo membawa unsubscribe_url; ack setelah sukses", async () => {
   const f = setup({
-    1: { user_id: U, event: "submission.approved", payload: { submission_id: "s1" }, promo: false },
-    2: { user_id: U, event: "campaign.new", payload: { campaign_id: "c1" }, promo: true },
+    1: {
+      user_id: U,
+      event: "submission.approved",
+      payload: { submission_id: "s1" },
+      promo: false,
+      created: 1761300000,
+    },
+    2: { user_id: U, event: "campaign.new", payload: { campaign_id: "c1" }, promo: true, created: 1761300000 },
   }, [{ msg_id: 10, message: { notification_id: 1 } }, { msg_id: 11, message: { notification_id: 2 } }]);
   const sent: { action: string; payload: Record<string, unknown> }[] = [];
   const s = await runNotify({
@@ -49,6 +55,10 @@ Deno.test("notify: email + push lewat bridge identity; promo membawa unsubscribe
   assert.ok(
     emails.every((e) => typeof e.payload.notification_id === "number"),
     "notification_id ikut untuk Idempotency-Key",
+  );
+  assert.ok(
+    emails.every((e) => e.payload.notification_created === 1761300000),
+    "O7-C1: waktu dibuat ikut Idempotency-Key",
   );
   assert.deepEqual(f.calls.filter((c) => c.fn === "worker_ack").map((c) => c.args), [
     { p_queue: "email", p_msg_id: 10 },

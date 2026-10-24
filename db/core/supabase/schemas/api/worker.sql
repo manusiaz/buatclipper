@@ -494,8 +494,10 @@ begin
   if not found then
     return null;
   end if;
+  -- created (detik epoch) ikut Idempotency-Key email: id saja bisa terpakai ulang sesudah restore admin dari backup (O7-C1)
   return jsonb_build_object('user_id', n.user_id, 'event', n.event, 'payload', n.payload,
-                            'promo', n.event in ('campaign.new', 'broadcast.sent'));
+                            'promo', n.event in ('campaign.new', 'broadcast.sent'),
+                            'created', floor(extract(epoch from n.created_at))::bigint);
 end $$;
 
 -- One-click unsubscribe email promosi (List-Unsubscribe-Post); email transaksional tetap jalan.

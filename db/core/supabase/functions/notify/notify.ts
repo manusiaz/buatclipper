@@ -26,6 +26,7 @@ interface Notification {
   event: string;
   payload: Record<string, unknown>;
   promo: boolean;
+  created?: number;
 }
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -80,6 +81,7 @@ export async function runNotify(deps: NotifyDeps): Promise<NotifySummary> {
     // notification_id → Idempotency-Key Resend di identity: retry setelah kirim sukses tidak menghasilkan email dobel.
     const email: Record<string, unknown> = {
       notification_id: notificationId,
+      notification_created: n.created, // id + waktu: id bisa terpakai ulang sesudah restore admin (O7-C1)
       user_id: n.user_id,
       event: n.event,
       payload: n.payload ?? {},

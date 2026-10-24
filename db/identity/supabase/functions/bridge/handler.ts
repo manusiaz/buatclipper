@@ -61,6 +61,12 @@ function eventOf(p: Record<string, unknown>): string {
 }
 
 /** Optional core notification id (ops.notifications.id, bigint) — positive integer as JSON number or digit string. */
+// Suffix "-<detik epoch>" dari waktu dibuat (angka saja, ≤ 12 digit); kosong bila tidak dikirim (pemanggil lama).
+const created = (v: unknown) => {
+  const d = String(v ?? "").replace(/\D/g, "").slice(0, 12);
+  return d ? `-${d}` : "";
+};
+
 export function notificationId(p: Record<string, unknown>): string | null {
   const v = p.notification_id;
   if (v === undefined || v === null) return null;
@@ -118,7 +124,10 @@ async function sendEmail(deps: BridgeDeps, p: Record<string, unknown>) {
       : undefined,
     // Resend dedupes a key for 24 h: a queue message retried after a successful send does not email twice.
     // Without notification_id the key is derived from the content (same user + event + payload).
-    idempotencyKey: nid ? `notif-${nid}` : `notif-${await sha256Hex(`${userId}|${event}|${JSON.stringify(data)}`)}`,
+    // id + waktu dibuat (bila dikirim core): id notifikasi bisa terpakai ulang sesudah admin dipulihkan dari backup (O7-C1).
+    idempotencyKey: nid
+      ? `notif-${nid}${created(p.notification_created)}`
+      : `notif-${await sha256Hex(`${userId}|${event}|${JSON.stringify(data)}`)}`,
   });
   return { sent: true, id: res.id };
 }
@@ -154,7 +163,7 @@ export async function notifyAdmins(
         subject: r.subject,
         text: r.text,
         html: r.html,
-        idempotencyKey: `alert-${alertId || kind}-${id}`,
+        idempotencyKey: `alert-${alertId || kind}${created(p.created)}-${id}`,
       });
       sent++;
     } catch (e) {

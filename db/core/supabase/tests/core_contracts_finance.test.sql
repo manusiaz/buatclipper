@@ -541,6 +541,9 @@ select is((select count(*)::int from ops.notifications where event = 'payout.pro
 select is((select count(*)::int from net.http_request_queue q where convert_from(q.body, 'UTF8')::jsonb ->> 'action' = 'notify_admins'
             and convert_from(q.body, 'UTF8')::jsonb ->> 'kind' = 'payout.failed'), 1,
           'regresi G-12: alert payout gagal → email admin lewat bridge (F-X01 admin)');
+select ok((select bool_and((convert_from(q.body, 'UTF8')::jsonb ->> 'created')::bigint > 0) from net.http_request_queue q
+            where convert_from(q.body, 'UTF8')::jsonb ->> 'action' = 'notify_admins'),
+          'O7-C1: waktu dibuat alert ikut ke bridge (Idempotency-Key unik walau id terpakai ulang sesudah restore)');
 select ops.raise_alert('payout.failed', 'warning', '{"payout_id":"x"}');
 select is((select count(*)::int from net.http_request_queue q where convert_from(q.body, 'UTF8')::jsonb ->> 'action' = 'notify_admins'
             and convert_from(q.body, 'UTF8')::jsonb ->> 'kind' = 'payout.failed'), 1, 'regresi C20-1: alert beruntun selagi email masih dikirim (transaksi yang sama) tidak mengirim email lagi');
@@ -1710,6 +1713,8 @@ select ok((select count(*)::int from api.worker_dequeue('email', 100)) >= 1, 'se
 select lives_ok($$ select api.worker_ack('email', (select max(msg_id) from api.worker_dequeue('email', 100))) $$, 'service_role: worker_ack');
 select throws_ok($$ select * from api.worker_dequeue('tracking', 5) $$, 'P0001', 'invalid:queue', 'hanya queue email (tracking di creator)');
 select is(api.worker_notification((select v::bigint from t_ids where k = 'last_notif')) ->> 'event', 'submission.forfeited', 'worker_notification');
+select ok((api.worker_notification((select v::bigint from t_ids where k = 'last_notif')) ->> 'created')::bigint > 0,
+          'O7-C1: worker_notification membawa waktu dibuat (Idempotency-Key email)');
 reset role;
 select api.worker_unsubscribe('11111111-0000-0000-0000-00000000000d');
 select is((select email_promotions from ops.notification_prefs where user_id = '11111111-0000-0000-0000-00000000000d'), false, 'one-click unsubscribe');

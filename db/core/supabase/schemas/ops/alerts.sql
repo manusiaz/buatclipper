@@ -58,7 +58,7 @@ declare
   r record;
   n int := 0;
 begin
-  for r in select distinct on (a.kind) a.id, a.kind, a.severity from ops.alerts a
+  for r in select distinct on (a.kind) a.id, a.kind, a.severity, a.created_at from ops.alerts a
             where a.kind in ('tracking.lag', 'tracking.final_missing', 'fraud.flag_spike', 'payout.failed', 'payout.instant_stuck',
                              'reconcile.ledger', 'reconcile.orphans', 'reconcile.bank',
                              -- antar-DB: antrean macet, hook replika gagal, payload ditolak, isi campaign yang disetujui berubah
@@ -77,7 +77,7 @@ begin
                              and (b.notified_at > now() - interval '1 hour' or b.notify_requested_at > now() - interval '15 minutes'));
     update ops.alerts set notify_requested_at = now() where id = r.id;
     perform ops.invoke_function('bridge', jsonb_build_object('action', 'notify_admins', 'kind', r.kind, 'severity', r.severity,
-                                                             'alert_id', r.id));
+                                                             'alert_id', r.id, 'created', floor(extract(epoch from r.created_at))::bigint));
     n := n + 1;
   end loop;
   return n;

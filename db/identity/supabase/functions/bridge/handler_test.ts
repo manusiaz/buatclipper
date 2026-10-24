@@ -107,13 +107,24 @@ Deno.test("bridge send_email: notification_id → Idempotency-Key notif-<id>; in
     }),
   );
   assertEquals(s.emails[1].headers.get("Idempotency-Key"), "notif-9007199254740993");
+  // O7-C1: id + waktu dibuat — id yang terpakai ulang sesudah restore admin tidak bertabrakan dengan kunci 24 jam Resend
+  await s.handler(
+    await signed("send_email", {
+      user_id: USER,
+      event: "kyc.approved",
+      payload: {},
+      notification_id: 4211,
+      notification_created: 1761300000,
+    }),
+  );
+  assertEquals(s.emails[2].headers.get("Idempotency-Key"), "notif-4211-1761300000");
   const bad = await json(
     await s.handler(
       await signed("send_email", { user_id: USER, event: "kyc.approved", payload: {}, notification_id: -1 }),
     ),
   );
   assertEquals([bad.status, bad.body.error.code], [400, "invalid_input"]);
-  assertEquals(s.emails.length, 2);
+  assertEquals(s.emails.length, 3);
 });
 
 Deno.test("bridge send_email: promo needs one-click unsubscribe headers", async () => {
@@ -229,6 +240,12 @@ Deno.test("bridge notify_admins: alert payout → admin_finance + admin_super, i
   assertEquals(s.rpc.named("svc_admin_ids")[0].args, { p_roles: ["admin_finance", "admin_super"] });
   assertEquals(s.emails.map((e) => e.body.to).sort(), [["andi@contoh.id"], ["su@contoh.id"]]);
   assertEquals(s.emails[0].headers.get("Idempotency-Key")?.startsWith("alert-42-"), true);
+  await s.handler(await signed("notify_admins", { kind: "payout.failed", alert_id: 42, created: 1761300000 }));
+  assertEquals(
+    s.emails.at(-1)!.headers.get("Idempotency-Key")?.startsWith("alert-42-1761300000-"),
+    true,
+    "O7-C1: id + waktu dibuat",
+  );
   assert(String(s.emails[0].body.subject).includes("payout gagal"));
   assert(String(s.emails[0].body.html).includes("https://admin.clipper.test"));
   const bad = await json(await s.handler(await signed("notify_admins", { kind: "budget.used", alert_id: 1 })));
