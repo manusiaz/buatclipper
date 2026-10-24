@@ -94,6 +94,9 @@ begin
     raise exception 'not_found:submission' using errcode = 'P0002';
   end if;
   if s.status not in ('tracking', 'flagged') then
+    -- submisi tidak dilacak lagi (locked/forfeited/…; creator bisa masih polling selama replika status tertinggal): snapshot
+    -- tidak berefek tapi tetap ditandai diproses — tanpa ini replay berurutan di atas berulang eksponensial (CL18)
+    update tracking.submissions set applied_snapshot_id = greatest(coalesce(applied_snapshot_id, 0), v.id) where id = s.id;
     return jsonb_build_object('snapshot_id', v.id, 'flagged', s.status = 'flagged', 'next_poll_at', null,
                               'locked', s.status in ('locked', 'settled'));
   end if;

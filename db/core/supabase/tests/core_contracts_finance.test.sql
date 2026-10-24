@@ -1854,6 +1854,20 @@ select is((select applied_snapshot_id from tracking.submissions where id = (sele
           (select max(id) from tracking.view_snapshots where submission_id = (select v::uuid from t_ids where k = 's16a')),
           'CL16/CX13: applied_snapshot_id naik berurutan sampai S2');
 
+-- Review CL18: submisi sudah locked (admin) tapi creator masih polling (replika status tertinggal) → 25 snapshot menumpuk;
+-- satu kiriman memprosesnya linear (tiap snapshot ditandai diproses), bukan 2^k panggilan rekursif.
+insert into t_ids select 's18', pg_temp.mk_sub('55555555-0000-0000-0000-0000000000e6', '11111111-0000-0000-0000-00000000000a', 'v18');
+update tracking.submissions set status = 'locked', locked_at = now() where id = (select v::uuid from t_ids where k = 's18');
+insert into tracking.view_snapshots (submission_id, taken_at, views)
+select (select v::uuid from t_ids where k = 's18'), clock_timestamp(), 100 * g from generate_series(1, 25) g;
+set local statement_timeout = '10s';
+select lives_ok(format('select tracking.apply_snapshot(%s)', (select max(id) from tracking.view_snapshots where submission_id = (select v::uuid from t_ids where k = 's18'))),
+                'CL18: 25 snapshot tertunda untuk submisi locked diproses cepat (linear)');
+reset statement_timeout;
+select is((select applied_snapshot_id from tracking.submissions where id = (select v::uuid from t_ids where k = 's18')),
+          (select max(id) from tracking.view_snapshots where submission_id = (select v::uuid from t_ids where k = 's18')),
+          'CL18: snapshot submisi yang tidak dilacak ditandai diproses');
+
 -- ========== N2. Sisa budget campaign settled: rollover vs refund (D-09) ==========
 set local role authenticated;
 select pg_temp.jwt('22222222-0000-0000-0000-0000000000c1');
