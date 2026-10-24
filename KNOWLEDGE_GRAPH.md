@@ -1232,7 +1232,7 @@ Arah: `A --tipe--> B` = A bergantung pada B. `?` = belum terverifikasi.
 | `api:rpc core.save_campaign` | reads | `table:market.campaigns` | db/core/supabase/schemas/api/campaigns.sql:206 (gerbang content_version replika) |
 | `api:rpc core.bus_receive` | calls | `fn:bus_in.market_campaigns_applied` | db/core/supabase/schemas/bus/bus.sql:297 |
 | `fn:bus_in.market_campaigns_applied` | writes | `table:market.campaigns` | db/core/supabase/schemas/market/campaigns.sql:153 |
-| `fn:bus_in.market_campaigns_applied` | writes | `table:finance.invoices` | db/core/supabase/schemas/market/campaigns.sql:141 |
+| `fn:bus_in.market_campaigns_applied` | writes | `table:finance.invoices` | db/core/supabase/schemas/market/campaigns.sql:127 (lewat market.require_resubmit, juga dari trigger aset) |
 | `comp:CampaignBuilder` | calls | `api:rpc brand.save_campaign` | packages/campaign-builder/src/persist.ts:47 (persistCampaign) |
 | `page:brand/[org]/campaigns` | calls | `api:rpc core.copy_campaign_economics` | apps/brand/src/features/campaigns/actions.ts:14 |
 | `page:app/campaigns/[id]` | reads | `table:bucket.campaign-covers` | apps/clipper/src/features/lib/server.ts:49 (publicUrl cover) |
