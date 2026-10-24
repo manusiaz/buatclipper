@@ -1428,12 +1428,13 @@ Arah: `A --tipe--> B` = A bergantung pada B. `?` = belum terverifikasi.
 | `job:fulfillment-retry` | configured-by | `env:CORE_SECRET_KEY` | db/core/supabase/schemas/ops/enqueue_notification.sql:36 (ops.invoke_function → header apikey) |
 | `job:leaderboard-refresh` | writes | `table:market.leaderboard_campaign` | db/core/supabase/schemas/market/leaderboard.sql:27 |
 | `job:leaderboard-refresh` | writes | `table:market.leaderboard_weekly` | db/core/supabase/schemas/market/leaderboard.sql:26 |
-| `job:lifecycle` | calls | `fn:tracking.apply_snapshot` | db/core/supabase/schemas/market/lifecycle.sql:83 (CX11/CL15: snapshot final yang belum diproses admin — applied_snapshot_id ≠ final — diproses ulang dengan cek fraud, bukan accrual langsung) |
-| `job:lifecycle` | calls | `fn:accrue_earnings` | db/core/supabase/schemas/market/lifecycle.sql:90 |
+| `job:lifecycle` | calls | `fn:tracking.apply_snapshot` | db/core/supabase/schemas/market/lifecycle.sql:84 (CX11/CL15: snapshot final yang belum diproses admin — applied_snapshot_id < final (naik berurutan; ≥ final = sudah diproses, CX15) — diproses ulang dengan cek fraud, bukan accrual langsung) |
+| `test:core.full-product` | tests | `job:lifecycle` | db/core/supabase/tests/core_contracts_finance.test.sql:1880 (CX15: snapshot sesudah final tidak membuat final diproses ulang) |
+| `job:lifecycle` | calls | `fn:accrue_earnings` | db/core/supabase/schemas/market/lifecycle.sql:91 |
 | `job:lifecycle` | calls | `fn:reverse_earning` | PRD v0.3.1 §10.5 langkah 6 koreksi turun (belum di kode: koreksi turun = finance.correct_down di accrue_earnings; reverse_earning hanya dipanggil api.worker_post_gone & resolve_fraud_flag) |
 | `job:lifecycle` | writes | `table:market.campaigns` | db/core/supabase/schemas/market/lifecycle.sql:61 |
-| `job:lifecycle` | writes | `table:tracking.submissions` | db/core/supabase/schemas/market/lifecycle.sql:91 |
-| `job:lifecycle` | writes | `table:trust.review_decisions` | db/core/supabase/schemas/market/lifecycle.sql:135 (trust.auto_approve_overdue) |
+| `job:lifecycle` | writes | `table:tracking.submissions` | db/core/supabase/schemas/market/lifecycle.sql:92 |
+| `job:lifecycle` | writes | `table:trust.review_decisions` | db/core/supabase/schemas/market/lifecycle.sql:136 (trust.auto_approve_overdue) |
 | `job:alert-notify` | calls | `api:fn core/bridge` | db/core/supabase/schemas/ops/alerts.sql:79 (ops.notify_alerts → invoke bridge notify_admins) |
 | `job:notify-drain` | calls | `api:fn core/notify` | db/core/supabase/schemas/ops/cron.sql:7 |
 | `job:notify-drain` | configured-by | `env:CORE_SECRET_KEY` | db/core/supabase/schemas/ops/enqueue_notification.sql:36 (ops.invoke_function → header apikey) |
@@ -2789,6 +2790,7 @@ Masalah sistem yang ditemukan saat menyusun PRD v0.2 dan saat dicek ulang (v0.2.
 | 2026-10-24 | `table:tracking.submissions` | Cek silang D6 — Claude CL17: kolom applied_snapshot_id baru tanpa backfill → final lama diproses ulang → flag yang sudah diselesaikan moderator muncul lagi; settlement berjalan menunggu sia-sia | diperbaiki: migrasi D6 mengisi applied_snapshot_id = snapshot terakhir untuk baris lama (kode lama sudah memprosesnya; kegagalan dulu hanya alert) |
 | 2026-10-24 | `fn:tracking.apply_snapshot` | Cek silang D7 — Claude CL18 (celah di fix CL16): early return (submisi locked/forfeited, creator masih polling karena replika tertinggal) tidak memajukan applied_snapshot_id → replay rekursif 2^k panggilan dalam satu transaksi bus → timeout, jalur creator → admin macet | diperbaiki: early return menandai snapshot diproses (worker.sql:99) → replay linear; tes 25 snapshot tertunda (kode lama: statement timeout 10 detik) |
 | 2026-10-24 | `table:tracking.submissions` | Cek silang D7 — Codex CX14 (celah di fix CL17): backfill applied_snapshot_id = snapshot terakhir mencap snapshot yang hook-nya dulu gagal sebagai diproses → bypass cek fraud (CX11) & jatah settlement (CL16) terbuka lagi untuk data lama | diperbaiki: backfill hanya dari bukti — kegagalan hook selalu tercatat di ops.alerts (snapshot_id, tidak pernah dihapus); ditandai diproses hanya snapshot sebelum kegagalan pertama, sisanya diproses ulang berurutan. Migrasi D6 dikoreksi di tempat (belum pernah di-deploy); diverifikasi manual pada data sintetis (rollback), bukan tes permanen |
+| 2026-10-24 | `job:lifecycle` | Cek silang D8 — Codex CX15 (celah di fix CX11): lifecycle memeriksa applied_snapshot_id = final; snapshot non-final sesudah final (creator polling ulang saat replika status tertinggal) memajukan penanda melewati final → final diproses ulang → flag yang sudah diselesaikan moderator muncul lagi, earning & settlement tertahan | diperbaiki: applied_snapshot_id ≥ final = final sudah diproses (penanda naik berurutan). Claude D8 = [] |
 
 ## Keputusan
 

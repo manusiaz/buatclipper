@@ -77,8 +77,9 @@ begin
     select v.id into fin from tracking.view_snapshots v where v.submission_id = r.id and v.is_final;
     -- Snapshot final yang belum diproses apply_snapshot (hook replika gagal → alert, CX11): proses ulang lewat apply_snapshot
     -- (cek fraud + accrual + lock), bukan accrual langsung; masih gagal → tetap tracking (dicoba lagi run berikutnya) + alert.
-    -- Penanda = applied_snapshot_id milik admin (last_snapshot_at replika creator tiba walau hook gagal, CL15/CX12).
-    if fin is not null and not exists (select 1 from tracking.submissions t where t.id = r.id and t.applied_snapshot_id = fin) then
+    -- Penanda = applied_snapshot_id milik admin (last_snapshot_at replika creator tiba walau hook gagal, CL15/CX12); naik
+    -- berurutan, jadi ≥ final = final sudah diproses (snapshot sesudah final bisa tiba saat replika status tertinggal, CX15).
+    if fin is not null and not exists (select 1 from tracking.submissions t where t.id = r.id and t.applied_snapshot_id >= fin) then
       begin
         perform tracking.apply_snapshot(fin);
       exception when others then

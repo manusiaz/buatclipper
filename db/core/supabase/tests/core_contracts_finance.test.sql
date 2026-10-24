@@ -1868,6 +1868,20 @@ select is((select applied_snapshot_id from tracking.submissions where id = (sele
           (select max(id) from tracking.view_snapshots where submission_id = (select v::uuid from t_ids where k = 's18')),
           'CL18: snapshot submisi yang tidak dilacak ditandai diproses');
 
+-- Review CX15: final sudah diproses, lalu snapshot non-final sesudahnya (creator polling ulang saat replika status tertinggal)
+-- memajukan applied_snapshot_id melewati final → lifecycle tetap menganggap final diproses (accrual + lock), tidak memproses ulang
+-- final (bukti fraud lama tidak memunculkan lagi flag yang sudah diselesaikan moderator).
+insert into t_ids select 's15h', pg_temp.mk_sub('55555555-0000-0000-0000-0000000000b5', '11111111-0000-0000-0000-00000000000d', 'v15h', now() - interval '40 days');
+insert into tracking.view_snapshots (submission_id, taken_at, views, is_final)
+values ((select v::uuid from t_ids where k = 's15h'), now() - interval '5 days', 4000, true), ((select v::uuid from t_ids where k = 's15h'), now() - interval '4 days', 4100, false);
+update tracking.submissions set applied_snapshot_id = (select max(id) from tracking.view_snapshots where submission_id = (select v::uuid from t_ids where k = 's15h'))
+ where id = (select v::uuid from t_ids where k = 's15h');
+update ops.settings set value = '2147483648' where key = 'trust.fraud.new_account_days';  -- apply_snapshot ulang akan gagal
+select market.run_lifecycle();
+update ops.settings set value = (select value from t_cx11) where key = 'trust.fraud.new_account_days';
+select is((select status::text from tracking.submissions where id = (select v::uuid from t_ids where k = 's15h')), 'locked',
+          'CX15: applied_snapshot_id melewati final = final sudah diproses → locked tanpa apply_snapshot ulang');
+
 -- ========== N2. Sisa budget campaign settled: rollover vs refund (D-09) ==========
 set local role authenticated;
 select pg_temp.jwt('22222222-0000-0000-0000-0000000000c1');
