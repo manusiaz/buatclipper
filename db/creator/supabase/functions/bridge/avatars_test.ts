@@ -27,10 +27,14 @@ function bucket(objects: string[], fail = false): AvatarBucket & { removed: stri
 
 Deno.test("avatar: profile.anonymize → semua file avatars/{user}/ dihapus; event lain tidak menyentuh storage", async () => {
   const b = bucket(["u1/a.webp", "u1/b.png", "u2/c.webp"]);
-  await removeAnonymizedAvatars([
-    { id: "1", topic: "rep.row", payload: { table: "market.profiles" } },
-    { id: "2", topic: "profile.anonymize", payload: { user_id: "u1" } },
-  ], b, "admin");
+  await removeAnonymizedAvatars(
+    [
+      { id: "1", topic: "rep.row", payload: { table: "market.profiles" } },
+      { id: "2", topic: "profile.anonymize", payload: { user_id: "u1" } },
+    ],
+    b,
+    "admin",
+  );
   assert.deepEqual(b.removed, ["u1/a.webp", "u1/b.png"]);
 });
 
@@ -52,9 +56,13 @@ Deno.test("avatar: subfolder (R85-1) dikosongkan rekursif, tidak berputar selama
 
 Deno.test("avatar: CX9 — anonymize dari selain admin (mis. duplikat id di batch brand) tidak menghapus apa pun", async () => {
   const b = bucket(["u1/a.webp"]);
-  await removeAnonymizedAvatars([
-    { id: "x", topic: "profile.ensure", payload: { user_id: "u9" } },
-    { id: "x", topic: "profile.anonymize", payload: { user_id: "u1" } },
-  ], b, "brand");
+  await removeAnonymizedAvatars(
+    [
+      { id: "x", topic: "profile.ensure", payload: { user_id: "u9" } },
+      { id: "x", topic: "profile.anonymize", payload: { user_id: "u1" } },
+    ],
+    b,
+    "brand",
+  );
   assert.deepEqual(b.removed, []);
 });

@@ -52,7 +52,7 @@ describe('signed upload request (replica of storage-js uploadToSignedUrl for a F
     expect(part.name).toBe('clip.wav');
     expect(part.type).toBe('audio/wav');
     expect(await part.text()).toBe('abc');
-    expect(signedUploadRequest(file, 'audio/wav', undefined).headers).toEqual({ 'x-upsert': 'false' });
+    expect(signedUploadRequest(file, 'audio/wav', '').headers).toEqual({ 'x-upsert': 'false' });  // undefined = default env key
   });
 
   it('putToSignedUrl reports http and network errors', async () => {

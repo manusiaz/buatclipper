@@ -1886,7 +1886,7 @@ select is((select status::text from tracking.submissions where id = (select v::u
 -- ada flag/accrual baru dari bukti lama.
 create temp table t_cl20 as
   select t.applied_snapshot_id m,
-         (select max(g) from generate_series(1, t.applied_snapshot_id - 1) g where not exists (select 1 from tracking.view_snapshots x where x.id = g)) old_id,
+         (select min(x.id) - 1 from tracking.view_snapshots x) old_id,  -- id bebas, pasti < penanda (tidak bergantung celah urutan id)
          (select count(*) from trust.fraud_flags f where f.target_id = t.id) flags,
          (select count(*) from finance.ledger_entries) le
     from tracking.submissions t where t.id = (select v::uuid from t_ids where k = 's16a');

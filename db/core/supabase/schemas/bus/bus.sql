@@ -142,7 +142,9 @@ begin
   d := jsonb_build_object('source', p_source, 'count', jsonb_array_length(r),
                           'events', (select jsonb_agg(x) from (select x from jsonb_array_elements(r) x limit 10) f));
   if bus.me() = 'admin' then
-    execute 'select ops.raise_alert($1, $2, $3)' using 'bus.rejected_payload', 'critical', d;
+    -- ops.raise_alert hanya ada di admin (fungsi ini dibagi ke creator/brand): dipanggil lewat regprocedure seperti handler bus_in
+    execute format('select %s($1, $2, $3)', to_regprocedure('ops.raise_alert(text, text, jsonb, interval)')::regproc)
+      using 'bus.rejected_payload', 'critical', d;
   else
     perform bus.emit('admin', 'bus.rejected', d);
   end if;
