@@ -25,11 +25,12 @@
 #                          dikirim sendiri: kepala terbukti event yang rusak; bus.skip menolak yang belum) — snapshot yang gagal di admin: tombol "Lewati snapshot"
 #                          di alert admin.{DOMAIN}, bukan dari sini · bus reconcile <admin|creator|brand> → kirim ulang semua tabel
 #                          replika dari stack di server ini ke target + hapus di target baris yang sudah tidak ada di sini
-#                          · bus jobs <hold|off|on> → hold: pg_cron tidak menjalankan job apa pun (bertahan melewati pg_restore);
-#                          off: job bisnis nonaktif, job bus-* jalan; on: semua jalan (stack di server ini)
+#                          · bus jobs <hold|off|on> → hold: pg_cron tidak menjalankan job apa pun (bertahan melewati pg_restore)
+#                          + Edge Functions berhenti; off: job bisnis nonaktif, job bus-* & functions jalan; on: semua jalan
 #   Restore SATU DB (core|creator|brand) ke backup lama — runbook (CX2): 1) `deploy.sh pause` di server app (container app berhenti, Caddy
 #                          tetap) dan `deploy.sh bus jobs off` di SETIAP server stack (hentikan semua tulisan user, uang & worker) 2) di server stack yang
-#                          dipulihkan: `deploy.sh bus jobs hold` → pulihkan dump (pg_restore dari deploy/stack/<stack>/backups; dump
+#                          dipulihkan: `deploy.sh bus jobs hold` (job berhenti, job yang sedang jalan ditunggu, Edge Functions
+#                          dihentikan — worker yang sudah dipanggil tidak menulis lagi) → pulihkan dump (pg_restore dari deploy/stack/<stack>/backups; dump
 #                          membawa job cron yang aktif, hold mencegahnya jalan di atas data setengah dimuat) → khusus creator: id
 #                          snapshot dimajukan melewati yang sudah dilihat admin MAUPUN yang ada di backup — N = `select max(id) from
 #                          tracking.view_snapshots` di core-db, lalu di creator-db `select setval(pg_get_serial_sequence(
@@ -471,7 +472,9 @@ case "$CMD" in
     load_config
     load_secrets
     migrate "$ROLE"
-    compose "$ROLE" restart functions rest >/dev/null
+    compose "$ROLE" restart rest >/dev/null   # schema cache
+    # functions dimuat ulang hanya bila sedang jalan: saat restore (bus jobs hold) tetap berhenti sampai `bus jobs off`
+    if [ -n "$(compose "$ROLE" ps -q --status running functions)" ]; then compose "$ROLE" restart functions >/dev/null; fi
     echo "$ROLE: migration diterapkan"
     ;;
   pause | resume)
@@ -592,9 +595,11 @@ case "$CMD" in
         done
         ;;
       jobs)
-        # Restore (O1-C2, O2-C1): hold = pg_cron tidak menjalankan job apa pun (ALTER SYSTEM → postgresql.auto.conf, di luar
-        # dump: pg_restore yang membawa cron.job aktif tidak menyalakannya); off = job bisnis (lifecycle, release, track-worker, …)
-        # nonaktif, job bus-* jalan lagi; on = semua jalan.
+        # Restore (O1-C2, O2-C1, O8-1): hold = pg_cron tidak menjalankan job apa pun (ALTER SYSTEM → postgresql.auto.conf, di luar
+        # dump: pg_restore yang membawa cron.job aktif tidak menyalakannya), tunggu job yang sedang jalan selesai, lalu container
+        # Edge Functions dihentikan — worker yang sudah dipanggil (mis. track-worker) tidak menulis di tengah restore (bridge bus
+        # stack ini ikut berhenti; pengirim menahan + backoff); off = job bisnis nonaktif, job bus-* & functions jalan lagi;
+        # on = semua jalan.
         case "${BUS_ARGS[0]:-}" in hold) launch=off ;; off|on) launch=on ;; *) echo "pakai: deploy.sh bus jobs <hold|off|on>"; exit 1 ;; esac
         for p in $local_stacks; do
           if [ "${BUS_ARGS[0]}" != hold ]; then
@@ -604,6 +609,16 @@ case "$CMD" in
           docker exec "$p-db" psql -h localhost -U supabase_admin -d postgres -X -q -v ON_ERROR_STOP=1 \
             -c "alter system set cron.launch_active_jobs = $launch" -c "select pg_reload_conf()" >/dev/null
           echo "$p: pg_cron launch_active_jobs = $launch"
+          if [ "${BUS_ARGS[0]}" = hold ]; then
+            for _ in $(seq 1 120); do
+              [ "$(psql_db "$p" -tA -c "select count(*) from cron.job_run_details where status in ('starting', 'running')
+                                          and start_time > now() - interval '1 hour'")" = 0 ] && break
+              sleep 1
+            done
+            compose "$p" stop functions >/dev/null && echo "$p: Edge Functions berhenti"
+          else
+            compose "$p" start functions >/dev/null && echo "$p: Edge Functions jalan"
+          fi
         done
         ;;
       *) echo "pakai: deploy.sh bus status | kick | skip <stack> <target> <seq> | reconcile <target> | jobs <hold|off|on>"; exit 1 ;;
