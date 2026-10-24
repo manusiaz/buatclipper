@@ -66,6 +66,11 @@ jobs:
           supabase gen signing-key --algorithm ES256 2>/dev/null \
             | python3 -c 'import json,sys; json.dump([json.load(sys.stdin)], sys.stdout)' > db/${{ matrix.project }}/supabase/dev-keys/signing_keys.json
       - run: supabase start --workdir db/${{ matrix.project }} -x vector,logflare,studio,imgproxy,edge-runtime
+      - name: Vault URL Edge Function (sama seperti scripts/dev-stack.sh; fungsi seperti ops.invoke_function memanggil pg_net)
+        run: |
+          db=$(supabase status --workdir db/${{ matrix.project }} -o env | sed -n 's/^DB_URL="\(.*\)"$/\1/p')
+          name=${{ matrix.project }}
+          psql "$db" -v ON_ERROR_STOP=1 -c "select vault.create_secret('http://127.0.0.1:9', '${name}_url'), vault.create_secret('ci', '${name}_secret_key')"
       - run: supabase test db --workdir db/${{ matrix.project }}
       - run: supabase db lint --workdir db/${{ matrix.project }} -s ${{ matrix.schemas }} --fail-on error
       - run: supabase db advisors --workdir db/${{ matrix.project }} --type security --fail-on warn

@@ -171,16 +171,16 @@ begin
   return jsonb_build_object('snapshot_id', sid, 'flagged', raised or st = 'flagged', 'next_poll_at', nxt, 'locked', st = 'locked');
 end $function$;
 
--- CL17 + CX14 (data, tidak ikut diff deklaratif): penanda applied_snapshot_id untuk baris lama hanya dari bukti — kegagalan hook
--- snapshot selalu tercatat di ops.alerts (tracking.apply_failed, payload snapshot_id; alert tidak pernah dihapus). Ditandai
--- diproses: snapshot sebelum kegagalan pertama submisi itu. Snapshot gagal & sesudahnya diproses ulang berurutan oleh
--- apply_snapshot (cek fraud + jatah settlement), jadi final lama yang sukses tidak diproses ulang (flag yang sudah diselesaikan
--- moderator tidak muncul lagi) dan yang dulu gagal tidak dicap sukses.
+-- CL17 + CX14 + P1-1 (data, tidak ikut diff deklaratif): penanda applied_snapshot_id untuk baris lama dari bukti — kegagalan hook
+-- snapshot selalu tercatat di ops.alerts (tracking.apply_failed, payload snapshot_id; alert tidak pernah dihapus). Penanda = snapshot
+-- terakhir yang TIDAK tercatat gagal: kode lama memproses tiap snapshot sendiri-sendiri, jadi snapshot sukses sesudah kegagalan di
+-- tengah sudah menjalankan cek fraud & accrual kumulatif (tidak diulang → flag yang sudah ditutup moderator tidak muncul lagi);
+-- kegagalan di tengah tetap terlihat di alert-nya. Snapshot gagal di ekor (tanpa sukses sesudahnya, mis. final yang gagal) ada di
+-- atas penanda → diproses ulang berurutan oleh apply_snapshot (cek fraud + jatah settlement), tidak dicap sukses.
 update tracking.submissions t
    set applied_snapshot_id = (
          select max(v.id) from tracking.view_snapshots v
           where v.submission_id = t.id
-            and v.id < coalesce((select min(f.id) from ops.alerts a
-                                   join tracking.view_snapshots f on f.id::text = a.payload ->> 'snapshot_id'
-                                  where a.kind = 'tracking.apply_failed' and f.submission_id = t.id), 9223372036854775807))
+            and not exists (select 1 from ops.alerts a
+                             where a.kind = 'tracking.apply_failed' and a.payload ->> 'snapshot_id' = v.id::text))
  where t.applied_snapshot_id is null;

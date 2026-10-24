@@ -1684,8 +1684,8 @@ Arah: `A --tipe--> B` = A bergantung pada B. `?` = belum terverifikasi.
 | `config:supabase.identity` | configured-by | `env:RESEND_SMTP_KEY` | PRD v0.3.1 §15.7 + §15.10 SMTP custom (belum di kode: SMTP Auth diatur di Dashboard/Management API, config.toml baris 1–2) |
 | `config:supabase.identity` | configured-by | `env:TURNSTILE_SECRET` | PRD v0.3.1 §15.6 + §15.7 CAPTCHA (belum di kode: CAPTCHA Auth diatur di Dashboard/Management API, config.toml baris 1–2) |
 | `config:ci` | calls | `config:eslint.imports` | kode: .github/workflows/ci.yml baris 29 (pnpm lint = scripts/check-arch.mjs) |
-| `config:ci` | tests | `config:supabase.core` | .github/workflows/ci.yml:69 |
-| `config:ci` | tests | `config:supabase.identity` | .github/workflows/ci.yml:69 |
+| `config:ci` | tests | `config:supabase.core` | .github/workflows/ci.yml:74 |
+| `config:ci` | tests | `config:supabase.identity` | .github/workflows/ci.yml:74 |
 | `config:tpa-oidc-identity` | calls | `api:GET identity/.well-known/openid-configuration` | PRD v0.3.1 §15.6; kode supabase/auth api.go baris 207 (route tanpa syarat OAuth Server) |
 | `ext:disbursement` | calls | `api:fn identity/disburse` | db/identity/supabase/functions/disburse/index.ts:1 (callback penyedia, POST /disburse/callback) |
 | `ext:google` | configured-by | `config:host.app` | PRD v0.3.1 §15.2 redirect URI per host |
@@ -2795,6 +2795,8 @@ Masalah sistem yang ditemukan saat menyusun PRD v0.2 dan saat dicek ulang (v0.2.
 | 2026-10-24 | `job:lifecycle` | Cek silang D8 — Codex CX15 (celah di fix CX11): lifecycle memeriksa applied_snapshot_id = final; snapshot non-final sesudah final (creator polling ulang saat replika status tertinggal) memajukan penanda melewati final → final diproses ulang → flag yang sudah diselesaikan moderator muncul lagi, earning & settlement tertahan | diperbaiki: applied_snapshot_id ≥ final = final sudah diproses (penanda naik berurutan). Claude D8 = [] |
 | 2026-10-24 | `fn:tracking.apply_snapshot` | Cek silang D9 — Claude CL20 (premis fix CX15): jalur sukses apply_snapshot menulis applied_snapshot_id = sid tanpa greatest → snapshot lama yang dipulihkan bus.resync memundurkan penanda, memproses ulang bukti fraud lama (flag yang sudah ditutup muncul lagi), dan memundurkan kesiapan settlement. Codex D9 = [] untuk d7008b2 | diperbaiki: penanda monoton (greatest) dan snapshot dengan id ≤ penanda = no-op |
 | 2026-10-24 | `table:bus.outbox` | Cek silang D10 — Codex CX16 (premis fix CL20): bus.resync mengirim baris tanpa ORDER BY (urutan fisik heap) → snapshot 102 bisa tiba sebelum 101 → penanda naik ke 102 lalu 101 jadi no-op selamanya (cek fraud & accrual terlewat). Claude D10 = [] untuk 4252659 | diperbaiki: resync mengirim urut kunci primer (bus.sql:399); FIFO outbox → penerima memproses berurutan; tulisan baru menunggu resync (lock share) |
+| 2026-10-24 | `table:tracking.submissions` | Review PR #2 — Codex P1-1 (celah di fix CX14): backfill menaruh penanda sebelum kegagalan pertama → snapshot yang sukses sesudah kegagalan di tengah (kode lama memproses tiap snapshot sendiri) diproses ulang → flag yang sudah ditutup moderator muncul lagi | diperbaiki: penanda = snapshot terakhir yang tidak tercatat gagal; kegagalan di tengah tertutup oleh sukses sesudahnya (accrual kumulatif, alert-nya tetap ada), kegagalan di ekor tetap diproses ulang. Migrasi D6 dikoreksi di tempat (belum pernah di-deploy); diverifikasi manual (kasus gagal-tengah & gagal-ekor, rollback) |
+| 2026-10-24 | `config:ci` | CI PR #2: job db tanpa scripts/dev-stack.sh → Vault core_url kosong → ops.invoke_function (pg_net) gagal url NULL → raise_alert/request_payout membatalkan transaksi tes | diperbaiki di CI (bukan kode): langkah mengisi Vault <project>_url/_secret_key seperti dev-stack. Kode sengaja tetap gagal keras bila konfigurasi kosong — aksi seperti ban_user tidak boleh dilewati diam-diam |
 
 ## Keputusan
 
