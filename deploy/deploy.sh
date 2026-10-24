@@ -20,8 +20,8 @@
 #   Bus antar-DB (stack di server ini): deploy/deploy.sh bus status  → antrean keluar per target, kepala antrean yang macet
 #                          (seq, topik, error), ping creator/brand di admin · bus kick → coba kirim ulang sekarang (reset backoff)
 #                          · bus skip <stack> <target> <seq> → lewati kepala antrean yang macet permanen (event hilang untuk
-#                          penerima; pulihkan state dengan bus.resync) — tunggu attempts ≥ 3: relay lalu mengirim satu per satu,
-#                          jadi kepala = event yang gagal — snapshot yang gagal di admin: tombol "Lewati snapshot"
+#                          penerima; pulihkan state dengan bus.resync) — hanya bila attempts ≥ 4 (gagal per batch, lalu gagal
+#                          dikirim sendiri: kepala terbukti event yang rusak; bus.skip menolak yang belum) — snapshot yang gagal di admin: tombol "Lewati snapshot"
 #                          di alert admin.{DOMAIN}, bukan dari sini · bus reconcile <admin|creator|brand> → kirim ulang semua tabel
 #                          replika dari stack di server ini ke target + hapus di target baris yang sudah tidak ada di sini
 #                          · bus jobs <hold|off|on> → hold: pg_cron tidak menjalankan job apa pun (bertahan melewati pg_restore);

@@ -296,6 +296,11 @@ begin
   if not found or o.seq <> p_seq then
     raise exception 'bus_skip:bukan kepala antrean % (kepala: %)', p_target, o.seq using errcode = 'P0001';
   end if;
+  -- ≥ 3 gagal per batch lalu ≥ 1 gagal dikirim SENDIRI (relay satu per satu sejak attempts ≥ 3): baru terbukti kepala = event
+  -- yang gagal, bukan event sehat di depan event rusak dalam batch (O5-2)
+  if o.attempts < 4 then
+    raise exception 'bus_skip:kepala % belum terbukti gagal sendiri (attempts %, perlu >= 4)', o.seq, o.attempts using errcode = 'P0001';
+  end if;
   update bus.outbox set sent_at = now(), request_id = null, last_error = 'dilewati operator ' || now() || ': ' || coalesce(last_error, '')
    where seq = o.seq;
   return jsonb_build_object('seq', o.seq, 'topic', o.topic, 'payload', o.payload, 'attempts', o.attempts, 'last_error', o.last_error);
@@ -367,7 +372,9 @@ begin
   end if;
   -- Rekonsiliasi tertunda (job bus-reconcile) untuk tabel ini: baris yang tiba sesudah daftar kunci (FIFO) ada di pemilik →
   -- masuk daftar supaya tidak ikut terhapus (O4-1).
-  if p ->> 'op' = 'upsert' then
+  if p ->> 'op' = 'upsert' and exists (select 1 from bus.reconcile_runs x where x.source = p_source and x.tbl = t::text) then
+    -- serial dengan job (kunci sama di bus.reconcile_apply): job tidak menghapus baris yang sedang dikirim ulang (O5-1)
+    perform pg_advisory_xact_lock(hashtextextended('bus_reconcile:' || p_source || ':' || t::text, 0));
     insert into bus.reconcile_keys (source, tbl, epoch, key)
     select p_source, t::text, x.epoch, p -> 'key' from bus.reconcile_runs x where x.source = p_source and x.tbl = t::text
     on conflict do nothing;
@@ -544,7 +551,7 @@ end $$;
 -- Job bus-reconcile: baris replika yang tidak ada di daftar kunci lengkap pemilik dihapus lewat apply_row delete (hook jalan),
 -- paling banyak p_limit baris per panggilan. Baris yang tidak boleh dihapus (append-only, dirujuk) dilaporkan reconcile_delete,
 -- baris campuran dilaporkan apply_row ('delete'); keduanya dicatat ke daftar supaya putaran berikut tidak mengulanginya.
-create function bus.reconcile_apply(p_limit int default 5000) returns int
+create function bus.reconcile_apply(p_limit int default 2000) returns int
 language plpgsql security definer set search_path = '' as $$
 declare
   r bus.reconcile_runs;
@@ -560,6 +567,8 @@ begin
     exit when budget <= 0;
     t := to_regclass(r.tbl);
     m := 0;
+    -- kunci dipegang sampai job commit: upsert yang tiba bersamaan menunggu, lalu menulis ulang barisnya (O5-1)
+    perform pg_advisory_xact_lock(hashtextextended('bus_reconcile:' || r.source || ':' || r.tbl, 0));
     if t is not null then
       pk := bus.pk_columns(t);
       for k in execute format('select jsonb_build_object(%s) from %s x where not exists (select 1 from bus.reconcile_keys r

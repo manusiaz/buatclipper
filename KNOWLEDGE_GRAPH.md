@@ -1205,7 +1205,7 @@ Arah: `A --tipe--> B` = A bergantung pada B. `?` = belum terverifikasi.
 | `test:e2e.roles` | tests | `page:app/profile` | e2e/roles.cjs:451 (ubah nama + foto → creator → replika admin) |
 | `table:brand/ops.audit_logs` | calls | `fn:bus_in.admin` | db/brand/supabase/schemas/ops/audit_logs.sql:24 (ops.forward_audit) |
 | `api:rpc core.bus_receive` | calls | `fn:bus_in.admin` | db/core/supabase/schemas/bus/bus.sql:215 |
-| `api:rpc core.bus_receive` | calls | `fn:bus.accepts` | db/core/supabase/schemas/bus/bus.sql:349 (apply_row menolak tabel/kolom di luar allowlist pengirim) |
+| `api:rpc core.bus_receive` | calls | `fn:bus.accepts` | db/core/supabase/schemas/bus/bus.sql:354 (apply_row menolak tabel/kolom di luar allowlist pengirim) |
 | `job:bus-ping` | emits | `fn:bus_in.admin` | db/creator/supabase/schemas/bus/self.sql:10 (bus.ping; brand: db/brand/supabase/schemas/bus/self.sql baris 6) |
 | `fn:bus_in.admin` | writes | `table:ops.bus_peers` | db/core/supabase/schemas/bus/inbound.sql:100 (bus_ping: watermark pinged_at + seen_at) |
 | `job:bus-watch` | reads | `table:ops.bus_peers` | db/core/supabase/schemas/bus/inbound.sql:120 (late dari seen_at; watermark > 1 jam → bus.watermark_held baris 128) |
@@ -1255,7 +1255,7 @@ Arah: `A --tipe--> B` = A bergantung pada B. `?` = belum terverifikasi.
 | `api:rpc core.copy_campaign_economics` | writes | `table:finance.reward_pools` | db/core/supabase/schemas/api/campaigns.sql:536 |
 | `api:rpc core.copy_campaign_economics` | writes | `table:market.rate_rules` | db/core/supabase/schemas/api/campaigns.sql:539 |
 | `api:rpc core.save_campaign` | reads | `table:market.campaigns` | db/core/supabase/schemas/api/campaigns.sql:206 (gerbang content_version replika) |
-| `api:rpc core.bus_receive` | calls | `fn:bus_in.market_campaigns_applied` | db/core/supabase/schemas/bus/bus.sql:444 |
+| `api:rpc core.bus_receive` | calls | `fn:bus_in.market_campaigns_applied` | db/core/supabase/schemas/bus/bus.sql:451 |
 | `fn:bus_in.market_campaigns_applied` | writes | `table:market.campaigns` | db/core/supabase/schemas/market/campaigns.sql:153 |
 | `fn:bus_in.market_campaigns_applied` | writes | `table:finance.invoices` | db/core/supabase/schemas/market/campaigns.sql:127 (lewat market.require_resubmit, juga dari trigger aset) |
 | `comp:CampaignBuilder` | calls | `api:rpc brand.save_campaign` | packages/campaign-builder/src/persist.ts:47 (persistCampaign) |
@@ -1723,18 +1723,18 @@ Arah: `A --tipe--> B` = A bergantung pada B. `?` = belum terverifikasi.
 | `test:e2e.bus` | calls | `api:fn creator/bridge` | e2e/bus.sh:3 |
 | `test:e2e.bus` | tests | `api:rpc core.bus_receive` | e2e/bus.sh:43 |
 | `test:core.full-product` | tests | `fn:bus.accepts` | db/core/supabase/tests/bus.test.sql:6 |
-| `test:core.full-product` | tests | `table:bus.outbox` | db/core/supabase/tests/bus.test.sql:286 (CX16: resync mengirim urut kunci primer) |
+| `test:core.full-product` | tests | `table:bus.outbox` | db/core/supabase/tests/bus.test.sql:290 (CX16: resync mengirim urut kunci primer) |
 | `page:admin/` | calls | `api:rpc core.skip_failed_snapshot` | apps/admin/src/features/overview/actions.ts:18 (skipFailedSnapshot; tombol di kartu alert tracking.apply_failed) |
 | `api:rpc core.skip_failed_snapshot` | writes | `table:trust.fraud_flags` | db/core/supabase/schemas/api/worker.sql:464 (FR-12 untuk review moderator) |
 | `doc:deploy/deploy.sh` | calls | `fn:bus.skip` | deploy/deploy.sh:559 (bus skip <stack> <target> <seq>) |
 | `doc:deploy/deploy.sh` | calls | `fn:bus.reconcile` | deploy/deploy.sh:570 (bus reconcile <target>; runbook restore satu DB di kepala file) |
 | `job:bus-reconcile` | calls | `fn:bus.reconcile` | db/core/supabase/schemas/bus/self.sql:7 (bus.reconcile_apply) |
-| `test:core.full-product` | tests | `job:bus-reconcile` | db/core/supabase/tests/bus.test.sql:222 |
+| `test:core.full-product` | tests | `job:bus-reconcile` | db/core/supabase/tests/bus.test.sql:226 |
 | `api:rpc core.bus_receive` | calls | `fn:bus.reconcile` | db/core/supabase/schemas/bus/bus.sql:208 (rep.keys → bus.apply_keys) |
-| `fn:bus.reconcile` | writes | `table:bus.outbox` | db/core/supabase/schemas/bus/bus.sql:510 (rep.keys berpotongan + total; penerima apply_keys hapus hanya bila daftar lengkap, baris yang tak bisa dihapus dilaporkan) |
+| `fn:bus.reconcile` | writes | `table:bus.outbox` | db/core/supabase/schemas/bus/bus.sql:517 (rep.keys berpotongan + total; penerima apply_keys hapus hanya bila daftar lengkap, baris yang tak bisa dihapus dilaporkan) |
 | `test:core.full-product` | tests | `api:rpc core.skip_failed_snapshot` | db/core/supabase/tests/core_contracts_finance.test.sql:1920 |
-| `test:core.full-product` | tests | `fn:bus.skip` | db/core/supabase/tests/bus.test.sql:181 |
-| `test:core.full-product` | tests | `fn:bus.reconcile` | db/core/supabase/tests/bus.test.sql:192 |
+| `test:core.full-product` | tests | `fn:bus.skip` | db/core/supabase/tests/bus.test.sql:185 |
+| `test:core.full-product` | tests | `fn:bus.reconcile` | db/core/supabase/tests/bus.test.sql:196 |
 | `test:e2e.bus` | tests | `fn:bus.reconcile` | e2e/bus.sh:82 (CX2 lintas stack: anggota org yang dihidupkan restore terhapus di admin, yang hilang dikirim ulang) |
 | `test:e2e.bus` | calls | `api:fn brand/bridge` | e2e/bus.sh:3 |
 | `test:e2e.cross-host` | configured-by | `doc:deploy/deploy.sh` | e2e/journey.cjs:2 (E2E_* menimpa host & DB untuk stack self-hosted) |
@@ -2827,6 +2827,7 @@ Masalah sistem yang ditemukan saat menyusun PRD v0.2 dan saat dicek ulang (v0.2.
 | 2026-10-24 | `doc:deploy/deploy.sh` | Review OPS3 (Codex O3-1/O3-2): restart identity snapshot creator ke max(id) admin + 1 bisa di bawah id yang sudah ada di backup (bus tertinggal saat backup) → duplikat PK; reconcile ke stack yang dipulihkan hanya "di server lain" → satu server tidak pernah memulihkan replika masuk | diperbaiki: runbook setval greatest(max admin, max creator) (diuji di creator lokal dalam transaksi); langkah 3 di SETIAP server stack termasuk yang dipulihkan |
 | 2026-10-24 | `job:bus-reconcile` | Review OPS3 (Claude O3-C1): penghapusan rekonsiliasi di dalam bus_receive (anti-join + subtransaksi per baris + bus.reject menyusun ulang jsonb per penolakan) melewati statement_timeout 8s authenticator → potongan terakhir gagal terus, antrean macet (4000 baris campuran timeout; 1 juta baris anti-join 7 s) | diperbaiki: potongan terakhir hanya mendaftarkan bus.reconcile_runs; job bus-reconcile ≤ 5000 baris/putaran (baris dilaporkan dicatat ke daftar supaya tidak diulang); bus.reject simpan 10 contoh + jumlah. Diukur: bus_receive 4 ms untuk 200 ribu baris, satu putaran 5000 baris 2,35 s; e2e lewat cron asli |
 | 2026-10-24 | `job:bus-reconcile` | Review OPS4 (Codex O4-1): penghapusan yang ditunda ke job melanggar urutan FIFO — upsert yang tiba sesudah daftar kunci (baris baru di pemilik) terhapus job yang jalan belakangan | diperbaiki: apply_row upsert dari pengirim yang punya rekonsiliasi tertunda di tabel itu menambah kuncinya ke daftar (pgTAP merah di kode lama); runbook langkah 5 menunggu rekonsiliasi_menunggu kosong |
+| 2026-10-24 | `job:bus-reconcile` | Review OPS5 (Codex O5-1/O5-2): job memilih kandidat dengan satu snapshot lalu menghapus — upsert ulang yang commit di tengah tetap dihapus (dibuktikan dua sesi di core lokal: fungsi lama menghapus baris); bus skip boleh di attempts 3 padahal 3 kegagalan bisa semuanya per batch (kepala belum terbukti rusak) | diperbaiki: kunci advisory per (pengirim, tabel) dipegang job sampai commit dan diambil apply_row upsert saat ada rekonsiliasi tertunda (e2e bus dua sesi: job menunggu, baris selamat); job ≤ 2000 baris/putaran (tunggu bridge < timeout); bus.skip menolak attempts < 4 |
 | 2026-10-24 | `job:lifecycle` | Review OPS3 (Claude O3-C2): alert lifecycle/hook menunjuk snapshot final/pemicu, bukan snapshot tertunda paling awal yang memblokir → tombol "Lewati snapshot" selalu not_next_pending; alert skip_retry tertelan dedupe per jenis | diperbaiki: tracking.alert_apply_failed (snapshot pemblokir, satu alert terbuka per snapshot) dipakai hook, lifecycle, skip_retry |
 
 ## Keputusan

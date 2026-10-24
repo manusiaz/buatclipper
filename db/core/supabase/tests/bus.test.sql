@@ -178,6 +178,10 @@ delete from bus.outbox where target = 'brand' and sent_at is null;
 insert into bus.outbox (target, topic, payload) values ('brand', 'uji.skip', '{"n":1}'), ('brand', 'uji.skip', '{"n":2}');
 create temp table t_cl6 as select min(seq) head, max(seq) nxt from bus.outbox where topic = 'uji.skip';
 select throws_ok(format('select bus.skip(%L, %s)', 'brand', (select nxt from t_cl6)), 'P0001', null, 'CL6: seq yang bukan kepala antrean ditolak');
+update bus.outbox set attempts = 3 where topic = 'uji.skip';
+select throws_ok(format('select bus.skip(%L, %s)', 'brand', (select head from t_cl6)), 'P0001', null,
+                 'O5-2: kepala yang baru gagal per batch (belum gagal sendiri) tidak bisa dilewati');
+update bus.outbox set attempts = 4 where seq = (select head from t_cl6);
 select is((select bus.skip('brand', (select head from t_cl6)) -> 'payload'), '{"n":1}'::jsonb, 'CL6: isi event yang dilewati dikembalikan');
 select is((select string_agg((sent_at is not null)::text || ':' || coalesce(left(last_error, 17), '-'), ',' order by seq) from bus.outbox where topic = 'uji.skip'),
           'true:dilewati operator,false:-', 'CL6: hanya kepala yang ditandai terkirim (dilewati), sisanya tetap antre');

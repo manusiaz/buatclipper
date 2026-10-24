@@ -87,6 +87,21 @@ for _ in $(seq 1 90); do
 done
 if [ "$got" = "$want" ]; then echo "✓ rekonsiliasi: anggota org di admin = brand (yang dicabut terhapus, yang hilang dikirim ulang)"
 else echo "✗ rekonsiliasi anggota org: admin '$got' ≠ brand '$want' (error: $(q brand -c "select last_error from bus.outbox where target = 'admin' and sent_at is null and last_error is not null limit 1"))"; fail=1; fi
+# O5-1: job bus-reconcile vs replikasi bersamaan — upsert baris yang tidak ada di daftar kunci (dikirim ulang pemilik) sedang
+# berjalan saat job mulai → job menunggu kunci, baris tidak dihapus.
+E=00000000-0000-0000-0000-0000000005e1; G2=00000000-0000-0000-0000-0000000c0a5e
+O=$(q admin -c "select org_id from market.org_members limit 1")
+q admin -c "select set_config('bus.applying', 'on', false)" -c "insert into market.org_members (org_id, user_id, role) values ('$O', '$G2', 'brand_viewer') on conflict do nothing" >/dev/null
+q admin -c "insert into bus.reconcile_keys (source, tbl, epoch, key) select 'brand', 'market.org_members', '$E', jsonb_build_object('org_id', org_id, 'user_id', user_id) from market.org_members where user_id <> '$G2'" \
+        -c "insert into bus.reconcile_runs (source, tbl, epoch, total) values ('brand', 'market.org_members', '$E', 0)" >/dev/null
+q admin -c "begin" -c "select bus.apply_row(jsonb_build_object('table', 'market.org_members', 'op', 'upsert', 'key', jsonb_build_object('org_id', '$O', 'user_id', '$G2'), 'row', jsonb_build_object('org_id', '$O', 'user_id', '$G2', 'role', 'brand_viewer')), 'brand')" \
+        -c "select pg_sleep(2)" -c "commit" >/dev/null &
+for _ in $(seq 1 50); do [ "$(q admin -c "select count(*) from pg_stat_activity where query like '%pg_sleep(2)%' and pid <> pg_backend_pid()")" = 1 ] && break; sleep 0.1; done
+q admin -c "select bus.reconcile_apply()" >/dev/null; wait
+if [ "$(q admin -c "select exists (select 1 from market.org_members where user_id = '$G2')")" = t ]; then echo "✓ rekonsiliasi tertunda tidak menghapus baris yang sedang dikirim ulang (kunci job ↔ replikasi)"
+else echo "✗ job bus-reconcile menghapus baris yang dikirim ulang bersamaan"; fail=1; fi
+q admin -c "select set_config('bus.applying', 'on', false)" -c "delete from market.org_members where user_id = '$G2'" \
+        -c "delete from bus.reconcile_runs where epoch = '$E'" -c "delete from bus.reconcile_keys where epoch = '$E'" >/dev/null
 for t in admin creator brand; do
   q "$t" -c "delete from bus.outbox where topic = 'uji.ping'" -c "delete from bus.inbox where topic = 'uji.ping'" \
          -c "drop function bus_in.uji_ping(jsonb)" -c "drop table public.bus_e2e_log" >/dev/null
