@@ -1039,7 +1039,7 @@ Arah: `A --tipe--> B` = A bergantung pada B. `?` = belum terverifikasi.
 | `table:tracking.submissions` | calls | `fn:tracking.decide_new_submission` | db/core/supabase/schemas/api/worker.sql:362 (hook bus_in.tracking_submissions_applied) |
 | `table:creator/tracking.social_accounts` | replicates-to | `table:tracking.social_accounts` | db/creator/supabase/schemas/tracking/social_accounts.sql:20 (tanpa token_ref) |
 | `table:market.claims` | replicates-to | `table:creator/market.claims` | db/core/supabase/schemas/market/claims.sql:20 |
-| `table:market.campaigns` | replicates-to | `table:creator/market.campaigns` | db/core/supabase/schemas/market/campaigns.sql:113 (status, deadline, view window) |
+| `table:market.campaigns` | replicates-to | `table:creator/market.campaigns` | db/core/supabase/schemas/market/campaigns.sql:118 (status, deadline, view window, tag wajib caption yang disetujui) |
 | `table:ops.settings` | replicates-to | `table:creator/ops.settings` | db/core/supabase/schemas/ops/settings.sql:12 |
 | `table:creator/tracking.social_accounts` | guarded-by | `policy:core.iss-identity` | db/creator/supabase/schemas/tracking/social_accounts.sql:48 |
 | `table:creator/tracking.social_accounts` | guarded-by | `policy:core.rls-self` | db/creator/supabase/schemas/tracking/social_accounts.sql:50 |
