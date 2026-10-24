@@ -338,7 +338,7 @@ const ALERT_LABEL: Record<string, string> = {
   "bus.stuck": "antrean antar-database macet",
   "bus.watermark_held": "watermark antar-database tertahan transaksi panjang",
   "bus.rejected_payload": "event antar-database ditolak",
-  "tracking.apply_failed": "keputusan submisi dari replika gagal",
+  "tracking.apply_failed": "replika tracking gagal diterapkan (keputusan / snapshot / post hilang / lifecycle)",
   "campaign.apply_failed": "replika campaign gagal diterapkan",
   "campaign.content_drift": "isi campaign yang disetujui berubah di brand",
 };

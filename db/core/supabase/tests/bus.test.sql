@@ -88,7 +88,8 @@ select is((select jsonb_agg(payload order by seq) from bus.outbox where target =
             {"op":"delete","key":{"id":1},"row":null,"table":"public.rep_src"}]'::jsonb,
           'replikasi: hanya kolom milik sendiri + pk; update kolom milik project lain tidak dikirim; delete ikut');
 
--- Review CL4: retensi — outbox terkirim > 14 hari & inbox > 30 hari dihapus; yang belum terkirim tidak pernah
+-- Review CL4: retensi — hanya outbox terkirim > 14 hari yang dihapus (yang belum terkirim tidak pernah); inbox sengaja tidak
+-- dipangkas (CX7: id inbox = satu-satunya pencegah perintah diterapkan dua kali)
 insert into bus.outbox (target, topic, payload, sent_at, created_at) values
   ('creator', 'uji.prune', '{"lama":true}', now() - interval '15 days', now() - interval '15 days'),
   ('creator', 'uji.prune', '{"baru":true}', now() - interval '1 day', now() - interval '1 day'),
