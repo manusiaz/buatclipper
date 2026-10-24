@@ -192,6 +192,17 @@ select ok((select required_hashtags = (select h from t_r95) and content_version 
             where id = '55555555-0000-0000-0000-000000000014'), 'R95-1: isi yang disetujui tidak berubah lewat replika (tag wajib & versi tetap)');
 select ok(exists (select 1 from ops.alerts where kind = 'campaign.content_drift' and payload ->> 'campaign_id' = '55555555-0000-0000-0000-000000000014'),
           'R95-1: isi baru setelah disetujui → alert untuk admin');
+-- O8-C1: brand dipulihkan dari backup lalu resync mengirim versi LEBIH LAMA (belum direview) → tetap dibekukan + alert
+delete from ops.alerts where kind = 'campaign.content_drift';
+select lives_ok($$ select api.bus_receive('brand', jsonb_build_array(jsonb_build_object('id', gen_random_uuid(), 'topic', 'rep.row',
+                   'payload', jsonb_build_object('table', 'market.campaigns', 'op', 'upsert', 'resync', true, 'key', '{"id":"55555555-0000-0000-0000-000000000014"}'::jsonb,
+                   'row', jsonb_build_object('id', '55555555-0000-0000-0000-000000000014', 'required_hashtags', array['lama'],
+                     'content_version', (select content_version - 1 from market.campaigns where id = '55555555-0000-0000-0000-000000000014')))))) $$,
+                'O8-C1: replika versi lama diterima (antrean jalan)');
+select ok((select required_hashtags = (select h from t_r95) and content_version = (select v from t_r95) from market.campaigns
+            where id = '55555555-0000-0000-0000-000000000014')
+          and exists (select 1 from ops.alerts where kind = 'campaign.content_drift' and payload ->> 'campaign_id' = '55555555-0000-0000-0000-000000000014'),
+          'O8-C1: versi lebih lama dari yang disetujui tidak menimpa isi yang disetujui, alert untuk admin');
 select is((select slug from market.campaigns where id = '55555555-0000-0000-0000-000000000014'), 'slug-baru-r96',
           'R96-1: slug tidak dibekukan (unik lintas campaign — slug lama boleh dipakai campaign lain tanpa memacetkan replika)');
 -- Review D9: aset campaign yang disetujui juga dibekukan (file baru dari brand tidak sampai ke clipper tanpa review)

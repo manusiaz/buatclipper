@@ -5,8 +5,21 @@
 }
 
 # API Supabase: hanya path yang dipakai platform; Studio, /pg (postgres-meta), /graphql, dan /realtime tidak publik.
+# Mode perawatan (deploy.sh maintenance on — restore satu DB): file flag dibaca per request, tanpa reload. Semua API publik 503
+# (app web/native tidak bisa menulis), kecuali bridge (bus antar DB & bridge identity) supaya rekonsiliasi tetap jalan.
 (supabase_api) {
+	@bridge path /functions/v1/bridge
+	@maintenance file {
+		root /srv/flags
+		try_files /maintenance
+	}
 	@api path /auth/v1/* /rest/v1/* /storage/v1/* /functions/v1/*
+	handle @bridge {
+		reverse_proxy {args[0]}
+	}
+	handle @maintenance {
+		respond "maintenance" 503
+	}
 	handle @api {
 		reverse_proxy {args[0]}
 	}

@@ -88,7 +88,8 @@ create trigger campaigns_template_stays_draft before insert or update of status 
 
 -- Isi yang sudah disetujui (status sesudah in_review) tidak berubah lewat replika: brand mengunci brief dari replika status yang bisa
 -- tertinggal (admin → brand macet) — isi versi lebih baru dari yang diajukan dipertahankan + alert (event tidak ditolak, antrean
--- jalan). FAQ tetap boleh (sama dengan kunci brand); slug tidak dibekukan (unik lintas campaign: brand bisa memakai ulang slug lama
+-- jalan). Versi LEBIH LAMA juga dibekukan (brand dipulihkan dari backup lalu resync: isi yang belum direview, O8-C1) — hanya versi
+-- yang diajukan yang lewat. FAQ tetap boleh (sama dengan kunci brand); slug tidak dibekukan (unik lintas campaign: brand bisa memakai ulang slug lama
 -- untuk campaign lain dan replikanya akan macet). Uang, fraud & syarat submisi memakai isi yang disetujui.
 create function market.campaign_content_frozen() returns trigger
 language plpgsql set search_path = '' as $$
@@ -96,7 +97,7 @@ declare
   frozen jsonb;
 begin
   if current_setting('bus.applying', true) is distinct from 'on' or old.status in ('draft', 'in_review', 'rejected')
-     or old.submitted_version is null or coalesce(new.content_version, 0) <= old.submitted_version then
+     or old.submitted_version is null or coalesce(new.content_version, 0) = old.submitted_version then
     return new;
   end if;
   select jsonb_object_agg(k, to_jsonb(old) -> k) into frozen from unnest(bus.accepts('brand', 'market.campaigns')) k
@@ -146,7 +147,8 @@ begin
     return;
   end if;
   select * into c from market.campaigns where id = (p_row ->> 'id')::uuid for update;
-  if c.id is null or c.content_version <= coalesce(c.submitted_version, 0) then
+  -- versi lain dari yang diajukan (lebih baru, atau lebih lama sesudah brand dipulihkan dari backup, O8-C1) = isi bukan yang direview
+  if c.id is null or c.content_version = coalesce(c.submitted_version, 0) then
     return;
   end if;
   if c.status = 'rejected' then

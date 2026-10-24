@@ -16,7 +16,8 @@
 #   Pra-cek sebelum up:    deploy/deploy.sh check [peran]   (compose, secret, DNS, koneksi ke server lain)
 #   Backup harian (cron):  15 2 * * * /path/deploy/deploy.sh backup [peran] >> /var/log/clipper-backup.log 2>&1
 #                          → deploy/stack/*/backups (dump DB + file Storage, BACKUP_KEEP_DAYS); salin ke luar server
-#   deploy/deploy.sh down [peran] · deploy/deploy.sh status · pause|resume (container app saja, Caddy tetap) · migrate <stack>
+#   deploy/deploy.sh down [peran] · deploy/deploy.sh status · pause|resume (container app saja, Caddy tetap) · maintenance on|off
+#                          (API Supabase server ini 503 kecuali bridge) · migrate <stack>
 #                          (migration ke satu stack yang jalan, tanpa menyentuh Caddy — dipakai runbook restore)
 #   Bus antar-DB (stack di server ini): deploy/deploy.sh bus status  → antrean keluar per target, kepala antrean yang macet
 #                          (seq, topik, error), ping creator/brand di admin · bus kick → coba kirim ulang sekarang (reset backoff)
@@ -28,7 +29,8 @@
 #                          · bus jobs <hold|off|on> → hold: pg_cron tidak menjalankan job apa pun (bertahan melewati pg_restore)
 #                          + Edge Functions berhenti; off: job bisnis nonaktif, job bus-* & functions jalan; on: semua jalan
 #   Restore SATU DB (core|creator|brand) ke backup lama — runbook (CX2): 1) `deploy.sh pause` di server app (container app berhenti, Caddy
-#                          tetap) dan `deploy.sh bus jobs off` di SETIAP server stack (hentikan semua tulisan user, uang & worker) 2) di server stack yang
+#                          tetap), `deploy.sh maintenance on` di SETIAP server stack termasuk identity (API publik 503 — app native
+#                          menulis langsung ke API; bridge tetap) dan `deploy.sh bus jobs off` di SETIAP server stack (hentikan semua tulisan user, uang & worker) 2) di server stack yang
 #                          dipulihkan: `deploy.sh bus jobs hold` (job berhenti, job yang sedang jalan ditunggu, Edge Functions
 #                          dihentikan — worker yang sudah dipanggil tidak menulis lagi) → pulihkan dump (pg_restore dari deploy/stack/<stack>/backups; dump
 #                          membawa job cron yang aktif, hold mencegahnya jalan di atas data setengah dimuat) → khusus creator: id
@@ -52,7 +54,8 @@
 #                          (ulangi reconcile); kepala antrean yang macet foreign key (event biasa yang induknya ikut hilang, sudah
 #                          antre sebelum resync) → `deploy.sh bus skip` (barisnya dikirim ulang resync di belakangnya lalu dilaporkan
 #                          orphan); perintah/event non-replika di jendela backup hilang: cek audit 6) `deploy.sh bus jobs on` di
-#                          SETIAP server stack, lalu `deploy.sh resume` di server app.
+#                          SETIAP server stack, `deploy.sh maintenance off` di SETIAP server stack, lalu `deploy.sh
+#                          resume` di server app.
 #
 # DNS A: auth.{DOMAIN} → server identity, api.{DOMAIN} → server core (admin), creator-api.{DOMAIN} → server creator,
 # brand-api.{DOMAIN} → server brand, {DOMAIN} + accounts./app./brand./admin. → server app. Satu server: semua ke IP yang sama.
@@ -70,6 +73,7 @@ CMD=${1:-} ROLE=${2:-all}
 [ "$CMD" = admin ] && { ADMIN_EMAIL=${2:-}; ROLE=identity; }
 [ "$CMD" = bus ] && { BUS_OP=${2:-status}; BUS_ARGS=("${@:3}"); ROLE=all; }
 [[ "$CMD" =~ ^(pause|resume)$ ]] && ROLE=apps
+[ "$CMD" = maintenance ] && { MAINT=${2:-}; ROLE=all; }
 ALL_STACKS="identity core creator brand"
 case "$ROLE" in all | identity | core | creator | brand | apps) ;; *) echo "peran tidak dikenal: $ROLE (all|identity|core|creator|brand|apps)"; exit 1 ;; esac
 case "$ROLE" in all) STACKS=$ALL_STACKS SITES="apps $ALL_STACKS" ;; apps) STACKS="" SITES=apps ;; *) STACKS=$ROLE SITES=$ROLE ;; esac
@@ -401,7 +405,7 @@ apps() { docker compose -f apps.yml -f .generated/apps.hosts.yml --env-file apps
 # supaya fetch server-side app ke host lokal tidak keluar ke internet.
 caddy_up() {
   local bind=${CADDY_BIND:+$CADDY_BIND:} h s
-  mkdir -p .generated
+  mkdir -p .generated/flags
   { cat caddy/base.caddy; for s in $SITES; do echo; cat "caddy/$s.caddy"; done; } > .generated/Caddyfile
   {
     echo "name: clipper-caddy-$ROLE"
@@ -413,6 +417,7 @@ caddy_up() {
     echo "    environment: [DOMAIN, SCHEME, ACME_EMAIL]   # dari config.env (diekspor)"
     echo "    volumes:"
     echo "      - $DEPLOY/.generated/Caddyfile:/etc/caddy/Caddyfile:ro"
+    echo "      - $DEPLOY/.generated/flags:/srv/flags:ro   # deploy.sh maintenance"
     [[ " $SITES " == *" identity "* ]] && echo "      - $ROOT/db/identity/supabase/templates:/srv/email:ro"
     echo "      - caddy-data:/data"
     echo "      - caddy-config:/config"
@@ -476,6 +481,16 @@ case "$CMD" in
     # functions dimuat ulang hanya bila sedang jalan: saat restore (bus jobs hold) tetap berhenti sampai `bus jobs off`
     if [ -n "$(compose "$ROLE" ps -q --status running functions)" ]; then compose "$ROLE" restart functions >/dev/null; fi
     echo "$ROLE: migration diterapkan"
+    ;;
+  maintenance)
+    # Restore (O8-C2): API Supabase semua stack di server ini 503 kecuali bridge (bus & identity) — app native/web dan klien
+    # langsung tidak bisa menulis; dibaca Caddy per request (tanpa reload).
+    mkdir -p .generated/flags
+    case "$MAINT" in
+      on) touch .generated/flags/maintenance; echo "maintenance on: API 503 (bridge tetap)" ;;
+      off) rm -f .generated/flags/maintenance; echo "maintenance off" ;;
+      *) echo "pakai: deploy.sh maintenance <on|off>"; exit 1 ;;
+    esac
     ;;
   pause | resume)
     # Hentikan/jalankan container app saja; Caddy (dipakai bersama stack di server satu-mesin) tetap jalan.
