@@ -479,8 +479,9 @@ end $$;
 
 -- Restore satu DB (CX2/CL3): backup lama menghidupkan lagi baris replika yang sudah dihapus pemiliknya (mis. anggota org yang
 -- dicabut → masih diberi akses di admin) dan resync hanya upsert. Pemilik mengirim SELURUH kunci tabelnya (snapshot di bawah lock
--- share, seperti resync — tulisan sesudahnya menyusul di belakang lewat FIFO), berpotongan 1000; penerima menghapus baris yang tidak
--- ada di daftar lewat apply_row delete (hook jalan; tabel campuran tidak dihapus tapi dilaporkan bus.reject). deploy.sh bus reconcile.
+-- share, seperti resync — tulisan sesudahnya menyusul di belakang lewat FIFO dan kuncinya ditambahkan apply_row ke daftar),
+-- berpotongan 1000; penerima (job bus-reconcile) menghapus baris yang tidak ada di daftar lewat apply_row delete (hook jalan; tabel
+-- campuran tidak dihapus tapi dilaporkan bus.reject). deploy.sh bus reconcile.
 create function bus.reconcile(p_table regclass, p_target text) returns int
 language plpgsql security definer set search_path = '' as $$
 declare
