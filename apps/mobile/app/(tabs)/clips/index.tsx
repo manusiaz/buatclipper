@@ -167,7 +167,7 @@ export default function Clips() {
                       </View>
                     </Row>
                   ) : null}
-                  {s.status === 'rejected' ? (
+                  {s.status === 'rejected' && !s.autoRejected ? (
                     s.appealUsed ? (
                       <Txt variant="caption" tone="muted">{t('tasks.appealUsed')}</Txt>
                     ) : (

@@ -151,6 +151,7 @@ export default async function TasksPage({ searchParams }: Props) {
                 const decs = decisionOf(s.id!);
                 const verdict = decs.find((d) => d.decision !== 'appeal');
                 const appealUsed = decs.some((d) => d.decision === 'appeal');
+                const autoRejected = !!verdict?.reason_code?.startsWith('system:'); // penolakan otomatis: tanpa banding
                 const paused = (s.status === 'tracking' || s.status === 'flagged') && accountStatus.get(s.social_account_id) !== 'verified';
                 const platform = isPlatform(s.platform) ? (s.platform as Platform) : null;
                 const release =
@@ -236,7 +237,7 @@ export default async function TasksPage({ searchParams }: Props) {
                           </p>
                         </div>
                       ) : null}
-                      {s.status === 'rejected' ? (
+                      {s.status === 'rejected' && !autoRejected ? (
                         appealUsed ? (
                           <p className="text-caption text-muted">{t('tasks.appealUsed')}</p>
                         ) : (

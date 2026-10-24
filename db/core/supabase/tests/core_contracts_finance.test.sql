@@ -1386,6 +1386,16 @@ select is((select payload ->> 'reason' from ops.notifications where event = 'sub
              and payload ->> 'submission_id' = (select id::text from tracking.submissions where post_id = 'vid-c9')),
           'Durasi video di luar syarat campaign.', 'R93-1: clipper diberi alasan spesifik');
 update market.campaigns set min_duration_sec = (select m from t_r93) where id = '55555555-0000-0000-0000-0000000000b0';
+-- Review D7: penolakan otomatis tercatat (alasan tampil di Tugas) dan tidak bisa dibanding (overturn tidak mengulang cek syarat)
+select is((select reason_code || '|' || message from trust.review_decisions where target_type = 'submission' and decision = 'reject'
+             and target_id = (select id from tracking.submissions where post_id = 'vid-c9')),
+          'system:duration|Durasi video di luar syarat campaign.', 'D7: penolakan otomatis tercatat di review_decisions');
+insert into t_ids (k, v) select 'vid-c9', id::text from tracking.submissions where post_id = 'vid-c9';
+set local role authenticated;
+select pg_temp.jwt('11111111-0000-0000-0000-00000000000d');
+select throws_ok($$ select api.appeal_submission((select v::uuid from t_ids where k = 'vid-c9'), 'durasi sudah benar') $$,
+                 'P0001', 'appeal_closed', 'D7: penolakan otomatis tidak bisa dibanding');
+reset role;
 -- Regresi audit AA-11 (§11): API TikTok tidak memberi info sound → campaign musik di TikTok selalu review manual.
 insert into market.campaigns (id, org_id, slug, title, type, platforms, start_at, submit_deadline, created_by, review_mode)
 values ('55555555-0000-0000-0000-0000000000b9', '44444444-0000-0000-0000-000000000001', 'k10-music', 'Lagu baru', 'music', '{tiktok}',

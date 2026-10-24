@@ -349,6 +349,7 @@ export async function tasks(uid: string) {
             : null,
         verdict: verdict ? { code: verdict.reason_code, message: verdict.message } : null,
         appealUsed: decs.some((d) => d.decision === 'appeal'),
+        autoRejected: !!verdict?.reason_code?.startsWith('system:'), // penolakan otomatis: tanpa banding
       };
     }),
   };

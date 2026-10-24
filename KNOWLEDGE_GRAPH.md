@@ -3,7 +3,7 @@
 > Everything is one system. Every page is a node; every line is a real data or design dependency.
 > Dikelola oleh skill `alaconnect`. Edit inkremental — jangan generate ulang.
 
-Last verified: f1c7064+ (2026-10-23) — 4 DB (identity, admin = folder `db/core`, creator, brand): `db reset` keempat DB dari rantai migrasi (declarative sync: no changes), pgTAP identity 172 + admin 1026 + creator 97 + brand 123, deno identity 133 + core 28 + creator 58, lint (check-arch 4 DB), typecheck 15 workspace, unit test semua, e2e bus 8/8 + roles 21/21 + journey 10/10 + mobile 13/13; simulasi VPS `deploy.sh up all` dari nol → roles 21/21, bus 6/6. Katalog endpoint per DB: docs/endpoints/*.md (`pnpm endpoints`).
+Last verified: f1c7064+ (2026-10-23) — 4 DB (identity, admin = folder `db/core`, creator, brand): `db reset` keempat DB dari rantai migrasi (declarative sync: no changes), pgTAP identity 172 + admin 1028 + creator 97 + brand 123, deno identity 133 + core 28 + creator 58, lint (check-arch 4 DB), typecheck 15 workspace, unit test semua, e2e bus 8/8 + roles 21/21 + journey 10/10 + mobile 13/13; simulasi VPS `deploy.sh up all` dari nol → roles 21/21, bus 6/6. Katalog endpoint per DB: docs/endpoints/*.md (`pnpm endpoints`).
 
 **Status:** sistem sudah dibangun dan dites. 5 app Next.js 16 (`apps/web`, `apps/accounts`, `apps/clipper`, `apps/brand`, `apps/admin`) di atas `packages/{ui,campaign-builder,clipper-lib,auth,db-core,db-identity,i18n,config}`, plus app native Expo `apps/mobile` (Android + iOS, satu kode). 4 project Supabase (`db/identity`, `db/core` = admin, `db/creator`, `db/brand`): schema deklaratif, `migrations/` (pg-delta), config.toml, seed; bus event antar DB. Endpoint per DB: docs/endpoints/{identity,admin,creator,brand}.md.sql. 12 Edge Function: core `bridge`, `fulfill`, `notify`, `refresh-tokens`, `social`, `track-worker`; identity `admin-auth`, `bridge`, `delete-account`, `disburse`, `member-data`, `pii-export`. Tes: pgTAP 6 file (`db/core/supabase/tests` 4, `db/identity/supabase/tests` 2), unit test app/package (`pnpm test`, 38 file `*.test.ts(x)`), unit test Deno (29 file `*_test.ts` di `db/*/supabase/functions`), journey E2E lintas host `e2e/journey.cjs` (Playwright: web → accounts → app → undangan → brand), CI `.github/workflows/ci.yml` (job apps, functions, db per project). Diverifikasi di 7408318: `pnpm lint` ok, `pnpm typecheck` ok, `pnpm test` 197 tes lulus (campaign-builder 69, accounts 32, web 29, admin 24, brand 22, clipper 21), `pnpm build` 5 app ok, Deno fmt/lint/check ok + tes core 70 & identity 82, pgTAP core 727 & identity 107 (stub Postgres 16 dan `supabase test db`), `supabase db lint` (schema app) & `db advisors --type security` bersih, `pnpm e2e` 9/9 langkah 2× di build produksi. Node yang filenya ada punya kolom Path; bukti edge = `file:line` (dicek `check_graph.py`). Bukti yang masih rujukan PRD v0.3.1 = belum ada satu baris kode yang menyebut target, atau kodenya ada di folder route group `(account)`, `(auth)`, `(console)`: regex checker tidak menerima tanda kurung, jadi baris kodenya ditulis `kode baris N` (dicek manual). `(belum di kode)` = edge PRD yang tidak dibangun begitu. Edge `reads` page → table = dependency data logis; di kode jalannya lewat view/fungsi schema `api` (`policy:core.api-only`). Rujukan lintas DB (`table → table` antar project) tidak punya foreign key.
 
@@ -734,8 +734,8 @@ Arah: `A --tipe--> B` = A bergantung pada B. `?` = belum terverifikasi.
 | `page:app/tasks` | reads | `table:market.claims` | apps/clipper/src/app/tasks/page.tsx:45 |
 | `page:app/tasks` | reads | `table:tracking.submissions` | apps/clipper/src/app/tasks/page.tsx:47 |
 | `page:app/tasks` | reads | `table:tracking.view_snapshots` | PRD v0.3.1 §14 kg.yaml features.F-C07 (belum di kode: views dari submissions.counted_views/last_snapshot_at, page.tsx baris 48) |
-| `page:app/tasks` | routes-to | `api:GET app/api/oauth/[platform]/start` | apps/clipper/src/app/tasks/page.tsx:222 (sambung ulang akun) |
-| `page:app/tasks` | routes-to | `page:app/wallet` | apps/clipper/src/app/tasks/page.tsx:260 |
+| `page:app/tasks` | routes-to | `api:GET app/api/oauth/[platform]/start` | apps/clipper/src/app/tasks/page.tsx:223 (sambung ulang akun) |
+| `page:app/tasks` | routes-to | `page:app/wallet` | apps/clipper/src/app/tasks/page.tsx:261 |
 | `page:app/tasks` | wrapped-by | `layout:clipper` | apps/clipper/src/app/layout.tsx:31 |
 | `page:app/wallet` | calls | `api:rpc core.my_clip_terms` | apps/clipper/src/features/lib/server.ts:35 (myClipTerms → rpc my_clip_terms: hold per platform untuk tanggal Tersedia) |
 | `page:app/wallet` | reads | `table:finance.ledger_accounts` | PRD v0.3.1 §14 kg.yaml features.F-C08; kode: view api.wallet_balances (features/wallet/data.ts baris 21) |
@@ -988,10 +988,10 @@ Arah: `A --tipe--> B` = A bergantung pada B. `?` = belum terverifikasi.
 | `api:fn core/bridge` | calls | `api:fn identity/bridge` | db/core/supabase/functions/bridge/handler.ts:153 (cron disburse & ban_user → identity) |
 | `api:fn core/fulfill` | calls | `ext:brand-webhook` | db/core/supabase/functions/fulfill/fulfill.ts:115 |
 | `api:fn core/fulfill` | guarded-by | `policy:fn-cron-key` | db/core/supabase/functions/fulfill/index.ts:10 |
-| `api:fn core/fulfill` | reads | `table:finance.fulfillments` | db/core/supabase/schemas/api/worker.sql:416 (rpc worker_fulfillments_due) |
-| `api:fn core/fulfill` | reads | `table:vault.social-tokens` | db/core/supabase/schemas/api/worker.sql:438 (secret webhook reward type di Vault core) |
-| `api:fn core/fulfill` | writes | `table:finance.fulfillments` | db/core/supabase/schemas/api/worker.sql:494 (rpc worker_fulfillment_result) |
-| `api:fn core/fulfill` | writes | `table:finance.reward_codes` | db/core/supabase/schemas/api/worker.sql:473 (rpc worker_assign_code) |
+| `api:fn core/fulfill` | reads | `table:finance.fulfillments` | db/core/supabase/schemas/api/worker.sql:427 (rpc worker_fulfillments_due) |
+| `api:fn core/fulfill` | reads | `table:vault.social-tokens` | db/core/supabase/schemas/api/worker.sql:449 (secret webhook reward type di Vault core) |
+| `api:fn core/fulfill` | writes | `table:finance.fulfillments` | db/core/supabase/schemas/api/worker.sql:505 (rpc worker_fulfillment_result) |
+| `api:fn core/fulfill` | writes | `table:finance.reward_codes` | db/core/supabase/schemas/api/worker.sql:484 (rpc worker_assign_code) |
 | `api:fn core/notify` | calls | `api:fn identity/bridge` | db/core/supabase/functions/notify/notify.ts:94 (send_email; send_push sesuai flag kanal pesan) |
 | `api:fn core/notify` | configured-by | `env:BRIDGE_SECRET_CORE_TO_IDENTITY` | db/core/supabase/functions/_shared/bridge.ts:66 |
 | `api:fn core/notify` | configured-by | `env:SUPABASE_DB_URL` | PRD v0.3.1 §15.8 Queue lewat koneksi Postgres langsung (belum di kode: queue dibaca lewat rpc api.worker_dequeue dengan secret key, bukan koneksi Postgres) |
@@ -1010,8 +1010,8 @@ Arah: `A --tipe--> B` = A bergantung pada B. `?` = belum terverifikasi.
 | `api:fn creator/social` | calls | `api:rpc creator.worker_create_submission` | db/creator/supabase/functions/social/handler.ts:294 |
 | `api:rpc creator.worker_create_submission` | writes | `table:creator/tracking.submissions` | db/creator/supabase/schemas/api/worker.sql:366 |
 | `api:rpc creator.worker_create_submission` | reads | `table:creator/market.claims` | db/creator/supabase/schemas/api/worker.sql:299 |
-| `fn:tracking.decide_new_submission` | writes | `table:trust.fraud_flags` | db/core/supabase/schemas/api/worker.sql:331 (FR-07, cover_hash dari submit) |
-| `fn:tracking.decide_new_submission` | writes | `table:market.claims` | db/core/supabase/schemas/api/worker.sql:251 |
+| `fn:tracking.decide_new_submission` | writes | `table:trust.fraud_flags` | db/core/supabase/schemas/api/worker.sql:342 (FR-07, cover_hash dari submit) |
+| `fn:tracking.decide_new_submission` | writes | `table:market.claims` | db/core/supabase/schemas/api/worker.sql:268 |
 | `api:fn creator/social` | calls | `mod:social` | db/creator/supabase/functions/social/handler.ts:23 |
 | `api:fn creator/social` | configured-by | `env:GOOGLE_CLIENT_SECRET` | db/creator/supabase/functions/_shared/social/mod.ts:19 |
 | `api:fn creator/social` | configured-by | `env:META_APP_SECRET` | db/creator/supabase/functions/_shared/social/mod.ts:18 |
@@ -1033,10 +1033,10 @@ Arah: `A --tipe--> B` = A bergantung pada B. `?` = belum terverifikasi.
 | `api:fn creator/track-worker` | subscribes | `event:queue.tracking` | db/creator/supabase/functions/track-worker/worker.ts:134 |
 | `api:fn creator/track-worker` | writes | `table:creator/tracking.view_snapshots` | db/creator/supabase/schemas/api/worker.sql:145 (rpc worker_record_snapshot) |
 | `table:creator/tracking.view_snapshots` | replicates-to | `table:tracking.view_snapshots` | db/creator/supabase/schemas/tracking/submissions.sql:66 |
-| `table:tracking.view_snapshots` | calls | `fn:tracking.apply_snapshot` | db/core/supabase/schemas/api/worker.sql:367 (hook bus_in.tracking_view_snapshots_applied) |
+| `table:tracking.view_snapshots` | calls | `fn:tracking.apply_snapshot` | db/core/supabase/schemas/api/worker.sql:378 (hook bus_in.tracking_view_snapshots_applied) |
 | `table:creator/tracking.submissions` | replicates-to | `table:tracking.submissions` | db/creator/supabase/schemas/tracking/submissions.sql:39 (isi + review_route) |
 | `table:tracking.submissions` | replicates-to | `table:creator/tracking.submissions` | db/core/supabase/schemas/tracking/submissions.sql:40 (status, counted_views, locked_at, next_poll_at) |
-| `table:tracking.submissions` | calls | `fn:tracking.decide_new_submission` | db/core/supabase/schemas/api/worker.sql:351 (hook bus_in.tracking_submissions_applied) |
+| `table:tracking.submissions` | calls | `fn:tracking.decide_new_submission` | db/core/supabase/schemas/api/worker.sql:362 (hook bus_in.tracking_submissions_applied) |
 | `table:creator/tracking.social_accounts` | replicates-to | `table:tracking.social_accounts` | db/creator/supabase/schemas/tracking/social_accounts.sql:20 (tanpa token_ref) |
 | `table:market.claims` | replicates-to | `table:creator/market.claims` | db/core/supabase/schemas/market/claims.sql:20 |
 | `table:market.campaigns` | replicates-to | `table:creator/market.campaigns` | db/core/supabase/schemas/market/campaigns.sql:92 (status, deadline, view window) |
@@ -1119,8 +1119,8 @@ Arah: `A --tipe--> B` = A bergantung pada B. `?` = belum terverifikasi.
 | `api:rpc brand.accept_org_invite` | writes | `table:brand/market.org_invites` | db/brand/supabase/schemas/api/org.sql:240 |
 | `api:rpc brand.accept_org_invite` | writes | `table:brand/market.org_members` | db/brand/supabase/schemas/api/org.sql:239 |
 | `api:rpc brand.accept_org_invite` | calls | `fn:bus_in.creator` | db/brand/supabase/schemas/api/org.sql:9 (accept_org_invite → market.ensure_member_profile → event profile.ensure) |
-| `api:rpc core.appeal_submission` | writes | `table:tracking.submissions` | db/core/supabase/schemas/api/review.sql:45 |
-| `api:rpc core.appeal_submission` | writes | `table:trust.review_decisions` | db/core/supabase/schemas/api/review.sql:40 |
+| `api:rpc core.appeal_submission` | writes | `table:tracking.submissions` | db/core/supabase/schemas/api/review.sql:50 |
+| `api:rpc core.appeal_submission` | writes | `table:trust.review_decisions` | db/core/supabase/schemas/api/review.sql:45 |
 | `api:rpc core.approve_payout_batch` | writes | `table:finance.payout_batches` | db/core/supabase/schemas/finance/payout_flow.sql:215 |
 | `api:rpc core.buy_pin` | writes | `table:finance.invoices` | db/core/supabase/schemas/api/campaigns.sql:569 (finance.issue_invoice) |
 | `api:rpc core.my_clip_terms` | reads | `table:market.profiles` | db/core/supabase/schemas/api/read_models.sql:153 (trust_score dari market.profiles) |
@@ -1202,7 +1202,7 @@ Arah: `A --tipe--> B` = A bergantung pada B. `?` = belum terverifikasi.
 | `table:ops.bus_peers` | guarded-by | `policy:core.admin-aal2` | db/core/supabase/schemas/bus/inbound.sql:88 |
 | `api:rpc core.health` | reads | `table:bus.outbox` | db/core/supabase/schemas/bus/bus.sql:179 |
 | `doc:docs/endpoints` | documents | `api:rpc core.health` | docs/endpoints/admin.md:13 |
-| `test:core.full-product` | tests | `job:bus-watch` | db/core/supabase/tests/core_contracts_finance.test.sql:1548 |
+| `test:core.full-product` | tests | `job:bus-watch` | db/core/supabase/tests/core_contracts_finance.test.sql:1558 |
 | `test:creator.tracking` | tests | `api:rpc creator.health` | db/creator/supabase/tests/creator_tracking.test.sql:229 |
 | `fn:bus_in.admin` | writes | `table:ops.audit_logs` | db/core/supabase/schemas/bus/inbound.sql:7 |
 | `fn:bus_in.admin` | writes | `table:trust.review_decisions` | db/core/supabase/schemas/bus/inbound.sql:21 |
@@ -1253,7 +1253,7 @@ Arah: `A --tipe--> B` = A bergantung pada B. `?` = belum terverifikasi.
 | `api:rpc core.mark_batch_paid` | writes | `table:ops.audit_logs` | db/core/supabase/schemas/finance/payout_flow.sql:269 |
 | `api:rpc core.mark_fulfillment_delivered` | guarded-by | `policy:core.admin-aal2` | db/core/supabase/schemas/finance/fulfillment_admin.sql:9 |
 | `api:rpc core.mark_fulfillment_delivered` | reads | `table:market.reward_types` | db/core/supabase/schemas/finance/fulfillment_admin.sql:21 |
-| `api:rpc core.mark_fulfillment_delivered` | writes | `table:finance.fulfillments` | db/core/supabase/schemas/finance/fulfillment_admin.sql:12, db/core/supabase/schemas/api/worker.sql:494 (api.worker_fulfillment_result, baris 28) |
+| `api:rpc core.mark_fulfillment_delivered` | writes | `table:finance.fulfillments` | db/core/supabase/schemas/finance/fulfillment_admin.sql:12, db/core/supabase/schemas/api/worker.sql:505 (api.worker_fulfillment_result, baris 28) |
 | `api:rpc core.mark_fulfillment_delivered` | writes | `table:ops.audit_logs` | db/core/supabase/schemas/finance/fulfillment_admin.sql:40 |
 | `api:rpc core.cancel_payout` | writes | `table:finance.payouts` | db/core/supabase/schemas/finance/payout_flow.sql:379 |
 | `api:rpc core.cancel_fulfillment` | writes | `table:finance.fulfillments` | db/core/supabase/schemas/finance/payout_flow.sql:430 |
@@ -1275,13 +1275,13 @@ Arah: `A --tipe--> B` = A bergantung pada B. `?` = belum terverifikasi.
 | `api:rpc core.pay_invoice_with_credit` | writes | `table:finance.ledger_entries` | db/core/supabase/schemas/finance/invoice_confirm.sql:278 (finance.settle_invoice → finance.post) |
 | `api:rpc core.pay_invoice_with_credit` | writes | `table:finance.reward_pools` | db/core/supabase/schemas/finance/invoice_confirm.sql:55 (finance.settle_invoice) |
 | `api:rpc core.record_review` | calls | `fn:enqueue_notification` | db/core/supabase/schemas/trust/decisions.sql:56 (trust.apply_submission_decision) |
-| `api:rpc core.record_review` | guarded-by | `policy:core.admin-aal2` | db/core/supabase/schemas/api/review.sql:62 |
-| `api:rpc core.record_review` | guarded-by | `policy:core.org-role` | db/core/supabase/schemas/api/review.sql:111 |
-| `api:rpc core.record_review` | writes | `table:market.campaigns` | db/core/supabase/schemas/api/review.sql:80 |
-| `api:rpc core.record_review` | writes | `table:market.referrals` | db/core/supabase/schemas/api/review.sql:139 (KYC approve → referral berlaku) |
-| `api:rpc core.record_review` | writes | `table:ops.audit_logs` | db/core/supabase/schemas/api/review.sql:94 |
+| `api:rpc core.record_review` | guarded-by | `policy:core.admin-aal2` | db/core/supabase/schemas/api/review.sql:67 |
+| `api:rpc core.record_review` | guarded-by | `policy:core.org-role` | db/core/supabase/schemas/api/review.sql:116 |
+| `api:rpc core.record_review` | writes | `table:market.campaigns` | db/core/supabase/schemas/api/review.sql:85 |
+| `api:rpc core.record_review` | writes | `table:market.referrals` | db/core/supabase/schemas/api/review.sql:144 (KYC approve → referral berlaku) |
+| `api:rpc core.record_review` | writes | `table:ops.audit_logs` | db/core/supabase/schemas/api/review.sql:99 |
 | `api:rpc core.record_review` | writes | `table:tracking.submissions` | db/core/supabase/schemas/trust/decisions.sql:46 (trust.apply_submission_decision) |
-| `api:rpc core.record_review` | writes | `table:trust.review_decisions` | db/core/supabase/schemas/api/review.sql:89 |
+| `api:rpc core.record_review` | writes | `table:trust.review_decisions` | db/core/supabase/schemas/api/review.sql:94 |
 | `api:rpc core.report_by_token` | guarded-by | `policy:core.public-read` | PRD v0.3.1 Lampiran A.2 report_by_token (belum di kode: bukan RLS public-read; security definer, anon boleh EXECUTE, token sha256 = kapabilitas, api/report_links.sql baris 74, 85) |
 | `api:rpc core.report_by_token` | reads | `table:finance.reward_pools` | db/core/supabase/schemas/api/report_links.sql:59 (market.campaign_report) |
 | `api:rpc core.report_by_token` | reads | `table:market.campaigns` | db/core/supabase/schemas/api/report_links.sql:71 (market.campaign_report) |
@@ -1934,26 +1934,26 @@ Arah: `A --tipe--> B` = A bergantung pada B. `?` = belum terverifikasi.
 | `mod:widget-snapshot` | calls | `mod:clipper-lib` | apps/mobile/src/widget-snapshot.ts:5 |
 | `mod:widget-snapshot` | reads | `table:finance.ledger_accounts` | kode: widgetData → view api.wallet_balances (apps/mobile src/data.ts baris 656) |
 | `mod:widget-snapshot` | calls | `api:rpc core.list_campaigns` | apps/mobile/src/data.ts:141 (widgetData → campaignPage: campaign baru + rate tertinggi) |
-| `mod:widget-snapshot` | reads | `table:finance.payouts` | apps/mobile/src/data.ts:676 |
-| `mod:widget-snapshot` | reads | `table:tracking.submissions` | apps/mobile/src/data.ts:677 |
+| `mod:widget-snapshot` | reads | `table:finance.payouts` | apps/mobile/src/data.ts:677 |
+| `mod:widget-snapshot` | reads | `table:tracking.submissions` | apps/mobile/src/data.ts:678 |
 | `mod:live-activity` | calls | `api:rpc identity.save_activity_token` | apps/mobile/src/live-activity.ios.tsx:117 |
 | `mod:live-activity` | writes | `table:member.push_subscriptions` | apps/mobile/src/live-activity.ios.tsx:210 (keluar: token APNs perangkat dihapus) |
 | `mod:live-activity` | reads | `table:finance.payouts` | apps/mobile/src/live-activity.ios.tsx:136 (token activity ditautkan ke payout yang diproses) |
 | `layout:mobile` | calls | `mod:live-activity` | apps/mobile/src/auth.tsx:54 |
 | `layout:mobile` | calls | `api:fn identity/session-handoff` | apps/mobile/src/web.ts:13 |
 | `layout:mobile` | routes-to | `page:accounts/handoff` | apps/mobile/src/web.ts:15 |
-| `page:mobile/withdraw` | calls | `api:rpc core.request_payout` | apps/mobile/src/data.ts:574 |
-| `page:mobile/withdraw` | calls | `api:rpc core.request_fulfillment` | apps/mobile/src/data.ts:588 |
+| `page:mobile/withdraw` | calls | `api:rpc core.request_payout` | apps/mobile/src/data.ts:575 |
+| `page:mobile/withdraw` | calls | `api:rpc core.request_fulfillment` | apps/mobile/src/data.ts:589 |
 | `page:mobile/withdraw` | routes-to | `page:accounts/kyc` | apps/mobile/app/withdraw.tsx:154 |
 | `page:mobile/social` | routes-to | `api:GET app/api/oauth/[platform]/callback` | apps/mobile/src/social-connect.ts:21 (start?next=/app-return di browser in-app) |
 | `api:GET app/api/oauth/[platform]/callback` | routes-to | `api:GET app/app-return` | apps/clipper/src/app/api/oauth/[platform]/callback/route.ts:17 |
 | `api:GET app/app-return` | routes-to | `page:mobile/social` | apps/clipper/src/app/app-return/route.ts:15 |
 | `page:mobile/share` | calls | `mod:clipper-lib` | apps/mobile/app/share.tsx:9 (matchShare) |
-| `page:mobile/share` | reads | `table:market.claims` | apps/mobile/src/data.ts:658 |
+| `page:mobile/share` | reads | `table:market.claims` | apps/mobile/src/data.ts:659 |
 | `page:mobile/notifications` | calls | `mod:clipper-lib` | apps/mobile/app/notifications.tsx:7 (buildNotificationViews + notificationFacts + notificationIcon) |
-| `page:mobile/notifications` | reads | `table:ops.notifications` | apps/mobile/src/data.ts:610 |
-| `page:mobile/profile` | writes | `table:bucket.avatars` | apps/mobile/src/data.ts:471 |
-| `page:mobile/profile` | calls | `api:rpc creator.ensure_profile` | apps/mobile/src/data.ts:474 (lalu tunggu replika admin) |
+| `page:mobile/notifications` | reads | `table:ops.notifications` | apps/mobile/src/data.ts:611 |
+| `page:mobile/profile` | writes | `table:bucket.avatars` | apps/mobile/src/data.ts:472 |
+| `page:mobile/profile` | calls | `api:rpc creator.ensure_profile` | apps/mobile/src/data.ts:475 (lalu tunggu replika admin) |
 | `page:app/share` | calls | `mod:clipper-lib` | apps/clipper/src/app/share/page.tsx:6 (matchShare, sama dengan app native) |
 | `page:app/.well-known/apple-app-site-association` | calls | `mod:clipper-lib` | apps/clipper/src/app/.well-known/apple-app-site-association/route.ts:1 |
 | `page:app/.well-known/apple-app-site-association` | configured-by | `env:APPLE_TEAM_ID` | apps/clipper/src/app/.well-known/apple-app-site-association/route.ts:7 |
@@ -2738,6 +2738,7 @@ Masalah sistem yang ditemukan saat menyusun PRD v0.2 dan saat dicek ulang (v0.2.
 | 2026-10-24 | `fn:bus.accepts` | Ditemukan saat menguji R92 (bug di fix R91-1): delete baris campuran ditolak dengan raise → satu hapus manual profil di creator memacetkan antrean creator→admin & creator→brand selamanya (terjadi di dev) | diperbaiki: delete baris campuran dilewati + alert bus.rejected_payload (tidak raise); delete palsu tetap tidak diterapkan. Bukti: hapus manual → outbox kosong + 1 alert; e2e/bus.sh membuat profil uji tanpa replika (bus.applying) |
 | 2026-10-24 | `page:app/tasks` | Review Claude ronde 7 D6 (bug di fix D4): submit kini mengembalikan keputusan admin yang bisa langsung rejected, tapi toast & banner tetap "Submisi masuk … direview dulu" | diperbaiki: status rejected → toast galat "Submisi ditolak — lihat alasannya di Tugas" tanpa banner sukses (web & mobile, i18n id/en). typecheck + unit test |
 | 2026-10-24 | `fn:tracking.decide_new_submission` | Codex R93-1 (kelas R89-1): durasi video dicek creator terhadap replika brief basi → video di luar batas durasi baru di-auto-approve dan dibayar | diperbaiki menyeluruh untuk kelasnya: admin mengecek ulang semua syarat isi campaign yang dicek creator — platform, min followers, umur akun, durasi, pakai ulang video — terhadap campaign miliknya; melanggar → ditolak tanpa penalti dengan alasan spesifik. Batasan: tag wajib caption tidak bisa dicek ulang (caption tiba bersama snapshot). Tes merah di kode lama |
+| 2026-10-24 | `fn:tracking.decide_new_submission` | Review Claude ronde 8 D7: penolakan otomatis admin (claim dilepas, org sendiri, kuota, syarat campaign, campaign tutup) tidak menulis review_decisions → alasan tidak tampil di Tugas (bertentangan dengan toast D6) dan tombol banding tetap ada; overturn banding melewati semua cek otomatis itu | diperbaiki: tracking.reject_auto mencatat keputusan reject dengan reason_code system:<kode> + pesan; appeal_submission menolak banding atas penolakan system:* (appeal_closed); Tugas web & mobile menyembunyikan tombol banding. Tes merah di kode lama. Codex R94 = [] pada b404fd0 |
 
 ## Keputusan
 

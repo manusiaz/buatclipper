@@ -226,6 +226,23 @@ begin
                                                          'amounts', lost));
 end $$;
 
+-- Penolakan otomatis oleh keputusan admin (bukan moderator): tercatat di review_decisions (alasan tampil di Tugas; kode system:*
+-- menutup banding — syaratnya tidak berubah lewat banding, dan overturn tidak mengulang cek ini), tanpa penalti Trust Score.
+create function tracking.reject_auto(p_sub tracking.submissions, p_code text, p_reason text, p_notify boolean default true)
+returns void
+language plpgsql security definer set search_path = '' as $$
+begin
+  update tracking.submissions set status = 'rejected' where id = p_sub.id;
+  insert into trust.review_decisions (target_type, target_id, decision, reason_code, message)
+  values ('submission', p_sub.id, 'reject', 'system:' || p_code, p_reason);
+  if p_notify then
+    perform ops.enqueue_notification(p_sub.user_id, 'submission.rejected', market.campaign_ref(p_sub.campaign_id)
+                                     || jsonb_build_object('submission_id', p_sub.id, 'url', p_sub.url, 'platform', p_sub.platform,
+                                                           'final', true, 'reason', p_reason));
+  end if;
+end $$;
+revoke execute on function tracking.reject_auto(tracking.submissions, text, text, boolean) from public;
+
 -- Submisi baru dari creator (replika, status validating; validasi claim/akun/video di creator api.worker_create_submission):
 -- review_route auto → tracking (keputusan tercatat seperti review biasa: Trust Score, notifikasi submission.approved), manual →
 -- in_review; claim → submitted; FR-07 (§12) cover hampir identik dengan submisi akun sosmed lain dalam 90 hari = konten duplikat
@@ -254,10 +271,7 @@ begin
   -- Creator menerima submisi dari replika status campaign yang bisa tertinggal (mis. dibatalkan / sudah settle saat bus telat):
   -- campaign yang tidak lagi menerima klip → ditolak tanpa penalti Trust Score (bukan kesalahan clipper) + kabar.
   if c.status not in ('live', 'paused', 'tracking', 'exhausted') then
-    update tracking.submissions set status = 'rejected' where id = s.id;  -- banding ditolak appeal_closed (campaign selesai)
-    perform ops.enqueue_notification(s.user_id, 'submission.rejected', market.campaign_ref(c.id)
-                                     || jsonb_build_object('submission_id', s.id, 'url', s.url, 'platform', s.platform, 'final', true,
-                                                           'reason', 'Campaign sudah tidak menerima klip saat submisi kamu tercatat.'));
+    perform tracking.reject_auto(s, 'campaign_closed', 'Campaign sudah tidak menerima klip saat submisi kamu tercatat.');
     return;
   end if;
   -- R67: anggota org pemilik (langsung / lewat agency) tidak boleh mengklip campaign org sendiri — bergabung setelah claim pun.
@@ -265,11 +279,9 @@ begin
      or exists (select 1 from market.org_members m where m.org_id = c.org_id and m.user_id = s.user_id)
      or exists (select 1 from market.org_links l join market.org_members m on m.org_id = l.agency_org_id
                  where l.client_org_id = c.org_id and l.approved_at is not null and l.revoked_at is null and m.user_id = s.user_id) then
-    update tracking.submissions set status = 'rejected' where id = s.id;
-    perform ops.enqueue_notification(s.user_id, 'submission.rejected', market.campaign_ref(c.id)
-                                     || jsonb_build_object('submission_id', s.id, 'url', s.url, 'platform', s.platform, 'final', true,
-                                                           'reason', case when claim_ok then 'Kamu anggota organisasi pemilik campaign ini.'
-                                                                          else 'Claim kamu sudah tidak aktif saat submisi tercatat.' end));
+    perform tracking.reject_auto(s, case when claim_ok then 'own_org' else 'claim_released' end,
+                                 case when claim_ok then 'Kamu anggota organisasi pemilik campaign ini.'
+                                      else 'Claim kamu sudah tidak aktif saat submisi tercatat.' end);
     return;
   end if;
   -- Kuota clip per (campaign, clipper) dicek creator dari replika; banding clip lama di sini bisa berjalan bersamaan (advisory lock
@@ -277,37 +289,36 @@ begin
   perform pg_advisory_xact_lock(hashtextextended('clip_quota:' || s.campaign_id || ':' || s.user_id, 0));
   if (select count(*) from tracking.submissions t where t.campaign_id = s.campaign_id and t.user_id = s.user_id and t.id <> s.id
         and t.status not in ('rejected', 'rejected_final')) >= c.max_clips_per_clipper then
-    update tracking.submissions set status = 'rejected' where id = s.id;
-    perform ops.enqueue_notification(s.user_id, 'submission.rejected', market.campaign_ref(c.id)
-                                     || jsonb_build_object('submission_id', s.id, 'url', s.url, 'platform', s.platform, 'final', true,
-                                                           'reason', 'Batas clip per clipper di campaign ini sudah terpenuhi.'));
+    perform tracking.reject_auto(s, 'clip_quota', 'Batas clip per clipper di campaign ini sudah terpenuhi.');
     return;
   end if;
   -- Syarat isi campaign dicek creator dari replika isi yang bisa tertinggal (brand → creator telat): dicek ulang terhadap campaign
   -- di sini (isi terkunci sejak diajukan). Tag wajib caption tidak bisa (caption tiba bersama snapshot).
   select * into acc from tracking.social_accounts a where a.id = s.social_account_id;
   why := case
-    when not (s.platform = any (c.platforms)) then 'Platform akun ini tidak termasuk campaign.'
-    when coalesce(acc.followers, 0) < c.min_followers then 'Followers akun belum memenuhi syarat campaign.'
+    when not (s.platform = any (c.platforms)) then 'platform'
+    when coalesce(acc.followers, 0) < c.min_followers then 'followers'
     when c.min_account_age_days > 0 and (acc.platform_created_at is null
                                          or acc.platform_created_at > s.created_at - make_interval(days => c.min_account_age_days))
-      then 'Umur akun belum memenuhi syarat campaign.'
-    when s.duration_sec < c.min_duration_sec or s.duration_sec > c.max_duration_sec then 'Durasi video di luar syarat campaign.'
+      then 'account_age'
+    when s.duration_sec < c.min_duration_sec or s.duration_sec > c.max_duration_sec then 'duration'
     when not c.allow_video_reuse and exists (select 1 from tracking.submissions t where t.platform = s.platform and t.post_id = s.post_id
                                                                                   and t.campaign_id <> c.id)
-      then 'Video ini sudah dipakai di campaign lain.'
+      then 'video_reuse'
   end;
   if why is not null then
-    update tracking.submissions set status = 'rejected' where id = s.id;
-    perform ops.enqueue_notification(s.user_id, 'submission.rejected', market.campaign_ref(c.id)
-                                     || jsonb_build_object('submission_id', s.id, 'url', s.url, 'platform', s.platform, 'final', true,
-                                                           'reason', why));
+    perform tracking.reject_auto(s, why, case why
+      when 'platform' then 'Platform akun ini tidak termasuk campaign.'
+      when 'followers' then 'Followers akun belum memenuhi syarat campaign.'
+      when 'account_age' then 'Umur akun belum memenuhi syarat campaign.'
+      when 'duration' then 'Durasi video di luar syarat campaign.'
+      else 'Video ini sudah dipakai di campaign lain.' end);
     return;
   end if;
   -- Profil diblokir/ditutup selagi submisi di jalan (replika status di creator tertinggal; ban & tutup akun hanya menyapu submisi
   -- yang sudah ada di sini) → ditolak tanpa penalti; jalur auto akan gagal not_eligible:profile_inactive dan submisi tertahan.
   if (select p.status::text from market.profiles p where p.id = s.user_id) in ('banned', 'closed') then
-    update tracking.submissions set status = 'rejected' where id = s.id;
+    perform tracking.reject_auto(s, 'profile_inactive', 'Akun tidak aktif saat submisi tercatat.', false);
     return;
   end if;
   -- review_route dihitung creator dari replika isi campaign yang bisa tertinggal (mis. review_mode baru belum tiba di creator):

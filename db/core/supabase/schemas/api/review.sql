@@ -23,6 +23,11 @@ begin
   if s.status <> 'rejected' then
     perform market.fail('invalid_state:' || s.status, 'banding hanya untuk submisi yang ditolak');
   end if;
+  -- Penolakan otomatis (syarat campaign/claim/kuota, tracking.reject_auto) tidak bisa dibanding: overturn tidak mengulang cek itu.
+  if exists (select 1 from trust.review_decisions d where d.target_type = 'submission' and d.target_id = s.id and d.decision = 'reject'
+               and d.reason_code like 'system:%') then
+    perform market.fail('appeal_closed', 'penolakan otomatis tidak bisa dibanding');
+  end if;
   -- Campaign selesai (dana sisa bisa di-refund/rollover) → banding ditutup; banding yang berjalan menahan settle.
   if exists (select 1 from market.campaigns c where c.id = s.campaign_id and c.status in ('settling', 'settled', 'cancelled')) then
     perform market.fail('appeal_closed', 'campaign sudah selesai, banding ditutup');
