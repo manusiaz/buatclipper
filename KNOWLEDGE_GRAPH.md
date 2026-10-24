@@ -990,10 +990,10 @@ Arah: `A --tipe--> B` = A bergantung pada B. `?` = belum terverifikasi.
 | `api:fn core/bridge` | calls | `api:fn identity/bridge` | db/core/supabase/functions/bridge/handler.ts:153 (cron disburse & ban_user → identity) |
 | `api:fn core/fulfill` | calls | `ext:brand-webhook` | db/core/supabase/functions/fulfill/fulfill.ts:115 |
 | `api:fn core/fulfill` | guarded-by | `policy:fn-cron-key` | db/core/supabase/functions/fulfill/index.ts:10 |
-| `api:fn core/fulfill` | reads | `table:finance.fulfillments` | db/core/supabase/schemas/api/worker.sql:427 (rpc worker_fulfillments_due) |
-| `api:fn core/fulfill` | reads | `table:vault.social-tokens` | db/core/supabase/schemas/api/worker.sql:449 (secret webhook reward type di Vault core) |
-| `api:fn core/fulfill` | writes | `table:finance.fulfillments` | db/core/supabase/schemas/api/worker.sql:505 (rpc worker_fulfillment_result) |
-| `api:fn core/fulfill` | writes | `table:finance.reward_codes` | db/core/supabase/schemas/api/worker.sql:484 (rpc worker_assign_code) |
+| `api:fn core/fulfill` | reads | `table:finance.fulfillments` | db/core/supabase/schemas/api/worker.sql:437 (rpc worker_fulfillments_due) |
+| `api:fn core/fulfill` | reads | `table:vault.social-tokens` | db/core/supabase/schemas/api/worker.sql:459 (secret webhook reward type di Vault core) |
+| `api:fn core/fulfill` | writes | `table:finance.fulfillments` | db/core/supabase/schemas/api/worker.sql:515 (rpc worker_fulfillment_result) |
+| `api:fn core/fulfill` | writes | `table:finance.reward_codes` | db/core/supabase/schemas/api/worker.sql:494 (rpc worker_assign_code) |
 | `api:fn core/notify` | calls | `api:fn identity/bridge` | db/core/supabase/functions/notify/notify.ts:94 (send_email; send_push sesuai flag kanal pesan) |
 | `api:fn core/notify` | configured-by | `env:BRIDGE_SECRET_CORE_TO_IDENTITY` | db/core/supabase/functions/_shared/bridge.ts:66 |
 | `api:fn core/notify` | configured-by | `env:SUPABASE_DB_URL` | PRD v0.3.1 §15.8 Queue lewat koneksi Postgres langsung (belum di kode: queue dibaca lewat rpc api.worker_dequeue dengan secret key, bukan koneksi Postgres) |
@@ -1012,8 +1012,8 @@ Arah: `A --tipe--> B` = A bergantung pada B. `?` = belum terverifikasi.
 | `api:fn creator/social` | calls | `api:rpc creator.worker_create_submission` | db/creator/supabase/functions/social/handler.ts:294 |
 | `api:rpc creator.worker_create_submission` | writes | `table:creator/tracking.submissions` | db/creator/supabase/schemas/api/worker.sql:366 |
 | `api:rpc creator.worker_create_submission` | reads | `table:creator/market.claims` | db/creator/supabase/schemas/api/worker.sql:299 |
-| `fn:tracking.decide_new_submission` | writes | `table:trust.fraud_flags` | db/core/supabase/schemas/api/worker.sql:342 (FR-07, cover_hash dari submit) |
-| `fn:tracking.decide_new_submission` | writes | `table:market.claims` | db/core/supabase/schemas/api/worker.sql:268 |
+| `fn:tracking.decide_new_submission` | writes | `table:trust.fraud_flags` | db/core/supabase/schemas/api/worker.sql:352 (FR-07, cover_hash dari submit) |
+| `fn:tracking.decide_new_submission` | writes | `table:market.claims` | db/core/supabase/schemas/api/worker.sql:278 |
 | `api:fn creator/social` | calls | `mod:social` | db/creator/supabase/functions/social/handler.ts:23 |
 | `api:fn creator/social` | configured-by | `env:GOOGLE_CLIENT_SECRET` | db/creator/supabase/functions/_shared/social/mod.ts:19 |
 | `api:fn creator/social` | configured-by | `env:META_APP_SECRET` | db/creator/supabase/functions/_shared/social/mod.ts:18 |
@@ -1022,11 +1022,11 @@ Arah: `A --tipe--> B` = A bergantung pada B. `?` = belum terverifikasi.
 | `api:fn creator/social` | reads | `table:creator/market.claims` | db/creator/supabase/functions/social/handler.ts:335 |
 | `api:fn creator/social` | writes | `table:creator/tracking.social_accounts` | db/creator/supabase/schemas/api/worker.sql:264 (rpc worker_upsert_social_account) |
 | `api:fn creator/social` | writes | `table:vault.social-tokens` | db/creator/supabase/schemas/api/worker.sql:271 (api.store_social_token) |
-| `fn:tracking.apply_snapshot` | calls | `api:rpc core.missing_brief_tags` | db/core/supabase/schemas/api/worker.sql:101 (FR-06 caption dari raw snapshot) |
-| `fn:tracking.apply_snapshot` | calls | `fn:accrue_earnings` | db/core/supabase/schemas/api/worker.sql:179 |
-| `fn:tracking.post_gone` | calls | `fn:reverse_earning` | db/core/supabase/schemas/api/worker.sql:222 |
+| `fn:tracking.apply_snapshot` | calls | `api:rpc core.missing_brief_tags` | db/core/supabase/schemas/api/worker.sql:111 (FR-06 caption dari raw snapshot) |
+| `fn:tracking.apply_snapshot` | calls | `fn:accrue_earnings` | db/core/supabase/schemas/api/worker.sql:189 |
+| `fn:tracking.post_gone` | calls | `fn:reverse_earning` | db/core/supabase/schemas/api/worker.sql:232 |
 | `api:fn creator/track-worker` | calls | `fn:tracking.post_gone` | db/creator/supabase/schemas/api/worker.sql:170 (event submission.post_gone) |
-| `fn:tracking.post_gone` | writes | `table:trust.score_events` | db/core/supabase/schemas/api/worker.sql:219 (FR-06 otomatis menurunkan Trust Score, AA-9) |
+| `fn:tracking.post_gone` | writes | `table:trust.score_events` | db/core/supabase/schemas/api/worker.sql:229 (FR-06 otomatis menurunkan Trust Score, AA-9) |
 | `api:fn creator/track-worker` | calls | `mod:social` | db/creator/supabase/functions/track-worker/index.ts:6 |
 | `api:fn creator/track-worker` | configured-by | `env:SUPABASE_DB_URL` | PRD v0.3.1 §15.8 Queue lewat koneksi Postgres langsung (belum di kode: queue dibaca lewat rpc api.worker_dequeue dengan secret key, bukan koneksi Postgres) |
 | `api:fn creator/track-worker` | guarded-by | `policy:fn-cron-key` | db/creator/supabase/functions/track-worker/index.ts:12 |
@@ -1035,10 +1035,10 @@ Arah: `A --tipe--> B` = A bergantung pada B. `?` = belum terverifikasi.
 | `api:fn creator/track-worker` | subscribes | `event:queue.tracking` | db/creator/supabase/functions/track-worker/worker.ts:134 |
 | `api:fn creator/track-worker` | writes | `table:creator/tracking.view_snapshots` | db/creator/supabase/schemas/api/worker.sql:145 (rpc worker_record_snapshot) |
 | `table:creator/tracking.view_snapshots` | replicates-to | `table:tracking.view_snapshots` | db/creator/supabase/schemas/tracking/submissions.sql:66 |
-| `table:tracking.view_snapshots` | calls | `fn:tracking.apply_snapshot` | db/core/supabase/schemas/api/worker.sql:378 (hook bus_in.tracking_view_snapshots_applied) |
+| `table:tracking.view_snapshots` | calls | `fn:tracking.apply_snapshot` | db/core/supabase/schemas/api/worker.sql:388 (hook bus_in.tracking_view_snapshots_applied) |
 | `table:creator/tracking.submissions` | replicates-to | `table:tracking.submissions` | db/creator/supabase/schemas/tracking/submissions.sql:39 (isi + review_route) |
 | `table:tracking.submissions` | replicates-to | `table:creator/tracking.submissions` | db/core/supabase/schemas/tracking/submissions.sql:43 (status, counted_views, locked_at, next_poll_at) |
-| `table:tracking.submissions` | calls | `fn:tracking.decide_new_submission` | db/core/supabase/schemas/api/worker.sql:362 (hook bus_in.tracking_submissions_applied) |
+| `table:tracking.submissions` | calls | `fn:tracking.decide_new_submission` | db/core/supabase/schemas/api/worker.sql:372 (hook bus_in.tracking_submissions_applied) |
 | `table:creator/tracking.social_accounts` | replicates-to | `table:tracking.social_accounts` | db/creator/supabase/schemas/tracking/social_accounts.sql:20 (tanpa token_ref) |
 | `table:market.claims` | replicates-to | `table:creator/market.claims` | db/core/supabase/schemas/market/claims.sql:20 |
 | `table:market.campaigns` | replicates-to | `table:creator/market.campaigns` | db/core/supabase/schemas/market/campaigns.sql:118 (status, deadline, view window, tag wajib caption yang disetujui) |
@@ -1052,8 +1052,10 @@ Arah: `A --tipe--> B` = A bergantung pada B. `?` = belum terverifikasi.
 | `table:creator/ops.settings` | guarded-by | `policy:core.public-read` | db/creator/supabase/schemas/ops/settings.sql:13 |
 | `test:creator.tracking` | tests | `api:rpc creator.worker_create_submission` | db/creator/supabase/tests/creator_tracking.test.sql:1 |
 | `fn:bus_in.creator` | writes | `table:creator/tracking.social_accounts` | db/creator/supabase/schemas/api/profile.sql:102 (social.reset) |
-| `fn:tracking.apply_snapshot` | writes | `table:trust.fraud_flags` | db/core/supabase/schemas/api/worker.sql:111 (trust.raise_flag) |
-| `fn:tracking.apply_snapshot` | writes | `table:tracking.submissions` | db/core/supabase/schemas/api/worker.sql:196 (applied_snapshot_id = penanda diproses milik admin; last_snapshot_at/last_views milik creator, tidak ditulis admin) |
+| `fn:tracking.apply_snapshot` | writes | `table:trust.fraud_flags` | db/core/supabase/schemas/api/worker.sql:121 (trust.raise_flag) |
+| `fn:tracking.apply_snapshot` | writes | `table:tracking.submissions` | db/core/supabase/schemas/api/worker.sql:206 (applied_snapshot_id = penanda diproses milik admin; last_snapshot_at/last_views milik creator, tidak ditulis admin) |
+| `fn:tracking.apply_snapshot` | calls | `fn:tracking.apply_snapshot` | db/core/supabase/schemas/api/worker.sql:90 (CL16/CX13: snapshot sebelumnya yang belum diproses — id > applied_snapshot_id — diproses dulu, berurutan) |
+| `test:core.full-product` | tests | `fn:accrue_earnings` | db/core/supabase/tests/core_contracts_finance.test.sql:1850 (CL16/CX13: jatah settlement S1 yang hook-nya gagal tetap tercatat) |
 | `test:core.full-product` | tests | `fn:tracking.apply_snapshot` | db/core/supabase/tests/core_contracts_finance.test.sql:1831 (CL15/CX12: pasangan event creator + hook gagal → tidak lock tanpa cek fraud) |
 | `api:fn identity/admin-auth` | guarded-by | `policy:identity.admin-aal2` | db/identity/supabase/functions/admin-auth/handler.ts:33 |
 | `api:fn identity/admin-auth` | writes | `table:auth.users` | db/identity/supabase/functions/admin-auth/handler.ts:51 (invite; ban_duration lewat _shared/moderation.ts) |
@@ -1270,7 +1272,7 @@ Arah: `A --tipe--> B` = A bergantung pada B. `?` = belum terverifikasi.
 | `api:rpc core.mark_batch_paid` | writes | `table:ops.audit_logs` | db/core/supabase/schemas/finance/payout_flow.sql:269 |
 | `api:rpc core.mark_fulfillment_delivered` | guarded-by | `policy:core.admin-aal2` | db/core/supabase/schemas/finance/fulfillment_admin.sql:9 |
 | `api:rpc core.mark_fulfillment_delivered` | reads | `table:market.reward_types` | db/core/supabase/schemas/finance/fulfillment_admin.sql:21 |
-| `api:rpc core.mark_fulfillment_delivered` | writes | `table:finance.fulfillments` | db/core/supabase/schemas/finance/fulfillment_admin.sql:12, db/core/supabase/schemas/api/worker.sql:505 (api.worker_fulfillment_result, baris 28) |
+| `api:rpc core.mark_fulfillment_delivered` | writes | `table:finance.fulfillments` | db/core/supabase/schemas/finance/fulfillment_admin.sql:12, db/core/supabase/schemas/api/worker.sql:515 (api.worker_fulfillment_result, baris 28) |
 | `api:rpc core.mark_fulfillment_delivered` | writes | `table:ops.audit_logs` | db/core/supabase/schemas/finance/fulfillment_admin.sql:40 |
 | `api:rpc core.cancel_payout` | writes | `table:finance.payouts` | db/core/supabase/schemas/finance/payout_flow.sql:379 |
 | `api:rpc core.cancel_fulfillment` | writes | `table:finance.fulfillments` | db/core/supabase/schemas/finance/payout_flow.sql:430 |
@@ -2782,6 +2784,8 @@ Masalah sistem yang ditemukan saat menyusun PRD v0.2 dan saat dicek ulang (v0.2.
 | 2026-10-24 | `job:lifecycle` | Cek silang D4 — Codex CX11: hook snapshot gagal (tertangkap → alert) lalu lifecycle menemukan snapshot final → accrual + lock langsung tanpa cek fraud apply_snapshot → bisa dibayar | diperbaiki: snapshot final yang belum diproses (last_snapshot_at < taken_at) diproses ulang lewat tracking.apply_snapshot; gagal → tetap tracking + alert (dedupe 1 jam), dicoba lagi run berikutnya |
 | 2026-10-24 | `table:tracking.submissions` | Cek silang D5 — Claude CL15 = Codex CX12 (ditemukan independen keduanya; celah di fix CX11): penanda 'sudah diproses' = last_snapshot_at, padahal kolom itu milik creator dan tiba sebagai replika sesudah snapshot walau hook gagal → lifecycle tetap accrual + lock tanpa cek fraud; finalize_settlements juga memakai kolom itu → demand snapshot gagal hilang dari pro-rata | diperbaiki: penanda admin sendiri applied_snapshot_id (hanya ditulis apply_snapshot) dipakai lifecycle & finalize_settlements; admin berhenti menulis last_snapshot_at/last_views (satu pemilik per kolom); tes mengirim pasangan event creator utuh lewat bus |
 | 2026-10-24 | `job:bus-ping` | Cek silang D5 — Claude CL15 (catatan): waktu pg_prepared_xacts.prepared = saat PREPARE, bukan awal transaksi → bukan batas bawah created_at event | diperbaiki: transaksi prepared di DB itu = fail-closed (watermark tidak maju) |
+| 2026-10-24 | `fn:tracking.apply_snapshot` | Cek silang D6 — Claude CL16 = Codex CX13 (independen; kelas yang sama dengan CL15): snapshot non-final yang hook-nya gagal tetap tersimpan → snapshot berikutnya (accrue_earnings R76) menganggapnya 'snapshot pertama setelah cut-off' yang sudah dihitung → jatah settlement clipper hilang permanen; non-final tidak pernah dicoba ulang | diperbaiki di akar: apply_snapshot memproses dulu snapshot sebelumnya yang belum diproses (id > applied_snapshot_id), berurutan; masih gagal → snapshot ini ikut gagal (alert), tidak ada yang dilompati. applied_snapshot_id jadi penanda berurutan 'semua ≤ id ini diproses' |
+| 2026-10-24 | `table:tracking.submissions` | Cek silang D6 — Claude CL17: kolom applied_snapshot_id baru tanpa backfill → final lama diproses ulang → flag yang sudah diselesaikan moderator muncul lagi; settlement berjalan menunggu sia-sia | diperbaiki: migrasi D6 mengisi applied_snapshot_id = snapshot terakhir untuk baris lama (kode lama sudah memprosesnya; kegagalan dulu hanya alert) |
 
 ## Keputusan
 

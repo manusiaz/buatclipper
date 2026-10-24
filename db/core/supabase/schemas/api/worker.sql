@@ -74,11 +74,21 @@ declare
   every_h numeric;
   nxt timestamptz;
   st tracking.submission_status;
+  prev bigint;
 begin
   select * into v from tracking.view_snapshots x where x.id = p_snapshot;
   if not found then
     raise exception 'not_found:snapshot' using errcode = 'P0002';
   end if;
+  -- Snapshot sebelumnya yang belum diproses (hook replika gagal → alert) diproses dulu, berurutan: jatah settlement (snapshot
+  -- pertama setelah cut-off, R76) dan cek fraud tidak terlewat oleh snapshot berikutnya (CL16/CX13). Masih gagal → snapshot ini
+  -- ikut gagal (alert), tidak ada yang diproses melompati. applied_snapshot_id naik berurutan, jadi id ≤ itu = sudah diproses.
+  for prev in select x.id from tracking.view_snapshots x
+               where x.submission_id = v.submission_id and x.id < v.id
+                 and x.id > coalesce((select t.applied_snapshot_id from tracking.submissions t where t.id = v.submission_id), 0)
+               order by x.id loop
+    perform tracking.apply_snapshot(prev);
+  end loop;
   select * into s from tracking.submissions t where t.id = v.submission_id for update;
   if not found then
     raise exception 'not_found:submission' using errcode = 'P0002';

@@ -1836,6 +1836,24 @@ select market.run_lifecycle();
 select is((select status::text || ':' || (applied_snapshot_id = 900015)::text from tracking.submissions where id = (select v::uuid from t_ids where k = 's15f')),
           'locked:true', 'CX11: snapshot final diproses ulang lewat apply_snapshot → locked');
 
+-- Review CL16/CX13: saat settlement, snapshot pertama setelah cut-off (S1) gagal di hook; S2 berikutnya memproses S1 dulu —
+-- jatah settlement (demand) dari S1 tetap tercatat, bukan hilang karena S2 melihat baris S1 yang tidak pernah diproses.
+select pg_temp.mk_campaign('55555555-0000-0000-0000-0000000000e6', 'cl16-settle', 0);
+select pg_temp.mk_pool('55555555-0000-0000-0000-0000000000e6', '66666666-0000-0000-0000-0000000000e6', 100000, 10000000);
+select pg_temp.mk_rule('55555555-0000-0000-0000-0000000000e6', '66666666-0000-0000-0000-0000000000e6', 'per_1k_views', '{"rate":1000}');
+insert into t_ids select 's16a', pg_temp.mk_sub('55555555-0000-0000-0000-0000000000e6', '11111111-0000-0000-0000-00000000000d', 'v16a');
+select pg_temp.record_snapshot((select v::uuid from t_ids where k = 's16a'), 1000, 100, 10, 0, null, '{}');
+insert into finance.pool_settlements (pool_id, cutoff_at) values ('66666666-0000-0000-0000-0000000000e6', clock_timestamp());
+insert into tracking.view_snapshots (submission_id, taken_at, views, likes, comments) values ((select v::uuid from t_ids where k = 's16a'), clock_timestamp(), 3000, 300, 30);
+insert into t_ids select 's16s1', max(id)::text from tracking.view_snapshots where submission_id = (select v::uuid from t_ids where k = 's16a');
+select pg_temp.record_snapshot((select v::uuid from t_ids where k = 's16a'), 5000, 500, 50, 0, null, '{}');
+select is((select demand::text || ':' || (demand_snapshot = (select v::bigint from t_ids where k = 's16s1'))::text from finance.clip_earnings
+            where submission_id = (select v::uuid from t_ids where k = 's16a') and pool_id = '66666666-0000-0000-0000-0000000000e6'),
+          '2000.0000000000:true', 'CL16/CX13: jatah settlement dari S1 (hook gagal) tetap tercatat — S2 memproses S1 dulu');
+select is((select applied_snapshot_id from tracking.submissions where id = (select v::uuid from t_ids where k = 's16a')),
+          (select max(id) from tracking.view_snapshots where submission_id = (select v::uuid from t_ids where k = 's16a')),
+          'CL16/CX13: applied_snapshot_id naik berurutan sampai S2');
+
 -- ========== N2. Sisa budget campaign settled: rollover vs refund (D-09) ==========
 set local role authenticated;
 select pg_temp.jwt('22222222-0000-0000-0000-0000000000c1');
