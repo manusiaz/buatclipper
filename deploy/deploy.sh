@@ -30,7 +30,7 @@
 #                          + Edge Functions berhenti; off: job bisnis nonaktif, job bus-* & functions jalan; on: semua jalan
 #   Restore SATU DB (core|creator|brand) ke backup lama — runbook (CX2): 1) `deploy.sh pause` di server app (container app berhenti, Caddy
 #                          tetap), `deploy.sh maintenance on` di SETIAP server stack termasuk identity (API publik 503 — app native
-#                          menulis langsung ke API; bridge tetap) dan `deploy.sh bus jobs off` di SETIAP server stack (hentikan semua tulisan user, uang & worker) 2) di server stack yang
+#                          menulis langsung ke API; bridge tetap) dan `deploy.sh bus jobs off` (termasuk server identity: job-nya memanggil bridge core) di SETIAP server stack (hentikan semua tulisan user, uang & worker) 2) di server stack yang
 #                          dipulihkan: `deploy.sh bus jobs hold` (job berhenti, job yang sedang jalan ditunggu, Edge Functions
 #                          dihentikan — worker yang sudah dipanggil tidak menulis lagi) → pulihkan dump (pg_restore dari deploy/stack/<stack>/backups; dump
 #                          membawa job cron yang aktif, hold mencegahnya jalan di atas data setengah dimuat) → khusus creator: id
@@ -570,7 +570,13 @@ case "$CMD" in
     ;;
   bus)
     local_stacks=$(for p in core creator brand; do if [ -d "stack/$p" ]; then echo "$p"; fi; done)
-    [ -n "$local_stacks" ] || { echo "tidak ada stack core/creator/brand di server ini"; exit 1; }
+    # jobs juga untuk identity (job cron-nya — mis. fraud-device-scan — memanggil bridge core, O9-1)
+    job_stacks=$(for p in identity core creator brand; do if [ -d "stack/$p" ]; then echo "$p"; fi; done)
+    if [ "$BUS_OP" = jobs ]; then
+      [ -n "$job_stacks" ] || { echo "tidak ada stack Supabase di server ini"; exit 1; }
+    else
+      [ -n "$local_stacks" ] || { echo "tidak ada stack core/creator/brand di server ini"; exit 1; }
+    fi
     case "$BUS_OP" in
       status)
         for p in $local_stacks; do
@@ -616,7 +622,7 @@ case "$CMD" in
         # stack ini ikut berhenti; pengirim menahan + backoff); off = job bisnis nonaktif, job bus-* & functions jalan lagi;
         # on = semua jalan.
         case "${BUS_ARGS[0]:-}" in hold) launch=off ;; off|on) launch=on ;; *) echo "pakai: deploy.sh bus jobs <hold|off|on>"; exit 1 ;; esac
-        for p in $local_stacks; do
+        for p in $job_stacks; do
           if [ "${BUS_ARGS[0]}" != hold ]; then
             psql_db "$p" -tA -c "select '$p: ' || count(*) || ' job bisnis ${BUS_ARGS[0]}' from (select cron.alter_job(jobid,
                                  active := $([ "${BUS_ARGS[0]}" = on ] && echo true || echo false)) from cron.job where jobname not like 'bus-%') x"
@@ -625,11 +631,17 @@ case "$CMD" in
             -c "alter system set cron.launch_active_jobs = $launch" -c "select pg_reload_conf()" >/dev/null
           echo "$p: pg_cron launch_active_jobs = $launch"
           if [ "${BUS_ARGS[0]}" = hold ]; then
-            for _ in $(seq 1 120); do
-              [ "$(psql_db "$p" -tA -c "select count(*) from cron.job_run_details where status in ('starting', 'running')
-                                          and start_time > now() - interval '1 hour'")" = 0 ] && break
-              sleep 1
-            done
+            # job yang sedang jalan = sesi pg_cron aktif (bukan cron.job_run_details: baris 'running' basi sesudah crash);
+            # ditunggu 120 dtk, sisanya dibatalkan (transaksi job rollback), tetap ada → gagal (jangan lanjut ke pg_restore, O9-2)
+            running="select count(*) from pg_stat_activity where application_name = 'pg_cron' and backend_type = 'client backend'
+                       and state <> 'idle' and pid <> pg_backend_pid()"
+            for _ in $(seq 1 120); do [ "$(psql_db "$p" -tA -c "$running")" = 0 ] && break; sleep 1; done
+            if [ "$(psql_db "$p" -tA -c "$running")" != 0 ]; then
+              psql_db "$p" -tA -c "select '$p: job dibatalkan: ' || count(pg_cancel_backend(pid)) from pg_stat_activity
+                                    where application_name = 'pg_cron' and backend_type = 'client backend' and state <> 'idle'"
+              sleep 10
+              [ "$(psql_db "$p" -tA -c "$running")" = 0 ] || { echo "$p: job cron masih jalan — JANGAN lanjut restore; ulangi bus jobs hold"; exit 1; }
+            fi
             compose "$p" stop functions >/dev/null && echo "$p: Edge Functions berhenti"
           else
             compose "$p" start functions >/dev/null && echo "$p: Edge Functions jalan"
