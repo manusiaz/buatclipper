@@ -113,10 +113,8 @@ begin
     elsif r.next_poll_at is null or r.next_poll_at > now() + interval '1 hour' then
       update tracking.submissions set next_poll_at = now() where id = r.id;
     end if;
-    -- satu alert terbuka per snapshot (bukan dedupe per jenis): tiap snapshot macet punya tombol "Lewati snapshot" sendiri
-    if e is not null and not exists (select 1 from ops.alerts a where a.kind = 'tracking.apply_failed' and a.resolved_at is null
-                                                                and a.payload ->> 'snapshot_id' = fin::text) then
-      perform ops.raise_alert('tracking.apply_failed', 'critical', jsonb_build_object('snapshot_id', fin, 'step', step, 'error', e));
+    if e is not null then  -- satu alert terbuka per snapshot pemblokir (bukan dedupe per jenis)
+      perform tracking.alert_apply_failed(r.id, case when step = 'lock' then fin end, step, e);
     end if;
   end loop;
 

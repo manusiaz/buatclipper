@@ -3,6 +3,8 @@ create function bus.me() returns text
 language sql immutable set search_path = '' as $$ select 'creator' $$;
 
 select cron.schedule('bus-relay', '1 seconds', $$select bus.relay()$$);
+-- job:bus-reconcile — penghapusan rekonsiliasi restore, bertahap (bus.reconcile_apply)
+select cron.schedule('bus-reconcile', '30 seconds', $$select bus.reconcile_apply()$$);
 -- job:bus-prune — retensi outbox terkirim (bus.prune) + salinan data akun yang dihapus (bus.scrub_closed, api/profile.sql)
 select cron.schedule('bus-prune', '17 3 * * *', $$select bus.prune(); select bus.scrub_closed()$$);
 -- job:bus-ping — tanda hidup + antrean macet ke admin (pemantauan bus, ops.watch_bus di admin).

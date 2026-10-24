@@ -1975,6 +1975,18 @@ select market.run_lifecycle();
 select is((select status::text || ':' || (select count(*) from finance.clip_earnings e where e.submission_id = s.id) from tracking.submissions s
             where post_id = 'o14b'), 'locked:0', 'O1-4: sesudah review dikunci tanpa accrual final yang dilewati');
 
+-- Review O3-C2: alert snapshot macet menunjuk snapshot tertunda paling awal (pemblokir; yang sesudahnya hanya ikut gagal) —
+-- tombol "Lewati snapshot" mengenai yang bisa dilewati; satu alert terbuka per snapshot.
+insert into t_ids select 'o32', pg_temp.mk_sub('55555555-0000-0000-0000-0000000000e8', '11111111-0000-0000-0000-00000000000a', 'o32');
+insert into tracking.view_snapshots (submission_id, taken_at, views)
+select (select v::uuid from t_ids where k = 'o32'), clock_timestamp(), 100 * g from generate_series(1, 2) g;
+select tracking.alert_apply_failed((select v::uuid from t_ids where k = 'o32'), null, 'snapshot', 'uji');
+select tracking.alert_apply_failed((select v::uuid from t_ids where k = 'o32'), null, 'lifecycle', 'uji');
+select is((select array_agg((payload ->> 'snapshot_id')::bigint) from ops.alerts where kind = 'tracking.apply_failed' and resolved_at is null
+            and payload ->> 'submission_id' = (select v from t_ids where k = 'o32')),
+          (select array[min(id)] from tracking.view_snapshots where submission_id = (select v::uuid from t_ids where k = 'o32')),
+          'O3-C2: satu alert, menunjuk snapshot tertunda paling awal');
+
 -- ========== N2. Sisa budget campaign settled: rollover vs refund (D-09) ==========
 set local role authenticated;
 select pg_temp.jwt('22222222-0000-0000-0000-0000000000c1');

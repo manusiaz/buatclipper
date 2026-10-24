@@ -35,7 +35,9 @@
 #                          di core-db, lalu di creator-db `select setval(pg_get_serial_sequence('tracking.view_snapshots', 'id'),
 #                          greatest(N, (select coalesce(max(id), 1) from tracking.view_snapshots)))`; lalu `deploy.sh up <stack>`
 #                          3) di SETIAP server stack, termasuk server yang dipulihkan (stack lain yang satu server ikut):
-#                          `deploy.sh bus reconcile <nama bus stack yang dipulihkan>` (state yang hilang dikirim ulang, baris yang dicabut sesudah backup — mis. anggota org — dihapus) 4) di server
+#                          `deploy.sh bus reconcile <nama bus stack yang dipulihkan>` (state yang hilang dikirim ulang, baris yang dicabut sesudah backup — mis. anggota org — dihapus; penghapusan oleh job
+#                          bus-reconcile bertahap); tunggu `deploy.sh bus status` di semua server: antrean & rekonsiliasi_menunggu
+#                          kosong (daftar kunci langkah 4 harus sudah memuat baris yang dikirim ulang langkah 3) 4) di server
 #                          stack yang dipulihkan: `deploy.sh bus reconcile <tiap stack lain>` (stack itu sekarang sumber kebenaran
 #                          datanya sendiri) 5) `deploy.sh bus status` di semua server sampai antrean kosong; alert admin
 #                          bus.rejected_payload berisi baris yang TIDAK diubah otomatis dan perlu keputusan manual: delete (baris
@@ -537,6 +539,7 @@ case "$CMD" in
           echo "== $p ($(bus_name "$p"))"
           psql_db "$p" -tA -c "select jsonb_pretty(api.health() - 'db')"
           psql_db "$p" -c "select target, seq, topic, attempts, created_at, left(last_error, 120) as last_error from bus.stuck()"
+          psql_db "$p" -c "select source, tbl as rekonsiliasi_menunggu, total, created_at from bus.reconcile_runs order by created_at"
           if [ "$p" = core ]; then
             psql_db "$p" -c "select source, pinged_at as watermark, seen_at as ping_terakhir, stuck from ops.bus_peers order by source"
           fi

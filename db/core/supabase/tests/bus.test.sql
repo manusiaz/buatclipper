@@ -213,11 +213,14 @@ select lives_ok($$ select api.bus_receive('creator', jsonb_build_array(
   jsonb_build_object('id', gen_random_uuid(), 'topic', 'rep.keys', 'payload', '{"table":"public.rc_dst","epoch":"00000000-0000-0000-0000-0000000000c2","keys":[{"id":3}],"last":true,"total":2}'::jsonb),
   jsonb_build_object('id', gen_random_uuid(), 'topic', 'rep.keys', 'payload', '{"table":"public.rc_mixed","epoch":"00000000-0000-0000-0000-0000000000c3","keys":[{"id":1}],"last":true,"total":1}'::jsonb))) $$,
   'CX2: potongan terakhir diterapkan');
+select is((select count(*)::int from public.rc_dst), 3, 'O3-C1: bus_receive tidak menghapus (dikerjakan job bus-reconcile, di luar timeout bridge)');
+select is((select count(*)::int from bus.reconcile_runs), 2, 'O3-C1: daftar lengkap menunggu job');
+select is(bus.reconcile_apply(), 2, 'O3-C1: job memproses baris yang tidak ada di pemilik (1 dihapus, 1 campuran dilaporkan)');
 select is((select array_agg(id order by id) from public.rc_dst), array[1, 3], 'CX2: baris yang tidak ada di pemilik (dihidupkan restore) dihapus');
 select is((select count(*)::int from public.rc_mixed), 2, 'CX2: tabel campuran tidak dihapus (kolom milik penerima)');
 select ok(exists (select 1 from ops.alerts where kind = 'bus.rejected_payload' and id > (select m from t_cx2) and payload -> 'events' -> 0 ->> 'reason' = 'delete'),
           'CX2: baris tabel campuran yang tidak ada di pemilik dilaporkan');
-select is((select count(*)::int from bus.reconcile_keys), 0, 'CX2: penampung kunci dibersihkan');
+select is((select count(*)::int from bus.reconcile_keys) + (select count(*)::int from bus.reconcile_runs), 0, 'CX2: penampung kunci dibersihkan');
 -- O1-3: potongan awal hilang (dipangkas bus.prune / dilewati bus.skip) → daftar tidak lengkap, tidak ada yang dihapus, dilaporkan.
 insert into public.rc_dst values (2, 'x');
 select lives_ok($$ select api.bus_receive('creator', jsonb_build_array(
@@ -234,10 +237,18 @@ insert into public.rc_ref values (2);
 select lives_ok($$ select api.bus_receive('creator', jsonb_build_array(
   jsonb_build_object('id', gen_random_uuid(), 'topic', 'rep.keys', 'payload', '{"table":"public.rc_part","epoch":"00000000-0000-0000-0000-0000000000c5","keys":[{"id":1}],"last":true,"total":1}'::jsonb))) $$,
   'O1-2: baris yang gagal dihapus tidak menahan antrean');
+select is(bus.reconcile_apply(1), 1, 'O3-C1: batas per panggilan');
+select is(bus.reconcile_apply(1), 1, 'O3-C1: dilanjutkan panggilan berikutnya (baris yang dilaporkan tidak diulang)');
+select is(bus.reconcile_apply(1), 0, 'O3-C1: selesai');
 select is((select array_agg(id order by id) from public.rc_part), array[1, 2], 'O1-2: baris dirujuk tetap, baris lain dihapus');
 select ok(exists (select 1 from ops.alerts where kind = 'bus.rejected_payload' and id > (select m from t_cx2)
                   and payload -> 'events' @> '[{"reason":"reconcile_delete","table":"public.rc_part","key":{"id":2}}]'), 'O1-2: dilaporkan');
-select is((select count(*)::int from bus.reconcile_keys), 0, 'O1-2/O1-3: penampung kunci dibersihkan');
+select is((select count(*)::int from bus.reconcile_keys) + (select count(*)::int from bus.reconcile_runs), 0, 'O1-2/O1-3: penampung kunci dibersihkan');
+-- O3-C1: ribuan penolakan → laporan 10 contoh + jumlah (bukan menyusun ulang jsonb per penolakan)
+select bus.reject(jsonb_build_object('reason', 'uji', 'i', g)) from generate_series(1, 15) g;
+select bus.report_rejects('creator');
+select is((select payload ->> 'count' || ':' || jsonb_array_length(payload -> 'events') from ops.alerts where kind = 'bus.rejected_payload'
+            order by id desc limit 1), '15:10', 'O3-C1: laporan penolakan = jumlah + 10 contoh');
 -- O1-C3: resync sesudah restore membawa anak yang induknya hilang bersama DB yang dipulihkan → dilaporkan, antrean jalan;
 -- kiriman biasa (induk dari pengirim lain belum tiba) tetap menahan antrean.
 create table public.rc_child (id int primary key, parent_id int not null references public.rc_part);

@@ -47,6 +47,17 @@ create table bus.reconcile_keys (
   primary key (source, tbl, epoch, key)
 );
 alter table bus.reconcile_keys enable row level security;  -- policy:core.definer-only
+-- Daftar kunci lengkap yang menunggu dihapus di sini (bus.reconcile_apply, job bus-reconcile): penghapusan tidak di dalam
+-- bus_receive — tabel besar / banyak penolakan melewati statement_timeout bridge dan menahan antrean (O3-C1).
+create table bus.reconcile_runs (
+  source text not null,
+  tbl text not null,
+  epoch uuid not null,
+  total bigint not null,
+  created_at timestamptz not null default now(),
+  primary key (source, tbl, epoch)
+);
+alter table bus.reconcile_runs enable row level security;  -- policy:core.definer-only
 
 create function bus.emit(p_target text, p_topic text, p_payload jsonb) returns uuid
 language sql security definer set search_path = '' as $$
@@ -130,7 +141,9 @@ end $$;
 create function bus.prune() returns void
 language sql security definer set search_path = '' as $$
   delete from bus.outbox where sent_at < now() - interval '14 days';
-  delete from bus.reconcile_keys where created_at < now() - interval '7 days';  -- rekonsiliasi yang terputus (potongan terakhir tak tiba)
+  -- rekonsiliasi yang terputus (potongan terakhir tak tiba); daftar lengkap yang masih diproses bus.reconcile_apply tidak disentuh
+  delete from bus.reconcile_keys k where k.created_at < now() - interval '7 days'
+     and not exists (select 1 from bus.reconcile_runs r where r.source = k.source and r.tbl = k.tbl and r.epoch = k.epoch);
 $$;
 revoke execute on function bus.prune() from public;
 
@@ -138,10 +151,12 @@ revoke execute on function bus.prune() from public;
 -- secret bocor) dilewati — tidak menahan antrean; yang BELUM ada di sini (penerima belum upgrade) dan topik perintah di luar
 -- allowlist tetap raise (antrean ditahan, tidak ada yang hilang). Penolakan dikumpulkan per batch (bus.report_rejects): satu
 -- laporan per kiriman, bukan satu per event. Di admin langsung alert; di creator/brand dikirim ke admin (topik bus.rejected).
+-- Simpan 10 detail pertama + jumlah: ribuan penolakan (rekonsiliasi) tidak menyusun ulang jsonb yang terus membesar (O3-C1).
 create function bus.reject(p_detail jsonb) returns void
 language sql security definer set search_path = '' as $$
-  select set_config('bus.rejects', (coalesce(nullif(current_setting('bus.rejects', true), ''), '[]')::jsonb
-                                    || jsonb_build_array(p_detail))::text, true);
+  select set_config('bus.rejects', case when jsonb_array_length(r) < 10 then r || jsonb_build_array(p_detail) else r end::text, true),
+         set_config('bus.rejects_n', (coalesce(nullif(current_setting('bus.rejects_n', true), ''), '0')::int + 1)::text, true)
+    from (select coalesce(nullif(current_setting('bus.rejects', true), ''), '[]')::jsonb r) x;
 $$;
 
 create function bus.report_rejects(p_source text) returns void
@@ -153,9 +168,9 @@ begin
   if r is null then
     return;
   end if;
+  d := jsonb_build_object('source', p_source, 'count', current_setting('bus.rejects_n', true)::int, 'events', r);
   perform set_config('bus.rejects', '', true);
-  d := jsonb_build_object('source', p_source, 'count', jsonb_array_length(r),
-                          'events', (select jsonb_agg(x) from (select x from jsonb_array_elements(r) x limit 10) f));
+  perform set_config('bus.rejects_n', '', true);
   if bus.me() = 'admin' then
     -- ops.raise_alert hanya ada di admin (fungsi ini dibagi ke creator/brand): dipanggil lewat regprocedure seperti handler bus_in
     execute format('select %s($1, $2, $3)', to_regprocedure('ops.raise_alert(text, text, jsonb, interval)')::regproc)
@@ -492,8 +507,6 @@ create function bus.apply_keys(p jsonb, p_source text) returns void
 language plpgsql security definer set search_path = '' as $$
 declare
   t regclass := to_regclass(p ->> 'table');
-  pk text[];
-  k jsonb;
 begin
   if t is null then  -- penerima belum upgrade: tahan antrean (sama dengan apply_row)
     raise exception 'bus_no_table:%', p ->> 'table' using errcode = 'P0001';
@@ -516,19 +529,52 @@ begin
     delete from bus.reconcile_keys where source = p_source and tbl = t::text and epoch = (p ->> 'epoch')::uuid;
     return;
   end if;
-  pk := bus.pk_columns(t);
-  for k in execute format('select jsonb_build_object(%s) from %s x where not exists (select 1 from bus.reconcile_keys r
-                             where r.source = $1 and r.tbl = $2 and r.epoch = $3 and r.key = jsonb_build_object(%1$s))',
-                          (select string_agg(format('%L, x.%I', c, c), ', ') from unnest(pk) c), t)
-             using p_source, t::text, (p ->> 'epoch')::uuid loop
-    -- baris yang tidak boleh dihapus (append-only mis. view_snapshots, dirujuk catatan uang) dilaporkan, antrean jalan (O1-2)
-    begin
-      perform bus.apply_row(jsonb_build_object('table', t::text, 'op', 'delete', 'key', k), p_source);
-    exception when others then
-      perform bus.reject(jsonb_build_object('reason', 'reconcile_delete', 'table', t::text, 'key', k, 'error', sqlerrm));
-    end;
+  insert into bus.reconcile_runs (source, tbl, epoch, total) values (p_source, t::text, (p ->> 'epoch')::uuid, (p ->> 'total')::bigint)
+  on conflict do nothing;
+end $$;
+
+-- Job bus-reconcile: baris replika yang tidak ada di daftar kunci lengkap pemilik dihapus lewat apply_row delete (hook jalan),
+-- paling banyak p_limit baris per panggilan. Baris yang tidak boleh dihapus (append-only, dirujuk) dilaporkan reconcile_delete,
+-- baris campuran dilaporkan apply_row ('delete'); keduanya dicatat ke daftar supaya putaran berikut tidak mengulanginya.
+create function bus.reconcile_apply(p_limit int default 5000) returns int
+language plpgsql security definer set search_path = '' as $$
+declare
+  r bus.reconcile_runs;
+  t regclass;
+  k jsonb;
+  pk text[];
+  n int := 0;
+  budget int;
+  m int;
+begin
+  for r in select * from bus.reconcile_runs x order by x.created_at loop
+    budget := p_limit - n;
+    exit when budget <= 0;
+    t := to_regclass(r.tbl);
+    m := 0;
+    if t is not null then
+      pk := bus.pk_columns(t);
+      for k in execute format('select jsonb_build_object(%s) from %s x where not exists (select 1 from bus.reconcile_keys r
+                                 where r.source = $1 and r.tbl = $2 and r.epoch = $3 and r.key = jsonb_build_object(%1$s)) limit $4',
+                              (select string_agg(format('%L, x.%I', c, c), ', ') from unnest(pk) c), t)
+                 using r.source, r.tbl, r.epoch, budget loop
+        begin
+          perform bus.apply_row(jsonb_build_object('table', r.tbl, 'op', 'delete', 'key', k), r.source);
+        exception when others then
+          perform bus.reject(jsonb_build_object('reason', 'reconcile_delete', 'table', r.tbl, 'key', k, 'error', sqlerrm));
+        end;
+        insert into bus.reconcile_keys (source, tbl, epoch, key) values (r.source, r.tbl, r.epoch, k) on conflict do nothing;
+        m := m + 1;
+      end loop;
+    end if;
+    n := n + m;
+    if m < budget then  -- tidak ada lagi yang tersisa: selesai
+      delete from bus.reconcile_keys x where x.source = r.source and x.tbl = r.tbl and x.epoch = r.epoch;
+      delete from bus.reconcile_runs x where x.source = r.source and x.tbl = r.tbl and x.epoch = r.epoch;
+    end if;
+    perform bus.report_rejects(r.source);
   end loop;
-  delete from bus.reconcile_keys where source = p_source and tbl = t::text and epoch = (p ->> 'epoch')::uuid;
+  return n;
 end $$;
 
 -- Tabel milik project ini yang direplikasi ke satu target (trigger bus.replicate) — daftar untuk deploy.sh bus reconcile, urut FK:
@@ -550,9 +596,9 @@ language sql stable security definer set search_path = '' as $$
   select r::regclass from d group by r order by max(depth), r::regclass::text;
 $$;
 
-revoke all on bus.outbox, bus.inbox, bus.reconcile_keys from anon, authenticated;
+revoke all on bus.outbox, bus.inbox, bus.reconcile_keys, bus.reconcile_runs from anon, authenticated;
 revoke execute on function bus.reject(jsonb), bus.report_rejects(text) from public;
 revoke execute on function bus.emit(text, text, jsonb), bus.relay(), bus.stuck(), api.bus_receive(text, jsonb), bus.pk_columns(regclass),
-  bus.replicate(), bus.apply_row(jsonb, text), bus.resync(regclass, text), bus.reconcile(regclass, text), bus.apply_keys(jsonb, text),
+  bus.replicate(), bus.apply_row(jsonb, text), bus.resync(regclass, text), bus.reconcile(regclass, text), bus.apply_keys(jsonb, text), bus.reconcile_apply(int),
   bus.replica_tables(text) from public;
 grant execute on function api.bus_receive(text, jsonb) to service_role;

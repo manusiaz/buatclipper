@@ -389,6 +389,26 @@ exception when others then
   end;
 end $$;
 
+-- Alert snapshot macet: satu alert terbuka per snapshot, menunjuk snapshot tertunda PALING AWAL submisi itu (pemblokir —
+-- apply_snapshot memproses berurutan, yang sesudahnya hanya ikut gagal) supaya tombol "Lewati snapshot" mengenai yang tepat
+-- (O3-C2). p_snapshot eksplisit = final yang sudah diproses tapi accrual saat lock gagal; p_fallback = snapshot pemanggil bila
+-- tidak ada yang tertunda (mis. snapshot/submisi tidak ditemukan).
+create function tracking.alert_apply_failed(p_submission uuid, p_snapshot bigint, p_step text, p_error text,
+                                            p_fallback bigint default null) returns void
+language plpgsql security definer set search_path = '' as $$
+declare
+  sid bigint := coalesce(p_snapshot, (select min(x.id) from tracking.view_snapshots x where x.submission_id = p_submission
+                                        and x.id > coalesce((select t.applied_snapshot_id from tracking.submissions t
+                                                             where t.id = p_submission), 0)), p_fallback);
+begin
+  if not exists (select 1 from ops.alerts a where a.kind = 'tracking.apply_failed' and a.resolved_at is null
+                    and a.payload ->> 'snapshot_id' = sid::text) then
+    perform ops.raise_alert('tracking.apply_failed', 'critical', jsonb_build_object('snapshot_id', sid, 'submission_id', p_submission,
+                                                                                 'step', p_step, 'error', p_error));
+  end if;
+end $$;
+revoke execute on function tracking.alert_apply_failed(uuid, bigint, text, text, bigint) from public;
+
 create function bus_in.tracking_view_snapshots_applied(p_op text, p_row jsonb) returns void
 language plpgsql set search_path = '' as $$
 begin
@@ -396,8 +416,7 @@ begin
     perform tracking.apply_snapshot((p_row ->> 'id')::bigint);
   end if;
 exception when others then
-  perform ops.raise_alert('tracking.apply_failed', 'critical', jsonb_build_object('snapshot_id', p_row ->> 'id', 'step', 'snapshot',
-                                                                               'error', sqlerrm));
+  perform tracking.alert_apply_failed((p_row ->> 'submission_id')::uuid, null, 'snapshot', sqlerrm, (p_row ->> 'id')::bigint);
 end $$;
 
 create function bus_in.submission_post_gone(p jsonb) returns void
@@ -451,8 +470,7 @@ begin
     perform tracking.apply_snapshot(m) from (select max(x.id) m from tracking.view_snapshots x where x.submission_id = s.id and x.id > v.id) n
      where m is not null;
   exception when others then
-    perform ops.raise_alert('tracking.apply_failed', 'critical', jsonb_build_object('submission_id', s.id, 'step', 'skip_retry', 'error', sqlerrm),
-                            interval '1 hour');
+    perform tracking.alert_apply_failed(s.id, null, 'skip_retry', sqlerrm);
   end;
   update ops.alerts x set resolved_at = now(), resolved_by = (select auth.uid())
    where x.kind = 'tracking.apply_failed' and x.resolved_at is null and x.payload ->> 'snapshot_id' ~ '^[0-9]+$'

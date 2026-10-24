@@ -269,7 +269,7 @@ update market.claims set expires_at = now() - interval '1 minute', created_at = 
 select market.run_claim_expiry();
 select is((select status::text from market.claims where id = '88888888-0000-0000-0000-000000000003'), 'expired',
           'claim lewat 48 jam jadi expired');
-select is((select count(*)::int from cron.job), 15, '15 job pg_cron admin terdaftar (termasuk bus-relay, bus-watch & bus-prune; job tracking di creator)');
+select is((select count(*)::int from cron.job), 16, '16 job pg_cron admin terdaftar (termasuk bus-relay, bus-watch, bus-prune & bus-reconcile; job tracking di creator)');
 select ok(exists (select 1 from cron.job where jobname = 'bus-prune'), 'CL4: retensi outbox terjadwal (inbox tidak dipangkas)');
 select ok(exists (select 1 from cron.job where jobname = 'bus-relay' and schedule = '1 seconds'), 'relay bus tiap detik (lag replika)');
 select is(array(select distinct m[1] from cron.job, regexp_matches(command, '([a-z_]+\.[a-z_]+)\(', 'g') m
