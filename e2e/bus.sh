@@ -68,10 +68,25 @@ for _ in $(seq 1 50); do
 done
 t0=$(date +%s%N); pid=$(q creator -c "select bus.ping()"); dt=$(( ($(date +%s%N) - t0) / 1000000 ))
 wait
-ok=$(q creator -c "select (select (payload ->> 'at')::timestamptz from bus.outbox where id = '$pid') <= (select created_at from bus.outbox where payload ->> 'src' = 'barrier')")
+ok=$(q creator -c "select (select (payload ->> 'at')::timestamptz from bus.outbox where id = '$pid') <= (select max(created_at) from bus.outbox where payload ->> 'src' = 'barrier')")
 if [ "$dt" -lt 1500 ] && [ "$ok" = t ]; then echo "✓ ping tidak mengklaim event yang belum commit, tanpa menunggu (${dt} ms)"
 else echo "✗ ping mengklaim event yang belum commit / menunggu (${dt} ms, at ≤ awal transaksi: $ok)"; fail=1; fi
 for _ in $(seq 1 20); do [ "$(q admin -c "select count(*) from public.bus_e2e_log where src = 'barrier'")" = 1 ] && break; sleep 1; done
+# Restore satu DB (CX2): admin dipulihkan dari backup lama → ada anggota org yang sudah dicabut di brand. Rekonsiliasi dari brand
+# (loop sama dengan deploy.sh bus reconcile admin) mengirim ulang state + menghapus baris yang tidak ada di pemilik.
+GHOST=00000000-0000-0000-0000-0000000c0a2d
+q admin -c "select set_config('bus.applying', 'on', false)" \
+        -c "insert into market.org_members (org_id, user_id, role) select org_id, '$GHOST', 'brand_viewer' from market.org_members limit 1 on conflict do nothing" >/dev/null
+tables=$(q brand -c "select bus.replica_tables('admin')")
+for t in $tables; do q brand -c "select bus.resync('$t', 'admin')" >/dev/null; done
+for t in $(echo "$tables" | tac); do q brand -c "select bus.reconcile('$t', 'admin')" >/dev/null; done
+want=$(q brand -c "select string_agg(org_id || ':' || user_id, ' ' order by org_id, user_id) from market.org_members")
+for _ in $(seq 1 90); do
+  got=$(q admin -c "select string_agg(org_id || ':' || user_id, ' ' order by org_id, user_id) from market.org_members")
+  [ "$got" = "$want" ] && break; sleep 1
+done
+if [ "$got" = "$want" ]; then echo "✓ rekonsiliasi: anggota org di admin = brand (yang dicabut terhapus, yang hilang dikirim ulang)"
+else echo "✗ rekonsiliasi anggota org: admin '$got' ≠ brand '$want' (error: $(q brand -c "select last_error from bus.outbox where target = 'admin' and sent_at is null and last_error is not null limit 1"))"; fail=1; fi
 for t in admin creator brand; do
   q "$t" -c "delete from bus.outbox where topic = 'uji.ping'" -c "delete from bus.inbox where topic = 'uji.ping'" \
          -c "drop function bus_in.uji_ping(jsonb)" -c "drop table public.bus_e2e_log" >/dev/null

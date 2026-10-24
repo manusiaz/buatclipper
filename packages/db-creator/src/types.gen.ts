@@ -75,6 +75,9 @@ export type Database = {
               "created": boolean,"display_name": string,"id": string,"username": string
             }[]
                            },
+"health":
+{ Args: Record<PropertyKey, never>; Returns: Json
+                           },
 "missing_brief_tags":
 { Args: { "p_campaign": string,"p_caption": string }; Returns: (string)[]
                            },

@@ -24,7 +24,7 @@ const GROUPS = {
   actions: [
     'add', 'remove', 'edit', 'delete', 'content_copy', 'download', 'upload', 'share', 'send', 'check', 'check_small',
     'check_circle', 'cancel', 'close_small', 'refresh', 'pause', 'play_arrow', 'push_pin', 'keep', 'flag', 'gavel',
-    'block', 'undo', 'visibility', 'visibility_off', 'schedule', 'calendar_today', 'event', 'timer', 'bolt', 'lock',
+    'block', 'skip_next', 'undo', 'visibility', 'visibility_off', 'schedule', 'calendar_today', 'event', 'timer', 'bolt', 'lock',
     'verified', 'shield', 'info', 'warning', 'error', 'help', 'bookmark', 'add_link', 'link_off', 'progress_activity',
     'hourglass_top', 'star', 'person_add', 'support_agent', 'wifi_off', 'percent', 'tag', 'image', 'article',
     'description', 'add_circle', 'delete_forever', 'ios_share', 'cloud_off', 'touch_app', 'sync',

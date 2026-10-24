@@ -409,6 +409,47 @@ exception when others then
                                                                                'error', sqlerrm));
 end $$;
 
+-- CL19: snapshot yang gagal permanen (alert tracking.apply_failed, payload snapshot_id) menahan submisi itu — snapshot berikutnya
+-- ikut gagal karena diproses berurutan — dan settlement campaign-nya. admin_ops melewatinya dari alert, ber-audit: hanya snapshot
+-- tertunda paling awal, ditandai diproses TANPA cek fraud/accrual, submisi ditahan untuk review moderator (flag FR-12, status
+-- flagged) — keputusan bayar/tolak tetap lewat antrean fraud; alert ditutup. Snapshot sesudahnya diproses normal.
+create function api.skip_failed_snapshot(p_alert bigint) returns void
+language plpgsql security definer set search_path = '' as $$
+declare
+  a ops.alerts;
+  v tracking.view_snapshots;
+  s tracking.submissions;
+begin
+  if not ops.has_admin('admin_ops') then
+    raise exception 'auth:forbidden' using errcode = '42501';
+  end if;
+  select * into a from ops.alerts x where x.id = p_alert and x.kind = 'tracking.apply_failed' and x.resolved_at is null for update;
+  if not found or coalesce(a.payload ->> 'snapshot_id', '') !~ '^[0-9]+$' then
+    raise exception 'not_found:alert' using errcode = 'P0002';
+  end if;
+  select * into v from tracking.view_snapshots x where x.id = (a.payload ->> 'snapshot_id')::bigint;
+  if not found then
+    raise exception 'not_found:snapshot' using errcode = 'P0002';
+  end if;
+  select * into s from tracking.submissions t where t.id = v.submission_id for update;
+  if v.id is distinct from (select min(x.id) from tracking.view_snapshots x
+                             where x.submission_id = s.id and x.id > coalesce(s.applied_snapshot_id, 0)) then
+    raise exception 'invalid_state:not_next_pending' using errcode = 'P0001';
+  end if;
+  update tracking.submissions set applied_snapshot_id = v.id,
+         status = case when status = 'tracking' then 'flagged'::tracking.submission_status else status end
+   where id = s.id;
+  perform trust.raise_flag('submission', s.id, 'FR-12', 50,
+                           jsonb_build_object('snapshot_id', v.id, 'alert_id', a.id, 'error', a.payload ->> 'error'));
+  update ops.alerts set resolved_at = now(), resolved_by = (select auth.uid()) where id = a.id;
+  insert into ops.audit_logs (actor_id, action, target, before, after)
+  values ((select auth.uid()), 'snapshot.skip', 'submission:' || s.id,
+          jsonb_build_object('applied_snapshot_id', s.applied_snapshot_id, 'status', s.status),
+          jsonb_build_object('applied_snapshot_id', v.id, 'alert_id', a.id));
+end $$;
+revoke execute on function api.skip_failed_snapshot(bigint) from public;
+grant execute on function api.skip_failed_snapshot(bigint) to authenticated;
+
 -- ---------- notifikasi (worker notify, alur 4) ----------
 create function api.worker_notification(p_id bigint) returns jsonb
 language plpgsql stable security definer set search_path = '' as $$

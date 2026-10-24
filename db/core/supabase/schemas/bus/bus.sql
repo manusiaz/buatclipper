@@ -37,6 +37,16 @@ create schema if not exists bus_in;  -- handler event masuk (lihat kepala file)
 
 alter table bus.outbox enable row level security;  -- policy:core.definer-only (tanpa policy: hanya fungsi definer)
 alter table bus.inbox enable row level security;  -- policy:core.definer-only (tanpa policy: hanya fungsi definer)
+-- Kunci pemilik yang sedang direkonsiliasi (bus.reconcile → rep.keys, dikirim berpotongan): ditampung sampai potongan terakhir.
+create table bus.reconcile_keys (
+  source text not null,
+  tbl text not null,
+  epoch uuid not null,
+  key jsonb not null,
+  created_at timestamptz not null default now(),
+  primary key (source, tbl, epoch, key)
+);
+alter table bus.reconcile_keys enable row level security;  -- policy:core.definer-only
 
 create function bus.emit(p_target text, p_topic text, p_payload jsonb) returns uuid
 language sql security definer set search_path = '' as $$
@@ -116,6 +126,7 @@ end $$;
 create function bus.prune() returns void
 language sql security definer set search_path = '' as $$
   delete from bus.outbox where sent_at < now() - interval '14 days';
+  delete from bus.reconcile_keys where created_at < now() - interval '7 days';  -- rekonsiliasi yang terputus (potongan terakhir tak tiba)
 $$;
 revoke execute on function bus.prune() from public;
 
@@ -171,6 +182,11 @@ begin
     end if;
     if e ->> 'topic' = 'rep.row' then  -- replikasi baris: handler bawaan, dibatasi allowlist pengirim (bus.accepts)
       perform bus.apply_row(e -> 'payload', p_source);
+      applied := applied + 1;
+      continue;
+    end if;
+    if e ->> 'topic' = 'rep.keys' then  -- rekonsiliasi kunci (bus.reconcile): handler bawaan, allowlist yang sama
+      perform bus.apply_keys(e -> 'payload', p_source);
       applied := applied + 1;
       continue;
     end if;
@@ -249,7 +265,23 @@ language sql stable security definer set search_path = '' as $$
     'last_received', (select jsonb_object_agg(src, (select max(i.received_at) from bus.inbox i where i.source = src))
                         from unnest(array['creator', 'brand', 'admin']) src where src <> bus.me()));
 $$;
-revoke execute on function bus.ping(), api.health() from public;
+-- Alat ops (deploy.sh bus skip): lewati baris kepala antrean ke satu target yang macet permanen (mis. topik yang dipensiunkan,
+-- payload rusak). Event itu HILANG untuk penerima — pulihkan state replika dengan bus.resync sesudahnya. seq wajib = kepala antrean
+-- (salah ketik tidak melewati event lain); isi event dikembalikan untuk dicatat operator.
+create function bus.skip(p_target text, p_seq bigint) returns jsonb
+language plpgsql security definer set search_path = '' as $$
+declare
+  o bus.outbox;
+begin
+  select * into o from bus.outbox x where x.target = p_target and x.sent_at is null order by x.seq limit 1 for update;
+  if not found or o.seq <> p_seq then
+    raise exception 'bus_skip:bukan kepala antrean % (kepala: %)', p_target, o.seq using errcode = 'P0001';
+  end if;
+  update bus.outbox set sent_at = now(), request_id = null, last_error = 'dilewati operator ' || now() || ': ' || coalesce(last_error, '')
+   where seq = o.seq;
+  return jsonb_build_object('seq', o.seq, 'topic', o.topic, 'payload', o.payload, 'attempts', o.attempts, 'last_error', o.last_error);
+end $$;
+revoke execute on function bus.ping(), api.health(), bus.skip(text, bigint) from public;
 grant execute on function api.health() to anon, authenticated, service_role;
 
 -- ===== Replikasi baris (pemilik kolom → replika read-only di project lain) =====
@@ -408,8 +440,91 @@ begin
   return n;
 end $$;
 
-revoke all on bus.outbox, bus.inbox from anon, authenticated;
+-- Restore satu DB (CX2/CL3): backup lama menghidupkan lagi baris replika yang sudah dihapus pemiliknya (mis. anggota org yang
+-- dicabut → masih diberi akses di admin) dan resync hanya upsert. Pemilik mengirim SELURUH kunci tabelnya (snapshot di bawah lock
+-- share, seperti resync — tulisan sesudahnya menyusul di belakang lewat FIFO), berpotongan 1000; penerima menghapus baris yang tidak
+-- ada di daftar lewat apply_row delete (hook jalan; tabel campuran tidak dihapus tapi dilaporkan bus.reject). deploy.sh bus reconcile.
+create function bus.reconcile(p_table regclass, p_target text) returns int
+language plpgsql security definer set search_path = '' as $$
+declare
+  pk text[] := bus.pk_columns(p_table);
+  ep uuid := gen_random_uuid();
+  keys jsonb := '[]';
+  r jsonb;
+  n int := 0;
+begin
+  if not exists (select 1 from pg_trigger tg
+                  cross join lateral unnest(array_remove(string_to_array(encode(tg.tgargs, 'escape'), '\000'), '')) a
+                  where tg.tgrelid = p_table and tg.tgfoid = 'bus.replicate()'::regprocedure and split_part(a, ':', 1) = p_target) then
+    raise exception 'bus_no_replica:%:%', p_table, p_target using errcode = 'P0001';
+  end if;
+  execute format('lock table %s in share mode', p_table);
+  for r in execute format('select jsonb_build_object(%s) from %s t order by %s',
+                          (select string_agg(format('%L, t.%I', k, k), ', ') from unnest(pk) k), p_table,
+                          (select string_agg(format('t.%I', k), ', ') from unnest(pk) k)) loop
+    keys := keys || jsonb_build_array(r);
+    n := n + 1;
+    if jsonb_array_length(keys) = 1000 then
+      perform bus.emit(p_target, 'rep.keys', jsonb_build_object('table', p_table::text, 'epoch', ep, 'keys', keys, 'last', false));
+      keys := '[]';
+    end if;
+  end loop;
+  perform bus.emit(p_target, 'rep.keys', jsonb_build_object('table', p_table::text, 'epoch', ep, 'keys', keys, 'last', true));
+  return n;
+end $$;
+
+create function bus.apply_keys(p jsonb, p_source text) returns void
+language plpgsql security definer set search_path = '' as $$
+declare
+  t regclass := to_regclass(p ->> 'table');
+  pk text[];
+  k jsonb;
+begin
+  if t is null then  -- penerima belum upgrade: tahan antrean (sama dengan apply_row)
+    raise exception 'bus_no_table:%', p ->> 'table' using errcode = 'P0001';
+  end if;
+  if bus.accepts(p_source, p ->> 'table') is null then  -- bukan tabel yang direplikasi pengirim ke sini
+    perform bus.reject(jsonb_build_object('reason', 'table', 'table', p ->> 'table', 'op', 'reconcile'));
+    return;
+  end if;
+  insert into bus.reconcile_keys (source, tbl, epoch, key)
+  select p_source, t::text, (p ->> 'epoch')::uuid, x from jsonb_array_elements(coalesce(p -> 'keys', '[]')) x
+  on conflict do nothing;
+  if not coalesce((p ->> 'last')::boolean, false) then
+    return;
+  end if;
+  pk := bus.pk_columns(t);
+  for k in execute format('select jsonb_build_object(%s) from %s x where not exists (select 1 from bus.reconcile_keys r
+                             where r.source = $1 and r.tbl = $2 and r.epoch = $3 and r.key = jsonb_build_object(%1$s))',
+                          (select string_agg(format('%L, x.%I', c, c), ', ') from unnest(pk) c), t)
+             using p_source, t::text, (p ->> 'epoch')::uuid loop
+    perform bus.apply_row(jsonb_build_object('table', t::text, 'op', 'delete', 'key', k), p_source);
+  end loop;
+  delete from bus.reconcile_keys where source = p_source and tbl = t::text and epoch = (p ->> 'epoch')::uuid;
+end $$;
+
+-- Tabel milik project ini yang direplikasi ke satu target (trigger bus.replicate) — daftar untuk deploy.sh bus reconcile, urut FK:
+-- induk dulu (kedalaman referensi ke tabel lain di daftar). Resync memakai urutan ini (anak tidak menunjuk induk yang belum ada di
+-- penerima), reconcile urutan terbalik (anak dihapus sebelum induknya).
+create function bus.replica_tables(p_target text) returns setof regclass
+language sql stable security definer set search_path = '' as $$
+  with recursive t as (
+    select distinct tg.tgrelid as r from pg_trigger tg
+     cross join lateral unnest(array_remove(string_to_array(encode(tg.tgargs, 'escape'), '\000'), '')) a
+     where tg.tgfoid = 'bus.replicate()'::regprocedure and split_part(a, ':', 1) = p_target
+  ), d (r, depth) as (
+    select r, 0 from t
+    union all
+    select c.conrelid, d.depth + 1 from d
+      join pg_constraint c on c.confrelid = d.r and c.contype = 'f' and c.conrelid <> c.confrelid and c.conrelid in (select r from t)
+     where d.depth < 20
+  )
+  select r::regclass from d group by r order by max(depth), r::regclass::text;
+$$;
+
+revoke all on bus.outbox, bus.inbox, bus.reconcile_keys from anon, authenticated;
 revoke execute on function bus.reject(jsonb), bus.report_rejects(text) from public;
 revoke execute on function bus.emit(text, text, jsonb), bus.relay(), bus.stuck(), api.bus_receive(text, jsonb), bus.pk_columns(regclass),
-  bus.replicate(), bus.apply_row(jsonb, text), bus.resync(regclass, text) from public;
+  bus.replicate(), bus.apply_row(jsonb, text), bus.resync(regclass, text), bus.reconcile(regclass, text), bus.apply_keys(jsonb, text),
+  bus.replica_tables(text) from public;
 grant execute on function api.bus_receive(text, jsonb) to service_role;

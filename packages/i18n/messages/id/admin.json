@@ -232,13 +232,28 @@
         "stuck": "Fulfillment macet"
       },
       "reconcile": {
-        "orphans": "ID lintas DB yatim (rekonsiliasi)"
+        "orphans": "ID lintas DB yatim (rekonsiliasi)",
+        "ledger": "Selisih ledger (rekonsiliasi)",
+        "bank": "Selisih mutasi bank (rekonsiliasi)"
       },
       "tracking": {
         "lag": "Job tracking terlambat",
-        "final_missing": "Snapshot final belum ada"
+        "final_missing": "Snapshot final belum ada",
+        "apply_failed": "Replika tracking gagal diterapkan",
+        "notify_failed": "Notifikasi tracking gagal dikirim"
+      },
+      "bus": {
+        "stuck": "Antrean antar-database macet",
+        "watermark_held": "Watermark antar-database tertahan transaksi panjang",
+        "rejected_payload": "Event antar-database ditolak (di luar kontrak)"
+      },
+      "campaign": {
+        "apply_failed": "Replika campaign gagal diterapkan",
+        "content_drift": "Isi campaign yang disetujui berubah di brand"
       }
-    }
+    },
+    "skipSnapshot": "Lewati snapshot",
+    "snapshotSkipped": "Snapshot dilewati — submisi masuk antrean fraud untuk review"
   },
   "campaigns": {
     "title": "Campaign",
@@ -452,7 +467,8 @@
       "FR-08": "Views turun saat lock",
       "FR-09": "Durasi tonton rendah",
       "FR-10": "Views jauh di atas reach",
-      "FR-11": "Traffic/negara tidak wajar"
+      "FR-11": "Traffic/negara tidak wajar",
+      "FR-12": "Snapshot gagal dilewati operator"
     },
     "actions": {
       "warn": "Peringatan",

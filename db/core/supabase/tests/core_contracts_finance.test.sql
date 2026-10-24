@@ -1899,6 +1899,36 @@ select is((select applied_snapshot_id from tracking.submissions where id = (sele
 select ok((select count(*) from trust.fraud_flags f where f.target_id = (select v::uuid from t_ids where k = 's16a')) = (select flags from t_cl20)
           and (select count(*) from finance.ledger_entries) = (select le from t_cl20), 'CL20: tidak ada flag/accrual baru dari snapshot lama');
 
+-- Review CL19: snapshot yang gagal permanen dilewati admin_ops dari alert — ber-audit, hanya snapshot tertunda paling awal,
+-- submisi ditahan (flag FR-12, flagged) untuk review; snapshot sesudahnya diproses normal.
+insert into t_ids select 's19', pg_temp.mk_sub('55555555-0000-0000-0000-0000000000e6', '11111111-0000-0000-0000-00000000000a', 'v19');
+select pg_temp.record_snapshot((select v::uuid from t_ids where k = 's19'), 1000, 100, 10, 0, null, '{}');
+insert into tracking.view_snapshots (submission_id, taken_at, views, likes, comments)
+select (select v::uuid from t_ids where k = 's19'), clock_timestamp(), 2000 * g, 200 * g, 20 * g from generate_series(1, 2) g;
+create temp table t_cl19 as
+  select (array_agg(id order by id))[2] s1, (array_agg(id order by id))[3] s2 from tracking.view_snapshots
+   where submission_id = (select v::uuid from t_ids where k = 's19');
+insert into t_ids select 'a19s1', ops.raise_alert('tracking.apply_failed', 'critical', jsonb_build_object('snapshot_id', (select s1 from t_cl19)::text, 'step', 'snapshot'))::text;
+insert into t_ids select 'a19s2', ops.raise_alert('tracking.apply_failed', 'critical', jsonb_build_object('snapshot_id', (select s2 from t_cl19)::text, 'step', 'snapshot'))::text;
+set local role authenticated;
+select pg_temp.jwt('33333333-0000-0000-0000-0000000000a0', '{"app_roles":["admin_finance"],"aal":"aal2"}');
+select throws_ok(format('select api.skip_failed_snapshot(%s)', (select v from t_ids where k = 'a19s1')), '42501', 'auth:forbidden',
+                 'CL19: hanya admin_ops yang bisa melewati snapshot');
+select pg_temp.jwt('33333333-0000-0000-0000-0000000000a0', '{"app_roles":["admin_ops"],"aal":"aal2"}');
+select throws_ok(format('select api.skip_failed_snapshot(%s)', (select v from t_ids where k = 'a19s2')), 'P0001', 'invalid_state:not_next_pending',
+                 'CL19: hanya snapshot tertunda paling awal (tidak melompati snapshot lain)');
+select lives_ok(format('select api.skip_failed_snapshot(%s)', (select v from t_ids where k = 'a19s1')), 'CL19: admin_ops melewati snapshot gagal');
+reset role;
+select is((select applied_snapshot_id::text || ':' || status::text from tracking.submissions where id = (select v::uuid from t_ids where k = 's19')),
+          (select s1 from t_cl19)::text || ':flagged', 'CL19: snapshot ditandai diproses, submisi ditahan untuk review');
+select ok(exists (select 1 from trust.fraud_flags where target_id = (select v::uuid from t_ids where k = 's19') and signal = 'FR-12' and status = 'open')
+          and exists (select 1 from ops.alerts where id = (select v::bigint from t_ids where k = 'a19s1') and resolved_at is not null)
+          and exists (select 1 from ops.audit_logs where action = 'snapshot.skip' and target = 'submission:' || (select v from t_ids where k = 's19')),
+          'CL19: flag FR-12 untuk moderator, alert ditutup, tercatat di audit log');
+select lives_ok(format('select tracking.apply_snapshot(%s)', (select s2 from t_cl19)), 'CL19: snapshot sesudahnya diproses normal');
+select is((select applied_snapshot_id from tracking.submissions where id = (select v::uuid from t_ids where k = 's19')), (select s2 from t_cl19),
+          'CL19: penanda lanjut ke snapshot berikutnya');
+
 -- ========== N2. Sisa budget campaign settled: rollover vs refund (D-09) ==========
 set local role authenticated;
 select pg_temp.jwt('22222222-0000-0000-0000-0000000000c1');

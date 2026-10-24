@@ -232,13 +232,28 @@
         "stuck": "Fulfillment stuck"
       },
       "reconcile": {
-        "orphans": "Orphaned cross-DB IDs (reconciliation)"
+        "orphans": "Orphaned cross-DB IDs (reconciliation)",
+        "ledger": "Ledger mismatch (reconciliation)",
+        "bank": "Bank statement mismatch (reconciliation)"
       },
       "tracking": {
         "lag": "Tracking job lagging",
-        "final_missing": "Final snapshot missing"
+        "final_missing": "Final snapshot missing",
+        "apply_failed": "Tracking replica failed to apply",
+        "notify_failed": "Tracking notification failed"
+      },
+      "bus": {
+        "stuck": "Cross-database queue stuck",
+        "watermark_held": "Cross-database watermark held by a long transaction",
+        "rejected_payload": "Cross-database event rejected (outside contract)"
+      },
+      "campaign": {
+        "apply_failed": "Campaign replica failed to apply",
+        "content_drift": "Approved campaign content changed in brand"
       }
-    }
+    },
+    "skipSnapshot": "Skip snapshot",
+    "snapshotSkipped": "Snapshot skipped — submission sent to the fraud queue for review"
   },
   "campaigns": {
     "title": "Campaigns",
@@ -452,7 +467,8 @@
       "FR-08": "Views dropped at lock",
       "FR-09": "Low watch time",
       "FR-10": "Views far above reach",
-      "FR-11": "Unusual traffic/country"
+      "FR-11": "Unusual traffic/country",
+      "FR-12": "Failed snapshot skipped by operator"
     },
     "actions": {
       "warn": "Warn",

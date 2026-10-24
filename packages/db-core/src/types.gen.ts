@@ -725,6 +725,9 @@ export type Database = {
 "decide_sanction_appeal":
 { Args: { "p_decision": string,"p_note": string,"p_sanction": string }; Returns: undefined
                            },
+"health":
+{ Args: Record<PropertyKey, never>; Returns: Json
+                           },
 "hold_payout":
 { Args: { "p_payout": string,"p_reason": string }; Returns: undefined
                            },
@@ -829,6 +832,9 @@ export type Database = {
                            },
 "set_refund_dest":
 { Args: { "p_dest": Json,"p_refund": string }; Returns: undefined
+                           },
+"skip_failed_snapshot":
+{ Args: { "p_alert": number }; Returns: undefined
                            },
 "update_config":
 { Args: { "p_key": string,"p_value": Json }; Returns: undefined

@@ -6,7 +6,7 @@ import {
   type UiLocale,
 } from '@clipper/ui';
 import { must, param, rows, type SearchParams } from '@/lib/data';
-import { resolveAlert } from '@/features/overview/actions';
+import { resolveAlert, skipFailedSnapshot } from '@/features/overview/actions';
 import { ActionButton } from '@/features/shared/action-dialog';
 import { JsonView } from '@/features/shared/json-view';
 import { navFor } from '@/features/shell/nav';
@@ -22,6 +22,10 @@ interface Overview {
 }
 
 const ALERT_LINK: Record<string, string> = { payout: '/finance', reconcile: '/finance', fraud: '/fraud', fulfillment: '/fulfillment' };
+
+/** Alert snapshot gagal yang bisa dilewati (CL19): api.skip_failed_snapshot menolak bila bukan snapshot tertunda paling awal. */
+const skippable = (a: { kind?: string | null; payload?: unknown }) =>
+  a.kind === 'tracking.apply_failed' && /^[0-9]+$/.test(String((a.payload as Record<string, unknown> | null)?.snapshot_id ?? ''));
 const SEVERITY = { critical: 'danger', warning: 'warn', info: 'primary' } as const;
 
 // F-A01 + A3.5: angka dari api.admin_overview (admin apa pun, aal2) + alert terbuka ops.alerts.
@@ -97,6 +101,9 @@ export default async function OverviewPage({ searchParams }: { searchParams: Pro
                         <Button href={ALERT_LINK[group]} linkAs={Link} size="sm" variant="tertiary" iconRight="arrow_forward">
                           {t('overview.followUp')}
                         </Button>
+                      ) : null}
+                      {skippable(a) ? (
+                        <ActionButton label={t('overview.skipSnapshot')} icon="skip_next" variant="tertiary" success={t('overview.snapshotSkipped')} action={skipFailedSnapshot.bind(null, a.id!)} />
                       ) : null}
                       <ActionButton label={t('overview.resolve')} icon="check" success={t('overview.resolved')} action={resolveAlert.bind(null, a.id!)} direct />
                     </div>

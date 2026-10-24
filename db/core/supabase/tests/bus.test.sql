@@ -5,7 +5,8 @@ select no_plan();
 -- allowlist bus (bus/accept.sql) + topik & tabel uji file ini (di-rollback bersama tes)
 alter function bus.accepts(text, text) rename to accepts_real;
 create function bus.accepts(p_source text, p_table text) returns text[] language sql as $$
-  select case p_table when 'public.rep_dst' then array['a'] when 'public.rep_part' then array['status'] else bus.accepts_real(p_source, p_table) end;
+  select case p_table when 'public.rep_dst' then array['a'] when 'public.rep_part' then array['status']
+                      when 'public.rc_dst' then array['a'] when 'public.rc_mixed' then array['a'] else bus.accepts_real(p_source, p_table) end;
 $$;
 alter function bus.accepts_topic(text, text) rename to accepts_topic_real;
 create function bus.accepts_topic(p_source text, p_topic text) returns boolean language sql as $$
@@ -166,6 +167,51 @@ select ok(not exists (select 1 from trust.review_decisions where target_id = '00
           and not exists (select 1 from ops.notifications where user_id = '00000000-0000-0000-0000-0000000000e9'),
           'C7: brand tidak bisa menulis keputusan submisi (banding) atau notifikasi di luar org.*/agency.*/campaign.invited');
 select is((select count(*)::int from ops.alerts where kind = 'bus.rejected_payload' and payload ->> 'topic' in ('review.decision', 'notify.user')), 2, 'C7: payload yang dilewati → alert');
+
+-- Review CL6: bus.skip (deploy.sh bus skip) hanya melewati kepala antrean satu target, dengan seq eksplisit
+delete from bus.outbox where target = 'brand' and sent_at is null;
+insert into bus.outbox (target, topic, payload) values ('brand', 'uji.skip', '{"n":1}'), ('brand', 'uji.skip', '{"n":2}');
+create temp table t_cl6 as select min(seq) head, max(seq) nxt from bus.outbox where topic = 'uji.skip';
+select throws_ok(format('select bus.skip(%L, %s)', 'brand', (select nxt from t_cl6)), 'P0001', null, 'CL6: seq yang bukan kepala antrean ditolak');
+select is((select bus.skip('brand', (select head from t_cl6)) -> 'payload'), '{"n":1}'::jsonb, 'CL6: isi event yang dilewati dikembalikan');
+select is((select string_agg((sent_at is not null)::text || ':' || coalesce(left(last_error, 17), '-'), ',' order by seq) from bus.outbox where topic = 'uji.skip'),
+          'true:dilewati operator,false:-', 'CL6: hanya kepala yang ditandai terkirim (dilewati), sisanya tetap antre');
+delete from bus.outbox where topic = 'uji.skip';
+
+-- Review CX2/CL3: restore satu DB — rekonsiliasi kunci. Pengirim: semua kunci tabel replika, potongan 1000, potongan terakhir
+-- ditandai. Penerima: baris yang tidak ada di pemilik dihapus (tabel milik penuh pengirim); tabel campuran tidak dihapus, dilaporkan.
+create table public.rc_src (id int primary key, a text);
+create trigger rc_src_replicate after insert or update or delete on public.rc_src for each row execute function bus.replicate('creator:a');
+insert into public.rc_src select g, 'x' from generate_series(1, 1500) g;
+delete from bus.outbox where payload ->> 'table' = 'public.rc_src';
+select is(bus.reconcile('public.rc_src', 'creator'), 1500, 'CX2: reconcile mengirim seluruh kunci pemilik');
+select is((select string_agg(jsonb_array_length(payload -> 'keys') || ':' || (payload ->> 'last'), ',' order by seq) from bus.outbox
+            where topic = 'rep.keys' and payload ->> 'table' = 'public.rc_src'), '1000:false,500:true', 'CX2: berpotongan 1000, potongan terakhir ditandai');
+select ok('public.rc_src'::regclass in (select bus.replica_tables('creator')), 'CX2: daftar tabel replika ke target (deploy.sh bus reconcile)');
+create temp table t_rt as select r, row_number() over () i from bus.replica_tables('creator') r;
+select ok(not exists (select 1 from t_rt a join t_rt b on a.i < b.i
+                        join pg_constraint c on c.conrelid = a.r and c.confrelid = b.r and c.contype = 'f' and c.conrelid <> c.confrelid),
+          'CX2: urut FK — induk sebelum anak (resync tidak menunjuk induk yang belum ada di penerima)');
+delete from bus.outbox where payload ->> 'table' = 'public.rc_src';
+create table public.rc_dst (id int primary key, a text);
+create table public.rc_mixed (id int primary key, a text, milik_lokal text);
+insert into public.rc_dst values (1, 'x'), (2, 'dihidupkan restore'), (3, 'x');
+insert into public.rc_mixed values (1, 'x', 'l'), (2, 'x', 'l');
+create temp table t_cx2 as select coalesce(max(id), 0) m from ops.alerts;
+select lives_ok($$ select api.bus_receive('creator', jsonb_build_array(
+  jsonb_build_object('id', gen_random_uuid(), 'topic', 'rep.keys', 'payload', '{"table":"public.rc_dst","epoch":"00000000-0000-0000-0000-0000000000c2","keys":[{"id":1}],"last":false}'::jsonb))) $$,
+  'CX2: potongan kunci pertama ditampung');
+select is((select count(*)::int from public.rc_dst), 3, 'CX2: belum ada yang dihapus sebelum potongan terakhir');
+select lives_ok($$ select api.bus_receive('creator', jsonb_build_array(
+  jsonb_build_object('id', gen_random_uuid(), 'topic', 'rep.keys', 'payload', '{"table":"public.rc_dst","epoch":"00000000-0000-0000-0000-0000000000c2","keys":[{"id":3}],"last":true}'::jsonb),
+  jsonb_build_object('id', gen_random_uuid(), 'topic', 'rep.keys', 'payload', '{"table":"public.rc_mixed","epoch":"00000000-0000-0000-0000-0000000000c3","keys":[{"id":1}],"last":true}'::jsonb))) $$,
+  'CX2: potongan terakhir diterapkan');
+select is((select array_agg(id order by id) from public.rc_dst), array[1, 3], 'CX2: baris yang tidak ada di pemilik (dihidupkan restore) dihapus');
+select is((select count(*)::int from public.rc_mixed), 2, 'CX2: tabel campuran tidak dihapus (kolom milik penerima)');
+select ok(exists (select 1 from ops.alerts where kind = 'bus.rejected_payload' and id > (select m from t_cx2) and payload -> 'events' -> 0 ->> 'reason' = 'delete'),
+          'CX2: baris tabel campuran yang tidak ada di pemilik dilaporkan');
+select is((select count(*)::int from bus.reconcile_keys), 0, 'CX2: penampung kunci dibersihkan');
+drop table public.rc_src, public.rc_dst, public.rc_mixed;
 
 -- Review CX16: bus.resync mengirim baris urut kunci primer (bukan urutan fisik heap) — penerima seperti apply_snapshot memproses
 -- berurutan. Baris 1 di-update → pindah ke akhir heap → scan tanpa ORDER BY mengirim 2,3,1.

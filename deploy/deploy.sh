@@ -17,6 +17,19 @@
 #   Backup harian (cron):  15 2 * * * /path/deploy/deploy.sh backup [peran] >> /var/log/clipper-backup.log 2>&1
 #                          → deploy/stack/*/backups (dump DB + file Storage, BACKUP_KEEP_DAYS); salin ke luar server
 #   deploy/deploy.sh down [peran] · deploy/deploy.sh status
+#   Bus antar-DB (stack di server ini): deploy/deploy.sh bus status  → antrean keluar per target, kepala antrean yang macet
+#                          (seq, topik, error), ping creator/brand di admin · bus kick → coba kirim ulang sekarang (reset backoff)
+#                          · bus skip <stack> <target> <seq> → lewati kepala antrean yang macet permanen (event hilang untuk
+#                          penerima; pulihkan state dengan bus.resync) — snapshot yang gagal di admin: tombol "Lewati snapshot"
+#                          di alert admin.{DOMAIN}, bukan dari sini · bus reconcile <admin|creator|brand> → kirim ulang semua tabel
+#                          replika dari stack di server ini ke target + hapus di target baris yang sudah tidak ada di sini
+#   Restore SATU DB (core|creator|brand) ke backup lama — runbook (CX2): 1) `deploy.sh down apps` di server app (hentikan semua
+#                          tulisan user & uang) 2) pulihkan dump ke stack itu (pg_restore dari deploy/stack/<stack>/backups) lalu
+#                          `deploy.sh up <stack>` 3) di SETIAP server stack lain: `deploy.sh bus reconcile <nama bus stack yang
+#                          dipulihkan>` (state yang hilang dikirim ulang, baris yang dicabut sesudah backup — mis. anggota org —
+#                          dihapus) 4) di server stack yang dipulihkan: `deploy.sh bus reconcile <tiap stack lain>` (stack itu sekarang
+#                          sumber kebenaran datanya sendiri) 5) `deploy.sh bus status` di semua server sampai antrean kosong, cek alert
+#                          admin (perintah/event non-replika di jendela backup hilang: cek audit) 6) `deploy.sh up apps`.
 #
 # DNS A: auth.{DOMAIN} → server identity, api.{DOMAIN} → server core (admin), creator-api.{DOMAIN} → server creator,
 # brand-api.{DOMAIN} → server brand, {DOMAIN} + accounts./app./brand./admin. → server app. Satu server: semua ke IP yang sama.
@@ -32,6 +45,7 @@ SUPABASE_REF=${SUPABASE_REF:-d897e1462ad33ee9c7daba8cfee8f14e303c0cf5}
 
 CMD=${1:-} ROLE=${2:-all}
 [ "$CMD" = admin ] && { ADMIN_EMAIL=${2:-}; ROLE=identity; }
+[ "$CMD" = bus ] && { BUS_OP=${2:-status}; BUS_ARGS=("${@:3}"); ROLE=all; }
 ALL_STACKS="identity core creator brand"
 case "$ROLE" in all | identity | core | creator | brand | apps) ;; *) echo "peran tidak dikenal: $ROLE (all|identity|core|creator|brand|apps)"; exit 1 ;; esac
 case "$ROLE" in all) STACKS=$ALL_STACKS SITES="apps $ALL_STACKS" ;; apps) STACKS="" SITES=apps ;; *) STACKS=$ROLE SITES=$ROLE ;; esac
@@ -496,6 +510,47 @@ case "$CMD" in
     done
     [ "$n" -gt 0 ] || [ "$fail" = 1 ] || { echo "tidak ada stack Supabase di server ini (server app tidak menyimpan data)"; exit 1; }
     exit $fail
+    ;;
+  bus)
+    local_stacks=$(for p in core creator brand; do [ -d "stack/$p" ] && echo "$p"; done)
+    [ -n "$local_stacks" ] || { echo "tidak ada stack core/creator/brand di server ini"; exit 1; }
+    case "$BUS_OP" in
+      status)
+        for p in $local_stacks; do
+          echo "== $p ($(bus_name "$p"))"
+          psql_db "$p" -tA -c "select jsonb_pretty(api.health() - 'db')"
+          psql_db "$p" -c "select target, seq, topic, attempts, created_at, left(last_error, 120) as last_error from bus.stuck()"
+          [ "$p" = core ] && psql_db "$p" -c "select source, pinged_at as watermark, seen_at as ping_terakhir, stuck from ops.bus_peers order by source"
+        done
+        ;;
+      kick)
+        for p in $local_stacks; do
+          psql_db "$p" -tA -c "with u as (update bus.outbox set next_at = now(), attempts = 0 where sent_at is null and request_id is null returning 1)
+                               select '$p: ' || count(*) || ' event dicoba kirim ulang' from u"
+        done
+        ;;
+      skip)
+        [ ${#BUS_ARGS[@]} -eq 3 ] || { echo "pakai: deploy.sh bus skip <core|creator|brand> <target admin|creator|brand> <seq kepala antrean (bus status)>"; exit 1; }
+        [ -d "stack/${BUS_ARGS[0]}" ] || { echo "stack ${BUS_ARGS[0]} tidak ada di server ini"; exit 1; }
+        [[ "${BUS_ARGS[1]}" =~ ^(admin|creator|brand)$ && "${BUS_ARGS[2]}" =~ ^[0-9]+$ ]] || { echo "target/seq tidak valid"; exit 1; }
+        echo "event yang dilewati (simpan untuk catatan):"
+        psql_db "${BUS_ARGS[0]}" -tA -c "select jsonb_pretty(bus.skip('${BUS_ARGS[1]}', ${BUS_ARGS[2]}))"
+        ;;
+      reconcile)
+        [[ "${BUS_ARGS[0]:-}" =~ ^(admin|creator|brand)$ ]] || { echo "pakai: deploy.sh bus reconcile <admin|creator|brand>"; exit 1; }
+        for p in $local_stacks; do
+          [ "$(bus_name "$p")" = "${BUS_ARGS[0]}" ] && continue
+          tables=$(psql_db "$p" -tA -c "select bus.replica_tables('${BUS_ARGS[0]}')")   # urut FK: induk dulu
+          for t in $tables; do   # 1) state dikirim ulang, induk dulu
+            psql_db "$p" -tA -c "select '$p → ${BUS_ARGS[0]} $t: ' || bus.resync('$t', '${BUS_ARGS[0]}') || ' baris dikirim ulang'"
+          done
+          for t in $(echo "$tables" | tac); do   # 2) baris yang tidak ada di sini dihapus di target, anak dulu
+            psql_db "$p" -tA -c "select '$p → ${BUS_ARGS[0]} $t: ' || bus.reconcile('$t', '${BUS_ARGS[0]}') || ' kunci direkonsiliasi'"
+          done
+        done
+        ;;
+      *) echo "pakai: deploy.sh bus status | kick | skip <stack> <target> <seq> | reconcile <target>"; exit 1 ;;
+    esac
     ;;
   admin)
     # Bootstrap admin_super pertama (api.admin_set_role butuh admin_super yang sudah ada); aturan akun admin terpisah (AA-20)

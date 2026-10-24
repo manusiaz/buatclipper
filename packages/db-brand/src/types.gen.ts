@@ -166,6 +166,9 @@ export type Database = {
 "duplicate_campaign":
 { Args: { "p_as_template"?: boolean,"p_campaign": string }; Returns: string
                            },
+"health":
+{ Args: Record<PropertyKey, never>; Returns: Json
+                           },
 "invite_preview":
 { Args: { "p_token": string }; Returns: {
               "expired": boolean,"is_agency": boolean,"org_name": string,"role": string,"used": boolean
