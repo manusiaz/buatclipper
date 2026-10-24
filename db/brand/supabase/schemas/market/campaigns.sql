@@ -80,7 +80,7 @@ create trigger campaigns_content_guard before update on market.campaigns
   for each row execute function market.campaign_content_guard();
 create trigger campaigns_replicate after insert or update or delete on market.campaigns for each row
   execute function bus.replicate('admin:org_id,slug,title,type,category_id,platforms,brief,managed_brief,required_hashtags,required_mentions,required_links,sponsored_label,min_duration_sec,max_duration_sec,dos,donts,example_urls,faq,service_mode,review_mode,min_followers,min_account_age_days,min_trust_score,kyc_required,min_views,max_clips_per_clipper,clipper_quota,allow_video_reuse,visibility,is_template,content_version,created_by,created_at',
-                                'creator:org_id,title,type,platforms,required_hashtags,required_mentions,required_links,min_duration_sec,max_duration_sec,review_mode,min_followers,min_account_age_days,max_clips_per_clipper,allow_video_reuse');
+                                'creator:org_id,title,type,platforms,min_duration_sec,max_duration_sec,review_mode,min_followers,min_account_age_days,max_clips_per_clipper,allow_video_reuse');
 
 -- E-37 undangan campaign privat (F-B11). Direplika ke admin (cek claim & visibilitas campaign invite).
 create table market.campaign_invites (

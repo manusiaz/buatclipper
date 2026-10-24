@@ -87,17 +87,20 @@ create trigger campaigns_template_stays_draft before insert or update of status 
   for each row execute function market.template_stays_draft();
 
 -- Isi yang sudah disetujui (status sesudah in_review) tidak berubah lewat replika: brand mengunci brief dari replika status yang bisa
--- tertinggal (admin → brand macet) — kolom isi milik brand selain FAQ dipertahankan + alert (event tidak ditolak, antrean jalan);
--- FAQ tetap boleh (sama dengan kunci brand). Uang, fraud & syarat submisi memakai isi yang disetujui.
+-- tertinggal (admin → brand macet) — isi versi lebih baru dari yang diajukan dipertahankan + alert (event tidak ditolak, antrean
+-- jalan). FAQ tetap boleh (sama dengan kunci brand); slug tidak dibekukan (unik lintas campaign: brand bisa memakai ulang slug lama
+-- untuk campaign lain dan replikanya akan macet). Uang, fraud & syarat submisi memakai isi yang disetujui.
 create function market.campaign_content_frozen() returns trigger
 language plpgsql set search_path = '' as $$
 declare
   frozen jsonb;
 begin
-  if current_setting('bus.applying', true) is distinct from 'on' or old.status in ('draft', 'in_review', 'rejected') then
+  if current_setting('bus.applying', true) is distinct from 'on' or old.status in ('draft', 'in_review', 'rejected')
+     or old.submitted_version is null or coalesce(new.content_version, 0) <= old.submitted_version then
     return new;
   end if;
-  select jsonb_object_agg(k, to_jsonb(old) -> k) into frozen from unnest(bus.accepts('brand', 'market.campaigns')) k where k <> 'faq';
+  select jsonb_object_agg(k, to_jsonb(old) -> k) into frozen from unnest(bus.accepts('brand', 'market.campaigns')) k
+   where k not in ('faq', 'slug');
   if (select jsonb_object_agg(k, to_jsonb(new) -> k) from jsonb_object_keys(frozen) k) is distinct from frozen then
     new := jsonb_populate_record(new, frozen);
     perform ops.raise_alert('campaign.content_drift', 'critical', jsonb_build_object('campaign_id', old.id, 'status', old.status));
@@ -107,10 +110,12 @@ end $$;
 create trigger campaigns_content_frozen before update on market.campaigns
   for each row execute function market.campaign_content_frozen();
 
--- Status, jadwal, pin ke brand (tampilan builder/dashboard; kunci brief di brand membaca status ini).
+-- Status, jadwal, pin ke brand (tampilan builder/dashboard; kunci brief di brand membaca status ini). Ke creator juga tag wajib
+-- caption (dicek creator saat submit, tidak bisa dicek ulang admin): versi admin = isi yang disetujui (campaign_content_frozen),
+-- ikut terkirim tiap perubahan status (termasuk saat disetujui); brand tidak mengirim kolom ini ke creator.
 create trigger campaigns_replicate after insert or update or delete on market.campaigns for each row
   execute function bus.replicate('brand:status,start_at,submit_deadline,view_window_days,pinned_until',
-                                'creator:status,submit_deadline,view_window_days');
+                                'creator:status,submit_deadline,view_window_days,required_hashtags,required_mentions,required_links');
 
 -- Isi tiba dari brand (bus.apply_row). Brand mengunci brief sejak status replika ≠ draft/rejected; balapan dengan replika status
 -- (isi berubah tepat setelah diajukan) ditutup di sini: in_review dengan isi lebih baru dari yang diajukan → kembali draft, invoice
